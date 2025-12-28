@@ -11,12 +11,60 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import 'flutter_flow/flutter_flow_util.dart';
 import 'flutter_flow/internationalization.dart';
 
+// 🔔 VoIP импорты
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'services/voip_service.dart';
+
+// 🔔 Обработчик VoIP уведомлений в фоновом режиме
+// Вызывается когда приложение закрыто или в фоне
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await initFirebase();
+  
+  debugPrint('🔔 Background message received: ${message.messageId}');
+  debugPrint('🔔 Message data: ${message.data}');
+  
+  // Проверяем тип уведомления
+  if (message.data['type'] == 'incoming_call') {
+    debugPrint('📞 Incoming VoIP call detected in background');
+    
+    try {
+      // Показываем CallKit UI
+      await VoIPService().showIncomingCall(
+        sessionId: message.data['sessionId'] ?? '',
+        callerName: message.data['callerName'] ?? 'Unknown Caller',
+        callerId: message.data['callerId'] ?? '',
+        callerPhoto: message.data['callerPhoto'],
+        extraData: {
+          'roomUrl': message.data['roomUrl'],
+          'meetingToken': message.data['meetingToken'],
+        },
+      );
+      debugPrint('✅ CallKit UI shown successfully');
+    } catch (e) {
+      debugPrint('❌ Error showing CallKit: $e');
+    }
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   GoRouter.optionURLReflectsImperativeAPIs = true;
   usePathUrlStrategy();
 
+  // 🔔 Регистрация обработчика фоновых VoIP уведомлений
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  debugPrint('🔔 VoIP background handler registered');
+
   await initFirebase();
+
+  // 🔔 Инициализация VoIP сервиса
+  try {
+    await VoIPService().initialize();
+    debugPrint('✅ VoIP Service initialized successfully');
+  } catch (e) {
+    debugPrint('❌ VoIP Service initialization failed: $e');
+  }
 
   final appState = FFAppState(); // Initialize FFAppState
   await appState.initializePersistedState();
