@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1024626146715",
+    "project_id": "smalltalk-2109b",
+    "storage_bucket": "smalltalk-2109b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1024626146715:android:6f7a925b2afe8ea36bf53e",
+        "android_client_info": {
+          "package_name": "com.appwave.smalltalk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAQ_gpH1aMtlgJuYe13deO1_Lin08HhOIs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
