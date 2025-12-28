@@ -1,0 +1,19 @@
+import '/flutter_flow/flutter_flow_util.dart';
+import 'pay_copy_widget.dart' show PayCopyWidget;
+import 'package:flutter/material.dart';
+
+class PayCopyModel extends FlutterFlowModel<PayCopyWidget> {
+  ///  Local state fields for this page.
+
+  int replenishment = 0;
+
+  String tarif = '20 Small Talk';
+
+  DocumentReference? selectedCard;
+
+  @override
+  void initState(BuildContext context) {}
+
+  @override
+  void dispose() {}
+}

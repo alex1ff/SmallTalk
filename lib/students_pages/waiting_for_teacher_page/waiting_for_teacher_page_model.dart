@@ -1,0 +1,28 @@
+import '/backend/backend.dart';
+import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.dart';
+import '/flutter_flow/flutter_flow_util.dart';
+import '/flutter_flow/instant_timer.dart';
+import '/index.dart';
+import 'waiting_for_teacher_page_widget.dart' show WaitingForTeacherPageWidget;
+import 'package:flutter/material.dart';
+
+class WaitingForTeacherPageModel
+    extends FlutterFlowModel<WaitingForTeacherPageWidget> {
+  ///  State fields for stateful widgets in this page.
+
+  // Stores action output result for [Cloud Function - createVideoSession] action in WaitingForTeacherPage widget.
+  CreateVideoSessionCloudFunctionCallResponse? newSession;
+  InstantTimer? instantTimer;
+  // Stores action output result for [Backend Call - Read Document] action in WaitingForTeacherPage widget.
+  VideoSessionsRecord? videosession;
+  // Stores action output result for [Cloud Function - cancelCall] action in Button widget.
+  CancelCallCloudFunctionCallResponse? cloudFunction5c0;
+
+  @override
+  void initState(BuildContext context) {}
+
+  @override
+  void dispose() {
+    instantTimer?.cancel();
+  }
+}

@@ -1,0 +1,2 @@
+NSCameraUsageDescription = "Для видеозвонков и изучения иностранных языков";
+NSMicrophoneUsageDescription = "Для голосового общения и создания субтитров во время урока";
