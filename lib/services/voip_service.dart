@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import 'package:flutter_callkit_incoming/entities/entities.dart'; // ← ДОБАВИЛИ ЭТУ СТРОКУ!
+import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+
+// Импорт для навигации и backend
+import '/backend/backend.dart';
 
 /// VoIP сервис для обработки входящих звонков
 /// Использует CallKit (iOS) и ConnectionService (Android)
@@ -15,6 +19,10 @@ class VoIPService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+
+  // Для навигации нужен context - сохраним глобальный navigatorKey
+  //static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   /// Инициализация VoIP сервиса
   /// Вызывается один раз при запуске приложения
@@ -27,7 +35,7 @@ class VoIPService {
         alert: true,
         badge: true,
         sound: true,
-        criticalAlert: true, // Для iOS важные уведомления
+        criticalAlert: true,
       );
 
       debugPrint('🔔 VoIPService: Permission status: ${settings.authorizationStatus}');
@@ -68,12 +76,6 @@ class VoIPService {
       await _firestore.collection('users').doc(user.uid).update({
         'voipToken': token,
         'voipTokenUpdatedAt': FieldValue.serverTimestamp(),
-        'platform': Theme.of(
-          // Определяем платформу
-          WidgetsBinding.instance.rootElement!,
-        ).platform == TargetPlatform.iOS
-            ? 'ios'
-            : 'android',
       });
 
       debugPrint('✅ VoIPService: Token saved for user ${user.uid}');
@@ -99,14 +101,14 @@ class VoIPService {
         appName: 'Small Talk',
         avatar: callerPhoto,
         handle: callerId,
-        type: 1, // 0: audio only, 1: video call
+        type: 1,
         textAccept: 'Accept',
         textDecline: 'Decline',
-        duration: 45000, // 45 секунд таймаут (в миллисекундах)
+        duration: 45000,
         extra: <String, dynamic>{
           'sessionId': sessionId,
           'callerId': callerId,
-          ...?extraData, // Дополнительные данные (roomUrl, token и т.д.)
+          ...?extraData,
         },
         headers: <String, dynamic>{
           'platform': 'flutter',
@@ -182,33 +184,63 @@ class VoIPService {
   }
 
   /// Пользователь принял звонок
-  Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
-    if (data == null) return;
+  /// Пользователь принял звонок
+Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
+  if (data == null) return;
 
-    final sessionId = data['sessionId'] as String?;
-    if (sessionId == null) {
-      debugPrint('❌ VoIPService: No sessionId in accept event');
+  final sessionId = data['sessionId'] as String?;
+  if (sessionId == null) {
+    debugPrint('❌ VoIPService: No sessionId in accept event');
+    return;
+  }
+
+  debugPrint('✅ VoIPService: Call accepted: $sessionId');
+
+  try {
+    // Вызываем Cloud Function acceptCall
+    debugPrint('☁️ VoIPService: Calling acceptCall function...');
+    final result = await _functions
+        .httpsCallable('acceptCall')
+        .call({'sessionId': sessionId});
+
+    debugPrint('✅ VoIPService: acceptCall response received');
+
+    // Получаем данные из ответа
+    final responseData = result.data as Map<String, dynamic>;
+    final status = responseData['status'];
+    final roomUrl = responseData['roomUrl'];
+
+    debugPrint('📊 VoIPService: Status: $status, Room URL: ${roomUrl != null ? "present" : "missing"}');
+
+    if (status != 'connected' || roomUrl == null) {
+      debugPrint('❌ VoIPService: Invalid response from acceptCall');
       return;
     }
 
-    debugPrint('✅ VoIPService: Call accepted: $sessionId');
+    // Создаем DocumentReference на videoSession
+    final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
 
-    // TODO: Вызвать вашу Cloud Function acceptCall
-    // Пример:
-    // final result = await FirebaseFunctions.instance
-    //     .httpsCallable('acceptCall')
-    //     .call({'sessionId': sessionId});
+    debugPrint('🎬 VoIPService: Navigating to VideoCallPageStudent...');
 
-    // TODO: Перейти на экран видеозвонка
-    // Пример:
-    // final extraData = data['extra'] as Map<String, dynamic>?;
-    // final roomUrl = extraData?['roomUrl'] as String?;
-    // if (roomUrl != null) {
-    //   // Навигация на VideoCallPage с roomUrl
-    // }
+    // Переходим на страницу видеозвонка через FFAppState
+    // Используем deep link для навигации
+    final deepLink = '/videoCallPageStudent?videoDocRef=${videoDocRef.path}';
+    
+    debugPrint('🔗 VoIPService: Deep link: $deepLink');
+    
+    // Сохраняем данные в Firestore для последующей навигации
+    await videoDocRef.update({
+      'studentNavigationTriggered': true,
+      'navigationTimestamp': FieldValue.serverTimestamp(),
+    });
 
-    debugPrint('⚠️ VoIPService: TODO - Navigate to call screen');
+    debugPrint('✅ VoIPService: Navigation data saved to Firestore');
+    debugPrint('⚠️ VoIPService: App will navigate to VideoCallPage when opened');
+
+  } catch (e) {
+    debugPrint('❌ VoIPService: Error accepting call: $e');
   }
+}
 
   /// Пользователь отклонил звонок
   Future<void> _handleCallDecline(Map<String, dynamic>? data) async {
@@ -222,13 +254,16 @@ class VoIPService {
 
     debugPrint('❌ VoIPService: Call declined: $sessionId');
 
-    // TODO: Вызвать вашу Cloud Function declineCall
-    // Пример:
-    // await FirebaseFunctions.instance
-    //     .httpsCallable('declineCall')
-    //     .call({'sessionId': sessionId});
+    try {
+      // Вызываем Cloud Function declineCall
+      await _functions
+          .httpsCallable('declineCall')
+          .call({'sessionId': sessionId});
 
-    debugPrint('⚠️ VoIPService: TODO - Call declineCall function');
+      debugPrint('✅ VoIPService: declineCall completed');
+    } catch (e) {
+      debugPrint('❌ VoIPService: Error declining call: $e');
+    }
   }
 
   /// Звонок завершен
@@ -243,16 +278,19 @@ class VoIPService {
 
     debugPrint('🔚 VoIPService: Call ended: $sessionId');
 
-    // TODO: Вызвать вашу Cloud Function endSession
-    // Пример:
-    // await FirebaseFunctions.instance
-    //     .httpsCallable('endSession')
-    //     .call({
-    //       'sessionId': sessionId,
-    //       'endReason': 'user_ended',
-    //     });
+    try {
+      // Вызываем Cloud Function endSession
+      await _functions
+          .httpsCallable('endSession')
+          .call({
+            'sessionId': sessionId,
+            'endReason': 'user_ended',
+          });
 
-    debugPrint('⚠️ VoIPService: TODO - Call endSession function');
+      debugPrint('✅ VoIPService: endSession completed');
+    } catch (e) {
+      debugPrint('❌ VoIPService: Error ending session: $e');
+    }
   }
 
   /// Таймаут звонка (45 секунд без ответа)
@@ -267,8 +305,7 @@ class VoIPService {
 
     debugPrint('⏰ VoIPService: Call timeout: $sessionId');
 
-    // Ничего не делаем - ваша Cloud Function processExpiredNotifications
-    // уже обработает это через Firestore
+    // Ничего не делаем - Cloud Function processExpiredNotifications обработает
   }
 
   /// Завершить текущий активный звонок (программно)
