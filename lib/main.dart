@@ -167,6 +167,8 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
       title: 'Small Talk',
+      // 🔔 ДОБАВЬТЕ ЭТУ СТРОКУ:
+      //navigatorKey: VoIPService.navigatorKey,
       localizationsDelegates: [
         FFLocalizationsDelegate(),
         GlobalMaterialLocalizations.delegate,
