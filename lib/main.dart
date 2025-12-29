@@ -13,6 +13,7 @@ import 'flutter_flow/internationalization.dart';
 
 // 🔔 VoIP импорты
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'services/voip_service.dart';
 
 // 🔔 Обработчик VoIP уведомлений в фоновом режиме
@@ -118,12 +119,90 @@ class _MyAppState extends State<MyApp> {
     userStream = smallTalkFirebaseUserStream()
       ..listen((user) {
         _appStateNotifier.update(user);
+        
+// 🔔 Проверяем активные видео-сессии при смене пользователя
+if (user.loggedIn) {
+  final userId = user.uid;
+  if (userId != null && userId.isNotEmpty) {
+    _checkForActiveVideoSession(userId);
+  }
+}
       });
     jwtTokenStream.listen((_) {});
     Future.delayed(
       Duration(milliseconds: 1000),
       () => _appStateNotifier.stopShowingSplashImage(),
     );
+  }
+
+  // 🔔 Проверка активной видео-сессии для автоматической навигации
+  Future<void> _checkForActiveVideoSession(String userId) async {
+    try {
+      debugPrint('🔍 Checking for active video session for user: $userId');
+      
+      // Получаем пользователя из Firestore
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+      
+      if (!userDoc.exists) {
+        debugPrint('⚠️ User document not found');
+        return;
+      }
+      
+      final userData = userDoc.data();
+      final userRole = userData?['role'] as String?;
+      
+      // Проверяем только для студентов
+      if (userRole != 'student') {
+        debugPrint('ℹ️ User is not a student, skipping session check');
+        return;
+      }
+      
+      // Ищем активную сессию для этого студента
+      final activeSessions = await FirebaseFirestore.instance
+          .collection('videoSessions')
+          .where('studentId', isEqualTo: userId)
+          .where('status', isEqualTo: 'active')
+          .where('studentNavigationTriggered', isEqualTo: true)
+          .limit(1)
+          .get();
+      
+      if (activeSessions.docs.isEmpty) {
+        debugPrint('📭 No active sessions requiring navigation');
+        return;
+      }
+      
+      final sessionDoc = activeSessions.docs.first;
+      final sessionId = sessionDoc.id;
+      
+      debugPrint('✅ Found active session requiring navigation: $sessionId');
+      
+      // Сбрасываем флаг навигации
+      await sessionDoc.reference.update({
+        'studentNavigationTriggered': false,
+        'navigationCompletedAt': FieldValue.serverTimestamp(),
+      });
+      
+      debugPrint('🎬 Navigating to VideoCallPageStudent...');
+      
+      // Даем время на инициализацию роутера
+      await Future.delayed(Duration(milliseconds: 1500));
+      
+      // Переходим на страницу видеозвонка
+      final videoDocRef = sessionDoc.reference;
+      
+      // Используем query parameters для навигации (совместимо с FlutterFlow)
+      _router.go(
+        '/videoCallPageStudent?videoDocRef=${Uri.encodeComponent(videoDocRef.path)}',
+      );
+      
+      debugPrint('✅ Navigation triggered successfully');
+      
+    } catch (e) {
+      debugPrint('❌ Error checking for active video session: $e');
+    }
   }
 
   @override
@@ -138,7 +217,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   void setThemeMode(ThemeMode mode) => safeSetState(() {
-        _themeMode = mode;
+        _themeMode = mode;  // ← Исправлено: точка с запятой
       });
 
   void setTextScaleFactor(double updatedFactor) {
@@ -167,8 +246,6 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
       title: 'Small Talk',
-      // 🔔 ДОБАВЬТЕ ЭТУ СТРОКУ:
-      //navigatorKey: VoIPService.navigatorKey,
       localizationsDelegates: [
         FFLocalizationsDelegate(),
         GlobalMaterialLocalizations.delegate,
