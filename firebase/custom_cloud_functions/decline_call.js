@@ -1,5 +1,5 @@
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
 
 /*
 ОБНОВЛЕННАЯ ФУНКЦИЯ: declineCall
@@ -7,149 +7,264 @@ const admin = require("firebase-admin");
 */
 
 exports.declineCall = functions.https.onCall(async (data, context) => {
-  console.log("❌ Tutor declining call (updated version)...");
-
+  console.log('❌ Tutor declining call (updated version)...');
+  
   try {
     if (!context.auth) {
-      throw new functions.https.HttpsError(
-        "unauthenticated",
-        "User must be authenticated",
-      );
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
 
     const tutorId = context.auth.uid;
-    const { sessionId } = data; // Изменено с callRequestId на sessionId
+    const { sessionId } = data;
 
-    console.log("👨‍🏫 Tutor ID:", tutorId);
-    console.log("📺 Session ID:", sessionId);
+    console.log('👨‍🏫 Tutor ID:', tutorId);
+    console.log('📺 Session ID:', sessionId);
 
     if (!sessionId) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Session ID is required",
-      );
+      throw new functions.https.HttpsError('invalid-argument', 'Session ID is required');
     }
 
     // Получаем данные видео сессии
-    const sessionDoc = await admin
-      .firestore()
-      .collection("videoSessions")
+    const sessionDoc = await admin.firestore()
+      .collection('videoSessions')
       .doc(sessionId)
       .get();
 
     if (!sessionDoc.exists) {
-      console.log("❌ Video session not found:", sessionId);
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Video session not found",
-      );
+      console.log('❌ Video session not found:', sessionId);
+      throw new functions.https.HttpsError('not-found', 'Video session not found');
     }
 
     const sessionData = sessionDoc.data();
-    console.log("📋 Session data status:", sessionData.status);
-    console.log("👤 Current tutor ID:", sessionData.currentTutorId);
+    console.log('📋 Session data status:', sessionData.status);
+    console.log('👤 Current tutor ID:', sessionData.currentTutorId);
 
     // Проверяем, что сессия в статусе поиска
-    if (sessionData.status !== "searching") {
-      console.log("❌ Session is not in searching status:", sessionData.status);
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Session is not available for declining",
-      );
+    if (sessionData.status !== 'searching') {
+      console.log('❌ Session is not in searching status:', sessionData.status);
+      throw new functions.https.HttpsError('invalid-argument', 'Session is not available for declining');
     }
 
     // Проверяем, что звонок адресован этому преподавателю
     if (sessionData.currentTutorId !== tutorId) {
-      console.log(
-        "❌ Session is not for this tutor. Expected:",
-        sessionData.currentTutorId,
-        "Got:",
-        tutorId,
-      );
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "This session is not assigned to you",
-      );
+      console.log('❌ Session is not for this tutor. Expected:', sessionData.currentTutorId, 'Got:', tutorId);
+      throw new functions.https.HttpsError('permission-denied', 'This session is not assigned to you');
     }
 
     // Получаем данные преподавателя (для валидации роли)
-    const tutorDoc = await admin
-      .firestore()
-      .collection("users")
-      .doc(tutorId)
-      .get();
-    if (!tutorDoc.exists || tutorDoc.data().role !== "tutor") {
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "Only tutors can decline calls",
-      );
+    const tutorDoc = await admin.firestore().collection('users').doc(tutorId).get();
+    if (!tutorDoc.exists || tutorDoc.data().role !== 'tutor') {
+      throw new functions.https.HttpsError('permission-denied', 'Only tutors can decline calls');
     }
 
-    console.log("🔄 Processing session decline...");
-
+    console.log('🔄 Processing session decline...');
+    
     // Добавляем преподавателя в список попыток
     const triedTutors = [...(sessionData.triedTutors || []), tutorId];
-
-    console.log("📝 Updating tried tutors list:", triedTutors);
-
+    
+    console.log('📝 Updating tried tutors list:', triedTutors);
+    
     // Обновляем сессию
-    await admin
-      .firestore()
-      .collection("videoSessions")
+    await admin.firestore()
+      .collection('videoSessions')
       .doc(sessionId)
       .update({
         triedTutors: triedTutors,
-        currentTutorId: null, // сбрасываем текущего преподавателя
+        currentTutorId: null,
         sessionMetadata: {
           ...sessionData.sessionMetadata,
           lastDeclinedBy: tutorId,
-          lastDeclinedAt: Date.now(),
-        },
+          lastDeclinedAt: Date.now()
+        }
       });
 
-    console.log("🔔 Marking notification as declined...");
-
+    console.log('🔔 Marking notification as declined...');
+    
     // Отмечаем уведомление как отклоненное
-    const notificationsQuery = await admin
-      .firestore()
-      .collection("notifications")
-      .where("sessionId", "==", sessionId) // Изменено с callRequestId
-      .where("recipientId", "==", tutorId)
-      .where("status", "==", "sent")
+    const notificationsQuery = await admin.firestore()
+      .collection('notifications')
+      .where('sessionId', '==', sessionId)
+      .where('recipientId', '==', tutorId)
+      .where('status', '==', 'sent')
       .get();
 
     if (!notificationsQuery.empty) {
       const batch = admin.firestore().batch();
-      notificationsQuery.forEach((doc) => {
-        batch.update(doc.ref, {
-          status: "declined",
-          declinedAt: admin.firestore.FieldValue.serverTimestamp(),
+      notificationsQuery.forEach(doc => {
+        batch.update(doc.ref, { 
+          status: 'declined',
+          declinedAt: admin.firestore.FieldValue.serverTimestamp()
         });
       });
       await batch.commit();
-      console.log("✅ Notification marked as declined");
+      console.log('✅ Notification marked as declined');
     }
 
     // Отправляем уведомление следующему преподавателю
-    console.log("📨 Sending notification to next tutor...");
+    console.log('📨 Sending notification to next tutor...');
     await sendNotificationToNextTutor(sessionId, {
       ...sessionData,
-      triedTutors: triedTutors,
+      triedTutors: triedTutors
     });
-
-    console.log("✅ Call declined successfully");
+    
+    console.log('✅ Call declined successfully');
 
     return {
-      status: "declined",
-      message: "Call declined successfully",
+      status: 'declined',
+      message: 'Call declined successfully'
     };
-  } catch (error) {
-    console.error("❌ Error declining call:", error);
 
+  } catch (error) {
+    console.error('❌ Error declining call:', error);
+    
     if (error.code) {
       throw error;
     }
-
-    throw new functions.https.HttpsError("internal", error.message);
+    
+    throw new functions.https.HttpsError('internal', error.message);
   }
 });
+
+// 🔔 ОТПРАВКА VOIP PUSH ПРЕПОДАВАТЕЛЮ
+async function sendVoipPushToTutor(tutorId, callData) {
+  try {
+    console.log('📲 Preparing VoIP push for tutor:', tutorId);
+
+    const tutorDoc = await admin.firestore()
+      .collection('users')
+      .doc(tutorId)
+      .get();
+
+    if (!tutorDoc.exists) {
+      console.log('⚠️ Tutor document not found:', tutorId);
+      return;
+    }
+
+    const tutorData = tutorDoc.data();
+    const voipToken = tutorData.voipToken;
+
+    if (!voipToken) {
+      console.log('⚠️ Tutor has no VoIP token saved');
+      return;
+    }
+
+    console.log('📱 VoIP token found:', voipToken.substring(0, 20) + '...');
+
+    const message = {
+      token: voipToken,
+      data: {
+        type: 'incoming_call',
+        sessionId: callData.sessionId,
+        callerName: callData.studentName,
+        callerId: callData.studentId,
+        callerPhoto: callData.studentPhoto || '',
+        language: callData.language || '',
+      },
+      apns: {
+        headers: {
+          'apns-priority': '10',
+          'apns-push-type': 'voip',
+        },
+        payload: {
+          aps: {
+            'content-available': 1,
+            alert: {
+              title: 'Входящий звонок',
+              body: `${callData.studentName} хочет попрактиковать ${callData.language}`,
+            },
+            sound: 'default',
+          },
+        },
+      },
+      android: {
+        priority: 'high',
+        notification: {
+          title: 'Входящий звонок',
+          body: `${callData.studentName} хочет попрактиковать ${callData.language}`,
+          channelId: 'incoming_calls',
+          priority: 'max',
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+    };
+
+    const response = await admin.messaging().send(message);
+    console.log('✅ VoIP push sent successfully. Message ID:', response);
+
+    return response;
+  } catch (error) {
+    console.error('❌ Error sending VoIP push to tutor:', error);
+    return null;
+  }
+}
+
+// ОТПРАВКА УВЕДОМЛЕНИЯ СЛЕДУЮЩЕМУ ПРЕПОДАВАТЕЛЮ
+async function sendNotificationToNextTutor(sessionId, sessionData) {
+  try {
+    const availableTutors = sessionData.availableTutors || [];
+    const triedTutors = sessionData.triedTutors || [];
+    
+    console.log('🎯 Available tutors:', availableTutors);
+    console.log('❌ Tried tutors:', triedTutors);
+    
+    // Находим следующего преподавателя
+    const nextTutor = availableTutors.find(tutorId => !triedTutors.includes(tutorId));
+    
+    if (!nextTutor) {
+      console.log('❌ No more tutors available');
+      await admin.firestore().collection('videoSessions').doc(sessionId).update({
+        status: 'no_tutors_available',
+        sessionMetadata: {
+          ...sessionData.sessionMetadata,
+          noTutorsReason: 'All available tutors have been tried'
+        }
+      });
+      return;
+    }
+
+    console.log('📨 Sending notification to tutor:', nextTutor);
+
+    // Обновляем текущего преподавателя в сессии
+    await admin.firestore().collection('videoSessions').doc(sessionId).update({
+      currentTutorId: nextTutor
+    });
+
+    // Создаем уведомление в Firestore
+    const expiresAt = new Date();
+    expiresAt.setSeconds(expiresAt.getSeconds() + 45);
+
+    const notificationData = {
+      recipientId: nextTutor,
+      sessionId: sessionId,
+      type: 'incoming_call',
+      status: 'sent',
+      title: 'Входящий звонок',
+      message: `${sessionData.studentInfo.name} хочет попрактиковать ${sessionData.language}`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+      studentInfo: sessionData.studentInfo
+    };
+
+    await admin.firestore().collection('notifications').add(notificationData);
+    console.log('✅ Firestore notification created for tutor:', nextTutor);
+
+    // 🔔 Отправляем VoIP push преподавателю
+    console.log('📲 Sending VoIP push to next tutor...');
+    try {
+      await sendVoipPushToTutor(nextTutor, {
+        sessionId: sessionId,
+        studentName: sessionData.studentInfo.name,
+        studentId: sessionData.studentId,
+        studentPhoto: sessionData.studentInfo.photo,
+        language: sessionData.language,
+      });
+      console.log('✅ VoIP push sent to next tutor');
+    } catch (pushError) {
+      console.error('⚠️ Failed to send VoIP push (non-critical):', pushError.message);
+    }
+
+  } catch (error) {
+    console.error('❌ Error sending notification to tutor:', error);
+  }
+}
