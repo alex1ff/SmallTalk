@@ -278,12 +278,12 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   debugPrint('✅ VoIPService: Call accepted: $sessionId');
 
   try {
-    final roomUrl = extra['roomUrl'] ?? data['roomUrl'];
-    final meetingToken = extra['meetingToken'] ?? data['meetingToken'];
+    final payloadRoomUrl = extra['roomUrl'] ?? data['roomUrl'];
+    final payloadMeetingToken = extra['meetingToken'] ?? data['meetingToken'];
 
     // Если в payload уже есть данные комнаты, значит это студент
-    if ((roomUrl is String && roomUrl.isNotEmpty) ||
-        (meetingToken is String && meetingToken.isNotEmpty)) {
+    if ((payloadRoomUrl is String && payloadRoomUrl.isNotEmpty) ||
+        (payloadMeetingToken is String && payloadMeetingToken.isNotEmpty)) {
       final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
       await videoDocRef.update({
         'studentNavigationTriggered': true,
@@ -304,11 +304,11 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     // Получаем данные из ответа
     final responseData = result.data as Map<String, dynamic>;
     final status = responseData['status'];
-    final roomUrl = responseData['roomUrl'];
+    final responseRoomUrl = responseData['roomUrl'];
 
-    debugPrint('📊 VoIPService: Status: $status, Room URL: ${roomUrl != null ? "present" : "missing"}');
+    debugPrint('📊 VoIPService: Status: $status, Room URL: ${responseRoomUrl != null ? "present" : "missing"}');
 
-    if (status != 'connected' || roomUrl == null) {
+    if (status != 'connected' || responseRoomUrl == null) {
       debugPrint('❌ VoIPService: Invalid response from acceptCall');
       return;
     }
