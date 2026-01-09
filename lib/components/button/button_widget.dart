@@ -81,7 +81,6 @@ class _ButtonWidgetState extends State<ButtonWidget> {
           await widget.action?.call();
         },
         child: Container(
-          width: double.infinity,
           height: 60.0,
           decoration: BoxDecoration(
             color: FlutterFlowTheme.of(context).primaryText,

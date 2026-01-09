@@ -7,8 +7,6 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
-import 'package:smooth_page_indicator/smooth_page_indicator.dart'
-    as smooth_page_indicator;
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
@@ -90,68 +88,19 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                   height: MediaQuery.sizeOf(context).height * 0.35,
                   child: Stack(
                     children: [
-                      Container(
-                        width: double.infinity,
-                        height: double.infinity,
-                        child: Stack(
-                          children: [
-                            PageView(
-                              controller: _model.pageViewController1 ??=
-                                  PageController(initialPage: 0),
-                              scrollDirection: Axis.horizontal,
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.only(
-                                    bottomLeft: Radius.circular(20.0),
-                                    bottomRight: Radius.circular(20.0),
-                                    topLeft: Radius.circular(0.0),
-                                    topRight: Radius.circular(0.0),
-                                  ),
-                                  child: Image.network(
-                                    nativeSpeakerPageUsersRecord.photoUrl,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    fit: BoxFit.cover,
-                                    alignment: Alignment(0.0, -1.0),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Align(
-                              alignment: AlignmentDirectional(0.0, -1.0),
-                              child: Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    0.0, 0.0, 0.0, 16.0),
-                                child:
-                                    smooth_page_indicator.SmoothPageIndicator(
-                                  controller: _model.pageViewController1 ??=
-                                      PageController(initialPage: 0),
-                                  count: 1,
-                                  axisDirection: Axis.horizontal,
-                                  onDotClicked: (i) async {
-                                    await _model.pageViewController1!
-                                        .animateToPage(
-                                      i,
-                                      duration: Duration(milliseconds: 500),
-                                      curve: Curves.ease,
-                                    );
-                                    safeSetState(() {});
-                                  },
-                                  effect: smooth_page_indicator.SlideEffect(
-                                    spacing: 8.0,
-                                    radius: 8.0,
-                                    dotWidth: 8.0,
-                                    dotHeight: 8.0,
-                                    dotColor: FlutterFlowTheme.of(context)
-                                        .secondaryBackground,
-                                    activeDotColor: FlutterFlowTheme.of(context)
-                                        .primaryBackground,
-                                    paintStyle: PaintingStyle.fill,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                      ClipRRect(
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(20.0),
+                          bottomRight: Radius.circular(20.0),
+                          topLeft: Radius.circular(0.0),
+                          topRight: Radius.circular(0.0),
+                        ),
+                        child: Image.network(
+                          nativeSpeakerPageUsersRecord.photoUrl,
+                          width: double.infinity,
+                          height: double.infinity,
+                          fit: BoxFit.cover,
+                          alignment: Alignment(0.0, -1.0),
                         ),
                       ),
                       Container(
@@ -237,7 +186,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                           buttonSize: 45.0,
                                           fillColor: Color(0x3CFFFFFF),
                                           icon: Icon(
-                                            Icons.favorite_border,
+                                            FFIcons.kheart,
                                             color: FlutterFlowTheme.of(context)
                                                 .primaryBackground,
                                             size: 20.0,
@@ -390,7 +339,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           height: double.infinity,
                           child: PageView(
                             physics: const NeverScrollableScrollPhysics(),
-                            controller: _model.pageViewController2 ??=
+                            controller: _model.pageViewController ??=
                                 PageController(initialPage: 0),
                             scrollDirection: Axis.horizontal,
                             children: [
@@ -507,8 +456,16 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         }
                                       },
                                       text: _model.numMaxLineAbout == 4
-                                          ? 'Показать еще'
-                                          : 'Скрыть',
+                                          ? FFLocalizations.of(context)
+                                              .getVariableText(
+                                              ruText: 'Показать еще',
+                                              enText: 'Show more',
+                                            )
+                                          : FFLocalizations.of(context)
+                                              .getVariableText(
+                                              ruText: 'Скрыть',
+                                              enText: 'Hide',
+                                            ),
                                       options: FFButtonOptions(
                                         height: 35.0,
                                         padding: EdgeInsetsDirectional.fromSTEB(
@@ -1948,7 +1905,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         hoverColor: Colors.transparent,
                                         highlightColor: Colors.transparent,
                                         onTap: () async {
-                                          await _model.pageViewController2
+                                          await _model.pageViewController
                                               ?.animateToPage(
                                             0,
                                             duration:
@@ -1961,7 +1918,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                           height: 100.0,
                                           decoration: BoxDecoration(
                                             color: valueOrDefault<Color>(
-                                              _model.pageViewCurrentIndex2 == 0
+                                              _model.pageViewCurrentIndex == 0
                                                   ? FlutterFlowTheme.of(context)
                                                       .secondaryBackground
                                                   : FlutterFlowTheme.of(context)
@@ -2001,7 +1958,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         hoverColor: Colors.transparent,
                                         highlightColor: Colors.transparent,
                                         onTap: () async {
-                                          await _model.pageViewController2
+                                          await _model.pageViewController
                                               ?.animateToPage(
                                             1,
                                             duration:
@@ -2014,7 +1971,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                           height: 100.0,
                                           decoration: BoxDecoration(
                                             color: valueOrDefault<Color>(
-                                              _model.pageViewCurrentIndex2 == 2
+                                              _model.pageViewCurrentIndex == 2
                                                   ? FlutterFlowTheme.of(context)
                                                       .secondaryBackground
                                                   : FlutterFlowTheme.of(context)

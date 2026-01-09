@@ -191,13 +191,16 @@ exports.acceptCall = functions.https.onCall(async (data, context) => {
     } catch (pushError) {
       console.error(
         "⚠️ Failed to send VoIP push (non-critical):",
-        pushError.message
+        pushError.message,
       );
       // Продолжаем работу даже если push не отправился
     }
 
     // === 6. ОБНОВЛЕНИЕ СЕССИИ В ТРАНЗАКЦИИ ===
     console.log("🔄 Updating session and user statuses in transaction...");
+    const activeExpiresAt = admin.firestore.Timestamp.fromDate(
+      new Date(Date.now() + 60 * 60 * 1000),
+    );
     await admin.firestore().runTransaction(async (transaction) => {
       // Обновляем сессию - добавляем данные для активной сессии
       transaction.update(
@@ -213,6 +216,7 @@ exports.acceptCall = functions.https.onCall(async (data, context) => {
           dailyRoomUrl: dailyRoom.url,
           dailyRoomName: dailyRoom.name,
           meetingToken: dailyRoom.token,
+          expiresAt: activeExpiresAt,
 
           // Добавляем информацию о преподавателе
           tutorInfo: {
@@ -319,18 +323,19 @@ async function sendVoipPushToStudent(studentId, callData) {
     }
 
     const studentData = studentDoc.data();
-    const voipToken = studentData.voipToken;
+    const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
+    const voipToken =
+      studentData.voipPushToken || // PushKit
+      studentData.voipToken; // FCM fallback
 
     if (!voipToken) {
-      console.log("⚠️ Student has no VoIP token saved. Token:", voipToken);
+      console.log("⚠️ Student has no VoIP token saved.");
       console.log("⚠️ Student data keys:", Object.keys(studentData));
       return;
     }
 
-    console.log(
-      "📱 VoIP token found:",
-      voipToken.substring(0, 20) + "..."
-    );
+    console.log("📱 VoIP token found:", voipToken.substring(0, 20) + "...");
+    console.log("📦 Using bundleId for apns-topic:", bundleId);
 
     // Формируем push notification message
     const message = {
@@ -348,30 +353,18 @@ async function sendVoipPushToStudent(studentId, callData) {
       apns: {
         headers: {
           "apns-priority": "10",
-          "apns-push-type": "voip", // КРИТИЧНО для iOS VoIP!
+          "apns-push-type": "voip",
+          "apns-topic": bundleId,
         },
         payload: {
           aps: {
             "content-available": 1,
-            alert: {
-              title: "Входящий звонок",
-              body: `${callData.callerName} звонит вам`,
-            },
-            sound: "default",
           },
         },
       },
       // Android настройки
       android: {
         priority: "high",
-        notification: {
-          title: "Входящий звонок",
-          body: `${callData.callerName} звонит вам`,
-          channelId: "incoming_calls",
-          priority: "max",
-          defaultSound: true,
-          defaultVibrateTimings: true,
-        },
       },
     };
 

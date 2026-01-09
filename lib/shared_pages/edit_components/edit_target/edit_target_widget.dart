@@ -2,6 +2,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/chips/chips_widget.dart';
 import '/backend/backend.dart';
 import '/components/button/button_widget.dart';
+import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'dart:async';
@@ -9,6 +10,7 @@ import '/custom_code/actions/index.dart' as actions;
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'edit_target_model.dart';
 export 'edit_target_model.dart';
 
@@ -26,6 +28,9 @@ class EditTargetWidget extends StatefulWidget {
 
 class _EditTargetWidgetState extends State<EditTargetWidget> {
   late EditTargetModel _model;
+
+  late StreamSubscription<bool> _keyboardVisibilitySubscription;
+  bool _isKeyboardVisible = false;
 
   @override
   void setState(VoidCallback callback) {
@@ -45,12 +50,24 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
           .cast<String>();
       safeSetState(() {});
     });
+
+    if (!isWeb) {
+      _keyboardVisibilitySubscription =
+          KeyboardVisibilityController().onChange.listen((bool visible) {
+        safeSetState(() {
+          _isKeyboardVisible = visible;
+        });
+      });
+    }
   }
 
   @override
   void dispose() {
     _model.maybeDispose();
 
+    if (!isWeb) {
+      _keyboardVisibilitySubscription.cancel();
+    }
     super.dispose();
   }
 
@@ -122,8 +139,10 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                                 updateCallback: () => safeSetState(() {}),
                                 child: ChipsWidget(
                                   icon:
-                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/m3l806hbtb67/%E2%9C%88%EF%B8%8F.png',
-                                  text: 'Путешествия',
+                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/5tvth2denlpx/%E2%9C%88%EF%B8%8F.png',
+                                  text: FFLocalizations.of(context).getText(
+                                    'ttv2n2du' /* Путешествия */,
+                                  ),
                                   selected:
                                       _model.purpose.contains('Путешествия'),
                                   actionadd: (select) async {
@@ -141,8 +160,10 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                                 updateCallback: () => safeSetState(() {}),
                                 child: ChipsWidget(
                                   icon:
-                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/k5p0kovi04k6/%F0%9F%92%BC.png',
-                                  text: 'Работа',
+                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/lerjql614l6t/%F0%9F%92%BC.png',
+                                  text: FFLocalizations.of(context).getText(
+                                    'id571obg' /* Работа */,
+                                  ),
                                   selected: _model.purpose.contains('Работа'),
                                   actionadd: (select) async {
                                     _model.addToPurpose(select);
@@ -159,8 +180,10 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                                 updateCallback: () => safeSetState(() {}),
                                 child: ChipsWidget(
                                   icon:
-                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/6g5od84p1tjg/%F0%9F%93%9A.png',
-                                  text: 'Учеба',
+                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/aacr3gooehck/%F0%9F%93%9A.png',
+                                  text: FFLocalizations.of(context).getText(
+                                    'wc6ds33w' /* Учеба */,
+                                  ),
                                   selected: _model.purpose.contains('Учеба'),
                                   actionadd: (select) async {
                                     _model.addToPurpose(select);
@@ -177,8 +200,10 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                                 updateCallback: () => safeSetState(() {}),
                                 child: ChipsWidget(
                                   icon:
-                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/ysodbdg787sg/%F0%9F%8E%AD.png',
-                                  text: 'Культура',
+                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/zn3jlcka2lbc/%F0%9F%92%A1.png',
+                                  text: FFLocalizations.of(context).getText(
+                                    '4zdz2z83' /* Культура */,
+                                  ),
                                   selected: _model.purpose.contains('Культура'),
                                   actionadd: (select) async {
                                     _model.addToPurpose(select);
@@ -195,8 +220,10 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                                 updateCallback: () => safeSetState(() {}),
                                 child: ChipsWidget(
                                   icon:
-                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/inxg3bvrbq5u/%F0%9F%92%AC.png',
-                                  text: 'Общение',
+                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/odie4pcem3fn/%F0%9F%92%AC.png',
+                                  text: FFLocalizations.of(context).getText(
+                                    'iu8bnfx7' /* Общение */,
+                                  ),
                                   selected: _model.purpose.contains('Общение'),
                                   actionadd: (select) async {
                                     _model.addToPurpose(select);
@@ -213,8 +240,10 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                                 updateCallback: () => safeSetState(() {}),
                                 child: ChipsWidget(
                                   icon:
-                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/1nye1ugilrx4/%F0%9F%8E%AF.png',
-                                  text: 'Другое',
+                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/68cdtneygm0v/%F0%9F%9A%80.png',
+                                  text: FFLocalizations.of(context).getText(
+                                    'cc6sb20q' /* Другое */,
+                                  ),
                                   selected: _model.purpose.contains('Другое'),
                                   actionadd: (select) async {
                                     _model.addToPurpose(select);
@@ -233,41 +262,98 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                     ],
                   ),
                 ),
-                wrapWithModel(
-                  model: _model.buttonModel,
-                  updateCallback: () => safeSetState(() {}),
-                  child: ButtonWidget(
-                    text: 'Сохранить',
-                    action: () async {
-                      if (_model.purpose.isNotEmpty) {
-                        unawaited(
-                          () async {
-                            await currentUserReference!.update({
-                              ...mapToFirestore(
-                                {
-                                  'purpose': _model.purpose,
-                                },
-                              ),
-                            });
-                          }(),
-                        );
-                        await widget.action?.call(
-                          _model.purpose.length <= 1
-                              ? _model.purpose.firstOrNull!
-                              : '${_model.purpose.firstOrNull}, +${(_model.purpose.length - 1).toString()}',
-                        );
-                      } else {
-                        await actions.showTopNotification(
-                          context,
-                          'Выберите минимум одну цель',
-                          '',
-                          true,
-                        );
-                        return;
-                      }
+                Padding(
+                  padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 0.0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      Expanded(
+                        child: wrapWithModel(
+                          model: _model.buttonModel,
+                          updateCallback: () => safeSetState(() {}),
+                          child: ButtonWidget(
+                            text: FFLocalizations.of(context).getText(
+                              '6k2h1hbt' /* Сохранить */,
+                            ),
+                            action: () async {
+                              if (_model.purpose.isNotEmpty) {
+                                unawaited(
+                                  () async {
+                                    await currentUserReference!.update({
+                                      ...mapToFirestore(
+                                        {
+                                          'purpose': _model.purpose,
+                                        },
+                                      ),
+                                    });
+                                  }(),
+                                );
+                                await widget.action?.call(
+                                  _model.purpose.length <= 1
+                                      ? _model.purpose.firstOrNull!
+                                      : '${_model.purpose.firstOrNull}, +${(_model.purpose.length - 1).toString()}',
+                                );
+                              } else {
+                                await actions.showTopNotification(
+                                  context,
+                                  'Выберите минимум одну цель',
+                                  '',
+                                  true,
+                                );
+                                return;
+                              }
 
-                      Navigator.pop(context);
-                    },
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsetsDirectional.fromSTEB(
+                            0.0,
+                            0.0,
+                            0.0,
+                            valueOrDefault<double>(
+                              (isWeb
+                                      ? MediaQuery.viewInsetsOf(context)
+                                              .bottom >
+                                          0
+                                      : _isKeyboardVisible)
+                                  ? 6.0
+                                  : 35.0,
+                              6.0,
+                            )),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            boxShadow: [
+                              BoxShadow(
+                                blurRadius: 7.0,
+                                color: Color(0x0D2C2C2C),
+                                offset: Offset(
+                                  0.0,
+                                  2.0,
+                                ),
+                              )
+                            ],
+                            shape: BoxShape.circle,
+                          ),
+                          child: FlutterFlowIconButton(
+                            borderRadius: 50.0,
+                            buttonSize: 60.0,
+                            fillColor:
+                                FlutterFlowTheme.of(context).primaryBackground,
+                            icon: Icon(
+                              Icons.close_sharp,
+                              color: FlutterFlowTheme.of(context).error,
+                              size: 20.0,
+                            ),
+                            onPressed: () async {
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ]

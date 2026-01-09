@@ -71,14 +71,14 @@ class _TransWidgetState extends State<TransWidget> {
                 borderRadius: BorderRadius.circular(16.0),
               ),
               child: Icon(
-                Icons.arrow_back,
+                FFIcons.kcoinsStacked01,
                 color: (widget.trans?.type == TypeTransactions.purchase) ||
                         (widget.trans?.type == TypeTransactions.bonus) ||
                         (widget.trans?.type == TypeTransactions.earning) ||
                         (widget.trans?.type == TypeTransactions.promocode)
                     ? Color(0xFF02D623)
                     : FlutterFlowTheme.of(context).error,
-                size: 24.0,
+                size: 20.0,
               ),
             ),
             Expanded(
@@ -92,24 +92,45 @@ class _TransWidgetState extends State<TransWidget> {
                     Text(
                       () {
                         if (widget.trans?.type == TypeTransactions.purchase) {
-                          return 'Пополнение баланса';
+                          return FFLocalizations.of(context).getVariableText(
+                            ruText: 'Пополнение баланса',
+                            enText: 'Top up balance',
+                          );
                         } else if (widget.trans?.type ==
                             TypeTransactions.bonus) {
-                          return 'Бонус';
+                          return FFLocalizations.of(context).getVariableText(
+                            ruText: 'Бонус',
+                            enText: 'Bonus',
+                          );
                         } else if (widget.trans?.type ==
                             TypeTransactions.call_charge) {
-                          return 'Оплата разговора';
+                          return FFLocalizations.of(context).getVariableText(
+                            ruText: 'Оплата разговора',
+                            enText: 'Call payment',
+                          );
                         } else if (widget.trans?.type ==
                             TypeTransactions.earning) {
-                          return 'Заработок за разговор';
+                          return FFLocalizations.of(context).getVariableText(
+                            ruText: 'Заработок за разговор',
+                            enText: 'Call earnings',
+                          );
                         } else if (widget.trans?.type ==
                             TypeTransactions.withdrawal) {
-                          return 'Вывод средств';
+                          return FFLocalizations.of(context).getVariableText(
+                            ruText: 'Вывод средств',
+                            enText: 'Withdrawal',
+                          );
                         } else if (widget.trans?.type ==
                             TypeTransactions.promocode) {
-                          return 'Промокод';
+                          return FFLocalizations.of(context).getVariableText(
+                            ruText: 'Промокод',
+                            enText: 'Promo code',
+                          );
                         } else {
-                          return 'Операция';
+                          return FFLocalizations.of(context).getVariableText(
+                            ruText: 'Операция',
+                            enText: 'Transaction',
+                          );
                         }
                       }(),
                       style: FlutterFlowTheme.of(context).bodyMedium.override(
@@ -188,30 +209,57 @@ class _TransWidgetState extends State<TransWidget> {
                     child: Text(
                       () {
                         if (widget.trans?.type == TypeTransactions.purchase) {
-                          return 'Оплачено:${widget.trans?.amount.toString()} ₽';
+                          return '${FFLocalizations.of(context).getVariableText(
+                            ruText: 'Оплачено:',
+                            enText: 'Paid:',
+                          )}${widget.trans?.amount.toString()} ₽';
                         } else if ((widget.trans?.type ==
                                 TypeTransactions.call_charge) ||
                             (widget.trans?.type == TypeTransactions.earning)) {
-                          return 'Разговор${widget.trans?.callDuration.toString()} мин';
+                          return '${FFLocalizations.of(context).getVariableText(
+                            ruText: 'Разговор',
+                            enText: 'Call',
+                          )}${widget.trans?.callDuration.toString()}${FFLocalizations.of(context).getVariableText(
+                            ruText: ' мин',
+                            enText: ' min',
+                          )}';
                         } else if (widget.trans?.type ==
                             TypeTransactions.bonus) {
-                          return 'Спасибо за регистрацию!';
+                          return FFLocalizations.of(context).getVariableText(
+                            ruText: 'Спасибо за регистрацию!',
+                            enText: 'Thanks for registering!',
+                          );
                         } else if (widget.trans?.type ==
                             TypeTransactions.withdrawal) {
                           return () {
                             if (widget.trans?.status ==
                                 StatusTransactions.completed) {
-                              return 'Выплачено';
+                              return FFLocalizations.of(context)
+                                  .getVariableText(
+                                ruText: 'Выплачено',
+                                enText: 'Paid out',
+                              );
                             } else if (widget.trans?.status ==
                                 StatusTransactions.failed) {
-                              return 'Отклонено';
+                              return FFLocalizations.of(context)
+                                  .getVariableText(
+                                ruText: 'Отклонено',
+                                enText: 'Declined',
+                              );
                             } else {
-                              return 'В обработке';
+                              return FFLocalizations.of(context)
+                                  .getVariableText(
+                                ruText: 'В обработке',
+                                enText: 'Processing',
+                              );
                             }
                           }();
                         } else if (widget.trans?.type ==
                             TypeTransactions.promocode) {
-                          return 'Промокод ${widget.trans?.promoCode}';
+                          return '${FFLocalizations.of(context).getVariableText(
+                            ruText: 'Промокод ',
+                            enText: 'Promo code ',
+                          )}${widget.trans?.promoCode}';
                         } else {
                           return ' -';
                         }

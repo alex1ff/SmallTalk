@@ -63,6 +63,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
 
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
+      safeSetState(() {});
       await requestPermission(cameraPermission);
       await requestPermission(microphonePermission);
     });
@@ -274,6 +275,11 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                                 ),
                                                 clearUnsetFields: false,
                                               ),
+                                              learningLanguage:
+                                                  updateLanguageStruct(
+                                                _model.selectedLangLearn,
+                                                clearUnsetFields: false,
+                                              ),
                                             ),
                                             ...mapToFirestore(
                                               {
@@ -313,6 +319,11 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                                   smallTalks: 1,
                                                   minutes: 10,
                                                 ),
+                                                clearUnsetFields: false,
+                                              ),
+                                              learningLanguage:
+                                                  updateLanguageStruct(
+                                                _model.selectedLangLearn,
                                                 clearUnsetFields: false,
                                               ),
                                             ),
@@ -487,11 +498,11 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                               alignment: AlignmentDirectional(
                                                   0.0, 0.0),
                                               child: Icon(
-                                                Icons.person,
+                                                FFIcons.kuser03,
                                                 color:
                                                     FlutterFlowTheme.of(context)
                                                         .primaryText,
-                                                size: 18.0,
+                                                size: 20.0,
                                               ),
                                             ),
                                           ),
@@ -654,8 +665,12 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                                   borderRadius:
                                                       BorderRadius.circular(
                                                           20.0),
-                                                  child: Image.asset(
-                                                    'assets/images/dzwds_4.jpg',
+                                                  child: Image.network(
+                                                    FFLocalizations.of(context)
+                                                                .languageCode ==
+                                                            'ru'
+                                                        ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/yhizey073y1b/%D0%B0%D1%8B%D0%B04.jpg'
+                                                        : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/isq53wlqy7ir/Group_1171275311.png',
                                                     width: 280.0,
                                                     fit: BoxFit.contain,
                                                   ),
@@ -671,8 +686,12 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                               child: ClipRRect(
                                                 borderRadius:
                                                     BorderRadius.circular(20.0),
-                                                child: Image.asset(
-                                                  'assets/images/33.jpg',
+                                                child: Image.network(
+                                                  FFLocalizations.of(context)
+                                                              .languageCode ==
+                                                          'ru'
+                                                      ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/k1enf0nhdqvc/33%D0%B0%D0%B0.jpg'
+                                                      : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/avw4u16n2yvl/33%D0%B0%D0%B02.jpg',
                                                   width: 280.0,
                                                   fit: BoxFit.contain,
                                                 ),
@@ -773,8 +792,6 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                       child: LangWidget(
                                         selected: _model.selectedLangLearn,
                                         action: (lang) async {
-                                          _model.selectedLangLearn = null;
-                                          safeSetState(() {});
                                           _model.selectedLangLearn = lang;
                                           safeSetState(() {});
                                         },
@@ -2158,39 +2175,45 @@ Native */
                                     alignment: AlignmentDirectional(0.0, -1.0),
                                     child: FFButtonWidget(
                                       onPressed: () async {
-                                        unawaited(
-                                          () async {
-                                            await currentUserReference!
-                                                .update(createUsersRecordData(
-                                              level: _model.level,
-                                              learningLanguage:
-                                                  updateLanguageStruct(
-                                                _model.selectedLangLearn,
-                                                clearUnsetFields: false,
-                                              ),
-                                              acquaintance: true,
-                                              displayName: _model
-                                                  .nameTextController.text,
-                                              gender: _model.genderMALE
-                                                  ? Gender.male
-                                                  : Gender.female,
-                                            ));
-                                          }(),
-                                        );
+                                        if (widget.index == 4) {
+                                          context.pushNamed(
+                                              StudentsDashboardWidget
+                                                  .routeName);
+                                        } else {
+                                          unawaited(
+                                            () async {
+                                              await currentUserReference!
+                                                  .update(createUsersRecordData(
+                                                level: _model.level,
+                                                learningLanguage:
+                                                    updateLanguageStruct(
+                                                  _model.selectedLangLearn,
+                                                  clearUnsetFields: false,
+                                                ),
+                                                acquaintance: true,
+                                                displayName: _model
+                                                    .nameTextController.text,
+                                                gender: _model.genderMALE
+                                                    ? Gender.male
+                                                    : Gender.female,
+                                              ));
+                                            }(),
+                                          );
 
-                                        context.pushNamed(
-                                          StudentsDashboardWidget.routeName,
-                                          queryParameters: {
-                                            'zn': serializeParam(
-                                              true,
-                                              ParamType.bool,
-                                            ),
-                                            'done': serializeParam(
-                                              false,
-                                              ParamType.bool,
-                                            ),
-                                          }.withoutNulls,
-                                        );
+                                          context.pushNamed(
+                                            StudentsDashboardWidget.routeName,
+                                            queryParameters: {
+                                              'zn': serializeParam(
+                                                true,
+                                                ParamType.bool,
+                                              ),
+                                              'done': serializeParam(
+                                                false,
+                                                ParamType.bool,
+                                              ),
+                                            }.withoutNulls,
+                                          );
+                                        }
                                       },
                                       text: FFLocalizations.of(context).getText(
                                         'ybk9bjx6' /* Заполню позже */,
@@ -2300,8 +2323,11 @@ Native */
                                                 safeSetState(() {}),
                                             child: ChipsWidget(
                                               icon:
-                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/m3l806hbtb67/%E2%9C%88%EF%B8%8F.png',
-                                              text: 'Путешествия',
+                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/5tvth2denlpx/%E2%9C%88%EF%B8%8F.png',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                '45xgftn8' /* Путешествия */,
+                                              ),
                                               selected: _model.purpose
                                                   .contains('Путешествия'),
                                               actionadd: (select) async {
@@ -2322,8 +2348,11 @@ Native */
                                                 safeSetState(() {}),
                                             child: ChipsWidget(
                                               icon:
-                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/k5p0kovi04k6/%F0%9F%92%BC.png',
-                                              text: 'Работа',
+                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/lerjql614l6t/%F0%9F%92%BC.png',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                'b81l5ck6' /* Работа */,
+                                              ),
                                               selected: _model.purpose
                                                   .contains('Работа'),
                                               actionadd: (select) async {
@@ -2343,8 +2372,11 @@ Native */
                                                 safeSetState(() {}),
                                             child: ChipsWidget(
                                               icon:
-                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/6g5od84p1tjg/%F0%9F%93%9A.png',
-                                              text: 'Учеба',
+                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/aacr3gooehck/%F0%9F%93%9A.png',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                'nvzre0x5' /* Учеба */,
+                                              ),
                                               selected: _model.purpose
                                                   .contains('Учеба'),
                                               actionadd: (select) async {
@@ -2364,8 +2396,11 @@ Native */
                                                 safeSetState(() {}),
                                             child: ChipsWidget(
                                               icon:
-                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/ysodbdg787sg/%F0%9F%8E%AD.png',
-                                              text: 'Культура',
+                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/zn3jlcka2lbc/%F0%9F%92%A1.png',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                '3bbpj9jw' /* Культура */,
+                                              ),
                                               selected: _model.purpose
                                                   .contains('Культура'),
                                               actionadd: (select) async {
@@ -2385,8 +2420,11 @@ Native */
                                                 safeSetState(() {}),
                                             child: ChipsWidget(
                                               icon:
-                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/inxg3bvrbq5u/%F0%9F%92%AC.png',
-                                              text: 'Общение',
+                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/odie4pcem3fn/%F0%9F%92%AC.png',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                'psmff4a8' /* Общение */,
+                                              ),
                                               selected: _model.purpose
                                                   .contains('Общение'),
                                               actionadd: (select) async {
@@ -2406,8 +2444,11 @@ Native */
                                                 safeSetState(() {}),
                                             child: ChipsWidget(
                                               icon:
-                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/1nye1ugilrx4/%F0%9F%8E%AF.png',
-                                              text: 'Другое',
+                                                  'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/68cdtneygm0v/%F0%9F%9A%80.png',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                'r19vqfh2' /* Другое */,
+                                              ),
                                               selected: _model.purpose
                                                   .contains('Другое'),
                                               actionadd: (select) async {
@@ -2672,7 +2713,7 @@ Native */
                                                                 .circular(20.0),
                                                       ),
                                                       child: Icon(
-                                                        FFIcons.kuserCircle,
+                                                        FFIcons.kcameraPlus,
                                                         color:
                                                             FlutterFlowTheme.of(
                                                                     context)
@@ -3042,6 +3083,13 @@ Native */
                                                                 : Gender.female,
                                                         level: _model.level,
                                                         acquaintance: true,
+                                                        learningLanguage:
+                                                            updateLanguageStruct(
+                                                          _model
+                                                              .selectedLangLearn,
+                                                          clearUnsetFields:
+                                                              false,
+                                                        ),
                                                       ),
                                                       ...mapToFirestore(
                                                         {
@@ -3084,6 +3132,13 @@ Native */
                                                             _model
                                                                 .selectedAvatar,
                                                         acquaintance: true,
+                                                        learningLanguage:
+                                                            updateLanguageStruct(
+                                                          _model
+                                                              .selectedLangLearn,
+                                                          clearUnsetFields:
+                                                              false,
+                                                        ),
                                                       ),
                                                       ...mapToFirestore(
                                                         {
@@ -3251,7 +3306,9 @@ Native */
                           model: _model.buttonModel,
                           updateCallback: () => safeSetState(() {}),
                           child: ButtonWidget(
-                            text: 'Продолжить',
+                            text: FFLocalizations.of(context).getText(
+                              'tkv7vhn7' /* Продолжить */,
+                            ),
                             action: () async {
                               await _model.pageViewController?.nextPage(
                                 duration: Duration(milliseconds: 300),

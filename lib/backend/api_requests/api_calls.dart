@@ -12,6 +12,7 @@ const _kPrivateApiFunctionName = 'ffPrivateApiCall';
 class YandexCall {
   static Future<ApiCallResponse> call({
     String? text = '',
+    String? lang = '',
   }) async {
     return ApiManager.instance.makeApiCall(
       callName: 'yandex',
@@ -23,7 +24,7 @@ class YandexCall {
       params: {
         'key':
             "dict.1.1.20250926T091633Z.b5809993b07721d9.64d687a03e4465c33361e64a1244ef2da38eb7d4",
-        'lang': "en-ru",
+        'lang': lang,
         'text': text,
       },
       returnBody: true,

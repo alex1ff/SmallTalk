@@ -5,6 +5,7 @@ import '/authorization/components/uploud_photo/uploud_photo_widget.dart';
 import '/backend/backend.dart';
 import '/backend/firebase_storage/storage.dart';
 import '/components/button/button_widget.dart';
+import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/upload_data.dart';
@@ -13,6 +14,7 @@ import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'edit_avatar_model.dart';
@@ -33,6 +35,9 @@ class EditAvatarWidget extends StatefulWidget {
 class _EditAvatarWidgetState extends State<EditAvatarWidget> {
   late EditAvatarModel _model;
 
+  late StreamSubscription<bool> _keyboardVisibilitySubscription;
+  bool _isKeyboardVisible = false;
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -50,12 +55,24 @@ class _EditAvatarWidgetState extends State<EditAvatarWidget> {
       _model.avatar = currentUserPhoto;
       safeSetState(() {});
     });
+
+    if (!isWeb) {
+      _keyboardVisibilitySubscription =
+          KeyboardVisibilityController().onChange.listen((bool visible) {
+        safeSetState(() {
+          _isKeyboardVisible = visible;
+        });
+      });
+    }
   }
 
   @override
   void dispose() {
     _model.maybeDispose();
 
+    if (!isWeb) {
+      _keyboardVisibilitySubscription.cancel();
+    }
     super.dispose();
   }
 
@@ -297,7 +314,7 @@ class _EditAvatarWidgetState extends State<EditAvatarWidget> {
                                                 BorderRadius.circular(20.0),
                                           ),
                                           child: Icon(
-                                            FFIcons.kuserCircle,
+                                            FFIcons.kcameraPlus,
                                             color: FlutterFlowTheme.of(context)
                                                 .primaryText,
                                             size: 20.0,
@@ -339,78 +356,138 @@ class _EditAvatarWidgetState extends State<EditAvatarWidget> {
             ],
           ),
         ),
-        wrapWithModel(
-          model: _model.buttonModel,
-          updateCallback: () => safeSetState(() {}),
-          child: ButtonWidget(
-            text: 'Сохранить',
-            action: () async {
-              if (_model.image != null &&
-                  (_model.image?.bytes?.isNotEmpty ?? false)) {
-                {
-                  safeSetState(
-                      () => _model.isDataUploading_uploadDataJlx = true);
-                  var selectedUploadedFiles = <FFUploadedFile>[];
-                  var selectedMedia = <SelectedFile>[];
-                  var downloadUrls = <String>[];
-                  try {
-                    selectedUploadedFiles = _model.image!.bytes!.isNotEmpty
-                        ? [_model.image!]
-                        : <FFUploadedFile>[];
-                    selectedMedia = selectedFilesFromUploadedFiles(
-                      selectedUploadedFiles,
-                    );
-                    downloadUrls = (await Future.wait(
-                      selectedMedia.map(
-                        (m) async => await uploadData(m.storagePath, m.bytes),
-                      ),
-                    ))
-                        .where((u) => u != null)
-                        .map((u) => u!)
-                        .toList();
-                  } finally {
-                    _model.isDataUploading_uploadDataJlx = false;
-                  }
-                  if (selectedUploadedFiles.length == selectedMedia.length &&
-                      downloadUrls.length == selectedMedia.length) {
-                    safeSetState(() {
-                      _model.uploadedLocalFile_uploadDataJlx =
-                          selectedUploadedFiles.first;
-                      _model.uploadedFileUrl_uploadDataJlx = downloadUrls.first;
-                    });
-                  } else {
-                    safeSetState(() {});
-                    return;
-                  }
-                }
-
-                unawaited(
-                  () async {
-                    await currentUserReference!.update({
-                      ...createUsersRecordData(
-                        photoUrl: _model.uploadedFileUrl_uploadDataJlx,
-                      ),
-                      ...mapToFirestore(
+        Padding(
+          padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 0.0),
+          child: Row(
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              Expanded(
+                child: wrapWithModel(
+                  model: _model.buttonModel,
+                  updateCallback: () => safeSetState(() {}),
+                  child: ButtonWidget(
+                    text: FFLocalizations.of(context).getText(
+                      'noxdyq69' /* Сохранить */,
+                    ),
+                    action: () async {
+                      if (_model.image != null &&
+                          (_model.image?.bytes?.isNotEmpty ?? false)) {
                         {
-                          'selectedAvatarDocRef': FieldValue.delete(),
-                        },
-                      ),
-                    });
-                  }(),
-                );
-              } else {
-                unawaited(
-                  () async {
-                    await currentUserReference!.update(createUsersRecordData(
-                      photoUrl: _model.avatar,
-                      selectedAvatarDocRef: _model.selectedavatar,
-                    ));
-                  }(),
-                );
-              }
+                          safeSetState(() =>
+                              _model.isDataUploading_uploadDataJlx = true);
+                          var selectedUploadedFiles = <FFUploadedFile>[];
+                          var selectedMedia = <SelectedFile>[];
+                          var downloadUrls = <String>[];
+                          try {
+                            selectedUploadedFiles =
+                                _model.image!.bytes!.isNotEmpty
+                                    ? [_model.image!]
+                                    : <FFUploadedFile>[];
+                            selectedMedia = selectedFilesFromUploadedFiles(
+                              selectedUploadedFiles,
+                            );
+                            downloadUrls = (await Future.wait(
+                              selectedMedia.map(
+                                (m) async =>
+                                    await uploadData(m.storagePath, m.bytes),
+                              ),
+                            ))
+                                .where((u) => u != null)
+                                .map((u) => u!)
+                                .toList();
+                          } finally {
+                            _model.isDataUploading_uploadDataJlx = false;
+                          }
+                          if (selectedUploadedFiles.length ==
+                                  selectedMedia.length &&
+                              downloadUrls.length == selectedMedia.length) {
+                            safeSetState(() {
+                              _model.uploadedLocalFile_uploadDataJlx =
+                                  selectedUploadedFiles.first;
+                              _model.uploadedFileUrl_uploadDataJlx =
+                                  downloadUrls.first;
+                            });
+                          } else {
+                            safeSetState(() {});
+                            return;
+                          }
+                        }
 
-              Navigator.pop(context);
-            },
+                        unawaited(
+                          () async {
+                            await currentUserReference!.update({
+                              ...createUsersRecordData(
+                                photoUrl: _model.uploadedFileUrl_uploadDataJlx,
+                              ),
+                              ...mapToFirestore(
+                                {
+                                  'selectedAvatarDocRef': FieldValue.delete(),
+                                },
+                              ),
+                            });
+                          }(),
+                        );
+                      } else {
+                        unawaited(
+                          () async {
+                            await currentUserReference!
+                                .update(createUsersRecordData(
+                              photoUrl: _model.avatar,
+                              selectedAvatarDocRef: _model.selectedavatar,
+                            ));
+                          }(),
+                        );
+                      }
+
+                      Navigator.pop(context);
+                      await widget.action?.call();
+                    },
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    0.0,
+                    0.0,
+                    0.0,
+                    valueOrDefault<double>(
+                      (isWeb
+                              ? MediaQuery.viewInsetsOf(context).bottom > 0
+                              : _isKeyboardVisible)
+                          ? 6.0
+                          : 35.0,
+                      6.0,
+                    )),
+                child: Container(
+                  decoration: BoxDecoration(
+                    boxShadow: [
+                      BoxShadow(
+                        blurRadius: 7.0,
+                        color: Color(0x0D2C2C2C),
+                        offset: Offset(
+                          0.0,
+                          2.0,
+                        ),
+                      )
+                    ],
+                    shape: BoxShape.circle,
+                  ),
+                  child: FlutterFlowIconButton(
+                    borderRadius: 50.0,
+                    buttonSize: 60.0,
+                    fillColor: FlutterFlowTheme.of(context).primaryBackground,
+                    icon: Icon(
+                      Icons.close_sharp,
+                      color: FlutterFlowTheme.of(context).error,
+                      size: 20.0,
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(context);
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],

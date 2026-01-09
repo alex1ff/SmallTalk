@@ -2,6 +2,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
+import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_swipeable_stack.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -11,6 +12,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'edit_gendeer_model.dart';
 export 'edit_gendeer_model.dart';
 
@@ -28,6 +30,9 @@ class EditGendeerWidget extends StatefulWidget {
 
 class _EditGendeerWidgetState extends State<EditGendeerWidget> {
   late EditGendeerModel _model;
+
+  late StreamSubscription<bool> _keyboardVisibilitySubscription;
+  bool _isKeyboardVisible = false;
 
   @override
   void setState(VoidCallback callback) {
@@ -50,12 +55,24 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
         safeSetState(() {});
       }
     });
+
+    if (!isWeb) {
+      _keyboardVisibilitySubscription =
+          KeyboardVisibilityController().onChange.listen((bool visible) {
+        safeSetState(() {
+          _isKeyboardVisible = visible;
+        });
+      });
+    }
   }
 
   @override
   void dispose() {
     _model.maybeDispose();
 
+    if (!isWeb) {
+      _keyboardVisibilitySubscription.cancel();
+    }
     super.dispose();
   }
 
@@ -119,8 +136,12 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
                                   angle: 15.0 * (math.pi / 180),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(20.0),
-                                    child: Image.asset(
-                                      'assets/images/dzwds_4.jpg',
+                                    child: Image.network(
+                                      FFLocalizations.of(context)
+                                                  .languageCode ==
+                                              'ru'
+                                          ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/yhizey073y1b/%D0%B0%D1%8B%D0%B04.jpg'
+                                          : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/isq53wlqy7ir/Group_1171275311.png',
                                       width: 228.0,
                                       fit: BoxFit.contain,
                                     ),
@@ -133,8 +154,12 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
                                   angle: 350.0 * (math.pi / 180),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(20.0),
-                                    child: Image.asset(
-                                      'assets/images/33.jpg',
+                                    child: Image.network(
+                                      FFLocalizations.of(context)
+                                                  .languageCode ==
+                                              'ru'
+                                          ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/k1enf0nhdqvc/33%D0%B0%D0%B0.jpg'
+                                          : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/avw4u16n2yvl/33%D0%B0%D0%B02.jpg',
                                       width: 228.0,
                                       fit: BoxFit.contain,
                                     ),
@@ -155,30 +180,88 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
                   ),
                 ),
               ),
-              wrapWithModel(
-                model: _model.buttonModel,
-                updateCallback: () => safeSetState(() {}),
-                child: ButtonWidget(
-                  text: 'Сохранить',
-                  action: () async {
-                    if (!(_model.genderISMALE &&
-                        (currentUserDocument?.gender == Gender.male))) {
-                      unawaited(
-                        () async {
-                          await currentUserReference!
-                              .update(createUsersRecordData(
-                            gender: _model.genderISMALE
-                                ? Gender.male
-                                : Gender.female,
-                          ));
-                        }(),
-                      );
-                      await widget.action?.call(
-                        _model.genderISMALE ? Gender.male : Gender.female,
-                      );
-                    }
-                    Navigator.pop(context);
-                  },
+              Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 0.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    Expanded(
+                      child: wrapWithModel(
+                        model: _model.buttonModel,
+                        updateCallback: () => safeSetState(() {}),
+                        child: ButtonWidget(
+                          text: FFLocalizations.of(context).getText(
+                            'snk4d2km' /* Сохранить */,
+                          ),
+                          action: () async {
+                            if (!(_model.genderISMALE &&
+                                (currentUserDocument?.gender == Gender.male))) {
+                              unawaited(
+                                () async {
+                                  await currentUserReference!
+                                      .update(createUsersRecordData(
+                                    gender: _model.genderISMALE
+                                        ? Gender.male
+                                        : Gender.female,
+                                  ));
+                                }(),
+                              );
+                              await widget.action?.call(
+                                _model.genderISMALE
+                                    ? Gender.male
+                                    : Gender.female,
+                              );
+                            }
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          0.0,
+                          0.0,
+                          0.0,
+                          valueOrDefault<double>(
+                            (isWeb
+                                    ? MediaQuery.viewInsetsOf(context).bottom >
+                                        0
+                                    : _isKeyboardVisible)
+                                ? 6.0
+                                : 35.0,
+                            6.0,
+                          )),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          boxShadow: [
+                            BoxShadow(
+                              blurRadius: 7.0,
+                              color: Color(0x0D2C2C2C),
+                              offset: Offset(
+                                0.0,
+                                2.0,
+                              ),
+                            )
+                          ],
+                          shape: BoxShape.circle,
+                        ),
+                        child: FlutterFlowIconButton(
+                          borderRadius: 50.0,
+                          buttonSize: 60.0,
+                          fillColor:
+                              FlutterFlowTheme.of(context).primaryBackground,
+                          icon: Icon(
+                            Icons.close_sharp,
+                            color: FlutterFlowTheme.of(context).error,
+                            size: 20.0,
+                          ),
+                          onPressed: () async {
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ].divide(SizedBox(height: 16.0)).addToStart(SizedBox(height: 16.0)),

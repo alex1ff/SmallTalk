@@ -67,22 +67,29 @@ class _LoadingWidgetState extends State<LoadingWidget> {
         }
       } else {
         if (valueOrDefault<bool>(currentUserDocument?.acquaintance, false)) {
-          context.goNamed(
-            StudentsDashboardWidget.routeName,
-            queryParameters: {
-              'zn': serializeParam(
-                false,
-                ParamType.bool,
-              ),
-            }.withoutNulls,
-            extra: <String, dynamic>{
-              kTransitionInfoKey: TransitionInfo(
-                hasTransition: true,
-                transitionType: PageTransitionType.fade,
-                duration: Duration(milliseconds: 0),
-              ),
-            },
-          );
+          if (valueOrDefault<bool>(
+              currentUserDocument?.isProfileComplete, false)) {
+            context.goNamed(
+              StudentsDashboardWidget.routeName,
+              extra: <String, dynamic>{
+                kTransitionInfoKey: TransitionInfo(
+                  hasTransition: true,
+                  transitionType: PageTransitionType.fade,
+                  duration: Duration(milliseconds: 0),
+                ),
+              },
+            );
+          } else {
+            context.pushNamed(
+              AcquaintanceSTUDENTWidget.routeName,
+              queryParameters: {
+                'index': serializeParam(
+                  4,
+                  ParamType.int,
+                ),
+              }.withoutNulls,
+            );
+          }
         } else {
           context.goNamed(
             AcquaintanceSTUDENTWidget.routeName,
@@ -124,10 +131,26 @@ class _LoadingWidgetState extends State<LoadingWidget> {
         backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
         body: Align(
           alignment: AlignmentDirectional(0.0, 0.0),
-          child: Image.asset(
-            'assets/images/Group_117127509d5.png',
+          child: Container(
             width: 100.0,
-            fit: BoxFit.contain,
+            height: 100.0,
+            decoration: BoxDecoration(
+              color: Color(0xFFE88CD4),
+              shape: BoxShape.circle,
+            ),
+            child: Align(
+              alignment: AlignmentDirectional(0.0, 0.0),
+              child: Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(10.0, 8.0, 10.0, 2.0),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.contain,
+                  alignment: Alignment(0.0, -0.2),
+                ),
+              ),
+            ),
           ),
         ),
       ),

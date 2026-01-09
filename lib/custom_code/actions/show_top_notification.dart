@@ -10,6 +10,9 @@ import 'package:flutter/material.dart';
 // Begin custom action code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
+import 'index.dart'; // Imports other custom actions
+
+import 'dart:async';
 import '/components/pop/pop_widget.dart';
 
 Future showTopNotification(
@@ -18,8 +21,13 @@ Future showTopNotification(
   String? text, // Сделали необязательн
   bool isError, // Добавлен параметр для индикации ошибки
 ) async {
-  OverlayState overlayState = Overlay.of(context);
+  final OverlayState? overlayState = Overlay.of(context, rootOverlay: true);
+  if (overlayState == null) {
+    return;
+  }
   OverlayEntry? overlayEntry;
+  Timer? autoDismissTimer;
+  bool isClosing = false;
 
   // Создаем AnimationController для точного контроля
   final AnimationController controller = AnimationController(
@@ -32,6 +40,21 @@ Future showTopNotification(
     parent: controller,
     curve: Curves.easeOutBack, // Пружинящий эффект
   );
+
+  Future<void> dismiss({bool animate = true}) async {
+    if (isClosing) {
+      return;
+    }
+    isClosing = true;
+    autoDismissTimer?.cancel();
+    if (animate) {
+      try {
+        await controller.reverse();
+      } catch (_) {}
+    }
+    overlayEntry?.remove();
+    controller.dispose();
+  }
 
   overlayEntry = OverlayEntry(
     builder: (context) => Positioned(
@@ -62,10 +85,17 @@ Future showTopNotification(
         },
         child: Material(
           color: Colors.transparent,
-          child: PopWidget(
-            header: header,
-            text: text ?? '', // Если text null, передаем пустую строку
-            isError: isError, // Передаем параметр isError в компонент
+          child: Dismissible(
+            key: UniqueKey(),
+            direction: DismissDirection.up,
+            onDismissed: (_) {
+              dismiss(animate: false);
+            },
+            child: PopWidget(
+              header: header,
+              text: text ?? '', // Если text null, передаем пустую строку
+              isError: isError, // Передаем параметр isError в компонент
+            ),
           ),
         ),
       ),
@@ -74,15 +104,12 @@ Future showTopNotification(
 
   // Показываем
   overlayState.insert(overlayEntry);
-  await controller.forward();
-
-  // Держим на экране 3 секунды
-  await Future.delayed(Duration(seconds: 3));
-
-  // Анимация исчезновения (slide up)
-  await controller.reverse();
-
-  // Удаляем
-  overlayEntry.remove();
-  controller.dispose();
+  controller.forward().then((_) {
+    if (!isClosing) {
+      autoDismissTimer = Timer(
+        Duration(seconds: 3),
+        () => dismiss(),
+      );
+    }
+  }).catchError((_) {});
 }

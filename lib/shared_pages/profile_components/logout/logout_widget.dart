@@ -193,7 +193,9 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                         model: _model.buttonModel,
                         updateCallback: () => safeSetState(() {}),
                         child: ButtonWidget(
-                          text: 'Отменить',
+                          text: FFLocalizations.of(context).getText(
+                            'op5siu4w' /* Отменить */,
+                          ),
                           action: () async {
                             Navigator.pop(context);
                           },

@@ -58,6 +58,7 @@ void main() async {
   debugPrint('🔔 VoIP background handler registered');
 
   await initFirebase();
+  await FFLocalizations.initialize();
 
   // 🔔 Инициализация VoIP сервиса
   try {
@@ -86,7 +87,7 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  Locale? _locale;
+  Locale? _locale = FFLocalizations.getStoredLocale();
 
   ThemeMode _themeMode = ThemeMode.system;
   double _textScaleFactor = 1.0;
@@ -214,6 +215,7 @@ if (user.loggedIn) {
 
   void setLocale(String language) {
     safeSetState(() => _locale = createLocale(language));
+    FFLocalizations.storeLocale(language);
   }
 
   void setThemeMode(ThemeMode mode) => safeSetState(() {

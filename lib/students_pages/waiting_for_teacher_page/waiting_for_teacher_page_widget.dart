@@ -44,6 +44,10 @@ class _WaitingForTeacherPageWidgetState
             .httpsCallable('createVideoSession')
             .call({
           "language": currentUserDocument!.learningLanguage.code,
+          "preferredNativeLanguage":
+              currentUserDocument!.preferences.preferredNativeLanguage.code,
+          "preferredCountry":
+              currentUserDocument!.preferences.preferredLocation.code,
         });
         _model.newSession = CreateVideoSessionCloudFunctionCallResponse(
           data: CallRequestResponseStruct.fromMap(result.data),
@@ -183,12 +187,21 @@ class _WaitingForTeacherPageWidgetState
                         () {
                           if (_model.newSession?.data?.status ==
                               CallStatus.searching) {
-                            return 'Дозваниваемся';
+                            return FFLocalizations.of(context).getVariableText(
+                              ruText: 'Дозваниваемся',
+                              enText: 'Connecting…',
+                            );
                           } else if (_model.newSession?.data?.status ==
                               CallStatus.connecting) {
-                            return 'Никого не нашли';
+                            return FFLocalizations.of(context).getVariableText(
+                              ruText: 'Никого не нашли',
+                              enText: 'No one was found',
+                            );
                           } else {
-                            return 'Small Talk начинается';
+                            return FFLocalizations.of(context).getVariableText(
+                              ruText: 'Small Talk начинается',
+                              enText: 'Small Talk begins',
+                            );
                           }
                         }(),
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
@@ -206,12 +219,27 @@ class _WaitingForTeacherPageWidgetState
                           () {
                             if (_model.newSession?.data?.status ==
                                 CallStatus.searching) {
-                              return 'Ждём, пока собеседник примет звонок';
+                              return FFLocalizations.of(context)
+                                  .getVariableText(
+                                ruText: 'Ждём, пока собеседник примет звонок',
+                                enText:
+                                    'We are waiting for the interlocutor to accept the call.',
+                              );
                             } else if (_model.newSession?.data?.status ==
                                 CallStatus.connecting) {
-                              return 'Все собеседники сейчас заняты. Попробуйте позже';
+                              return FFLocalizations.of(context)
+                                  .getVariableText(
+                                ruText:
+                                    'Все собеседники сейчас заняты. Попробуйте позже',
+                                enText:
+                                    'All the interlocutors are busy right now. Try again later',
+                              );
                             } else {
-                              return 'Ищем идеального собеседника';
+                              return FFLocalizations.of(context)
+                                  .getVariableText(
+                                ruText: 'Ищем идеального собеседника',
+                                enText: 'Looking for the perfect companion',
+                              );
                             }
                           }(),
                           style: FlutterFlowTheme.of(context)

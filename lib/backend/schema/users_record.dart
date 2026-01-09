@@ -174,6 +174,11 @@ class UsersRecord extends FirestoreRecord {
       _languageInstructionNS ?? LanguageStruct();
   bool hasLanguageInstructionNS() => _languageInstructionNS != null;
 
+  // "native_language_NS" field.
+  LanguageStruct? _nativeLanguageNS;
+  LanguageStruct get nativeLanguageNS => _nativeLanguageNS ?? LanguageStruct();
+  bool hasNativeLanguageNS() => _nativeLanguageNS != null;
+
   void _initializeFields() {
     _email = snapshotData['email'] as String?;
     _uid = snapshotData['uid'] as String?;
@@ -233,6 +238,9 @@ class UsersRecord extends FirestoreRecord {
             is LanguageStruct
         ? snapshotData['language_instruction_NS']
         : LanguageStruct.maybeFromMap(snapshotData['language_instruction_NS']);
+    _nativeLanguageNS = snapshotData['native_language_NS'] is LanguageStruct
+        ? snapshotData['native_language_NS']
+        : LanguageStruct.maybeFromMap(snapshotData['native_language_NS']);
   }
 
   static CollectionReference get collection =>
@@ -297,6 +305,7 @@ Map<String, dynamic> createUsersRecordData({
   AvailabilityTodayStruct? availabilityToday,
   int? totalCalls,
   LanguageStruct? languageInstructionNS,
+  LanguageStruct? nativeLanguageNS,
 }) {
   final firestoreData = mapToFirestore(
     <String, dynamic>{
@@ -328,6 +337,7 @@ Map<String, dynamic> createUsersRecordData({
       'availabilityToday': AvailabilityTodayStruct().toMap(),
       'totalCalls': totalCalls,
       'language_instruction_NS': LanguageStruct().toMap(),
+      'native_language_NS': LanguageStruct().toMap(),
     }.withoutNulls,
   );
 
@@ -356,6 +366,9 @@ Map<String, dynamic> createUsersRecordData({
   // Handle nested data for "language_instruction_NS" field.
   addLanguageStructData(
       firestoreData, languageInstructionNS, 'language_instruction_NS');
+
+  // Handle nested data for "native_language_NS" field.
+  addLanguageStructData(firestoreData, nativeLanguageNS, 'native_language_NS');
 
   return firestoreData;
 }
@@ -397,7 +410,8 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         listEquality.equals(e1?.blockedUsers, e2?.blockedUsers) &&
         e1?.availabilityToday == e2?.availabilityToday &&
         e1?.totalCalls == e2?.totalCalls &&
-        e1?.languageInstructionNS == e2?.languageInstructionNS;
+        e1?.languageInstructionNS == e2?.languageInstructionNS &&
+        e1?.nativeLanguageNS == e2?.nativeLanguageNS;
   }
 
   @override
@@ -432,7 +446,8 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e?.blockedUsers,
         e?.availabilityToday,
         e?.totalCalls,
-        e?.languageInstructionNS
+        e?.languageInstructionNS,
+        e?.nativeLanguageNS
       ]);
 
   @override

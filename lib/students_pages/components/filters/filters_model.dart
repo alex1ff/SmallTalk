@@ -2,6 +2,7 @@ import '/authorization/components/country_card/country_card_widget.dart';
 import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/structs/index.dart';
+import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'filters_widget.dart' show FiltersWidget;
 import 'package:flutter/material.dart';
@@ -26,12 +27,15 @@ class FiltersModel extends FlutterFlowModel<FiltersWidget> {
   late LanguageCardModel languageCardModel2;
   // Model for countryCard component.
   late CountryCardModel countryCardModel;
+  // Model for button component.
+  late ButtonModel buttonModel;
 
   @override
   void initState(BuildContext context) {
     languageCardModel1 = createModel(context, () => LanguageCardModel());
     languageCardModel2 = createModel(context, () => LanguageCardModel());
     countryCardModel = createModel(context, () => CountryCardModel());
+    buttonModel = createModel(context, () => ButtonModel());
   }
 
   @override
@@ -39,5 +43,6 @@ class FiltersModel extends FlutterFlowModel<FiltersWidget> {
     languageCardModel1.dispose();
     languageCardModel2.dispose();
     countryCardModel.dispose();
+    buttonModel.dispose();
   }
 }

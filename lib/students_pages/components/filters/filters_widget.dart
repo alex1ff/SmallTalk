@@ -2,6 +2,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/country_card/country_card_widget.dart';
 import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
+import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/edit_components/edit_country/edit_country_widget.dart';
@@ -83,7 +84,7 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                   ),
                   child: Padding(
                     padding:
-                        EdgeInsetsDirectional.fromSTEB(6.0, 16.0, 6.0, 35.0),
+                        EdgeInsetsDirectional.fromSTEB(6.0, 16.0, 6.0, 0.0),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -296,6 +297,22 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                                   ).then((value) => safeSetState(() {}));
                                 },
                               ),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              0.0, 40.0, 0.0, 0.0),
+                          child: wrapWithModel(
+                            model: _model.buttonModel,
+                            updateCallback: () => safeSetState(() {}),
+                            child: ButtonWidget(
+                              text: FFLocalizations.of(context).getText(
+                                'z87iidnf' /* Готово */,
+                              ),
+                              action: () async {
+                                Navigator.pop(context);
+                              },
                             ),
                           ),
                         ),

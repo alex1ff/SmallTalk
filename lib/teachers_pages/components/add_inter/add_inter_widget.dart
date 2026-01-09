@@ -134,11 +134,10 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                           ),
                           child: Align(
                             alignment: AlignmentDirectional(0.0, 0.0),
-                            child: Image.asset(
-                              'assets/images/rbuts_.png',
-                              width: 25.0,
-                              height: 25.0,
-                              fit: BoxFit.contain,
+                            child: Icon(
+                              FFIcons.kclockPlus,
+                              color: FlutterFlowTheme.of(context).primaryText,
+                              size: 20.0,
                             ),
                           ),
                         ),
@@ -277,7 +276,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                 ),
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0.0, 40.0, 8.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(0.0, 40.0, 6.0, 0.0),
                 child: Row(
                   mainAxisSize: MainAxisSize.max,
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -287,7 +286,9 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                         model: _model.buttonModel,
                         updateCallback: () => safeSetState(() {}),
                         child: ButtonWidget(
-                          text: 'Добавить интервал',
+                          text: FFLocalizations.of(context).getText(
+                            'bzho8r5y' /* Добавить интервал */,
+                          ),
                           action: () async {
                             unawaited(
                               () async {

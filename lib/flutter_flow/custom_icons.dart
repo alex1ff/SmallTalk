@@ -5,6 +5,7 @@ class FFIcons {
 
   static const String _icomoon12Family = 'Icomoon12';
   static const String _icomoon1222Family = 'Icomoon1222';
+  static const String _icomoonSmall3Family = 'IcomoonSmall3';
 
   // icomoon12
   static const IconData karrowDown =
@@ -65,4 +66,56 @@ class FFIcons {
   // icomoon1222
   static const IconData kphone =
       IconData(0xe901, fontFamily: _icomoon1222Family);
+
+  // icomoonSmall3
+  static const IconData kalertHexagon =
+      IconData(0xe900, fontFamily: _icomoonSmall3Family);
+  static const IconData kalertSquare =
+      IconData(0xe901, fontFamily: _icomoonSmall3Family);
+  static const IconData kalertTriangle =
+      IconData(0xe902, fontFamily: _icomoonSmall3Family);
+  static const IconData kbarChart01 =
+      IconData(0xe903, fontFamily: _icomoonSmall3Family);
+  static const IconData kbarChart02 =
+      IconData(0xe904, fontFamily: _icomoonSmall3Family);
+  static const IconData kcameraPlus =
+      IconData(0xe905, fontFamily: _icomoonSmall3Family);
+  static const IconData kclockPlus =
+      IconData(0xe906, fontFamily: _icomoonSmall3Family);
+  static const IconData kclock =
+      IconData(0xe907, fontFamily: _icomoonSmall3Family);
+  static const IconData kcoinsStacked01 =
+      IconData(0xe908, fontFamily: _icomoonSmall3Family);
+  static const IconData kcopy01 =
+      IconData(0xe909, fontFamily: _icomoonSmall3Family);
+  static const IconData kcreditCard02 =
+      IconData(0xe90a, fontFamily: _icomoonSmall3Family);
+  static const IconData kcreditCardEdit =
+      IconData(0xe90b, fontFamily: _icomoonSmall3Family);
+  static const IconData kcreditCardPlus =
+      IconData(0xe90c, fontFamily: _icomoonSmall3Family);
+  static const IconData kfile02 =
+      IconData(0xe90d, fontFamily: _icomoonSmall3Family);
+  static const IconData kgift02 =
+      IconData(0xe90e, fontFamily: _icomoonSmall3Family);
+  static const IconData kglobe01 =
+      IconData(0xe90f, fontFamily: _icomoonSmall3Family);
+  static const IconData kgraduationHat02 =
+      IconData(0xe910, fontFamily: _icomoonSmall3Family);
+  static const IconData kheart =
+      IconData(0xe911, fontFamily: _icomoonSmall3Family);
+  static const IconData klineChartUp01 =
+      IconData(0xe913, fontFamily: _icomoonSmall3Family);
+  static const IconData klockUnlocked01 =
+      IconData(0xe914, fontFamily: _icomoonSmall3Family);
+  static const IconData kmail01 =
+      IconData(0xe915, fontFamily: _icomoonSmall3Family);
+  static const IconData ktarget04 =
+      IconData(0xe917, fontFamily: _icomoonSmall3Family);
+  static const IconData kthumbsDown =
+      IconData(0xe918, fontFamily: _icomoonSmall3Family);
+  static const IconData kuser03 =
+      IconData(0xe919, fontFamily: _icomoonSmall3Family);
+  static const IconData kusers02 =
+      IconData(0xe91a, fontFamily: _icomoonSmall3Family);
 }
