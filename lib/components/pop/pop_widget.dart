@@ -45,11 +45,10 @@ class _PopWidgetState extends State<PopWidget> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
+      padding: EdgeInsetsDirectional.fromSTEB(20.0, 0.0, 20.0, 0.0),
       child: Container(
-        constraints: BoxConstraints(
-          minHeight: 56.0,
-        ),
+        width: double.infinity,
+        height: 60.0,
         decoration: BoxDecoration(
           color: FlutterFlowTheme.of(context).primaryBackground,
           boxShadow: [
@@ -64,32 +63,54 @@ class _PopWidgetState extends State<PopWidget> {
             )
           ],
           borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(
+            color: FlutterFlowTheme.of(context).secondaryBackground,
+          ),
         ),
         child: Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+          padding: EdgeInsets.all(4.0),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
             children: [
-              Builder(
-                builder: (context) {
-                  if (widget.isError ?? false) {
-                    return Icon(
-                      Icons.arrow_back,
-                      color: FlutterFlowTheme.of(context).error,
-                      size: 24.0,
-                    );
-                  } else {
-                    return Icon(
-                      Icons.arrow_back,
-                      color: FlutterFlowTheme.of(context).success,
-                      size: 24.0,
-                    );
-                  }
-                },
+              Container(
+                width: 52.0,
+                height: 52.0,
+                decoration: BoxDecoration(
+                  color: Color(0xFFF2F2F7),
+                  borderRadius: BorderRadius.circular(12.0),
+                ),
+                child: Builder(
+                  builder: (context) {
+                    if (widget.isError ?? false) {
+                      return Icon(
+                        FFIcons.kalertHexagon,
+                        color: FlutterFlowTheme.of(context).error,
+                        size: 24.0,
+                      );
+                    } else {
+                      return Align(
+                        alignment: AlignmentDirectional(0.0, 0.0),
+                        child: Container(
+                          width: 25.0,
+                          height: 25.0,
+                          decoration: BoxDecoration(
+                            color: FlutterFlowTheme.of(context).success,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            FFIcons.kcheck,
+                            color: FlutterFlowTheme.of(context).primaryText,
+                            size: 14.0,
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
               ),
               Flexible(
                 child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(16.0, 9.0, 16.0, 9.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(12.0, 9.0, 12.0, 9.0),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,

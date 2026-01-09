@@ -999,7 +999,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                 final rewItem = rew[rewIndex];
                                 return Padding(
                                   padding: EdgeInsetsDirectional.fromSTEB(
-                                      16.0, 0.0, 16.0, 0.0),
+                                      6.0, 0.0, 6.0, 0.0),
                                   child: ReviewCardWidget(
                                     key: Key(
                                         'Keyagz_${rewIndex}_of_${rew.length}'),

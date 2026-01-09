@@ -235,7 +235,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                             FFIcons.kedit05,
                                             color: FlutterFlowTheme.of(context)
                                                 .primaryText,
-                                            size: 18.0,
+                                            size: 20.0,
                                           ),
                                           onPressed: () async {
                                             await showModalBottomSheet(
@@ -335,11 +335,12 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                                         alignment:
                                                             AlignmentDirectional(
                                                                 0.0, 0.0),
-                                                        child: Image.asset(
-                                                          'assets/images/rbuts_.png',
-                                                          width: 25.0,
-                                                          height: 25.0,
-                                                          fit: BoxFit.contain,
+                                                        child: Icon(
+                                                          FFIcons.kcreditCard02,
+                                                          color: FlutterFlowTheme
+                                                                  .of(context)
+                                                              .primaryText,
+                                                          size: 20.0,
                                                         ),
                                                       ),
                                                     ),

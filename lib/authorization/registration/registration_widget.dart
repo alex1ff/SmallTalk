@@ -91,10 +91,11 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                             padding: EdgeInsetsDirectional.fromSTEB(
                                 10.0, 8.0, 10.0, 2.0),
                             child: Image.asset(
-                              'assets/images/eeed62211805403.672a1eceaed58_1.png',
+                              'assets/images/logo.png',
                               width: double.infinity,
                               height: double.infinity,
                               fit: BoxFit.contain,
+                              alignment: Alignment(0.0, -0.2),
                             ),
                           ),
                         ),
@@ -182,9 +183,9 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                           child: Align(
                             alignment: AlignmentDirectional(0.0, 0.0),
                             child: Icon(
-                              Icons.mail,
+                              FFIcons.kmail01,
                               color: FlutterFlowTheme.of(context).primaryText,
-                              size: 18.0,
+                              size: 20.0,
                             ),
                           ),
                         ),
@@ -266,10 +267,10 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                           ),
                           child: Align(
                             alignment: AlignmentDirectional(0.0, 0.0),
-                            child: FaIcon(
-                              FontAwesomeIcons.unlockAlt,
+                            child: Icon(
+                              FFIcons.klockUnlocked01,
                               color: FlutterFlowTheme.of(context).primaryText,
-                              size: 16.0,
+                              size: 20.0,
                             ),
                           ),
                         ),
@@ -486,7 +487,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                 ),
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0.0, 35.0, 0.0, 8.0),
+                padding: EdgeInsetsDirectional.fromSTEB(0.0, 16.0, 0.0, 8.0),
                 child: Stack(
                   children: [
                     Container(

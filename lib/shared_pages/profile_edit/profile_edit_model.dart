@@ -47,6 +47,10 @@ class ProfileEditModel extends FlutterFlowModel<ProfileEditWidget> {
   FocusNode? nSLangFocusNode;
   TextEditingController? nSLangTextController;
   String? Function(BuildContext, String?)? nSLangTextControllerValidator;
+  // State field(s) for NSLang2 widget.
+  FocusNode? nSLang2FocusNode;
+  TextEditingController? nSLang2TextController;
+  String? Function(BuildContext, String?)? nSLang2TextControllerValidator;
   // State field(s) for countryNS widget.
   FocusNode? countryNSFocusNode;
   TextEditingController? countryNSTextController;
@@ -87,6 +91,9 @@ class ProfileEditModel extends FlutterFlowModel<ProfileEditWidget> {
 
     nSLangFocusNode?.dispose();
     nSLangTextController?.dispose();
+
+    nSLang2FocusNode?.dispose();
+    nSLang2TextController?.dispose();
 
     countryNSFocusNode?.dispose();
     countryNSTextController?.dispose();

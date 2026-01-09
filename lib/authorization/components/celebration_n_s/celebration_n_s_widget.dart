@@ -65,21 +65,17 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
-                      child: Text(
-                        FFLocalizations.of(context).getText(
-                          'r89oxs81' /* Юх-ху! */,
-                        ),
-                        textAlign: TextAlign.start,
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'Cool',
-                              fontSize: 26.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FontWeight.normal,
-                            ),
+                    Text(
+                      FFLocalizations.of(context).getText(
+                        'r89oxs81' /* Юх-ху! */,
                       ),
+                      textAlign: TextAlign.start,
+                      style: FlutterFlowTheme.of(context).bodyMedium.override(
+                            fontFamily: 'Cool',
+                            fontSize: 26.0,
+                            letterSpacing: 0.0,
+                            fontWeight: FontWeight.normal,
+                          ),
                     ),
                     Stack(
                       alignment: AlignmentDirectional(1.15, -1.2),

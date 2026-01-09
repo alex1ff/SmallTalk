@@ -1,3 +1,4 @@
+import '/backend/backend.dart';
 import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
@@ -15,6 +16,8 @@ class CallSummaryModel extends FlutterFlowModel<CallSummaryWidget> {
 
   ///  State fields for stateful widgets in this page.
 
+  // Stores action output result for [Backend Call - Read Document] action in CallSummary widget.
+  UsersRecord? user;
   // State field(s) for aboutMe widget.
   FocusNode? aboutMeFocusNode;
   TextEditingController? aboutMeTextController;

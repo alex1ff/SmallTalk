@@ -1,6 +1,7 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/button/button_widget.dart';
+import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'dart:async';
@@ -10,6 +11,7 @@ import '/flutter_flow/custom_functions.dart' as functions;
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'edit_name_model.dart';
 export 'edit_name_model.dart';
 
@@ -28,6 +30,9 @@ class EditNameWidget extends StatefulWidget {
 class _EditNameWidgetState extends State<EditNameWidget> {
   late EditNameModel _model;
 
+  late StreamSubscription<bool> _keyboardVisibilitySubscription;
+  bool _isKeyboardVisible = false;
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -39,6 +44,15 @@ class _EditNameWidgetState extends State<EditNameWidget> {
     super.initState();
     _model = createModel(context, () => EditNameModel());
 
+    if (!isWeb) {
+      _keyboardVisibilitySubscription =
+          KeyboardVisibilityController().onChange.listen((bool visible) {
+        safeSetState(() {
+          _isKeyboardVisible = visible;
+        });
+      });
+    }
+
     _model.nameTextController ??=
         TextEditingController(text: currentUserDisplayName);
     _model.nameFocusNode ??= FocusNode();
@@ -49,6 +63,9 @@ class _EditNameWidgetState extends State<EditNameWidget> {
   void dispose() {
     _model.maybeDispose();
 
+    if (!isWeb) {
+      _keyboardVisibilitySubscription.cancel();
+    }
     super.dispose();
   }
 
@@ -114,9 +131,9 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                           child: Align(
                             alignment: AlignmentDirectional(0.0, 0.0),
                             child: Icon(
-                              Icons.person,
+                              FFIcons.kuser03,
                               color: FlutterFlowTheme.of(context).primaryText,
-                              size: 18.0,
+                              size: 20.0,
                             ),
                           ),
                         ),
@@ -240,57 +257,114 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                   ),
                 ),
               ),
-              wrapWithModel(
-                model: _model.buttonModel,
-                updateCallback: () => safeSetState(() {}),
-                child: ButtonWidget(
-                  text: 'Сохранить',
-                  action: () async {
-                    if (_model.nameTextController.text != '') {
-                      if (functions
-                          .isValidName(_model.nameTextController.text)) {
-                        if (_model.nameTextController.text ==
-                            currentUserDisplayName) {
-                          Navigator.pop(context);
-                        } else {
-                          unawaited(
-                            () async {
-                              await currentUserReference!
-                                  .update(createUsersRecordData(
-                                displayName: _model.nameTextController.text,
-                              ));
-                            }(),
-                          );
-                          await widget.action?.call(
-                            _model.nameTextController.text,
-                          );
-                          Navigator.pop(context);
-                          await actions.showTopNotification(
-                            context,
-                            'Имя изменено',
-                            '',
-                            false,
-                          );
-                        }
-                      } else {
-                        await actions.showTopNotification(
-                          context,
-                          'Неверное имя',
-                          '',
-                          true,
-                        );
-                        return;
-                      }
-                    } else {
-                      await actions.showTopNotification(
-                        context,
-                        'Пожалуйста, представьтесь',
-                        '',
-                        true,
-                      );
-                      return;
-                    }
-                  },
+              Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 0.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    Expanded(
+                      child: wrapWithModel(
+                        model: _model.buttonModel,
+                        updateCallback: () => safeSetState(() {}),
+                        child: ButtonWidget(
+                          text: FFLocalizations.of(context).getText(
+                            'p3ygumv3' /* Сохранить */,
+                          ),
+                          action: () async {
+                            if (_model.nameTextController.text != '') {
+                              if (functions.isValidName(
+                                  _model.nameTextController.text)) {
+                                if (_model.nameTextController.text ==
+                                    currentUserDisplayName) {
+                                  Navigator.pop(context);
+                                } else {
+                                  unawaited(
+                                    () async {
+                                      await currentUserReference!
+                                          .update(createUsersRecordData(
+                                        displayName:
+                                            _model.nameTextController.text,
+                                      ));
+                                    }(),
+                                  );
+                                  await widget.action?.call(
+                                    _model.nameTextController.text,
+                                  );
+                                  Navigator.pop(context);
+                                  await actions.showTopNotification(
+                                    context,
+                                    'Имя изменено',
+                                    '',
+                                    false,
+                                  );
+                                }
+                              } else {
+                                await actions.showTopNotification(
+                                  context,
+                                  'Неверное имя',
+                                  '',
+                                  true,
+                                );
+                                return;
+                              }
+                            } else {
+                              await actions.showTopNotification(
+                                context,
+                                'Пожалуйста, представьтесь',
+                                '',
+                                true,
+                              );
+                              return;
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          0.0,
+                          0.0,
+                          0.0,
+                          valueOrDefault<double>(
+                            (isWeb
+                                    ? MediaQuery.viewInsetsOf(context).bottom >
+                                        0
+                                    : _isKeyboardVisible)
+                                ? 6.0
+                                : 35.0,
+                            6.0,
+                          )),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          boxShadow: [
+                            BoxShadow(
+                              blurRadius: 7.0,
+                              color: Color(0x0D2C2C2C),
+                              offset: Offset(
+                                0.0,
+                                2.0,
+                              ),
+                            )
+                          ],
+                          shape: BoxShape.circle,
+                        ),
+                        child: FlutterFlowIconButton(
+                          borderRadius: 50.0,
+                          buttonSize: 60.0,
+                          fillColor:
+                              FlutterFlowTheme.of(context).primaryBackground,
+                          icon: Icon(
+                            Icons.close_sharp,
+                            color: FlutterFlowTheme.of(context).error,
+                            size: 20.0,
+                          ),
+                          onPressed: () async {
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ].divide(SizedBox(height: 16.0)).addToStart(SizedBox(height: 16.0)),

@@ -93,12 +93,17 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                         color: FlutterFlowTheme.of(context)
                                             .primaryBackground,
                                         image: DecorationImage(
-                                          fit: BoxFit.contain,
+                                          fit: BoxFit.cover,
                                           image: CachedNetworkImageProvider(
                                             currentUserPhoto,
                                           ),
                                         ),
                                         shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: FlutterFlowTheme.of(context)
+                                              .primaryBackground,
+                                          width: 1.0,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -449,7 +454,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                         fillColor: FlutterFlowTheme.of(context)
                                             .secondaryBackground,
                                         icon: Icon(
-                                          FFIcons.kexpand01,
+                                          FFIcons.klineChartUp01,
                                           color: FlutterFlowTheme.of(context)
                                               .primaryText,
                                           size: 16.0,
@@ -528,7 +533,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     decoration: BoxDecoration(),
                                     child: Padding(
                                       padding: EdgeInsetsDirectional.fromSTEB(
-                                          12.0, 0.0, 12.0, 0.0),
+                                          12.0, 0.0, 9.0, 0.0),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.max,
                                         mainAxisAlignment:
@@ -609,6 +614,14 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                               }
                             },
                           ),
+                          Divider(
+                            height: 1.0,
+                            thickness: 1.0,
+                            indent: 12.0,
+                            endIndent: 16.0,
+                            color: FlutterFlowTheme.of(context)
+                                .secondaryBackground,
+                          ),
                           InkWell(
                             splashColor: Colors.transparent,
                             focusColor: Colors.transparent,
@@ -642,7 +655,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                               decoration: BoxDecoration(),
                               child: Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    12.0, 0.0, 12.0, 0.0),
+                                    12.0, 0.0, 9.0, 0.0),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.max,
                                   mainAxisAlignment:
@@ -672,6 +685,14 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                               ),
                             ),
                           ),
+                          Divider(
+                            height: 1.0,
+                            thickness: 1.0,
+                            indent: 12.0,
+                            endIndent: 16.0,
+                            color: FlutterFlowTheme.of(context)
+                                .secondaryBackground,
+                          ),
                           InkWell(
                             splashColor: Colors.transparent,
                             focusColor: Colors.transparent,
@@ -685,7 +706,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                               decoration: BoxDecoration(),
                               child: Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    12.0, 0.0, 12.0, 0.0),
+                                    12.0, 0.0, 9.0, 0.0),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.max,
                                   mainAxisAlignment:
@@ -714,6 +735,14 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                 ),
                               ),
                             ),
+                          ),
+                          Divider(
+                            height: 1.0,
+                            thickness: 1.0,
+                            indent: 12.0,
+                            endIndent: 16.0,
+                            color: FlutterFlowTheme.of(context)
+                                .secondaryBackground,
                           ),
                           InkWell(
                             splashColor: Colors.transparent,
@@ -748,7 +777,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                               decoration: BoxDecoration(),
                               child: Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    12.0, 0.0, 12.0, 0.0),
+                                    12.0, 0.0, 9.0, 0.0),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.max,
                                   mainAxisAlignment:
@@ -777,6 +806,14 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                 ),
                               ),
                             ),
+                          ),
+                          Divider(
+                            height: 1.0,
+                            thickness: 1.0,
+                            indent: 12.0,
+                            endIndent: 16.0,
+                            color: FlutterFlowTheme.of(context)
+                                .secondaryBackground,
                           ),
                           InkWell(
                             splashColor: Colors.transparent,
@@ -811,7 +848,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                               decoration: BoxDecoration(),
                               child: Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    12.0, 0.0, 12.0, 0.0),
+                                    12.0, 0.0, 9.0, 0.0),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.max,
                                   mainAxisAlignment:
@@ -891,6 +928,14 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                               ),
                             ),
                           ),
+                          Divider(
+                            height: 1.0,
+                            thickness: 1.0,
+                            indent: 12.0,
+                            endIndent: 16.0,
+                            color: FlutterFlowTheme.of(context)
+                                .secondaryBackground,
+                          ),
                           InkWell(
                             splashColor: Colors.transparent,
                             focusColor: Colors.transparent,
@@ -919,7 +964,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
-                                      'ID аккаунта: ${currentUserUid}',
+                                      '${FFLocalizations.of(context).getVariableText(
+                                        ruText: 'ID аккаунта: ',
+                                        enText: 'Account ID: ',
+                                      )}${currentUserUid}',
                                       maxLines: 1,
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium
@@ -934,15 +982,23 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     Icon(
-                                      FFIcons.kwallet02,
+                                      FFIcons.kcopy01,
                                       color: FlutterFlowTheme.of(context)
                                           .secondaryText,
-                                      size: 18.0,
+                                      size: 20.0,
                                     ),
                                   ],
                                 ),
                               ),
                             ),
+                          ),
+                          Divider(
+                            height: 1.0,
+                            thickness: 1.0,
+                            indent: 12.0,
+                            endIndent: 16.0,
+                            color: FlutterFlowTheme.of(context)
+                                .secondaryBackground,
                           ),
                           Container(
                             height: 45.0,

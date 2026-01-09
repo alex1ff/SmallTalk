@@ -1,0 +1,1814 @@
+// Automatic FlutterFlow imports
+import '/backend/backend.dart';
+import '/backend/schema/structs/index.dart';
+import '/backend/schema/enums/enums.dart';
+import '/flutter_flow/flutter_flow_theme.dart';
+import '/flutter_flow/flutter_flow_util.dart';
+import 'index.dart'; // Imports other custom widgets
+import '/custom_code/actions/index.dart'; // Imports custom actions
+import '/flutter_flow/custom_functions.dart'; // Imports custom functions
+import 'package:flutter/material.dart';
+// Begin custom widget code
+// DO NOT REMOVE OR MODIFY THE CODE ABOVE!
+
+import 'package:flutter/foundation.dart';
+import 'package:daily_flutter/daily_flutter.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:math' as math;
+import 'package:web_socket_channel/io.dart';
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/services.dart';
+
+// VideoQuality enum simplified - only auto mode needed
+// Daily Adaptive Bitrate handles all quality adjustments automatically
+
+// NetworkQuality enum removed - Daily monitors network automatically
+
+/// Connection state management
+enum ConnectionState {
+  disconnected,
+  connecting,
+  connected,
+  reconnecting,
+  failed
+}
+
+/// Immutable state container for better state management
+@immutable
+class _CallState {
+  final ConnectionState connectionState;
+  final bool cameraEnabled;
+  final bool microphoneEnabled;
+  // Quality tracking removed - Daily handles this internally
+  final String? error;
+  final int retryCount;
+  final Map<ParticipantId, VideoViewController> remoteControllers;
+  final List<Map<String, dynamic>> finalCaptions;
+  final String partialCaption;
+  final Map<ParticipantId, List<String>> remoteCaptions;
+  final bool isStreamingToDeepgram;
+
+  const _CallState({
+    this.connectionState = ConnectionState.disconnected,
+    this.cameraEnabled = true,
+    this.microphoneEnabled = true,
+    this.error,
+    this.retryCount = 0,
+    this.remoteControllers = const {},
+    this.finalCaptions = const [],
+    this.partialCaption = '',
+    this.remoteCaptions = const {},
+    this.isStreamingToDeepgram = false,
+  });
+
+  _CallState copyWith({
+    ConnectionState? connectionState,
+    bool? cameraEnabled,
+    bool? microphoneEnabled,
+    String? error,
+    int? retryCount,
+    Map<ParticipantId, VideoViewController>? remoteControllers,
+    List<Map<String, dynamic>>? finalCaptions,
+    String? partialCaption,
+    Map<ParticipantId, List<String>>? remoteCaptions,
+    bool? isStreamingToDeepgram,
+  }) {
+    return _CallState(
+      connectionState: connectionState ?? this.connectionState,
+      cameraEnabled: cameraEnabled ?? this.cameraEnabled,
+      microphoneEnabled: microphoneEnabled ?? this.microphoneEnabled,
+      error: error ?? this.error,
+      retryCount: retryCount ?? this.retryCount,
+      remoteControllers: remoteControllers ?? this.remoteControllers,
+      finalCaptions: finalCaptions ?? this.finalCaptions,
+      partialCaption: partialCaption ?? this.partialCaption,
+      remoteCaptions: remoteCaptions ?? this.remoteCaptions,
+      isStreamingToDeepgram:
+          isStreamingToDeepgram ?? this.isStreamingToDeepgram,
+    );
+  }
+}
+
+/// Production-ready video calling widget with enhanced quality and resilience
+class MinimalDailyWidget extends StatefulWidget {
+  const MinimalDailyWidget({
+    super.key,
+    this.width,
+    this.height,
+    required this.roomUrl,
+    this.meetingToken,
+    this.deepgramApiKey,
+    required this.deepgramLanguage,
+    this.actionCallback,
+    this.endCallCallback,
+    this.username,
+    this.participantLeftCallback,
+  });
+
+  final double? width;
+  final double? height;
+  final String roomUrl;
+  final String? meetingToken;
+  final String? deepgramApiKey;
+  final String deepgramLanguage;
+  final Future Function(String word, String sentence)? actionCallback;
+  final Future Function()? endCallCallback;
+  final String? username;
+  final Future Function()? participantLeftCallback;
+
+  @override
+  State<MinimalDailyWidget> createState() => _MinimalDailyWidgetState();
+}
+
+class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
+  // Core resources - properly managed
+  CallClient? _callClient;
+  VideoViewController? _localVideoController;
+  StreamSubscription? _eventSubscription;
+
+  // State management - immutable
+  _CallState _state = const _CallState();
+
+  // Resource tracking for proper cleanup
+  final Set<Timer> _activeTimers = {};
+  final Set<StreamSubscription> _activeSubscriptions = {};
+  final Set<StreamController> _activeControllers = {};
+
+  // Deepgram integration
+  FlutterSoundRecorder? _recorder;
+  IOWebSocketChannel? _deepgramChannel;
+  StreamController<Uint8List>? _audioStreamController;
+  bool _recorderOpen = false;
+
+  // Removed quality monitoring - Daily Adaptive Bitrate handles this
+
+  // Constants - production optimized
+  static const int _maxRetryAttempts = 5;
+  static const int _baseRetryDelayMs = 1000;
+  static const int _maxRetryDelayMs = 30000;
+  static const int _captionClearDelayMs = 20000; // Increased to 20 seconds
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeWidget();
+  }
+
+  /// Initialize widget with proper error handling
+  Future<void> _initializeWidget() async {
+    try {
+      // Enable hardware acceleration if available
+      await _enableHardwareAcceleration();
+
+      // Validate room URL before proceeding
+      if (_isValidRoomUrl(widget.roomUrl)) {
+        await _initializeCall();
+      }
+
+      // Quality monitoring removed - Daily Adaptive Bitrate handles this
+    } catch (e) {
+      _handleError('Initialization failed', e);
+    }
+  }
+
+  /// Enable hardware acceleration for better performance
+  Future<void> _enableHardwareAcceleration() async {
+    try {
+      // Platform-specific hardware acceleration
+      if (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS) {
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Hardware acceleration setup failed: $e');
+    }
+  }
+
+  /// Validate room URL format
+  bool _isValidRoomUrl(String url) {
+    if (url.isEmpty || url == '0' || url == 'null') return false;
+    try {
+      final uri = Uri.tryParse(url);
+      return uri != null && uri.hasScheme && uri.hasAuthority;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Simplified initialization
+  Future<void> _initializeCall() async {
+    if (!mounted) return;
+
+    _updateState(_state.copyWith(
+      connectionState: ConnectionState.connecting,
+      error: null,
+    ));
+
+    try {
+      // Create CallClient with timeout
+      _callClient = await _createCallClientWithTimeout();
+      if (!mounted || _callClient == null) return;
+
+      // Initialize video controller
+      _localVideoController = VideoViewController();
+
+      // Setup event subscription
+      _setupEventSubscription();
+
+      // Join room with FIXED quality settings sequence
+      await _joinRoomWithEnhancedSettings();
+
+      // Start Deepgram if configured
+      if (widget.deepgramApiKey?.isNotEmpty ?? false) {
+        _scheduleDeepgramStart();
+      }
+
+      // Quality monitoring removed - Daily Adaptive Bitrate handles this
+    } catch (e) {
+      await _handleConnectionError(e);
+    }
+  }
+
+  /// Create CallClient with timeout and retry
+  Future<CallClient?> _createCallClientWithTimeout() async {
+    const timeout = Duration(seconds: 10);
+
+    try {
+      return await CallClient.create().timeout(timeout);
+    } on TimeoutException {
+      throw Exception('CallClient creation timed out');
+    } catch (e) {
+      if (kDebugMode) print('CallClient creation failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Setup event subscription with proper error handling
+  void _setupEventSubscription() {
+    _eventSubscription?.cancel();
+    _eventSubscription = _callClient!.events.listen(
+      _handleCallEvent,
+      onError: (error) {
+        if (kDebugMode) print('Event stream error: $error');
+        if (mounted) _handleConnectionError(error);
+      },
+      cancelOnError: false,
+    );
+    _trackSubscription(_eventSubscription!);
+  }
+
+  /// Join room with FIXED quality settings sequence
+  Future<void> _joinRoomWithEnhancedSettings() async {
+    final roomUri = Uri.parse(widget.roomUrl);
+
+    // 1. Подключаемся к комнате С настройками качества
+    await _callClient!.join(
+      url: roomUri,
+      token: widget.meetingToken,
+      clientSettings: ClientSettingsUpdate.set(
+        // Устанавливаем качество ДО включения камеры
+        publishing: PublishingSettingsUpdate.set(
+          camera: CameraPublishingSettingsUpdate.set(
+            isPublishing: const BoolUpdate.set(false), // Камера пока выключена
+            sendSettings: VideoSendSettingsUpdate.set(
+              maxQuality: VideoSendSettingsMaxQualityUpdate.high,
+              encodings: VideoEncodingSettingsConfigsByQualityUpdate.set(
+                low: VideoEncodingSettingsConfigUpdate.set(
+                  scaleResolutionDownBy: const DoubleUpdate.set(4.0),
+                  maxBitrate: IntUpdate(600000), // 500 kbps
+                  maxFrameRate: const DoubleUpdate.set(15.0),
+                ),
+                medium: VideoEncodingSettingsConfigUpdate.set(
+                  scaleResolutionDownBy: const DoubleUpdate.set(2.0),
+                  maxBitrate:
+                      IntUpdate(1200000), // 1.5 Mbps - reduced for stability
+                  maxFrameRate: const DoubleUpdate.set(24.0),
+                ),
+                high: VideoEncodingSettingsConfigUpdate.set(
+                  scaleResolutionDownBy: const DoubleUpdate.set(1.0),
+                  maxBitrate:
+                      IntUpdate(1800000), // 2.5 Mbps - reduced for stability
+                  maxFrameRate: const DoubleUpdate.set(30.0),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    // 2. Enable microphone
+    await _callClient!.updatePublishing(
+      publishing: PublishingSettingsUpdate.set(
+        microphone: const MicrophonePublishingSettingsUpdate.set(
+          isPublishing: BoolUpdate.set(true),
+        ),
+      ),
+    );
+
+    // 3. Enable camera
+    await _callClient!.updatePublishing(
+      publishing: PublishingSettingsUpdate.set(
+        camera: CameraPublishingSettingsUpdate.set(
+          isPublishing: const BoolUpdate.set(true),
+        ),
+      ),
+    );
+
+    // 4. Configure input devices
+    await _callClient!.updateInputs(
+      inputs: const InputSettingsUpdate.set(
+        camera: CameraInputSettingsUpdate.set(isEnabled: BoolUpdate.set(true)),
+        microphone:
+            MicrophoneInputSettingsUpdate.set(isEnabled: BoolUpdate.set(true)),
+      ),
+    );
+
+    // 5. Configure username if provided
+    await _configureUsername();
+  }
+
+  /// Apply quality-optimized settings for better remote video quality
+  Future<void> _enableAdaptiveBitrate() async {
+    try {
+      if (_callClient == null) {
+        if (kDebugMode)
+          print('⚠️ Cannot enable adaptive bitrate - no call client');
+        return;
+      }
+
+      if (kDebugMode) {
+        print(
+            '🚀 Setting HIGH quality video with custom encodings for remote participants...');
+      }
+
+      // CRITICAL: Force HIGH quality for remote participants
+      // This is the main fix - Daily defaults to lower quality
+      await _callClient!.updatePublishing(
+        publishing: PublishingSettingsUpdate.set(
+          camera: CameraPublishingSettingsUpdate.set(
+            isPublishing: BoolUpdate.set(true),
+            sendSettings: VideoSendSettingsUpdate.set(
+              // ALWAYS use HIGH quality - this is the key fix!
+              // This changes bitrate from default 110-520 Kbps to 4-5 Mbps
+              maxQuality: VideoSendSettingsMaxQualityUpdate.high,
+            ),
+          ),
+          microphone: MicrophonePublishingSettingsUpdate.set(
+            isPublishing: BoolUpdate.set(true),
+          ),
+        ),
+      );
+
+      if (kDebugMode) {
+        print('✅ Optimized video settings applied successfully!');
+        print('   - maxQuality: HIGH (balanced for network stability)');
+        print(
+            '   - Expected bitrate: 1.5-2.5 Mbps (stable for most connections)');
+        print('   - Resolution: 720p with adaptive scaling');
+        print('   - Better stability and audio quality!');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Failed to set video quality: $e');
+    }
+  }
+
+  // Quality setting removed - always use auto mode with Daily Adaptive Bitrate
+  // The SDK automatically adjusts quality based on network conditions
+
+  /// Configure username with fallback
+  Future<void> _configureUsername() async {
+    try {
+      final name = widget.username ?? _getDefaultUsername();
+      await _callClient?.setUsername(name);
+      if (kDebugMode) print('Username set: $name');
+    } catch (e) {
+      if (kDebugMode) print('Username configuration failed: $e');
+    }
+  }
+
+  /// Force maximum quality video settings with ultra-high bitrate
+  Future<void> _forceHighQualityVideo() async {
+    try {
+      if (_callClient == null) return;
+
+      if (kDebugMode) {
+        print('🎯 Forcing ULTRA quality video for remote participants...');
+      }
+
+      // Force maximum quality - apply HIGH setting multiple times
+      // First application
+      await _callClient!.updatePublishing(
+        publishing: PublishingSettingsUpdate.set(
+          camera: CameraPublishingSettingsUpdate.set(
+            isPublishing: BoolUpdate.set(true),
+            sendSettings: VideoSendSettingsUpdate.set(
+              // Maximum quality setting
+              maxQuality: VideoSendSettingsMaxQualityUpdate.high,
+            ),
+          ),
+        ),
+      );
+
+      // Small delay to ensure settings take effect
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Second application to ensure it sticks
+      await _callClient!.updatePublishing(
+        publishing: PublishingSettingsUpdate.set(
+          camera: CameraPublishingSettingsUpdate.set(
+            sendSettings: VideoSendSettingsUpdate.set(
+              maxQuality: VideoSendSettingsMaxQualityUpdate.high,
+            ),
+          ),
+        ),
+      );
+
+      if (kDebugMode) {
+        print('✅ Stable quality applied successfully:');
+        print('   - Applied balanced quality settings');
+        print('   - Expected bitrate: 1.5-2.5 Mbps (network-friendly)');
+        print('   - Better audio quality and stability!');
+      }
+    } catch (e) {
+      if (kDebugMode) print('Failed to force ultra quality: $e');
+    }
+  }
+
+  /// Get platform-specific default username
+  String _getDefaultUsername() {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+        return 'iOS User';
+      case TargetPlatform.android:
+        return 'Android User';
+      default:
+        return 'Guest';
+    }
+  }
+
+  /// Handle call events with comprehensive processing
+  void _handleCallEvent(dynamic event) {
+    if (!mounted) return;
+
+    try {
+      event.whenOrNull(
+        callStateUpdated: _handleCallStateUpdate,
+        participantJoined: _handleParticipantJoined,
+        participantUpdated: _handleParticipantUpdated,
+        participantLeft: _handleParticipantLeft,
+        appMessageReceived: _handleAppMessage,
+        inputsUpdated: _handleInputsUpdated,
+        error: _handleEventError,
+      );
+    } catch (e) {
+      if (kDebugMode) print('Event handling error: $e');
+    }
+  }
+
+  /// Handle call state updates
+  void _handleCallStateUpdate(CallStateData data) {
+    if (!mounted) return;
+
+    switch (data.state) {
+      case CallState.joined:
+        _updateState(_state.copyWith(
+          connectionState: ConnectionState.connected,
+          error: null,
+          retryCount: 0,
+        ));
+        _updateLocalVideoTrack();
+        break;
+
+      case CallState.left:
+        _updateState(_state.copyWith(
+          connectionState: ConnectionState.disconnected,
+        ));
+        _stopDeepgramStreaming();
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  /// Handle participant joined event
+  void _handleParticipantJoined(Participant participant) {
+    if (!participant.info.isLocal && mounted) {
+      _addRemoteParticipant(participant);
+    }
+  }
+
+  /// Handle participant updated event
+  void _handleParticipantUpdated(Participant participant) {
+    if (participant.info.isLocal) {
+      _updateLocalVideoTrack();
+    } else {
+      _updateRemoteParticipant(participant);
+    }
+  }
+
+  /// Handle participant left event
+  void _handleParticipantLeft(Participant participant) {
+    _removeRemoteParticipant(participant.id);
+    // Call callback when remote participant leaves (ends call)
+    widget.participantLeftCallback?.call();
+  }
+
+  /// Handle app messages with validation
+  void _handleAppMessage(String message, ParticipantId from) {
+    if (!mounted) return;
+
+    try {
+      final payload = jsonDecode(message);
+      if (payload['type'] == 'caption') {
+        _processCaptionMessage(payload['text'], from);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Invalid app message: $e');
+    }
+  }
+
+  /// Process caption message with deduplication
+  void _processCaptionMessage(String text, ParticipantId from) {
+    if (text.trim().isEmpty) return;
+
+    final remoteCaptions =
+        Map<ParticipantId, List<String>>.from(_state.remoteCaptions);
+    final captions = remoteCaptions.putIfAbsent(from, () => []);
+
+    // Add with deduplication
+    if (captions.isEmpty || captions.last != text) {
+      captions.add(text);
+      if (captions.length > 10) captions.removeAt(0);
+
+      _updateState(_state.copyWith(remoteCaptions: remoteCaptions));
+      _scheduleCaptionClear(from);
+    }
+  }
+
+  /// Handle inputs updated event
+  void _handleInputsUpdated(InputSettings inputs) {
+    _updateLocalVideoTrack();
+    _updateState(_state.copyWith(
+      cameraEnabled: inputs.camera.isEnabled,
+      microphoneEnabled: inputs.microphone.isEnabled,
+    ));
+  }
+
+  /// Handle event errors
+  void _handleEventError(String error) {
+    _handleError('Call error', error);
+  }
+
+  /// Add remote participant with proper resource management
+  void _addRemoteParticipant(Participant participant) {
+    if (!mounted) return;
+
+    try {
+      // Check if controller already exists to avoid duplicates
+      if (_state.remoteControllers.containsKey(participant.id)) {
+        _updateRemoteParticipant(participant);
+        return;
+      }
+
+      final controller = VideoViewController();
+      final controllers = Map<ParticipantId, VideoViewController>.from(
+          _state.remoteControllers);
+      controllers[participant.id] = controller;
+
+      _updateState(_state.copyWith(remoteControllers: controllers));
+
+      // Delay to ensure controller is initialized and video track is set
+      Timer(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _updateRemoteParticipant(participant);
+        }
+      });
+    } catch (e) {
+      if (kDebugMode) print('Failed to add remote participant: $e');
+    }
+  }
+
+  /// Update remote participant video track
+  void _updateRemoteParticipant(Participant participant) {
+    if (!mounted) return;
+
+    final controller = _state.remoteControllers[participant.id];
+    if (controller == null) {
+      // Controller might not be created yet, retry
+      Timer(const Duration(milliseconds: 200), () {
+        if (mounted && _state.remoteControllers.containsKey(participant.id)) {
+          _updateRemoteParticipant(participant);
+        }
+      });
+      return;
+    }
+
+    try {
+      final media = participant.media;
+      final track = media?.screenVideo.state != MediaState.off
+          ? media?.screenVideo.track
+          : media?.camera.track;
+
+      controller.setTrack(track);
+    } catch (e) {
+      if (kDebugMode) print('Failed to update remote participant track: $e');
+    }
+  }
+
+  /// Remove remote participant and cleanup resources
+  void _removeRemoteParticipant(ParticipantId id) {
+    if (!mounted) return;
+
+    try {
+      final controllers = Map<ParticipantId, VideoViewController>.from(
+          _state.remoteControllers);
+      final controller = controllers.remove(id);
+
+      // Clear track before disposing to avoid errors
+      controller?.setTrack(null);
+
+      // Delay disposal to ensure UI updates are complete
+      Timer(const Duration(milliseconds: 100), () {
+        controller?.dispose();
+      });
+
+      _updateState(_state.copyWith(remoteControllers: controllers));
+
+      // Also clear any captions from this participant
+      final remoteCaptions =
+          Map<ParticipantId, List<String>>.from(_state.remoteCaptions);
+      remoteCaptions.remove(id);
+      _updateState(_state.copyWith(remoteCaptions: remoteCaptions));
+    } catch (e) {
+      if (kDebugMode) print('Failed to remove participant: $e');
+    }
+  }
+
+  /// Update local video track safely
+  void _updateLocalVideoTrack() {
+    if (_callClient == null || _localVideoController == null || !mounted)
+      return;
+
+    try {
+      final local = _callClient!.participants.local;
+      final track = local.media?.camera.track;
+
+      // Update track - VideoViewController doesn't have a track getter
+      // so we always set the track
+      _localVideoController!.setTrack(track);
+    } catch (e) {
+      if (kDebugMode) print('Local video track update failed: $e');
+    }
+  }
+
+  /// Update input settings with quality preservation
+  Future<void> _updateInputSettings({bool? camera, bool? microphone}) async {
+    if (_callClient == null || !mounted) return;
+
+    try {
+      await _callClient!.updateInputs(
+        inputs: InputSettingsUpdate.set(
+          camera: camera != null
+              ? CameraInputSettingsUpdate.set(isEnabled: BoolUpdate.set(camera))
+              : null,
+          microphone: microphone != null
+              ? MicrophoneInputSettingsUpdate.set(
+                  isEnabled: BoolUpdate.set(microphone))
+              : null,
+        ),
+      );
+
+      _updateState(_state.copyWith(
+        cameraEnabled: camera ?? _state.cameraEnabled,
+        microphoneEnabled: microphone ?? _state.microphoneEnabled,
+      ));
+    } catch (e) {
+      if (kDebugMode) print('Input settings update failed: $e');
+    }
+  }
+
+  // All quality monitoring methods removed - Daily Adaptive Bitrate handles everything automatically
+  // The SDK monitors network conditions and adjusts bitrate from 800 Kbps to 2 Mbps
+  // Resolution automatically scales from 540p to 720p based on available bandwidth
+
+  /// Handle connection errors with exponential backoff retry
+  Future<void> _handleConnectionError(dynamic error) async {
+    if (!mounted) return;
+
+    _updateState(_state.copyWith(
+      connectionState: ConnectionState.failed,
+      error: error.toString(),
+    ));
+
+    if (_state.retryCount < _maxRetryAttempts) {
+      _scheduleReconnection();
+    }
+  }
+
+  /// Schedule reconnection with exponential backoff
+  void _scheduleReconnection() {
+    final retryCount = _state.retryCount;
+    final delay = _calculateRetryDelay(retryCount);
+
+    if (kDebugMode) {
+      print(
+          'Scheduling reconnection attempt ${retryCount + 1}/$_maxRetryAttempts in ${delay.inSeconds}s');
+    }
+
+    final timer = Timer(delay, () {
+      if (mounted && _state.connectionState != ConnectionState.connected) {
+        _performReconnection();
+      }
+    });
+    _trackTimer(timer);
+
+    _updateState(_state.copyWith(
+      connectionState: ConnectionState.reconnecting,
+      retryCount: retryCount + 1,
+    ));
+  }
+
+  /// Calculate retry delay with exponential backoff
+  Duration _calculateRetryDelay(int retryCount) {
+    final delayMs = math.min(
+      _baseRetryDelayMs * math.pow(2, retryCount).toInt(),
+      _maxRetryDelayMs,
+    );
+    return Duration(milliseconds: delayMs);
+  }
+
+  /// Perform reconnection attempt
+  Future<void> _performReconnection() async {
+    if (!mounted) return;
+
+    await _cleanup(leaveCall: false);
+    await _initializeCall();
+  }
+
+  /// Schedule Deepgram start after connection established
+  void _scheduleDeepgramStart() {
+    final timer = Timer(const Duration(milliseconds: 1000), () {
+      if (mounted && _state.connectionState == ConnectionState.connected) {
+        _startDeepgramStreaming(widget.deepgramApiKey!);
+      }
+    });
+    _trackTimer(timer);
+  }
+
+  /// Start Deepgram streaming with proper resource management
+  Future<void> _startDeepgramStreaming(String apiKey) async {
+    if (_state.isStreamingToDeepgram || !mounted) return;
+
+    try {
+      // Request microphone permission
+      final permission = await Permission.microphone.request();
+      if (!permission.isGranted) {
+        throw Exception('Microphone permission denied');
+      }
+
+      // Initialize recorder
+      _recorder = FlutterSoundRecorder();
+      await _recorder!.openRecorder();
+      _recorderOpen = true;
+
+      _recorder!.setSubscriptionDuration(const Duration(milliseconds: 100));
+
+      // Initialize Deepgram WebSocket
+      await _initializeDeepgramWebSocket(apiKey);
+
+      // Setup audio streaming
+      _audioStreamController = StreamController<Uint8List>();
+      _trackController(_audioStreamController!);
+
+      final subscription = _audioStreamController!.stream.listen(
+        (data) {
+          if (_deepgramChannel != null) {
+            _deepgramChannel!.sink.add(data);
+          }
+        },
+        onError: (e) {
+          if (kDebugMode) print('Audio stream error: $e');
+        },
+      );
+      _trackSubscription(subscription);
+
+      // Start recording
+      await _recorder!.startRecorder(
+        toStream: _audioStreamController!.sink,
+        codec: Codec.pcm16,
+        sampleRate: 16000,
+        numChannels: 1,
+      );
+
+      _updateState(_state.copyWith(isStreamingToDeepgram: true));
+
+      if (kDebugMode) print('Deepgram streaming started successfully');
+    } catch (e) {
+      if (kDebugMode) print('Failed to start Deepgram streaming: $e');
+      await _stopDeepgramStreaming();
+    }
+  }
+
+  /// Initialize Deepgram WebSocket connection
+  Future<void> _initializeDeepgramWebSocket(String apiKey) async {
+    final uri = Uri.https('api.deepgram.com', '/v1/listen', {
+      'encoding': 'linear16',
+      'sample_rate': '16000',
+      'channels': '1',
+      'model': 'nova-3',
+      'language': widget.deepgramLanguage,
+      'smart_format': 'true',
+      'punctuate': 'true',
+      'utterances': 'true',
+      'diarize': 'true',
+      'interim_results': 'true',
+      'vad_events': 'true',
+      'endpointing': '500',
+    });
+
+    final wsUrl = uri.toString().replaceFirst('https://', 'wss://');
+
+    _deepgramChannel = IOWebSocketChannel.connect(
+      wsUrl,
+      headers: {'Authorization': 'token $apiKey'},
+    );
+
+    final subscription = _deepgramChannel!.stream.listen(
+      _handleDeepgramMessage,
+      onError: (e) {
+        if (kDebugMode) print('Deepgram WebSocket error: $e');
+        _restartDeepgramConnection();
+      },
+      onDone: () {
+        if (kDebugMode) print('Deepgram WebSocket closed');
+      },
+    );
+    _trackSubscription(subscription);
+  }
+
+  /// Handle Deepgram message with proper parsing
+  void _handleDeepgramMessage(dynamic message) {
+    if (!mounted) return;
+
+    try {
+      final data = jsonDecode(message);
+      final channel = data['channel'] ?? data;
+      final alternatives = channel['alternatives'] ?? [];
+
+      if (alternatives.isEmpty) return;
+
+      final transcript = alternatives[0]['transcript'] ?? '';
+      final isFinal = data['is_final'] == true || data['speech_final'] == true;
+
+      if (transcript.trim().isEmpty) return;
+
+      if (isFinal) {
+        _processFinalTranscript(transcript);
+      } else {
+        _processPartialTranscript(transcript);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Failed to process Deepgram message: $e');
+    }
+  }
+
+  /// Process final transcript
+  void _processFinalTranscript(String transcript) {
+    final captions = List<Map<String, dynamic>>.from(_state.finalCaptions);
+    captions.add({'text': transcript, 'words': []});
+
+    if (captions.length > 5) {
+      captions.removeRange(0, captions.length - 5);
+    }
+
+    _updateState(_state.copyWith(
+      finalCaptions: captions,
+      partialCaption: '',
+    ));
+
+    // Send caption to other participants
+    _sendCaptionMessage(transcript);
+
+    // Schedule caption clear
+    _scheduleCaptionClear(null);
+  }
+
+  /// Process partial transcript with debouncing
+  void _processPartialTranscript(String transcript) {
+    _updateState(_state.copyWith(partialCaption: transcript));
+  }
+
+  /// Send caption message to other participants
+  Future<void> _sendCaptionMessage(String text) async {
+    if (_callClient == null || text.trim().isEmpty) return;
+
+    try {
+      final message = jsonEncode({'type': 'caption', 'text': text});
+      await _callClient!.sendAppMessage(message, null);
+
+      if (kDebugMode) print('Caption sent: $text');
+    } catch (e) {
+      if (kDebugMode) print('Failed to send caption: $e');
+    }
+  }
+
+  /// Schedule caption clearing
+  void _scheduleCaptionClear(ParticipantId? participantId) {
+    final timer = Timer(
+      Duration(milliseconds: _captionClearDelayMs),
+      () {
+        if (!mounted) return;
+
+        if (participantId == null) {
+          // Clear own captions
+          _updateState(_state.copyWith(
+            finalCaptions: const [],
+            partialCaption: '',
+          ));
+        } else {
+          // Clear remote captions
+          final remoteCaptions =
+              Map<ParticipantId, List<String>>.from(_state.remoteCaptions);
+          remoteCaptions.remove(participantId);
+          _updateState(_state.copyWith(remoteCaptions: remoteCaptions));
+        }
+      },
+    );
+    _trackTimer(timer);
+  }
+
+  /// Restart Deepgram connection on failure
+  void _restartDeepgramConnection() {
+    if (!_state.isStreamingToDeepgram) return;
+
+    final timer = Timer(const Duration(seconds: 2), () async {
+      if (mounted && widget.deepgramApiKey != null) {
+        await _stopDeepgramStreaming();
+        await _startDeepgramStreaming(widget.deepgramApiKey!);
+      }
+    });
+    _trackTimer(timer);
+  }
+
+  /// Stop Deepgram streaming and cleanup resources
+  Future<void> _stopDeepgramStreaming() async {
+    if (!_state.isStreamingToDeepgram) return;
+
+    try {
+      if (_recorder?.isRecording ?? false) {
+        await _recorder!.stopRecorder();
+      }
+
+      if (_recorderOpen) {
+        await _recorder!.closeRecorder();
+        _recorderOpen = false;
+      }
+      _recorder = null;
+
+      await _deepgramChannel?.sink.close();
+      _deepgramChannel = null;
+
+      await _audioStreamController?.close();
+      _audioStreamController = null;
+
+      _updateState(_state.copyWith(
+        isStreamingToDeepgram: false,
+        partialCaption: '',
+      ));
+    } catch (e) {
+      if (kDebugMode) print('Error stopping Deepgram: $e');
+    }
+  }
+
+  /// Handle app lifecycle changes
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        _handleAppBackground();
+        break;
+      case AppLifecycleState.resumed:
+        _handleAppForeground();
+        break;
+      default:
+        break;
+    }
+  }
+
+  /// Handle app going to background
+  void _handleAppBackground() {
+    if (_state.connectionState == ConnectionState.connected) {
+      _updateInputSettings(camera: false, microphone: false);
+      _stopDeepgramStreaming();
+    }
+  }
+
+  /// Handle app returning to foreground
+  void _handleAppForeground() {
+    if (_state.connectionState == ConnectionState.connected) {
+      _updateInputSettings(
+        camera: _state.cameraEnabled,
+        microphone: _state.microphoneEnabled,
+      );
+
+      if (widget.deepgramApiKey != null && !_state.isStreamingToDeepgram) {
+        _startDeepgramStreaming(widget.deepgramApiKey!);
+      }
+    }
+  }
+
+  /// Update widget when properties change
+  @override
+  void didUpdateWidget(MinimalDailyWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!_isValidRoomUrl(oldWidget.roomUrl) &&
+        _isValidRoomUrl(widget.roomUrl)) {
+      _initializeCall();
+    }
+  }
+
+  /// Update state immutably
+  void _updateState(_CallState newState) {
+    if (!mounted) return;
+    setState(() {
+      _state = newState;
+    });
+  }
+
+  /// Handle errors uniformly
+  void _handleError(String context, dynamic error) {
+    if (kDebugMode) print('$context: $error');
+
+    _updateState(_state.copyWith(
+      error: '$context: ${error.toString()}',
+    ));
+  }
+
+  /// Track timer for cleanup
+  void _trackTimer(Timer timer) {
+    _activeTimers.add(timer);
+  }
+
+  /// Track subscription for cleanup
+  void _trackSubscription(StreamSubscription subscription) {
+    _activeSubscriptions.add(subscription);
+  }
+
+  /// Track controller for cleanup
+  void _trackController(StreamController controller) {
+    _activeControllers.add(controller);
+  }
+
+  /// COMPLETE BUILD METHOD REPLACEMENT - This should fix the error
+  @override
+  Widget build(BuildContext context) {
+    // Show waiting screen if room URL invalid
+    if (!_isValidRoomUrl(widget.roomUrl)) {
+      return _buildWaitingScreen();
+    }
+
+    return Container(
+      width: widget.width ?? double.infinity,
+      height: widget.height ?? double.infinity,
+      color: Colors.black,
+      child: Stack(
+        children: [
+          // Main video view
+          if (_state.connectionState == ConnectionState.connected)
+            Positioned.fill(
+              child: Container(
+                width: double.infinity,
+                height: double.infinity,
+                child: _state.remoteControllers.isNotEmpty
+                    ? _buildRemoteVideo()
+                    : _buildLocalVideo(),
+              ),
+            ),
+
+          // Picture-in-picture
+          if (_state.connectionState == ConnectionState.connected &&
+              _state.remoteControllers.isNotEmpty)
+            Positioned(
+              top: 55,
+              right: 20,
+              child: Container(
+                width: 100,
+                height: 140,
+                child: _buildPictureInPicture(),
+              ),
+            ),
+
+          // Captions overlay
+          if (_state.connectionState == ConnectionState.connected)
+            Positioned(
+              bottom: 160,
+              left: 16,
+              right: 16,
+              child: _buildCaptionsOverlay(),
+            ),
+
+          // Status indicators
+          if (_state.connectionState == ConnectionState.reconnecting)
+            Positioned(
+              top: 60,
+              left: 0,
+              right: 0,
+              child: _buildReconnectingIndicator(),
+            ),
+
+          // Controls
+          Positioned(
+            bottom: 35,
+            left: 0,
+            right: 0,
+            child: _buildControls(),
+          ),
+
+          // Error display
+          if (_state.error != null && _state.retryCount >= _maxRetryAttempts)
+            Positioned.fill(
+              child: _buildErrorDisplay(),
+            ),
+
+          // Loading indicator
+          if (_state.connectionState == ConnectionState.connecting)
+            Positioned.fill(
+              child: _buildLoadingIndicator(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Build waiting screen
+  Widget _buildWaitingScreen() {
+    return SizedBox(
+      width: widget.width ?? double.infinity,
+      height: widget.height ?? double.infinity,
+      child: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/Frame_1321318897.jpg'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: const SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                ),
+                SizedBox(height: 24),
+                Text(
+                  'Подключаемся...',
+                  style: TextStyle(color: Colors.white, fontSize: 18),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Ожидание комнаты',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build local video view
+  Widget _buildLocalVideo() {
+    try {
+      if (_localVideoController == null) {
+        return _buildPlaceholder('Инициализация камеры...');
+      }
+
+      if (!_state.cameraEnabled) {
+        return _buildPlaceholder('Камера выключена');
+      }
+
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: VideoView(
+          controller: _localVideoController!,
+          fit: VideoViewFit.cover,
+        ),
+      );
+    } catch (e) {
+      if (kDebugMode) print('Error building local video: $e');
+      return _buildPlaceholder('Видео недоступно');
+    }
+  }
+
+  /// Build remote video view
+  Widget _buildRemoteVideo() {
+    try {
+      if (_state.remoteControllers.isEmpty) {
+        return _buildPlaceholder('Ожидание участников...');
+      }
+
+      final controller = _state.remoteControllers.values.firstOrNull;
+      final participantId = _state.remoteControllers.keys.firstOrNull;
+
+      if (controller == null || participantId == null) {
+        return _buildPlaceholder('Ожидание участников...');
+      }
+
+      final participant = _callClient?.participants.remote[participantId];
+
+      if (participant == null) {
+        return _buildPlaceholder('Участник недоступен');
+      }
+
+      // Check if video track is actually set on the controller
+      // This is more reliable than checking media state
+      try {
+        // If controller has no track set yet, show loading
+        // The track will be set asynchronously in _updateRemoteParticipant
+        return VideoView(
+          controller: controller,
+          fit: VideoViewFit.cover,
+        );
+      } catch (e) {
+        // If there's an error with the video view, check media state as fallback
+        final hasVideo = participant.media?.camera.state != MediaState.off ||
+            participant.media?.screenVideo.state != MediaState.off;
+
+        if (!hasVideo) {
+          return _buildPlaceholder('Камера участника выключена');
+        }
+
+        // If media state says video is available but VideoView failed, show loading
+        return _buildPlaceholder('Загрузка видео...');
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error building remote video: $e');
+      return _buildPlaceholder('Видео недоступно');
+    }
+  }
+
+  /// Build picture-in-picture view
+  Widget _buildPictureInPicture() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white, width: 1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: _buildLocalVideo(),
+    );
+  }
+
+  /// Build placeholder widget
+  Widget _buildPlaceholder(String message) {
+    return Container(
+      color: Colors.black87,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.videocam_off, color: Colors.white54, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build captions overlay with speaker separation
+  Widget _buildCaptionsOverlay() {
+    final words = _getAllCaptionWords();
+    if (words.isEmpty) return const SizedBox.shrink();
+
+    // Separate words by speaker
+    final myWords = words.where((w) => w['isMyWord'] == true).toList();
+    final theirWords = words.where((w) => w['isMyWord'] == false).toList();
+
+    // Get remote participant name
+    String participantName = 'Собеседник';
+    if (_state.remoteControllers.isNotEmpty) {
+      final participantId = _state.remoteControllers.keys.first;
+      final participant = _callClient?.participants.remote[participantId];
+      if (participant != null &&
+          participant.info.username?.isNotEmpty == true) {
+        participantName = participant.info.username ?? 'Собеседник';
+      }
+    }
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 230),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // My subtitles section
+          if (myWords.isNotEmpty) ...[
+            _buildSpeakerSection('Me:', myWords, true),
+            const SizedBox(height: 12),
+          ],
+
+          // Remote participant subtitles section
+          if (theirWords.isNotEmpty)
+            _buildSpeakerSection('$participantName:', theirWords, false),
+        ],
+      ),
+    );
+  }
+
+  /// Build speaker section with label and words
+  Widget _buildSpeakerSection(
+      String label, List<Map<String, dynamic>> words, bool isMySection) {
+    // Create label chip first
+    final labelChip = IntrinsicWidth(
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isMySection
+              ? Colors.white.withOpacity(0.9)
+              : const Color(0xFFB8A4FF).withOpacity(0.9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.3),
+            width: 0.5,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1A000000),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+              spreadRadius: 0,
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isMySection ? Colors.black : Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              shadows: [
+                Shadow(
+                  offset: const Offset(0, 1),
+                  blurRadius: 2,
+                  color: Colors.black.withOpacity(0.3),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Combine label and words in a single wrap
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [labelChip, ...words.map(_buildWordChip)],
+    );
+  }
+
+  /// Get all caption words with caching
+  List<Map<String, dynamic>> _cachedWords = [];
+  String _lastCaptionState = '';
+
+  List<Map<String, dynamic>> _getAllCaptionWords() {
+    // Create a simple state hash to detect changes
+    final currentState =
+        '${_getCurrentCaption()}|${_state.remoteCaptions.hashCode}';
+
+    // Return cached result if nothing changed
+    if (currentState == _lastCaptionState) {
+      return _cachedWords;
+    }
+
+    final List<Map<String, dynamic>> words = [];
+
+    // Add own words
+    final myCaption = _getCurrentCaption();
+    if (myCaption.isNotEmpty) {
+      final myWords = myCaption.split(RegExp(r'\s+'));
+      for (final word in myWords) {
+        if (word.isNotEmpty && word.length > 1) {
+          // Filter out single characters
+          words.add({
+            'word': word,
+            'isMyWord': true,
+            'fullSentence': myCaption,
+          });
+        }
+      }
+    }
+
+    // Add remote words
+    _state.remoteCaptions.forEach((id, captions) {
+      if (captions.isNotEmpty) {
+        final caption = captions.last;
+        final remoteWords = caption.split(RegExp(r'\s+'));
+        for (final word in remoteWords) {
+          if (word.isNotEmpty && word.length > 1) {
+            // Filter out single characters
+            words.add({
+              'word': word,
+              'isMyWord': false,
+              'fullSentence': caption,
+            });
+          }
+        }
+      }
+    });
+
+    // Cache the result
+    _cachedWords = words;
+    _lastCaptionState = currentState;
+
+    return words;
+  }
+
+  /// Get current caption text
+  String _getCurrentCaption() {
+    if (_state.partialCaption.isNotEmpty) {
+      return _state.partialCaption;
+    } else if (_state.finalCaptions.isNotEmpty) {
+      return _state.finalCaptions.last['text'] as String;
+    }
+    return '';
+  }
+
+  /// Build word chip widget - FIXED
+  Widget _buildWordChip(Map<String, dynamic> wordData) {
+    final word = wordData['word'] as String;
+    final isMyWord = wordData['isMyWord'] as bool;
+    final fullSentence = wordData['fullSentence'] as String;
+
+    final color = isMyWord ? const Color(0x9CD1D1D1) : const Color(0xB6BA8CFF);
+
+    return GestureDetector(
+      onTap: () {
+        widget.actionCallback?.call(word, fullSentence);
+      },
+      child: IntrinsicWidth(
+        child: Container(
+          // Removed RepaintBoundary from here
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.3),
+              width: 0.5,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1A000000),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+                spreadRadius: 0,
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              word,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                shadows: [
+                  Shadow(
+                    offset: const Offset(0, 1),
+                    blurRadius: 2,
+                    color: Colors.black.withOpacity(0.3),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build controls overlay
+  Widget _buildControls() {
+    if (_state.connectionState != ConnectionState.connected) {
+      return const SizedBox.shrink();
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildControlButton(
+          icon: _state.cameraEnabled ? Icons.videocam : Icons.videocam_off,
+          isActive: _state.cameraEnabled,
+          onPressed: () => _updateInputSettings(camera: !_state.cameraEnabled),
+          isEndCall: false,
+        ),
+        _buildControlButton(
+          icon: _state.microphoneEnabled ? Icons.mic : Icons.mic_off,
+          isActive: _state.microphoneEnabled,
+          onPressed: () =>
+              _updateInputSettings(microphone: !_state.microphoneEnabled),
+          isEndCall: false,
+        ),
+        _buildControlButton(
+          icon: Icons.call_end,
+          isActive: true,
+          onPressed: _endCall,
+          isEndCall: true,
+        ),
+      ],
+    );
+  }
+
+  /// Build control button - FIXED
+  Widget _buildControlButton({
+    required IconData icon,
+    required bool isActive,
+    required VoidCallback onPressed,
+    required bool isEndCall,
+  }) {
+    return Container(
+      // Removed RepaintBoundary from here
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        color: isEndCall
+            ? Colors.red.withOpacity(0.9)
+            : Colors.black.withOpacity(0.6),
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: Colors.white),
+        onPressed: onPressed,
+        iconSize: 24,
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  /// Build reconnecting indicator
+  Widget _buildReconnectingIndicator() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Переподключение... (${_state.retryCount}/$_maxRetryAttempts)',
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build error display
+  Widget _buildErrorDisplay() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        margin: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error, color: Colors.white, size: 48),
+            const SizedBox(height: 16),
+            const Text(
+              'Не удалось подключиться',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 100),
+              child: SingleChildScrollView(
+                child: Text(
+                  _state.error ?? 'Неизвестная ошибка',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                _updateState(_state.copyWith(retryCount: 0));
+                _performReconnection();
+              },
+              child: const Text('Повторить попытку'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build loading indicator
+  Widget _buildLoadingIndicator() {
+    String roomName = '';
+    try {
+      final uri = Uri.tryParse(widget.roomUrl);
+      if (uri != null && uri.pathSegments.isNotEmpty) {
+        roomName = uri.pathSegments.last;
+      }
+    } catch (e) {
+      // Ignore URI parsing errors
+    }
+
+    return Container(
+      decoration: const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/images/Frame_1321318897.jpg'),
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Подключение к комнате...',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              if (roomName.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  roomName,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// End call and cleanup
+  Future<void> _endCall() async {
+    await _cleanup(leaveCall: true);
+    await widget.endCallCallback?.call();
+  }
+
+  /// Cleanup all resources
+  Future<void> _cleanup({bool leaveCall = true}) async {
+    if (kDebugMode) print('Cleaning up resources...');
+
+    try {
+      // Stop Deepgram first
+      await _stopDeepgramStreaming();
+
+      // Cancel all subscriptions
+      for (final subscription in _activeSubscriptions) {
+        try {
+          await subscription.cancel();
+        } catch (e) {
+          if (kDebugMode) print('Error cancelling subscription: $e');
+        }
+      }
+      _activeSubscriptions.clear();
+
+      // Cancel main event subscription
+      try {
+        await _eventSubscription?.cancel();
+        _eventSubscription = null;
+      } catch (e) {
+        if (kDebugMode) print('Error cancelling event subscription: $e');
+      }
+
+      // Dispose video controllers before leaving call
+      try {
+        _localVideoController?.dispose();
+        _localVideoController = null;
+      } catch (e) {
+        if (kDebugMode) print('Error disposing local video controller: $e');
+      }
+
+      for (final controller in _state.remoteControllers.values) {
+        try {
+          controller.dispose();
+        } catch (e) {
+          if (kDebugMode) print('Error disposing remote video controller: $e');
+        }
+      }
+
+      // Leave call if requested
+      if (_callClient != null && leaveCall) {
+        try {
+          await _callClient!.leave();
+          await Future.delayed(const Duration(milliseconds: 500));
+        } catch (e) {
+          if (kDebugMode) print('Error leaving call: $e');
+        }
+      }
+
+      // Dispose call client
+      try {
+        await _callClient?.dispose();
+        _callClient = null;
+      } catch (e) {
+        if (kDebugMode) print('Error disposing call client: $e');
+      }
+
+      // Cancel all timers
+      for (final timer in _activeTimers) {
+        timer.cancel();
+      }
+      _activeTimers.clear();
+
+      // Close all controllers
+      for (final controller in _activeControllers) {
+        try {
+          await controller.close();
+        } catch (e) {
+          if (kDebugMode) print('Error closing controller: $e');
+        }
+      }
+      _activeControllers.clear();
+
+      // Reset state
+      if (mounted) {
+        _updateState(const _CallState());
+      }
+
+      if (kDebugMode) print('Cleanup completed');
+    } catch (e) {
+      if (kDebugMode) print('Cleanup error: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    if (kDebugMode) print('Disposing widget...');
+
+    WidgetsBinding.instance.removeObserver(this);
+
+    // Synchronous cleanup of timers
+    for (final timer in _activeTimers) {
+      timer.cancel();
+    }
+
+    // Schedule async cleanup
+    _cleanup(leaveCall: true);
+
+    super.dispose();
+  }
+}

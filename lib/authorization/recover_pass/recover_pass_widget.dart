@@ -74,7 +74,7 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                       padding: EdgeInsets.all(2.0),
                       child: FlutterFlowIconButton(
                         borderRadius: 50.0,
-                        buttonSize: 62.0,
+                        buttonSize: 66.0,
                         fillColor:
                             FlutterFlowTheme.of(context).secondaryBackground,
                         icon: Icon(
@@ -101,6 +101,7 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                     padding: EdgeInsets.all(16.0),
                     child: Column(
                       mainAxisSize: MainAxisSize.max,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         AutoSizeText(
                           FFLocalizations.of(context).getText(
@@ -169,9 +170,9 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                           child: Align(
                             alignment: AlignmentDirectional(0.0, 0.0),
                             child: Icon(
-                              Icons.person,
+                              FFIcons.kmail01,
                               color: FlutterFlowTheme.of(context).primaryText,
-                              size: 18.0,
+                              size: 20.0,
                             ),
                           ),
                         ),
@@ -287,7 +288,9 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                   model: _model.buttonModel,
                   updateCallback: () => safeSetState(() {}),
                   child: ButtonWidget(
-                    text: 'Отправить',
+                    text: FFLocalizations.of(context).getText(
+                      '4rn5krnl' /* Отправить */,
+                    ),
                     action: () async {
                       if (functions
                           .isValidEmail(_model.emailTextController.text)) {
@@ -346,58 +349,62 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                     mainAxisSize: MainAxisSize.max,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      InkWell(
-                        splashColor: Colors.transparent,
-                        focusColor: Colors.transparent,
-                        hoverColor: Colors.transparent,
-                        highlightColor: Colors.transparent,
-                        onTap: () async {
-                          context.pushNamed(PolicyWidget.routeName);
-                        },
-                        child: RichText(
-                          textScaler: MediaQuery.of(context).textScaler,
-                          text: TextSpan(
-                            children: [
-                              TextSpan(
-                                text: FFLocalizations.of(context).getText(
-                                  'bzzxmn6e' /* Нажимая кнопку "Отправить", вы... */,
+                      Padding(
+                        padding: EdgeInsetsDirectional.fromSTEB(
+                            24.0, 0.0, 24.0, 0.0),
+                        child: InkWell(
+                          splashColor: Colors.transparent,
+                          focusColor: Colors.transparent,
+                          hoverColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                          onTap: () async {
+                            context.pushNamed(PolicyWidget.routeName);
+                          },
+                          child: RichText(
+                            textScaler: MediaQuery.of(context).textScaler,
+                            text: TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: FFLocalizations.of(context).getText(
+                                    'bzzxmn6e' /* Нажимая кнопку "Отправить", вы... */,
+                                  ),
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        color: FlutterFlowTheme.of(context)
+                                            .secondaryText,
+                                        fontSize: 14.0,
+                                        letterSpacing: 0.0,
+                                      ),
                                 ),
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'sf pro display',
-                                      color: FlutterFlowTheme.of(context)
-                                          .secondaryText,
-                                      fontSize: 14.0,
-                                      letterSpacing: 0.0,
-                                    ),
-                              ),
-                              TextSpan(
-                                text: FFLocalizations.of(context).getText(
-                                  'vgscvvlj' /* Политики конфиденциальности  */,
-                                ),
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'sf pro display',
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryText,
-                                      fontSize: 14.0,
-                                      letterSpacing: 0.0,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                              )
-                            ],
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color: FlutterFlowTheme.of(context)
-                                      .secondaryText,
-                                  letterSpacing: 0.0,
-                                ),
+                                TextSpan(
+                                  text: FFLocalizations.of(context).getText(
+                                    'vgscvvlj' /* Политики конфиденциальности */,
+                                  ),
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        color: FlutterFlowTheme.of(context)
+                                            .primaryText,
+                                        fontSize: 14.0,
+                                        letterSpacing: 0.0,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                )
+                              ],
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
+                                    fontFamily: 'sf pro display',
+                                    color: FlutterFlowTheme.of(context)
+                                        .secondaryText,
+                                    letterSpacing: 0.0,
+                                  ),
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
                         ),
                       ),
                       Padding(

@@ -148,39 +148,40 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
   {
     'on7eoqhl': {
       'ru': 'Пропустить',
-      'en': '',
+      'en': 'Skip',
     },
     'd3nuphz3': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Login
   {
     '6941br49': {
       'ru': 'Вход',
-      'en': '',
+      'en': 'Login',
     },
     '0i8b54sx': {
       'ru':
           'Введи адрес электронной почты и пароль, который был использован при регистрации.',
-      'en': '',
+      'en':
+          'Enter the email address and password you used during registration.',
     },
     'vbj759aa': {
       'ru': 'E-mail',
-      'en': '',
+      'en': 'Email',
     },
     'p6wbbfql': {
       'ru': 'Пароль',
-      'en': '',
+      'en': 'Password',
     },
     'c1a5gcpy': {
       'ru': 'Забыли пароль?',
-      'en': '',
+      'en': 'Forgot your password?',
     },
     '8x9f21aa': {
       'ru': 'Далее',
-      'en': '',
+      'en': 'Next',
     },
     'b7eijuxv': {
       'ru': ' ',
@@ -188,59 +189,60 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'tl1j359o': {
       'ru': 'Пользуясь приложением, вы соглашаетесь \nс ',
-      'en': '',
+      'en': 'By using the app, you agree\nto ',
     },
     '7ami3ujs': {
       'ru': 'Политикой конфиденциальности ',
-      'en': '',
+      'en': 'Privacy Policy',
     },
     'v2qj45ju': {
       'ru': 'Apple',
-      'en': '',
+      'en': 'Apple',
     },
     'gfc8qlqz': {
       'ru': 'Google',
-      'en': '',
+      'en': 'Google',
     },
     'cpw39y3y': {
       'ru': 'Нет аккаунта? ',
-      'en': '',
+      'en': 'Don\'t have an account? ',
     },
     'zdm7zlic': {
       'ru': 'Зарегистрируйтесь',
-      'en': '',
+      'en': 'Register',
     },
     '75ui0gn9': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Registration
   {
     'swn14ivc': {
       'ru': 'Регистрация',
-      'en': '',
+      'en': 'Registration',
     },
     '2qzo58i1': {
       'ru':
           'Чтобы начать, нужно зарегестрироваться.\nВведите данные и начнем знакомство.',
-      'en': '',
+      'en':
+          'To get started, you need to register.\nEnter your information and let\'s get started.',
     },
     'omyv9gs9': {
       'ru': 'E-mail',
-      'en': '',
+      'en': 'Email',
     },
     'c91xmbbf': {
       'ru': 'Пароль',
-      'en': '',
+      'en': 'Password',
     },
     'gytrv60k': {
       'ru': 'Войти как Native Speaker',
-      'en': '',
+      'en': 'Login as a Native Speaker',
     },
     'ohbb27ah': {
       'ru': 'Далее',
-      'en': '',
+      'en': 'Next',
     },
     'p8z1gi45': {
       'ru': ' ',
@@ -248,379 +250,408 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     '8s89x4ou': {
       'ru': 'Пользуясь приложением, вы соглашаетесь \nс ',
-      'en': '',
+      'en': 'By using the app, you agree\nto ',
     },
     '1r55b1dc': {
       'ru': 'Политикой конфиденциальности ',
-      'en': '',
+      'en': 'Privacy Policy',
     },
     '4j9qbbqb': {
       'ru': 'Apple',
-      'en': '',
+      'en': 'Apple',
     },
     '9yanqfu5': {
       'ru': 'Google',
-      'en': '',
+      'en': 'Google',
     },
     '4trgnrco': {
       'ru': 'Есть аккаунт? ',
-      'en': '',
+      'en': 'Do you have an account? ',
     },
     'ynyd41nj': {
       'ru': 'Войти',
-      'en': '',
+      'en': 'Login',
     },
     'da74vjpj': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Acquaintance_STUDENT
   {
     'bqppzscm': {
       'ru': 'Пропустить',
-      'en': '',
+      'en': 'Skip',
     },
     'ip2rlf3r': {
       'ru': 'Как вас зовут?',
-      'en': '',
+      'en': 'What is your name?',
     },
     'f55kpaxg': {
       'ru': 'Лучше написать настоящее имя',
-      'en': '',
+      'en': 'It\'s better to write your real name.',
     },
     'aty6z85z': {
       'ru': 'Ваше имя',
-      'en': '',
+      'en': 'Name',
     },
     '53phc019': {
       'ru': 'Как вы себя \nидентифицируете?',
-      'en': '',
+      'en': 'How do you \nidentify yourself?',
     },
     'tqqp6x5t': {
       'ru': 'Какой язык хотите практиковать?',
-      'en': '',
+      'en': 'What language do you want to practice?',
     },
     '1crdpxrp': {
       'ru': 'Сможете изменить позднее',
-      'en': '',
+      'en': 'You can change it later',
     },
     'gs6ylhnl': {
       'ru': 'Ваш текущий уровень',
-      'en': '',
+      'en': 'Your current level',
     },
     'zst66ylu': {
       'ru': 'Начальный',
-      'en': '',
+      'en': 'Elementary',
     },
     '5dx8dgam': {
       'ru': 'Знаю базовые фразы и слова\nA1-A2',
-      'en': '',
+      'en': 'I know basic phrases and words\nA1-A2',
     },
     'f84pr2gx': {
       'ru': 'Базовый',
-      'en': '',
+      'en': 'Base',
     },
     '9o39d1jb': {
       'ru': 'Могу поддержать простой разговор\nB1-B2',
-      'en': '',
+      'en': 'I can hold a simple conversation\nB1-B2',
     },
     'yxe8e00i': {
       'ru': 'Уверенный',
-      'en': '',
+      'en': 'Confident',
     },
     'b0keg79q': {
       'ru': 'Говорю свободно на большинство тем\nC1-C2',
-      'en': '',
+      'en': 'I speak fluently on most topics\nC1-C2',
     },
     'pqgno6ti': {
       'ru': 'Свободно',
-      'en': '',
+      'en': 'Free',
     },
     's4ycikzv': {
       'ru': 'Владею как родным\nNative',
-      'en': '',
+      'en': 'I speak Native like a native.\nNative',
     },
     'sj0rn6q7': {
       'ru': 'Начальный',
-      'en': '',
+      'en': 'Elementary',
     },
     'rm8zot80': {
       'ru': 'Базовый',
-      'en': '',
+      'en': 'Base',
     },
     'onxzn6lu': {
       'ru': 'Уверенный',
-      'en': '',
+      'en': 'Confident',
     },
     'qspamhah': {
       'ru': 'Свободно',
-      'en': '',
+      'en': 'Free',
     },
     'lrja9u6c': {
       'ru': 'Отличное начало!',
-      'en': '',
+      'en': 'Great start!',
     },
     '553cq9o6': {
       'ru':
           'Основная информация готова\nОсталось 4 быстрых вопроса (~2 минуты)',
-      'en': '',
+      'en':
+          'The basic information is ready.\n4 quick questions remain (~2 minutes).',
     },
     'aq1oqs5h': {
       'ru': 'Завершите заполнение \nпрофиля и получите',
-      'en': '',
+      'en': 'Complete your profile and receive',
     },
     'dr0r3uyi': {
       'ru': 'Более точный подбор собеседников',
-      'en': '',
+      'en': 'More precise selection of interlocutors',
     },
     'angeqklx': {
       'ru': 'До 10 минут бесплатного общения ',
-      'en': '',
+      'en': 'Up to 10 minutes of free communication',
     },
     'pcdwhfh6': {
       'ru': 'Приоритет в поиске',
-      'en': '',
+      'en': 'Search priority',
     },
     'ybk9bjx6': {
       'ru': 'Заполню позже',
-      'en': '',
+      'en': 'I\'ll fill it out later',
     },
     '69cq0mzr': {
       'ru': 'Зачем вам нужен этот язык?',
-      'en': '',
+      'en': 'Why do you need this language?',
     },
     '4yfkc6aa': {
       'ru': 'Можно выбрать несколько',
-      'en': '',
+      'en': 'You can select several',
+    },
+    '45xgftn8': {
+      'ru': 'Путешествия',
+      'en': 'Trips',
+    },
+    'b81l5ck6': {
+      'ru': 'Работа',
+      'en': 'Job',
+    },
+    'nvzre0x5': {
+      'ru': 'Учеба',
+      'en': 'Studies',
+    },
+    '3bbpj9jw': {
+      'ru': 'Культура',
+      'en': 'Culture',
+    },
+    'psmff4a8': {
+      'ru': 'Общение',
+      'en': 'Communication',
+    },
+    'r19vqfh2': {
+      'ru': 'Другое',
+      'en': 'Other',
     },
     '4l7nhxkw': {
       'ru': 'Выберите аватар',
-      'en': '',
+      'en': 'Select an avatar',
     },
     'x6szbodc': {
       'ru': 'Или загрузить своё фото',
-      'en': '',
+      'en': 'Or upload your photo',
     },
     'abc33q9h': {
       'ru': 'С носителем какого языка хотите говорить?',
-      'en': '',
+      'en': 'What language do you want to speak with a native speaker?',
     },
     'kpfa0ujl': {
       'ru': 'Сможете изменить позднее',
-      'en': '',
+      'en': 'You can change it later',
     },
     'dvafgdbh': {
       'ru': 'Местоположение собеседника',
-      'en': '',
+      'en': 'Location of the interlocutor',
     },
     '4pay67d3': {
       'ru':
           'Находите новых друзей в интересующей \nвас стране мира со Small Talk',
-      'en': '',
+      'en': 'Find new friends in your chosen country with Small Talk.',
+    },
+    'tkv7vhn7': {
+      'ru': 'Продолжить',
+      'en': 'Continue',
     },
     'hpnf6xs5': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Loading
   {
     'g5336z2i': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Dashboard_NS
   {
     '1u9apwk3': {
       'ru': 'Welcome to SmallTalk',
-      'en': '',
+      'en': 'Welcome to SmallTalk',
     },
     'znnn9lq2': {
       'ru': 'Текущий баланс',
-      'en': '',
+      'en': 'Current balance',
     },
     'z22ks730': {
       'ru': ' р',
-      'en': '',
+      'en': ' р',
     },
     '7q1ar70a': {
       'ru': '\$1,200',
-      'en': '',
+      'en': '\$1,200',
     },
     'm4d0g5ub': {
       'ru': 'Вывести',
-      'en': '',
+      'en': 'Withdraw',
     },
     'n1zbzn9y': {
       'ru': 'Доступен сегодня',
-      'en': '',
+      'en': 'Available today',
     },
     'ws9tu06c': {
       'ru': 'Добавить интервал',
-      'en': '',
+      'en': 'Add interval',
     },
     '5e7lo84r': {
       'ru': 'Статистика за сегодня',
-      'en': '',
+      'en': 'Statistics for today',
     },
     'g97rtbgg': {
       'ru': 'Заработано',
-      'en': '',
+      'en': 'Earned',
     },
     'hyjj1xqg': {
       'ru': 'Продолжительность звонков',
-      'en': '',
+      'en': 'Call duration',
     },
     'q3rpok1f': {
       'ru': 'Звонков принято',
-      'en': '',
+      'en': 'Calls received',
     },
     't1u8xuhi': {
       'ru': 'Звонков ещё не было',
-      'en': '',
+      'en': 'There have been no calls yet.',
     },
     'vf0nsiuy': {
       'ru': 'Убедитесь, что вы онлайн.\nСтуденты скоро найдут вас!',
-      'en': '',
+      'en': 'Make sure you\'re online.\nStudents will find you soon!',
     },
     'egtydbie': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Students_Dashboard
   {
     'xocrym2z': {
       'ru': 'Welcome to SmallTalk',
-      'en': '',
+      'en': 'Welcome to SmallTalk',
     },
     'o7w214bz': {
       'ru': 'Текущий баланс',
-      'en': '',
+      'en': 'Current balance',
     },
     'et82m26d': {
       'ru': '.small talks',
-      'en': '',
+      'en': '.small talks',
     },
     'dyf7xj5v': {
       'ru': '\$1,200',
-      'en': '',
+      'en': '\$1,200',
     },
     'nes89ax1': {
       'ru': 'Пополнить',
-      'en': '',
+      'en': 'Top up',
     },
     'a3nqo0ec': {
       'ru': 'Диалог с носителем \nязыка в один клик',
-      'en': '',
+      'en': 'Chat with a native speaker\nin one click',
     },
     'crtk35jr': {
       'ru': 'Первая минута бесплатно!',
-      'en': '',
+      'en': 'The first minute is free!',
     },
     'flmz1vkr': {
       'ru': 'Начать small talk',
-      'en': '',
+      'en': 'Start a small talk',
     },
     'a4u0etcs': {
       'ru': 'Избранные собеседники',
-      'en': '',
+      'en': 'Selected Interlocutors',
     },
     'lffx4k7x': {
       'ru': 'Статистика за сегодня',
-      'en': '',
+      'en': 'Statistics for today',
     },
     '2dq1u1yc': {
       'ru': 'Продолжительность звонков',
-      'en': '',
+      'en': 'Call duration',
     },
     'f4nn7fxp': {
       'ru': 'Звонков всего',
-      'en': '',
+      'en': 'Total calls',
     },
     'laxcndbb': {
       'ru': 'Звонков ещё не было',
-      'en': '',
+      'en': 'There have been no calls yet.',
     },
     '0hw93aax': {
       'ru': 'Самое время это исправить.\nНачните свой первый Small Talk!',
-      'en': '',
+      'en': 'It\'s time to fix that.\nStart your first Small Talk!',
     },
     'd4rmucwv': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Profile
   {
     'w5x0ak9h': {
       'ru': 'Мои отзывы',
-      'en': '',
+      'en': 'My reviews',
     },
     'xxkubsii': {
       'ru': 'Финансы',
-      'en': '',
+      'en': 'Finance',
     },
     'u9y8laa9': {
       'ru': 'Как вам приложение?',
-      'en': '',
+      'en': 'How do you like the app?',
     },
     'p8bgfesg': {
       'ru': 'Статистика',
-      'en': '',
+      'en': 'Statistics',
     },
     'iuym248z': {
       'ru': 'Стать носителем',
-      'en': '',
+      'en': 'Become a carrier',
     },
     'dmupsasg': {
       'ru': 'Стать учеником',
-      'en': '',
+      'en': 'Become a student',
     },
     '0yjewgwu': {
       'ru': 'Язык приложения',
-      'en': '',
+      'en': 'Application language',
     },
     'uo96qs94': {
       'ru': 'Черный список',
-      'en': '',
+      'en': 'Blacklist',
     },
     '7benyvw2': {
       'ru': 'Сообщить о проблеме',
-      'en': '',
+      'en': 'Report a problem',
     },
     'ss5m5bt2': {
       'ru': 'Выйти',
-      'en': '',
+      'en': 'Exit',
     },
     'g1hqddj1': {
       'ru': 'Политика конфиденциальности',
-      'en': '',
+      'en': 'Privacy Policy',
     },
     'l1x4xu81': {
       'ru': '© 2025 Small Talk. Версия 1.0.0',
-      'en': '',
+      'en': '© 2025 Small Talk. Version 1.0.0',
     },
     'frjfmbx0': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Words
   {
     'mh59o8kl': {
       'ru': '75%',
-      'en': '',
+      'en': '75%',
     },
     'w44p5wo4': {
       'ru': 'Flash‑cards',
-      'en': '',
+      'en': 'Flash cards',
     },
     'itgwbmq6': {
       'ru': 'Все',
-      'en': '',
+      'en': 'All',
     },
     'lgijjwoy': {
       'ru': 'Существительное',
@@ -628,66 +659,58 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'o5rmy0ju': {
       'ru': 'Глагол',
-      'en': 'Noun',
+      'en': 'Verb',
     },
     'e5h653gn': {
       'ru': 'Прилагательное',
-      'en': 'Noun',
+      'en': 'Adjective',
     },
     'afe30qzp': {
       'ru': 'Наречие',
-      'en': 'Noun',
+      'en': 'Adverb',
     },
     'wyn9ioic': {
       'ru': 'Местоимение',
-      'en': 'Noun',
+      'en': 'Pronoun',
     },
     'jeewyk0t': {
       'ru': 'Предлог',
-      'en': 'Noun',
+      'en': 'Pretext',
     },
     '09jddjbc': {
       'ru': 'Союз',
-      'en': 'Noun',
+      'en': 'Union',
     },
     'd8fv2zgh': {
       'ru': 'Междометие',
-      'en': 'Noun',
+      'en': 'Interjection',
     },
     '6jcnedaf': {
       'ru': 'Частица',
-      'en': 'Noun',
+      'en': 'Particle',
     },
     'qhknk21t': {
       'ru': 'Артикль',
-      'en': 'Noun',
+      'en': 'Article',
     },
     't6bc6qig': {
       'ru': 'Числительное',
-      'en': 'Noun',
+      'en': 'Numeral',
     },
     'cev0022q': {
       'ru': 'Причастие',
-      'en': 'Noun',
+      'en': 'Communion',
     },
     '8dy5jwch': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // CallSummary
   {
     'nkmvs84c': {
       'ru': 'Как прошёл звонок?',
-      'en': '',
-    },
-    '403og36h': {
-      'ru': '12 мин',
-      'en': '',
-    },
-    'zpqa4tx7': {
-      'ru': 'Англ',
-      'en': '',
+      'en': 'How did the call go?',
     },
     'urumutat': {
       'ru': '',
@@ -695,114 +718,138 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     '2gz8zlq9': {
       'ru': 'В избранное',
-      'en': '',
+      'en': 'Add to favorites',
     },
     'kth7l1fn': {
       'ru': 'Не соединять',
-      'en': '',
+      'en': 'Do not connect',
+    },
+    'duynuhus': {
+      'ru': 'Готово',
+      'en': 'Done',
     },
     's918m7k5': {
       'ru': 'Пропустить',
-      'en': '',
+      'en': 'Skip',
     },
     '51ipmvgk': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // VideoCallPageStudent
   {
     '4hy313iv': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // WaitingForTeacherPage
   {
     'o2wt8jr9': {
       'ru': 'Отменить',
-      'en': '',
+      'en': 'Cancel',
     },
     'bxqyl515': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // VideoCallPage_NS
   {
     'quu8vs0q': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Profile_edit
   {
     'hpktm3z3': {
       'ru': 'Ваше имя',
-      'en': '',
+      'en': 'Name',
     },
     'qupouufi': {
       'ru': 'Пол',
-      'en': '',
+      'en': 'Gender',
     },
     'ro4cvtou': {
       'ru': 'Язык изучения',
-      'en': '',
+      'en': 'Language of study',
+    },
+    's0mfbo2b': {
+      'ru': 'Язык изучения',
+      'en': 'Language of study',
     },
     'bo9k12fd': {
       'ru': 'Уровень',
-      'en': '',
+      'en': 'Level',
     },
     '3um2nt3q': {
       'ru': 'Цели изучения',
-      'en': '',
+      'en': 'Objectives of the study',
     },
     'fjpaay9n': {
       'ru': 'Delete Account',
-      'en': '',
+      'en': 'Delete Account',
     },
     'mx59qpmr': {
       'ru': 'Ваше имя',
-      'en': '',
+      'en': 'your name',
     },
     '2kk34veu': {
       'ru': 'Пол',
-      'en': '',
+      'en': 'Gender',
     },
     '53sloz8g': {
       'ru': 'О себе',
-      'en': '',
+      'en': 'About me',
     },
     '0xkn8sut': {
+      'ru': 'Язык, которому обучаю',
+      'en': 'The language I teach',
+    },
+    '5s3nn50b': {
+      'ru': 'Язык, которому обучаю',
+      'en': 'The language I teach',
+    },
+    'vi9zv6jp': {
       'ru': 'Мой язык',
-      'en': '',
+      'en': 'My language',
+    },
+    'sw9i9e2p': {
+      'ru': 'Мой язык',
+      'en': 'My language',
     },
     'kem0gdl9': {
       'ru': 'Страна',
-      'en': '',
+      'en': 'Country',
+    },
+    'potevt0c': {
+      'ru': 'Где вы сейчас находитесь?',
+      'en': 'Where are you now?',
     },
     'bvffcfv7': {
       'ru': 'Delete Account',
-      'en': '',
+      'en': 'Delete Account',
     },
     '8nacbzr2': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // NativeSpeakerPage
   {
     'd7d95pj7': {
       'ru': 'О себе',
-      'en': '',
+      'en': 'About me',
     },
     '2oj950e4': {
       'ru': 'Язык',
-      'en': '',
+      'en': 'Language',
     },
     'clkcguct': {
       'ru': '5',
-      'en': '',
+      'en': '5',
     },
     'pg86zql3': {
       'ru': '',
@@ -810,7 +857,7 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     '10vod9dp': {
       'ru': '4',
-      'en': '',
+      'en': '4',
     },
     'r6w9d005': {
       'ru': '',
@@ -818,7 +865,7 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     's89a9grf': {
       'ru': '3',
-      'en': '',
+      'en': '3',
     },
     'mwrjwlnh': {
       'ru': '',
@@ -826,7 +873,7 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'n8svbjr0': {
       'ru': '2',
-      'en': '',
+      'en': '2',
     },
     '5bburccy': {
       'ru': '',
@@ -834,7 +881,7 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'g8kj6pac': {
       'ru': '1',
-      'en': '',
+      'en': '1',
     },
     '54vhaxev': {
       'ru': '',
@@ -842,39 +889,39 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'ovjwud7w': {
       'ru': 'Все',
-      'en': '',
+      'en': 'All',
     },
     'h6yocea2': {
       'ru': '5',
-      'en': '',
+      'en': '5',
     },
     'm2hjxtoq': {
       'ru': '4',
-      'en': '',
+      'en': '4',
     },
     '19bs787g': {
       'ru': '3',
-      'en': '',
+      'en': '3',
     },
     'is2w8qlp': {
       'ru': '2',
-      'en': '',
+      'en': '2',
     },
     'bk4ndath': {
       'ru': '1',
-      'en': '',
+      'en': '1',
     },
     '37cy62j3': {
       'ru': 'О себе',
-      'en': '',
+      'en': 'About me',
     },
     'hnlgm9bc': {
       'ru': 'Отзывы',
-      'en': '',
+      'en': 'Reviews',
     },
     '2sabsnp2': {
       'ru': 'Начать small talk',
-      'en': '',
+      'en': 'Start a small talk',
     },
     '1b1w4r9j': {
       'ru': '',
@@ -882,145 +929,150 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'scqhm9kb': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // myRew
   {
     '15c59bwa': {
       'ru': 'Все',
-      'en': '',
+      'en': 'All',
     },
     'q7mf0a7y': {
       'ru': '5',
-      'en': '',
+      'en': '5',
     },
     'nq0k4jpp': {
       'ru': '4',
-      'en': '',
+      'en': '4',
     },
     '4jivq2w2': {
       'ru': '3',
-      'en': '',
+      'en': '3',
     },
     'ojmpi3dm': {
       'ru': '2',
-      'en': '',
+      'en': '2',
     },
     'wn2mqzpv': {
       'ru': '1',
-      'en': '',
+      'en': '1',
     },
     'r4c8ksc9': {
       'ru': 'Мои отзывы',
-      'en': '',
+      'en': 'My reviews',
     },
     'i9yu4mm6': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // pay
   {
     'd9e9ehu6': {
       'ru': 'Текущий баланс',
-      'en': '',
+      'en': 'Current balance',
     },
     'vni7lmge': {
       'ru': '.small talks',
-      'en': '',
+      'en': '.small talks',
     },
     'lrs28uyv': {
       'ru': '\$1,200',
-      'en': '',
+      'en': '\$1,200',
     },
     '2dwkyn2f': {
       'ru': 'Промокод',
-      'en': '',
+      'en': 'Promo code',
     },
     'ozmnhrl5': {
       'ru': 'Введите промокод',
-      'en': '',
+      'en': 'Enter the promo code',
     },
     '1uhw3x91': {
       'ru': 'Выберите тариф',
-      'en': '',
+      'en': 'Select a plan',
     },
     'd4ayjswx': {
       'ru': 'История операций',
-      'en': '',
+      'en': 'Operation history',
     },
     '1owu01u1': {
       'ru': 'Все',
-      'en': '',
+      'en': 'All',
     },
     'm8dxuyz4': {
       'ru': 'Пополнения',
-      'en': '',
+      'en': 'Replenishments',
     },
     'xh0vamif': {
       'ru': 'Списания',
-      'en': '',
+      'en': 'Write-offs',
     },
     'biuq69s8': {
       'ru': 'Финансы',
-      'en': '',
+      'en': 'Finance',
     },
     '5visqusd': {
       'ru': 'Оплатить',
-      'en': '',
+      'en': 'Pay',
     },
     'i4jp9pjr': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Acquaintance_NS
   {
     '5sad5n6l': {
       'ru': 'Как вас зовут?',
-      'en': '',
+      'en': 'What is your name?',
     },
     'qkjbiyki': {
       'ru': 'Лучше написать настоящее имя',
-      'en': '',
+      'en': 'It\'s better to write your real name.',
     },
     'ymvt7z18': {
       'ru': 'Ваше имя',
-      'en': '',
+      'en': 'Name',
     },
     'uvh46vvg': {
       'ru': 'Язык, которому будете обучать',
-      'en': '',
+      'en': 'The language you will teach',
     },
     't67xey72': {
       'ru': 'Можно выбрать несколько',
-      'en': '',
+      'en': 'You can select several',
+    },
+    'qneb3190': {
+      'ru': 'На каком языке вы говорите с детства?',
+      'en': 'What language do you want to speak with a native speaker?',
     },
     'tsnjs8zf': {
       'ru': 'Как вы себя \nидентифицируете?',
-      'en': '',
+      'en': 'How do you \nidentify yourself?',
     },
     'zc7cbn38': {
       'ru': 'Это поможет ученикам найти подходящего собеседника',
-      'en': '',
+      'en': 'This will help students find a suitable interlocutor.',
     },
     'iaxjidcm': {
       'ru': 'Где вы сейчас находитесь?',
-      'en': '',
+      'en': 'Where are you now?',
     },
     'h6cyori3': {
       'ru':
           'Находите новых друзей в интересующей \nвас стране мира со Small Talk',
-      'en': '',
+      'en': 'Find new friends in your chosen country with Small Talk.',
     },
     '24v6ef7s': {
       'ru': 'Расскажите \nо себе',
-      'en': '',
+      'en': 'Tell us about yourself',
     },
     '9c52d7gr': {
       'ru': 'Это поможет ученикам узнать вас и решить, с кем хотят общаться',
-      'en': '',
+      'en':
+          'This will help students get to know you and decide who they want to communicate with.',
     },
     '6qo3x2rg': {
       'ru': '',
@@ -1028,229 +1080,246 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     's8jfyxcp': {
       'ru': 'Люблю готовить, изучаю испанский для переезда в Барселону',
-      'en': '',
+      'en': 'I love to cook and am learning Spanish to move to Barcelona.',
     },
     'gt8x9g31': {
       'ru': 'Добавьте фото профиля',
-      'en': '',
+      'en': 'Add a profile photo',
     },
     'uijw0e1q': {
       'ru': 'Загрузить фото',
-      'en': '',
+      'en': 'Upload a photo',
     },
     'w8c1q5zh': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // Recover_pass
   {
     'hu56u2hq': {
       'ru': 'Восстановить \nпароль',
-      'en': '',
+      'en': 'Recover \npassword',
     },
     '8ty2g5mk': {
       'ru':
           'Введите e-mail, указанный при регистрации - мы отправим Вам ссылку для восстановления пароля',
-      'en': '',
+      'en':
+          'Enter the email address you provided during registration - we will send you a link to reset your password',
     },
     'w8edaady': {
       'ru': 'E-mail',
-      'en': '',
+      'en': 'Email',
+    },
+    '4rn5krnl': {
+      'ru': 'Отправить',
+      'en': 'Send',
     },
     'bzzxmn6e': {
-      'ru': 'Нажимая кнопку \"Отправить\", вы принимаете условия',
-      'en': '',
+      'ru': 'Нажимая кнопку \"Отправить\", вы принимаете условия ',
+      'en': 'By clicking the \"Send\" button, you accept the terms ',
     },
     'vgscvvlj': {
-      'ru': 'Политики конфиденциальности ',
-      'en': '',
+      'ru': 'Политики конфиденциальности',
+      'en': 'Privacy Policy',
     },
     '5judxscj': {
       'ru': 'Вспомнили пароль? ',
-      'en': '',
+      'en': 'Remembered your password? ',
     },
     '7r35sif1': {
       'ru': 'Вернуться',
-      'en': '',
+      'en': 'Return',
     },
     'u53j6w73': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // policy
   {
     'xfsjdmlr': {
       'ru': 'Политика\nконфиденциальности',
-      'en': '',
+      'en': 'Privacy Policy',
     },
     'czklyx18': {
       'ru': 'Дата вступления в силу: 28 ноября 2025 г.',
-      'en': '',
+      'en': 'Effective Date: November 28, 2025',
     },
     '00inco2o': {
       'ru': '1. Общие положения',
-      'en': '',
+      'en': '1. General Provisions',
     },
     'ttebd0yi': {
       'ru':
           'Small Talk (\"мы\", \"нас\", \"наше приложение\") уважает вашу конфиденциальность и обязуется защищать персональные данные пользователей. Настоящая Политика конфиденциальности описывает, какую информацию мы собираем, как мы её используем, храним и защищаем.\nИспользуя приложение Small Talk, вы соглашаетесь со сбором и использованием информации в соответствии с настоящей Политикой.',
-      'en': '',
+      'en':
+          'Small Talk (\"we,\" \"us,\" or \"our app\") respects your privacy and is committed to protecting your personal information. This Privacy Policy describes what information we collect, how we use, store, and protect it.\nBy using the Small Talk app, you consent to the collection and use of information in accordance with this Policy.',
     },
     'l9d370gj': {
       'ru': '2. Какую информацию мы собираем',
-      'en': '',
+      'en': '2. What information do we collect?',
     },
     'u78z43s6': {
       'ru':
           '2.1. Информация, которую вы предоставляете\n\nРегистрационные данные: имя, адрес электронной почты, пароль, пол (по желанию)\nПрофильная информация: фото профиля, информация \"О себе\", языковые предпочтения, предпочтения по местоположению собеседника\nПлатёжная информация: данные банковской карты (обрабатываются через защищённые платёжные системы)\nКонтент общения: текстовые сообщения в чате, субтитры разговоров\n\n2.2. Информация, собираемая автоматически\n\nДанные об использовании: история разговоров, длительность звонков, время и дата сеансов\nТехническая информация: тип устройства, операционная система, версия приложения, IP-адрес\nДанные о производительности: логи ошибок, сбоев и диагностическая информация\n\n2.3. Аудио и видео\n\nВидеозвонки: видео и аудио передаются в реальном времени через Agora и не записываются и не сохраняются нами\nТранскрипция: субтитры создаются в реальном времени для улучшения обучения, но не сохраняются после завершения звонка',
-      'en': '',
+      'en':
+          '2.1. Information You Provide\n\nRegistration Information: Name, Email Address, Password, Gender (optional)\nProfile Information: Profile Photo, About Me, Language Preferences, Location Preferences\nPayment Information: Bank Card Details (processed through secure payment systems)\nCommunication Content: Text Messages in Chat, Conversation Captions\n\n2.2. Information Collected Automatically\n\nUsage Data: Conversation History, Call Duration, Time and Date of Sessions\nTechnical Information: Device Type, Operating System, App Version, IP Address\nPerformance Data: Error Logs, Crash Logs, and Diagnostic Information\n\n2.3. Audio and Video\n\nVideo Calls: Video and audio are transmitted in real time through Agora and are not recorded or stored by us.\nTranscription: Captions are created in real time to enhance learning, but are not stored after the call ends.',
     },
     'knl0nrpp': {
       'ru': '3. Как мы используем вашу информацию',
-      'en': '',
+      'en': '3. How we use your information',
     },
     '0yy4lfbi': {
       'ru':
           'Мы используем собранную информацию для:\n\nПредоставления услуг: соединение с собеседниками, проведение видеозвонков, управление балансом\nУлучшения качества: анализ использования приложения, выявление проблем, улучшение функционала\nПерсонализации: подбор собеседников согласно вашим предпочтениям, рекомендации\nКоммуникации: отправка уведомлений о звонках, важных обновлениях, технической поддержке\nБезопасности: предотвращение мошенничества, защита пользователей, модерация контента\nБиллинга: обработка платежей, начисление вознаграждений носителям языка, формирование истории транзакций',
-      'en': '',
+      'en':
+          'We use the collected information for:\n\nService provision: connecting with users, conducting video calls, managing your balance\nQuality improvement: analyzing app usage, identifying issues, improving functionality\nPersonalization: matching users to your preferences, making recommendations\nCommunications: sending notifications about calls, important updates, and technical support\nSecurity: preventing fraud, protecting users, moderating content\nBilling: processing payments, awarding native speakers, generating transaction history',
     },
     'ca70uab5': {
       'ru': '4. Как мы делимся вашей информацией',
-      'en': '',
+      'en': '4. How we share your information',
     },
     '41wy02qp': {
       'ru':
           '4.1. С другими пользователями\n\nВаше имя, фото профиля и информация \"О себе\" видны собеседникам во время звонков\nВаши оценки и отзывы отображаются в профилях носителей языка (если вы оставляете отзыв)\n\n4.2. С сервис-провайдерами\nМы используем сторонние сервисы для:\n\nFirebase: хранение данных, аутентификация, облачные функции\nAgora: проведение видеозвонков в реальном времени\nПлатёжные системы: обработка платежей и выплат (данные карт обрабатываются напрямую платёжными провайдерами)\nАналитика: анализ использования и улучшение приложения (анонимизированные данные)\n\n4.3. По закону\nМы можем раскрыть вашу информацию:\n\nПо требованию закона или государственных органов\nДля защиты наших прав, безопасности пользователей или расследования мошенничества\nВ случае реорганизации, слияния или продажи компании',
-      'en': '',
+      'en':
+          '4.1. With Other Users\n\nYour name, profile photo, and \"About Me\" information are visible to other users during calls.\nYour ratings and reviews are displayed in native speaker profiles (if you leave a review).\n\n4.2. With Service Providers\nWe use third-party services for:\n\nFirebase: data storage, authentication, cloud features\nAgora: real-time video calls\nPayment Systems: payment and payout processing (card data is processed directly by payment providers)\nAnalytics: usage analysis and app improvement (anonymized data)\n\n4.3. By Law\nWe may disclose your information:\n\nWhen required by law or government authorities\nTo protect our rights, user safety, or to investigate fraud\nIn the event of a reorganization, merger, or sale of the company',
     },
     'dt5pemdf': {
       'ru': '5. Хранение данных',
-      'en': '',
+      'en': '5. Data storage',
     },
     'm9g24qvb': {
       'ru':
           'Личные данные: хранятся, пока ваш аккаунт активен или необходимо для предоставления услуг\nИстория разговоров: метаданные (длительность, дата, время) хранятся для биллинга и статистики\nУдалённые аккаунты: персональные данные удаляются в течение 30 дней после запроса на удаление аккаунта\nРезервное копирование: может храниться до 90 дней для восстановления в случае технических сбоев',
-      'en': '',
+      'en':
+          'Personal data: stored as long as your account is active or as needed to provide services\nCall history: metadata (duration, date, time) is stored for billing and statistics\nDeleted accounts: personal data is deleted within 30 days of the account deletion request\nBackups: may be stored for up to 90 days for recovery in case of technical failures',
     },
     'zqtodugk': {
       'ru': '6. Безопасность данных',
-      'en': '',
+      'en': '6. Data security',
     },
     'f4cv0dej': {
       'ru':
           'Мы применяем современные технологии для защиты вашей информации:\n\nШифрование данных при передаче (SSL/TLS)\nЗащищённое хранение в базах данных Firebase\nОграниченный доступ к персональным данным только для авторизованного персонала\nРегулярный мониторинг безопасности и обновления систем защиты\n\nВажно: несмотря на наши усилия, ни один метод передачи данных через интернет не является абсолютно безопасным.',
-      'en': '',
+      'en':
+          'We use modern technologies to protect your information:\n\nData encryption during transmission (SSL/TLS)\nSecure storage in Firebase databases\nRestricted access to personal data to authorized personnel only\nRegular security monitoring and security system updates\n\nImportant: Despite our best efforts, no method of transmitting data over the internet is completely secure.',
     },
     'm4x662t6': {
       'ru': '7. Ваши права',
-      'en': '',
+      'en': '7. Your rights',
     },
     'fqnb17ee': {
       'ru':
           'Вы имеете право:\n\nДоступ: запросить копию ваших персональных данных\nИсправление: обновить неточную или неполную информацию\nУдаление: запросить удаление вашего аккаунта и данных\nОграничение обработки: ограничить использование ваших данных\nПереносимость: получить ваши данные в структурированном формате\nОтзыв согласия: отозвать согласие на обработку данных (это может повлиять на возможность использования приложения)\n\nДля реализации этих прав свяжитесь с нами по адресу: [email защиты данных]',
-      'en': '',
+      'en':
+          'You have the right to:\n\nAccess: Request a copy of your personal data\nCorrection: Update inaccurate or incomplete information\nErasure: Request deletion of your account and data\nRestriction of processing: Restrict the use of your data\nPortability: Receive your data in a structured format\nWithdrawal of consent: Withdraw consent to data processing (this may affect your ability to use the app)\n\nTo exercise these rights, please contact us at [data protection email]',
     },
     '4de90uf9': {
       'ru': '8. Файлы cookie и технологии отслеживания',
-      'en': '',
+      'en': '8. Cookies and Tracking Technologies',
     },
     'hwz018hb': {
       'ru':
           'Мы используем файлы cookie и аналогичные технологии для:\n\nСохранения ваших предпочтений и настроек\nАнализа использования приложения\nОбеспечения безопасности и предотвращения мошенничества\n\nВы можете контролировать использование файлов cookie через настройки вашего устройства.',
-      'en': '',
+      'en':
+          'We use cookies and similar technologies to:\n\nStoring your preferences and settings\nAnalyzing app usage\nEnsuring security and preventing fraud\n\nYou can control the use of cookies through your device settings.',
     },
     '8sdsub64': {
       'ru': '9. Уведомления',
-      'en': '',
+      'en': '9. Notifications',
     },
     '9o4binxg': {
       'ru':
           'Вы можете получать:\n\nУведомления о звонках: VoIP-уведомления о входящих звонках\nСервисные уведомления: информация о балансе, транзакциях, технических обновлениях\nМаркетинговые уведомления (опционально): новости, специальные предложения\n\nВы можете управлять настройками уведомлений в разделе \"Настройки\" приложения.',
-      'en': '',
+      'en':
+          'You can receive:\n\nCall notifications: VoIP notifications for incoming calls\nService notifications: balance information, transactions, and technical updates\nMarketing notifications (optional): news, special offers\n\nYou can manage notification settings in the \"Settings\" section of the app.',
     },
     'va83u8gv': {
       'ru': '10. Изменения в Политике конфиденциальности',
-      'en': '',
+      'en': '10. Changes to the Privacy Policy',
     },
     'c70i9skq': {
       'ru':
           'Мы можем периодически обновлять настоящую Политику конфиденциальности. О существенных изменениях мы уведомим вас через:\n\nУведомление в приложении\nЭлектронную почту (на адрес, указанный при регистрации)\nОбновление даты \"Дата вступления в силу\" в начале документа\n\nРекомендуем периодически просматривать эту страницу для ознакомления с актуальной информацией.',
-      'en': '',
+      'en':
+          'We may update this Privacy Policy from time to time. We will notify you of significant changes via:\n\nIn-app notification\nEmail (to the address you provided during registration)\nUpdating the \"Effective Date\" date at the top of this document\n\nWe recommend that you periodically review this page for the latest information.',
     },
     'su42pbdb': {
       'ru': '11. Контактная информация',
-      'en': '',
+      'en': '11. Contact information',
     },
     'u7llfjy4': {
       'ru':
           'Если у вас есть вопросы о настоящей Политике конфиденциальности или практиках обработки данных, свяжитесь с нами:\nEmail: [ваш контактный email]\nАдрес: [юридический адрес компании]\nСлужба поддержки: [контакты поддержки в приложении]',
-      'en': '',
+      'en':
+          'If you have any questions about this Privacy Policy or our data processing practices, please contact us:\nEmail: [your contact email]\nAddress: [company legal address]\nSupport: [support contacts in the app]',
     },
     'dhdlspw7': {
       'ru': 'Согласие',
-      'en': '',
+      'en': 'Agreement',
     },
     'cfh32zir': {
       'ru':
           'Используя Small Talk, вы подтверждаете, что прочитали, поняли и согласны с условиями настоящей Политики конфиденциальности.',
-      'en': '',
+      'en':
+          'By using Small Talk, you acknowledge that you have read, understood, and agree to the terms of this Privacy Policy.',
     },
     'gcd5d56f': {
       'ru': '© 2025 Small Talk. Все права защищены.',
-      'en': '',
+      'en': '© 2025 Small Talk. All rights reserved.',
     },
     '3k5hrp8g': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // payCopy
   {
     '136foxwx': {
       'ru': 'Текущий баланс',
-      'en': '',
+      'en': 'Current balance',
     },
     'lv5jpiff': {
       'ru': 'Р',
-      'en': '',
+      'en': 'Р',
     },
     'sivg0euc': {
       'ru': '\$1,200',
-      'en': '',
+      'en': '\$1,200',
     },
     'j9s3fbnb': {
       'ru': 'Выберите способ вывода',
-      'en': '',
+      'en': 'Select a withdrawal method',
     },
     'ljhzclav': {
       'ru': 'Добавить карту',
-      'en': '',
+      'en': 'Add a map',
     },
     'qpndbc1w': {
       'ru': 'История операций',
-      'en': '',
+      'en': 'Operation history',
     },
     'njy9zp1m': {
       'ru': 'Все',
-      'en': '',
+      'en': 'All',
     },
     'hc7flvjs': {
       'ru': 'Пополнения',
-      'en': '',
+      'en': 'Replenishments',
     },
     'f5efiq3t': {
       'ru': 'Списания',
-      'en': '',
+      'en': 'Write-offs',
     },
     'qzktwdnl': {
       'ru': 'Финансы',
-      'en': '',
+      'en': 'Finance',
     },
     'djp5cokc': {
       'ru': 'Вывести',
-      'en': '',
+      'en': 'Withdraw',
     },
     'bpvnxnx6': {
       'ru': '',
@@ -1258,36 +1327,36 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     '7027okqs': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // payWebWiew
   {
     'yhgsg8gy': {
       'ru': 'Оплата',
-      'en': '',
+      'en': 'Payment',
     },
     '6x6ver5z': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // blackList
   {
     'qjrrp4il': {
       'ru': 'Ченый список',
-      'en': '',
+      'en': 'Blacklist',
     },
     'ktjc28ij': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // myRewNS
   {
     'xw59o8hf': {
       'ru': '5',
-      'en': '',
+      'en': '5',
     },
     'az5s0d0c': {
       'ru': '',
@@ -1295,7 +1364,7 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'oyswu6kn': {
       'ru': '4',
-      'en': '',
+      'en': '4',
     },
     'ikzopmv8': {
       'ru': '',
@@ -1303,7 +1372,7 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     '6r6bosmv': {
       'ru': '3',
-      'en': '',
+      'en': '3',
     },
     '61832c59': {
       'ru': '',
@@ -1311,7 +1380,7 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'v1flzexo': {
       'ru': '2',
-      'en': '',
+      'en': '2',
     },
     'trns98en': {
       'ru': '',
@@ -1319,7 +1388,7 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'rek4xcp6': {
       'ru': '1',
-      'en': '',
+      'en': '1',
     },
     '1xe9zhqj': {
       'ru': '',
@@ -1327,80 +1396,80 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'qs8nwyrv': {
       'ru': 'Все',
-      'en': '',
+      'en': 'All',
     },
     'xlaf7fli': {
       'ru': '5',
-      'en': '',
+      'en': '5',
     },
     'jw9lsb40': {
       'ru': '4',
-      'en': '',
+      'en': '4',
     },
     'ydhuju4o': {
       'ru': '3',
-      'en': '',
+      'en': '3',
     },
     'tcptiwm7': {
       'ru': '2',
-      'en': '',
+      'en': '2',
     },
     'kawozwy8': {
       'ru': '1',
-      'en': '',
+      'en': '1',
     },
     '6on93f38': {
       'ru': 'Мои отзывы',
-      'en': '',
+      'en': 'My reviews',
     },
     '3wlx885g': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // favorite
   {
     'hq7s4leg': {
       'ru': 'Избранное',
-      'en': '',
+      'en': 'Favorites',
     },
     'svwzaze6': {
       'ru': 'Home',
-      'en': '',
+      'en': 'Home',
     },
   },
   // NavBar
   {
     '2hh3j18i': {
       'ru': 'Главная',
-      'en': '',
+      'en': 'Home',
     },
     'j96epnpj': {
       'ru': 'Профиль',
-      'en': '',
+      'en': 'Profile',
     },
     '3ste14ts': {
       'ru': 'Главная',
-      'en': '',
+      'en': 'Home',
     },
     'bhpm1ddo': {
       'ru': 'Словарь',
-      'en': '',
+      'en': 'Dictionary',
     },
     '04sylp8f': {
       'ru': 'Профиль',
-      'en': '',
+      'en': 'Profile',
     },
   },
   // newWord
   {
     'dciexor0': {
       'ru': '🇺🇸',
-      'en': '',
+      'en': '🇺🇸',
     },
     'p23lw41o': {
       'ru': '🇷🇺',
-      'en': '',
+      'en': '🇷🇺',
     },
     'wwfgr0mf': {
       'ru': ' ',
@@ -1408,32 +1477,47 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'c1hnqtt4': {
       'ru': 'Примеры',
-      'en': '',
+      'en': 'Examples',
     },
   },
   // edit_name
   {
     'rivukcpq': {
       'ru': 'Имя',
-      'en': '',
+      'en': 'Name',
     },
     'vvf76qj0': {
       'ru': 'Ваше имя',
-      'en': '',
+      'en': 'Name',
+    },
+    'p3ygumv3': {
+      'ru': 'Сохранить',
+      'en': 'Save',
     },
   },
   // edit_gendeer
   {
     '06nighy4': {
       'ru': 'Как вы себя идентифицируете?',
-      'en': '',
+      'en': 'How do you identify yourself?',
+    },
+    'snk4d2km': {
+      'ru': 'Сохранить',
+      'en': 'Save',
+    },
+  },
+  // edit_lang
+  {
+    'wp5usl3v': {
+      'ru': 'Сохранить',
+      'en': 'Save',
     },
   },
   // edit_about
   {
     'v997ihxn': {
       'ru': 'Расскажите о себе',
-      'en': '',
+      'en': 'Tell us about yourself',
     },
     'hc796dq5': {
       'ru': '',
@@ -1441,357 +1525,457 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'tjmgsp1u': {
       'ru': 'Люблю готовить, изучаю испанский для переезда в Барселону',
-      'en': '',
+      'en': 'I love to cook and am learning Spanish to move to Barcelona.',
+    },
+    'bcopjm5n': {
+      'ru': 'Сохранить',
+      'en': 'Save',
     },
   },
   // edit_target
   {
     '2sp7ybe9': {
       'ru': 'Цели изучения языка',
-      'en': '',
+      'en': 'Objectives of language learning',
+    },
+    'ttv2n2du': {
+      'ru': 'Путешествия',
+      'en': 'Trips',
+    },
+    'id571obg': {
+      'ru': 'Работа',
+      'en': 'Job',
+    },
+    'wc6ds33w': {
+      'ru': 'Учеба',
+      'en': 'Studies',
+    },
+    '4zdz2z83': {
+      'ru': 'Культура',
+      'en': 'Culture',
+    },
+    'iu8bnfx7': {
+      'ru': 'Общение',
+      'en': 'Communication',
+    },
+    'cc6sb20q': {
+      'ru': 'Другое',
+      'en': 'Other',
+    },
+    '6k2h1hbt': {
+      'ru': 'Сохранить',
+      'en': 'Save',
     },
   },
   // rate_app
   {
+    'zdoma2f2': {
+      'ru': 'Мне всё нравится',
+      'en': 'I like everything',
+    },
+    'l6e566yv': {
+      'ru': 'Классный дизайн',
+      'en': 'Cool design',
+    },
+    '5ptxzwam': {
+      'ru': 'В приложении сложно разобраться',
+      'en': 'The app is difficult to understand',
+    },
+    'j8iejnb0': {
+      'ru': 'Есть технические проблемы',
+      'en': 'There are technical problems',
+    },
+    '95l4bk9r': {
+      'ru': 'Не хватает некоторых функций',
+      'en': 'Some features are missing',
+    },
     '3cd9u8tj': {
       'ru': '',
       'en': '',
     },
     'lu693psw': {
       'ru': 'Что нравится, а что нет...',
-      'en': '',
+      'en': 'What I like and what I don\'t...',
     },
     'nymvvzvm': {
       'ru':
           'Мы читаем каждое сообщение. Если нас хвалят - радуемся. Если ругают - думаем, как всё исправить. Без вас ничего бы не получилось!',
-      'en': '',
+      'en':
+          'We read every message. If we\'re praised, we rejoice. If we\'re criticized, we think about how to improve. Without you, none of this would have happened!',
     },
   },
   // Report
   {
     'rgjzzzot': {
       'ru': 'Telegram',
-      'en': '',
+      'en': 'Telegram',
     },
     's4ea1b59': {
       'ru': 'Почта',
-      'en': '',
+      'en': 'Mail',
     },
     'hm8aug9i': {
       'ru': 'Отмена',
-      'en': '',
+      'en': 'Cancel',
     },
   },
   // stats
   {
     'h312ck10': {
       'ru': 'Статистика',
-      'en': '',
+      'en': 'Statistics',
     },
     'gjvp0dj5': {
       'ru': 'Слов добавлено',
-      'en': '',
+      'en': 'Words added',
     },
     'aqgjojma': {
       'ru': 'Заработано',
-      'en': '',
+      'en': 'Earned',
     },
     'f5hs0e1o': {
       'ru': 'Звонков всего',
-      'en': '',
+      'en': 'Total calls',
     },
     'abrmh1eb': {
       'ru': 'Минут в разговоре',
-      'en': '',
+      'en': 'Minutes of conversation',
+    },
+    'wzrvlh74': {
+      'ru': 'Готово',
+      'en': 'Done',
     },
   },
   // uploud_photo
   {
     'iyme8lbo': {
       'ru': 'Сделать фото',
-      'en': '',
+      'en': 'Take a photo',
     },
     'vccvxygt': {
       'ru': 'Выбрать из галереи',
-      'en': '',
+      'en': 'Select from gallery',
     },
     '9a4q6avd': {
       'ru': 'Отмена',
-      'en': '',
+      'en': 'Cancel',
     },
   },
   // send
   {
     'olh1jz6w': {
       'ru': 'Проверьте почту!',
-      'en': '',
+      'en': 'Check your mail!',
     },
     '72up7lns': {
       'ru':
           'Письм с инструкцей по восстановлению пароля отправлено на указанный email',
-      'en': '',
+      'en':
+          'An email with password recovery instructions has been sent to the specified email address.',
+    },
+    '4efn2nfa': {
+      'ru': 'Готово',
+      'en': 'Done',
     },
   },
   // CelebrationST
   {
     'pi17owq7': {
       'ru': 'Юх-ху!',
-      'en': '',
+      'en': 'Woo-hoo!',
     },
     'prix1jqc': {
       'ru': 'Поздравляем 🎉 ',
-      'en': '',
+      'en': 'Congratulations 🎉',
     },
     'mwkxiv2y': {
       'ru': 'ваш профиль готов',
-      'en': '',
+      'en': 'your profile is ready',
     },
     '0ejtqqi8': {
       'ru': 'Вы получили:',
-      'en': '',
+      'en': 'You received:',
     },
     'mxcws2mx': {
       'ru': '10 минут бесплатного общения',
-      'en': '',
+      'en': '10 minutes of free communication',
     },
     'zm25ye6b': {
       'ru': 'Более точный подбор собеседников',
-      'en': '',
+      'en': 'More precise selection of interlocutors',
     },
     'a99tuqpu': {
       'ru': 'Приоритет в поиске',
-      'en': '',
+      'en': 'Search priority',
     },
     'o2lqwjf0': {
       'ru': 'Всё готово для первого разговора с носителем языка!',
-      'en': '',
+      'en':
+          'Everything is ready for your first conversation with a native speaker!',
     },
     'mc34azc3': {
       'ru': 'Юх-ху!',
-      'en': '',
+      'en': 'Woo-hoo!',
     },
     'x2jzhu8o': {
       'ru': 'Хорошее начало,',
-      'en': '',
+      'en': 'Good start,',
     },
     '5s3400tx': {
       'ru': 'Завершите профиль\nв настройках и получите:',
-      'en': '',
+      'en': 'Complete your profile\nin settings and receive:',
     },
     'qanvejyj': {
       'ru': '+2 минуты бесплатно',
-      'en': '',
+      'en': '+2 minutes free',
     },
     'zepdvxdb': {
       'ru': 'Более точный подбор собеседников',
-      'en': '',
+      'en': 'More precise selection of interlocutors',
     },
     'wswb8jsg': {
       'ru': 'Приоритет в результатах поиска',
-      'en': '',
+      'en': 'Priority in search results',
     },
     'yq11lpzm': {
       'ru': 'Основная информация готова. \nМожете начинать общаться!',
-      'en': '',
+      'en': 'The basic information is ready.\nYou can start chatting!',
     },
   },
   // av
   {
     'zlkfpu1u': {
-      'ru': 'какой ты сегодня',
-      'en': '',
+      'ru': 'Какой ты сегодня',
+      'en': 'What are you like today',
+    },
+    'v5m8e59n': {
+      'ru': 'Сохранить',
+      'en': 'Save',
     },
   },
   // lang
   {
     'fo4zvvcg': {
       'ru': 'Поиск',
-      'en': '',
+      'en': 'Search',
     },
   },
   // edit_level
   {
     'si04kwhp': {
       'ru': 'Ваш текущий уровень',
-      'en': '',
+      'en': 'Your current level',
     },
     'jdmn59oq': {
       'ru': 'Начальный',
-      'en': '',
+      'en': 'Elementary',
     },
     'dtdv1d38': {
       'ru': 'Знаю базовые фразы и слова\nA1-A2',
-      'en': '',
+      'en': 'I know basic phrases and words\nA1-A2',
     },
     '9h701ha8': {
       'ru': 'Базовый',
-      'en': '',
+      'en': 'Base',
     },
     'nhcwv72l': {
       'ru': 'Могу поддержать простой разговор\nB1-B2',
-      'en': '',
+      'en': 'I can hold a simple conversation\nB1-B2',
     },
     'dapjexca': {
       'ru': 'Уверенный',
-      'en': '',
+      'en': 'Confident',
     },
     '9jdrum1l': {
       'ru': 'Говорю свободно на большинство тем\nC1-C2',
-      'en': '',
+      'en': 'I speak fluently on most topics\nC1-C2',
     },
     'sr30phpi': {
       'ru': 'Свободно',
-      'en': '',
+      'en': 'Free',
     },
     'bh0f4y7s': {
       'ru': 'Владею как родным\nNative',
-      'en': '',
+      'en': 'I speak Native like a native.\nNative',
     },
     'qxr4lsyg': {
       'ru': 'Начальный',
-      'en': '',
+      'en': 'Elementary',
     },
     'gkwtxis0': {
       'ru': 'Базовый',
-      'en': '',
+      'en': 'Base',
     },
     'xiioo516': {
       'ru': 'Уверенный',
-      'en': '',
+      'en': 'Confident',
     },
     'av3obfx6': {
       'ru': 'Свободно',
-      'en': '',
+      'en': 'Free',
+    },
+    'bhanvnef': {
+      'ru': 'Сохранить',
+      'en': 'Save',
     },
   },
   // country
   {
     'gx50uyoo': {
       'ru': 'Поиск',
-      'en': '',
+      'en': 'Search',
     },
   },
   // Acquaintance_NS_START
   {
     'zngmaqpc': {
       'ru': 'Станьте носителем языка',
-      'en': '',
+      'en': 'Become a native speaker',
     },
     'fwacgl87': {
       'ru': 'Помогайте другим практиковать ваш родной язык и зарабатывайте',
-      'en': '',
+      'en': 'Help others practice your native language and earn money',
     },
     'dkjkpn0t': {
       'ru': 'Гибкий график',
-      'en': '',
+      'en': 'Flexible schedule',
     },
     'ieg9smx1': {
       'ru': 'Общайтесь из любой точки мира',
-      'en': '',
+      'en': 'Chat from anywhere in the world',
     },
     'w2jb61uy': {
       'ru': 'Получайте оплату за разговоры',
-      'en': '',
+      'en': 'Get paid for your calls',
+    },
+    'fzpcok5b': {
+      'ru': 'Заполнить анкету',
+      'en': 'Fill out the form',
     },
   },
   // CelebrationNS
   {
     'r89oxs81': {
       'ru': 'Юх-ху!',
-      'en': '',
+      'en': 'Woo-hoo!',
     },
     'lnkpv25r': {
       'ru': 'Поздравляем 🎉 ',
-      'en': '',
+      'en': 'Congratulations 🎉',
     },
     'wvb1ct99': {
       'ru': 'ваш профиль готов',
-      'en': '',
+      'en': 'your profile is ready',
     },
     'i6itymsj': {
       'ru': 'Теперь вы можете:',
-      'en': '',
+      'en': 'Now you can:',
     },
     'm3qrtm7o': {
       'ru': 'Принимать запросы от учеников',
-      'en': '',
+      'en': 'Accept requests from students',
     },
     'u052xfsi': {
       'ru': 'Зарабатывать на разговорах',
-      'en': '',
+      'en': 'Make money by talking',
     },
     'ig33jmve': {
       'ru': 'Получать отзывы и рейтинг',
-      'en': '',
+      'en': 'Receive reviews and ratings',
     },
     'ymgeslpv': {
       'ru': 'Ученики уже могут найти вас и отправить запрос на разговор',
-      'en': '',
+      'en': 'Students can now find you and send a request to chat.',
+    },
+  },
+  // edit_country
+  {
+    'z2pbajmj': {
+      'ru': 'Сохранить',
+      'en': 'Save',
     },
   },
   // delete
   {
     '7vr6l6ry': {
       'ru': 'Удаление аккаунта',
-      'en': '',
+      'en': 'Deleting an account',
     },
     'jgyobu2a': {
       'ru': 'Вы точно хотите уйти?',
-      'en': '',
+      'en': 'Are you sure you want to leave?',
     },
     '2ugquugx': {
       'ru':
           'Это действие нельзя отменить, и нам придется удалить все ваши данные',
-      'en': '',
+      'en':
+          'This action cannot be undone and we will have to delete all your data.',
     },
     'jx33v3a7': {
       'ru': 'Удалить аккаунт',
-      'en': '',
+      'en': 'Delete account',
+    },
+    'wxna6225': {
+      'ru': 'Отменить',
+      'en': 'Cancel',
     },
   },
   // logout
   {
     'zd4lq385': {
       'ru': 'Вы уверены, что хотите выйти',
-      'en': '',
+      'en': 'Are you sure you want to exit?',
     },
     'j9kmlyfd': {
       'ru':
           'Это действие нельзя отменить, и нам придется удалить все ваши данные',
-      'en': '',
+      'en':
+          'This action cannot be undone and we will have to delete all your data.',
     },
     '8iuccsuc': {
       'ru': 'Выйти',
-      'en': '',
+      'en': 'Exit',
+    },
+    'op5siu4w': {
+      'ru': 'Отменить',
+      'en': 'Cancel',
     },
   },
   // edit_avatar
   {
     'nvje9sm9': {
       'ru': 'Выберите аватар',
-      'en': '',
+      'en': 'Select an avatar',
     },
     'mhdxqa8u': {
       'ru': 'Или загрузить своё фото',
-      'en': '',
+      'en': 'Or upload your photo',
+    },
+    'noxdyq69': {
+      'ru': 'Сохранить',
+      'en': 'Save',
     },
   },
   // langApp
   {
     '2wr6p6ar': {
       'ru': 'Язык приложения',
-      'en': '',
+      'en': 'Application language',
+    },
+    'lbypxcbp': {
+      'ru': 'Сохранить',
+      'en': 'Save',
     },
   },
   // woed
   {
     '3d0bey8j': {
       'ru': '🇺🇸',
-      'en': '',
+      'en': '🇺🇸',
     },
     'scaig71z': {
       'ru': '🇷🇺',
-      'en': '',
+      'en': '🇷🇺',
     },
     'lpzroxlx': {
       'ru': ' ',
@@ -1799,94 +1983,114 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     '7118sl5m': {
       'ru': 'Примеры',
-      'en': '',
+      'en': 'Examples',
     },
   },
   // add_card
   {
     '6wfkgk3t': {
       'ru': 'Добавить способ вывода',
-      'en': '',
+      'en': 'Add a withdrawal method',
     },
     '3yeveeq0': {
       'ru': 'Номер карты',
-      'en': '',
+      'en': 'Card number',
     },
     'vzfl7tbq': {
       'ru': 'Поле должно содержать от 16 символов',
-      'en': '',
+      'en': 'The field must contain at least 16 characters.',
     },
     'un33x35j': {
       'ru': 'Поле должно содержать от 16 символов',
-      'en': '',
+      'en': 'The field must contain at least 16 characters.',
     },
     '76606mzd': {
       'ru': 'Поле должно содержать до 24 символов',
-      'en': '',
+      'en': 'The field must contain up to 24 characters.',
     },
     'fugxvcj6': {
       'ru': 'Please choose an option from the dropdown',
-      'en': '',
+      'en': 'Please choose an option from the dropdown',
+    },
+    'v2jfujr9': {
+      'ru': 'Добавить карту',
+      'en': 'Add card',
     },
   },
   // edit_card
   {
     'o063iu8b': {
       'ru': 'Изменение способов вывода',
-      'en': '',
+      'en': 'Changing withdrawal methods',
     },
     'am3nucgj': {
       'ru': '*** 4334',
-      'en': '',
+      'en': '*** 4334',
+    },
+    'fj7u70af': {
+      'ru': 'Готово',
+      'en': 'Done',
     },
   },
   // deleteCard
   {
     '8iw8rarz': {
       'ru': 'Удалить сохраненную карту?',
-      'en': '',
+      'en': 'Delete saved card?',
     },
     'j3b1pdz7': {
       'ru': '*** 4334',
-      'en': '',
+      'en': '*** 4334',
     },
     'ikt9ul7g': {
       'ru': 'Удалить карту',
-      'en': '',
+      'en': 'Delete card',
+    },
+    'c3z3ihcx': {
+      'ru': 'Не сейчас',
+      'en': 'Not now',
     },
   },
   // filters
   {
     '507c1jln': {
       'ru': 'Фильтры',
-      'en': '',
+      'en': 'Filters',
     },
     'nu210379': {
       'ru': 'Язык зучения',
-      'en': '',
+      'en': 'Language of learning',
     },
     'qdxe0ygf': {
       'ru': 'Язык cобеседника',
-      'en': '',
+      'en': 'Language of the interlocutor',
     },
     'dtstv5e7': {
       'ru': 'Локация cобеседника',
-      'en': '',
+      'en': 'Location of the interlocutor',
+    },
+    'z87iidnf': {
+      'ru': 'Готово',
+      'en': 'Done',
     },
   },
   // add_inter
   {
     'doo4eaqe': {
       'ru': 'Добавить интервал',
-      'en': '',
+      'en': 'Add interval',
     },
     'k5nqxijy': {
       'ru': 'Буду доступен с',
-      'en': '',
+      'en': 'I will be available from',
     },
     '3cadl3j2': {
       'ru': 'до',
-      'en': '',
+      'en': 'to',
+    },
+    'bzho8r5y': {
+      'ru': 'Добавить интервал',
+      'en': 'Add interval',
     },
   },
   // Miscellaneous
@@ -1901,70 +2105,73 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'g07xayx5': {
       'ru': 'Для видеозвонков и изучения иностранных языков',
-      'en': '',
+      'en': 'For video calls and learning foreign languages',
     },
     'oyox2zza': {
       'ru': 'Для голосового общения и создания субтитров во время урока',
-      'en': '',
+      'en': 'For voice communication and creating subtitles during the lesson',
     },
     '2j0sgrb9': {
       'ru': 'вап',
-      'en': '',
+      'en': 'wap',
     },
     'r4t087i0': {
       'ru': 'укеуке',
-      'en': '',
+      'en': 'ukeuke',
     },
     '0ubtjayt': {
       'ru': 'укеукеу',
-      'en': '',
+      'en': 'ukeukeu',
     },
     '60fb8f43': {
       'ru': 'Ошибка',
-      'en': '',
+      'en': 'Error',
     },
     '7mczn45o': {
       'ru': 'Ссылка на сборс пароля отправлена на вашу почту',
-      'en': '',
+      'en': 'A link to collect your password has been sent to your email.',
     },
     'rizvdi40': {
       'ru': 'Почта не заполнена',
-      'en': '',
+      'en': 'The mail is not filled',
     },
     'b7lmnf37': {
       'ru': 'Номер телефона не заполнен и должен начинаться с +',
-      'en': '',
+      'en': 'The phone number is empty and must start with +',
     },
     'cosiekyi': {
       'ru': 'Пароли не совпадают',
-      'en': '',
+      'en': 'The passwords don\'t match',
     },
     'hh2w7pvl': {
       'ru': 'Введите код подтверждения',
-      'en': '',
+      'en': 'Enter the confirmation code',
     },
     '85lj4aua': {
       'ru':
           'Прошло много времени с последнего входа. Зайдите еще раз, чтобы удалить аккаунт',
-      'en': '',
+      'en':
+          'It\'s been a while since you last logged in. Please log in again to delete your account.',
     },
     'k3mw5pe7': {
       'ru':
           'Прошло много времени с последнего входа. Зайдите еще раз, чтобы обновить почту',
-      'en': '',
+      'en':
+          'It\'s been a while since you last logged in. Please log in again to update your email.',
     },
     'e01skyqu': {
       'ru': 'Ссылка на подтверждение почты отправлена',
-      'en': '',
+      'en': 'Email confirmation link sent',
     },
     'qw84zdr4': {
       'ru': 'Эта почта уже использовалась при создании аккаунта',
-      'en': '',
+      'en': 'This email has already been used to create an account.',
     },
     'euaras4g': {
       'ru':
           'Предоставленные учетные данные для авторизации неверны, введены неправильно или срок их действия истек',
-      'en': '',
+      'en':
+          'The provided login credentials are incorrect, entered incorrectly, or have expired.',
     },
     '56pk8mxq': {
       'ru': '',

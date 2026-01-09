@@ -115,9 +115,9 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                                   child: Align(
                                     alignment: AlignmentDirectional(0.0, 0.0),
                                     child: Icon(
-                                      FFIcons.kwallet02,
+                                      FFIcons.kcreditCard02,
                                       color: FlutterFlowTheme.of(context)
-                                          .secondaryText,
+                                          .primaryText,
                                       size: 20.0,
                                     ),
                                   ),
@@ -194,7 +194,9 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                         model: _model.buttonModel,
                         updateCallback: () => safeSetState(() {}),
                         child: ButtonWidget(
-                          text: 'Не сейчас',
+                          text: FFLocalizations.of(context).getText(
+                            'c3z3ihcx' /* Не сейчас */,
+                          ),
                           action: () async {
                             Navigator.pop(context);
                           },

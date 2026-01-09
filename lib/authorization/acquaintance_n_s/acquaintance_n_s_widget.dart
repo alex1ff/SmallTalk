@@ -129,7 +129,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                     ),
                                   ),
                                   Text(
-                                    '${(_model.pageViewCurrentIndex + 1).toString()}/6',
+                                    '${(_model.pageViewCurrentIndex + 1).toString()}/7',
                                     textAlign: TextAlign.center,
                                     style: FlutterFlowTheme.of(context)
                                         .bodyMedium
@@ -163,7 +163,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                           widget.index,
                                           0,
                                         ),
-                                        5))),
+                                        6))),
                         onPageChanged: (_) => safeSetState(() {}),
                         scrollDirection: Axis.horizontal,
                         children: [
@@ -241,11 +241,11 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                               alignment: AlignmentDirectional(
                                                   0.0, 0.0),
                                               child: Icon(
-                                                Icons.person,
+                                                FFIcons.kuser03,
                                                 color:
                                                     FlutterFlowTheme.of(context)
                                                         .primaryText,
-                                                size: 18.0,
+                                                size: 20.0,
                                               ),
                                             ),
                                           ),
@@ -435,7 +435,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                     padding: EdgeInsetsDirectional.fromSTEB(
                                         0.0, 60.0, 0.0, 0.0),
                                     child: wrapWithModel(
-                                      model: _model.langModel,
+                                      model: _model.langModel1,
                                       updateCallback: () => safeSetState(() {}),
                                       child: LangWidget(
                                         selected: _model.langLearn,
@@ -449,6 +449,54 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                 ]
                                     .addToStart(SizedBox(height: 16.0))
                                     .addToEnd(SizedBox(height: 120.0)),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                6.0, 0.0, 6.0, 0.0),
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.max,
+                                mainAxisAlignment: MainAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: EdgeInsetsDirectional.fromSTEB(
+                                        10.0, 16.0, 10.0, 0.0),
+                                    child: AutoSizeText(
+                                      FFLocalizations.of(context).getText(
+                                        'qneb3190' /* На каком языке вы говорите с д... */,
+                                      ),
+                                      maxLines: 2,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'Cool',
+                                            color: Colors.black,
+                                            fontSize: 43.0,
+                                            letterSpacing: 0.0,
+                                            fontWeight: FontWeight.normal,
+                                            lineHeight: 1.1,
+                                          ),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: EdgeInsetsDirectional.fromSTEB(
+                                        0.0, 60.0, 0.0, 0.0),
+                                    child: wrapWithModel(
+                                      model: _model.langModel2,
+                                      updateCallback: () => safeSetState(() {}),
+                                      child: LangWidget(
+                                        selected: _model.nativeLang,
+                                        action: (lang) async {
+                                          _model.nativeLang = lang;
+                                          safeSetState(() {});
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ].addToEnd(SizedBox(height: 111.0)),
                               ),
                             ),
                           ),
@@ -481,8 +529,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                                   borderRadius:
                                                       BorderRadius.circular(
                                                           20.0),
-                                                  child: Image.asset(
-                                                    'assets/images/dzwds_4.jpg',
+                                                  child: Image.network(
+                                                    FFLocalizations.of(context)
+                                                                .languageCode ==
+                                                            'ru'
+                                                        ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/yhizey073y1b/%D0%B0%D1%8B%D0%B04.jpg'
+                                                        : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/isq53wlqy7ir/Group_1171275311.png',
                                                     width: 280.0,
                                                     fit: BoxFit.contain,
                                                   ),
@@ -498,8 +550,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                               child: ClipRRect(
                                                 borderRadius:
                                                     BorderRadius.circular(20.0),
-                                                child: Image.asset(
-                                                  'assets/images/33.jpg',
+                                                child: Image.network(
+                                                  FFLocalizations.of(context)
+                                                              .languageCode ==
+                                                          'ru'
+                                                      ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/k1enf0nhdqvc/33%D0%B0%D0%B0.jpg'
+                                                      : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/avw4u16n2yvl/33%D0%B0%D0%B02.jpg',
                                                   width: 280.0,
                                                   fit: BoxFit.contain,
                                                 ),
@@ -521,6 +577,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                               ),
                               Column(
                                 mainAxisSize: MainAxisSize.max,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
@@ -917,7 +974,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                                               20.0),
                                                     ),
                                                     child: Icon(
-                                                      FFIcons.kuserCircle,
+                                                      FFIcons.kcameraPlus,
                                                       color:
                                                           FlutterFlowTheme.of(
                                                                   context)
@@ -1024,7 +1081,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                             ),
                             Builder(
                               builder: (context) {
-                                if (_model.pageViewCurrentIndex == 5) {
+                                if (_model.pageViewCurrentIndex == 6) {
                                   return FlutterFlowIconButton(
                                     borderRadius: 60.0,
                                     buttonSize: 56.0,
@@ -1111,6 +1168,11 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                                 clearUnsetFields: false,
                                               ),
                                               verifNS: true,
+                                              nativeLanguageNS:
+                                                  updateLanguageStruct(
+                                                _model.nativeLang,
+                                                clearUnsetFields: false,
+                                              ),
                                             ));
                                           }(),
                                         );
@@ -1186,7 +1248,20 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                           return;
                                         }
                                       } else if (_model.pageViewCurrentIndex ==
+                                          2) {
+                                        if (!(_model.nativeLang != null)) {
+                                          await actions.showTopNotification(
+                                            context,
+                                            'Выберите язык из списка',
+                                            '',
+                                            true,
+                                          );
+                                          return;
+                                        }
+                                      } else if (_model.pageViewCurrentIndex ==
                                           3) {
+                                      } else if (_model.pageViewCurrentIndex ==
+                                          4) {
                                         if (!(_model.country != null)) {
                                           await actions.showTopNotification(
                                             context,
@@ -1197,7 +1272,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                           return;
                                         }
                                       } else if (_model.pageViewCurrentIndex ==
-                                          4) {
+                                          5) {
                                         if (!(_model.aboutMeTextController.text !=
                                                 '')) {
                                           await actions.showTopNotification(

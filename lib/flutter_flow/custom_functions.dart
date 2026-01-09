@@ -568,3 +568,7 @@ String maskCardNumber(String cardNumber) {
 
   return '**** $lastFour';
 }
+
+DocumentReference stringToRef(String string) {
+  return FirebaseFirestore.instance.collection('users').doc(string);
+}

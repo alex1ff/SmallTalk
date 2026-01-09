@@ -243,7 +243,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                                                           .bodyMedium
                                                           .override(
                                                             fontFamily: 'Cool',
-                                                            fontSize: 20.0,
+                                                            fontSize: 21.0,
                                                             letterSpacing: 0.0,
                                                             fontWeight:
                                                                 FontWeight
@@ -256,10 +256,12 @@ class _WoedWidgetState extends State<WoedWidget> {
                                                       style: TextStyle(
                                                         fontFamily: 'Cool',
                                                         color:
-                                                            Color(0xFF727272),
+                                                            FlutterFlowTheme.of(
+                                                                    context)
+                                                                .secondaryText,
                                                         fontWeight:
                                                             FontWeight.normal,
-                                                        fontSize: 20.0,
+                                                        fontSize: 21.0,
                                                       ),
                                                     ),
                                                     TextSpan(
@@ -286,10 +288,12 @@ class _WoedWidgetState extends State<WoedWidget> {
                                                       style: TextStyle(
                                                         fontFamily: 'Cool',
                                                         color:
-                                                            Color(0xFF727272),
+                                                            FlutterFlowTheme.of(
+                                                                    context)
+                                                                .secondaryText,
                                                         fontWeight:
                                                             FontWeight.normal,
-                                                        fontSize: 20.0,
+                                                        fontSize: 21.0,
                                                         fontStyle:
                                                             FontStyle.italic,
                                                       ),
@@ -299,10 +303,9 @@ class _WoedWidgetState extends State<WoedWidget> {
                                                           context)
                                                       .bodyMedium
                                                       .override(
-                                                        fontFamily:
-                                                            'sf pro display',
+                                                        fontFamily: 'Cool',
                                                         color: Colors.black,
-                                                        fontSize: 20.0,
+                                                        fontSize: 2021.0,
                                                         letterSpacing: 0.0,
                                                         fontWeight:
                                                             FontWeight.normal,
@@ -385,7 +388,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                                                                             sssssIndex];
                                                                     return Container(
                                                                       height:
-                                                                          24.0,
+                                                                          35.0,
                                                                       decoration:
                                                                           BoxDecoration(
                                                                         color: FlutterFlowTheme.of(context)
@@ -397,46 +400,50 @@ class _WoedWidgetState extends State<WoedWidget> {
                                                                           Padding(
                                                                         padding: EdgeInsetsDirectional.fromSTEB(
                                                                             12.0,
-                                                                            1.0,
+                                                                            0.0,
                                                                             12.0,
-                                                                            1.0),
+                                                                            0.0),
                                                                         child:
+                                                                            Row(
+                                                                          mainAxisSize:
+                                                                              MainAxisSize.min,
+                                                                          children: [
                                                                             RichText(
-                                                                          textScaler:
-                                                                              MediaQuery.of(context).textScaler,
-                                                                          text:
-                                                                              TextSpan(
-                                                                            children: [
-                                                                              TextSpan(
-                                                                                text: sssssItem.text,
+                                                                              textScaler: MediaQuery.of(context).textScaler,
+                                                                              text: TextSpan(
+                                                                                children: [
+                                                                                  TextSpan(
+                                                                                    text: sssssItem.text,
+                                                                                    style: FlutterFlowTheme.of(context).bodyMedium.override(
+                                                                                          fontFamily: 'sf pro display',
+                                                                                          color: Colors.black,
+                                                                                          fontSize: 15.0,
+                                                                                          letterSpacing: 0.0,
+                                                                                          fontWeight: FontWeight.w500,
+                                                                                        ),
+                                                                                  ),
+                                                                                  TextSpan(
+                                                                                    text: FFLocalizations.of(context).getText(
+                                                                                      'lpzroxlx' /*   */,
+                                                                                    ),
+                                                                                    style: TextStyle(),
+                                                                                  ),
+                                                                                  TextSpan(
+                                                                                    text: sssssItem.gen,
+                                                                                    style: TextStyle(
+                                                                                      color: Color(0xFF727272),
+                                                                                    ),
+                                                                                  )
+                                                                                ],
                                                                                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                                                                                       fontFamily: 'sf pro display',
-                                                                                      color: Colors.black,
-                                                                                      fontSize: 15.0,
+                                                                                      fontSize: 16.0,
                                                                                       letterSpacing: 0.0,
-                                                                                      fontWeight: FontWeight.w500,
+                                                                                      fontWeight: FontWeight.normal,
                                                                                     ),
                                                                               ),
-                                                                              TextSpan(
-                                                                                text: FFLocalizations.of(context).getText(
-                                                                                  'lpzroxlx' /*   */,
-                                                                                ),
-                                                                                style: TextStyle(),
-                                                                              ),
-                                                                              TextSpan(
-                                                                                text: sssssItem.gen,
-                                                                                style: TextStyle(
-                                                                                  color: Color(0xFF727272),
-                                                                                ),
-                                                                              )
-                                                                            ],
-                                                                            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                                                                  fontFamily: 'sf pro display',
-                                                                                  fontSize: 16.0,
-                                                                                  letterSpacing: 0.0,
-                                                                                  fontWeight: FontWeight.normal,
-                                                                                ),
-                                                                          ),
+                                                                            ),
+                                                                          ],
                                                                         ),
                                                                       ),
                                                                     );
@@ -524,7 +531,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                                           .bodyMedium
                                           .override(
                                             fontFamily: 'Cool',
-                                            fontSize: 20.0,
+                                            fontSize: 21.0,
                                             letterSpacing: 0.0,
                                             fontWeight: FontWeight.normal,
                                           ),
@@ -641,23 +648,10 @@ class _WoedWidgetState extends State<WoedWidget> {
                   alignment: AlignmentDirectional(1.0, 1.0),
                   child: Padding(
                     padding:
-                        EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 35.0),
+                        EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 20.0),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        FlutterFlowIconButton(
-                          borderRadius: 70.0,
-                          buttonSize: 45.0,
-                          fillColor: Colors.white,
-                          icon: Icon(
-                            Icons.close_rounded,
-                            color: FlutterFlowTheme.of(context).primaryText,
-                            size: 20.0,
-                          ),
-                          onPressed: () async {
-                            Navigator.pop(context);
-                          },
-                        ),
                         StreamBuilder<List<UserWordsRecord>>(
                           stream: queryUserWordsRecord(
                             parent: currentUserReference,
@@ -700,7 +694,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                                 if (conditionalBuilderUserWordsRecord != null) {
                                   return FlutterFlowIconButton(
                                     borderRadius: 70.0,
-                                    buttonSize: 45.0,
+                                    buttonSize: 60.0,
                                     fillColor: Colors.white,
                                     icon: Icon(
                                       Icons.favorite_rounded,
@@ -721,7 +715,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                                 } else {
                                   return FlutterFlowIconButton(
                                     borderRadius: 70.0,
-                                    buttonSize: 45.0,
+                                    buttonSize: 60.0,
                                     fillColor: Colors.white,
                                     icon: Icon(
                                       Icons.favorite_border,
@@ -775,7 +769,20 @@ class _WoedWidgetState extends State<WoedWidget> {
                             );
                           },
                         ),
-                      ].divide(SizedBox(height: 12.0)),
+                        FlutterFlowIconButton(
+                          borderRadius: 70.0,
+                          buttonSize: 60.0,
+                          fillColor: Colors.white,
+                          icon: Icon(
+                            Icons.close_sharp,
+                            color: FlutterFlowTheme.of(context).error,
+                            size: 20.0,
+                          ),
+                          onPressed: () async {
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ].divide(SizedBox(height: 6.0)),
                     ),
                   ),
                 ),

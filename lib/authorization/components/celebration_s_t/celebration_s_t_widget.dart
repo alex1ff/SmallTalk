@@ -73,23 +73,19 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                8.0, 0.0, 8.0, 0.0),
-                            child: Text(
-                              FFLocalizations.of(context).getText(
-                                'pi17owq7' /* Юх-ху! */,
-                              ),
-                              textAlign: TextAlign.start,
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 26.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.normal,
-                                  ),
+                          Text(
+                            FFLocalizations.of(context).getText(
+                              'pi17owq7' /* Юх-ху! */,
                             ),
+                            textAlign: TextAlign.start,
+                            style: FlutterFlowTheme.of(context)
+                                .bodyMedium
+                                .override(
+                                  fontFamily: 'Cool',
+                                  fontSize: 26.0,
+                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.normal,
+                                ),
                           ),
                           Stack(
                             alignment: AlignmentDirectional(1.15, -1.2),
@@ -426,23 +422,19 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                8.0, 0.0, 8.0, 0.0),
-                            child: Text(
-                              FFLocalizations.of(context).getText(
-                                'mc34azc3' /* Юх-ху! */,
-                              ),
-                              textAlign: TextAlign.start,
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 26.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.normal,
-                                  ),
+                          Text(
+                            FFLocalizations.of(context).getText(
+                              'mc34azc3' /* Юх-ху! */,
                             ),
+                            textAlign: TextAlign.start,
+                            style: FlutterFlowTheme.of(context)
+                                .bodyMedium
+                                .override(
+                                  fontFamily: 'Cool',
+                                  fontSize: 26.0,
+                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.normal,
+                                ),
                           ),
                           Stack(
                             alignment: AlignmentDirectional(1.15, -1.2),

@@ -1,1 +1,2 @@
-
+NSCameraUsageDescription = "For video calls and learning foreign languages";
+NSMicrophoneUsageDescription = "For voice communication and creating subtitles during the lesson";

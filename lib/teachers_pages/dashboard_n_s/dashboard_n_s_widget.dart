@@ -117,12 +117,16 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   color: FlutterFlowTheme.of(context)
                                       .secondaryBackground,
                                   image: DecorationImage(
-                                    fit: BoxFit.contain,
+                                    fit: BoxFit.cover,
                                     image: CachedNetworkImageProvider(
                                       currentUserPhoto,
                                     ),
                                   ),
                                   shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: FlutterFlowTheme.of(context)
+                                        .secondaryBackground,
+                                  ),
                                 ),
                               ),
                             ),
@@ -137,7 +141,10 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   children: [
                                     AuthUserStreamWidget(
                                       builder: (context) => Text(
-                                        'Привет, ${currentUserDisplayName}',
+                                        '${FFLocalizations.of(context).getVariableText(
+                                          ruText: 'Привет, ',
+                                          enText: 'Hi, ',
+                                        )}${currentUserDisplayName}',
                                         style: FlutterFlowTheme.of(context)
                                             .bodyMedium
                                             .override(
@@ -361,8 +368,14 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                       child: AuthUserStreamWidget(
                         builder: (context) => Text(
                           currentUserDocument!.availabilityToday.enabled
-                              ? 'Вы доступны для звонков'
-                              : 'Вы не доступны для звонков',
+                              ? FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Вы доступны для звонков',
+                                  enText: 'Are you available for calls',
+                                )
+                              : FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Вы не доступны для звонков',
+                                  enText: 'You are not available for calls',
+                                ),
                           style: FlutterFlowTheme.of(context)
                               .bodyMedium
                               .override(
@@ -510,11 +523,12 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                               child: Align(
                                                 alignment: AlignmentDirectional(
                                                     0.0, 0.0),
-                                                child: Image.asset(
-                                                  'assets/images/rbuts_.png',
-                                                  width: 25.0,
-                                                  height: 25.0,
-                                                  fit: BoxFit.contain,
+                                                child: Icon(
+                                                  FFIcons.kclock,
+                                                  color: FlutterFlowTheme.of(
+                                                          context)
+                                                      .primaryText,
+                                                  size: 20.0,
                                                 ),
                                               ),
                                             ),
@@ -864,7 +878,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                                 ),
                                               ),
                                               child: Icon(
-                                                FFIcons.ksun,
+                                                FFIcons.kclock,
                                                 color:
                                                     FlutterFlowTheme.of(context)
                                                         .secondaryText,

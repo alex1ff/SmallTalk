@@ -167,6 +167,14 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
               isList: false,
               collectionNamePath: ['videoSessions'],
             ),
+            lang: params.getParam(
+              'lang',
+              ParamType.String,
+            ),
+            dur: params.getParam(
+              'dur',
+              ParamType.int,
+            ),
           ),
         ),
         FFRoute(
