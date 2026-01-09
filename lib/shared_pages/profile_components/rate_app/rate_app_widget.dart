@@ -1,6 +1,7 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/button/button_widget.dart';
+import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/profile_components/chip/chip_widget.dart';
@@ -9,6 +10,7 @@ import '/custom_code/actions/index.dart' as actions;
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'rate_app_model.dart';
 export 'rate_app_model.dart';
 
@@ -22,6 +24,9 @@ class RateAppWidget extends StatefulWidget {
 class _RateAppWidgetState extends State<RateAppWidget> {
   late RateAppModel _model;
 
+  late StreamSubscription<bool> _keyboardVisibilitySubscription;
+  bool _isKeyboardVisible = false;
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -33,6 +38,15 @@ class _RateAppWidgetState extends State<RateAppWidget> {
     super.initState();
     _model = createModel(context, () => RateAppModel());
 
+    if (!isWeb) {
+      _keyboardVisibilitySubscription =
+          KeyboardVisibilityController().onChange.listen((bool visible) {
+        safeSetState(() {
+          _isKeyboardVisible = visible;
+        });
+      });
+    }
+
     _model.nameTextController ??= TextEditingController();
     _model.nameFocusNode ??= FocusNode();
   }
@@ -41,6 +55,9 @@ class _RateAppWidgetState extends State<RateAppWidget> {
   void dispose() {
     _model.maybeDispose();
 
+    if (!isWeb) {
+      _keyboardVisibilitySubscription.cancel();
+    }
     super.dispose();
   }
 
@@ -75,8 +92,14 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                       Text(
                         valueOrDefault<String>(
                           _model.pageViewCurrentIndex == 0
-                              ? 'Как общее впечатление?'
-                              : 'Спасибо, что поделились!',
+                              ? FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Как общее впечатление?',
+                                  enText: 'What\'s the overall impression?',
+                                )
+                              : FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Спасибо, что поделились!',
+                                  enText: 'Thanks!',
+                                ),
                           'Как общее впечатление?',
                         ),
                         textAlign: TextAlign.start,
@@ -117,7 +140,10 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                             updateCallback: () =>
                                                 safeSetState(() {}),
                                             child: ChipWidget(
-                                              text: 'Мне всё нравится',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                'zdoma2f2' /* Мне всё нравится */,
+                                              ),
                                               currentSelected: _model.chips,
                                               img:
                                                   'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/m3l806hbtb67/%E2%9C%88%EF%B8%8F.png',
@@ -132,7 +158,10 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                             updateCallback: () =>
                                                 safeSetState(() {}),
                                             child: ChipWidget(
-                                              text: 'Классный дизайн',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                'l6e566yv' /* Классный дизайн */,
+                                              ),
                                               currentSelected: _model.chips,
                                               img:
                                                   'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/m3l806hbtb67/%E2%9C%88%EF%B8%8F.png',
@@ -147,8 +176,10 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                             updateCallback: () =>
                                                 safeSetState(() {}),
                                             child: ChipWidget(
-                                              text:
-                                                  'В приложении сложно разобраться',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                '5ptxzwam' /* В приложении сложно разобратьс... */,
+                                              ),
                                               currentSelected: _model.chips,
                                               img:
                                                   'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/m3l806hbtb67/%E2%9C%88%EF%B8%8F.png',
@@ -163,7 +194,10 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                             updateCallback: () =>
                                                 safeSetState(() {}),
                                             child: ChipWidget(
-                                              text: 'Есть технические проблемы',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                'j8iejnb0' /* Есть технические проблемы */,
+                                              ),
                                               currentSelected: _model.chips,
                                               img:
                                                   'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/m3l806hbtb67/%E2%9C%88%EF%B8%8F.png',
@@ -178,8 +212,10 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                             updateCallback: () =>
                                                 safeSetState(() {}),
                                             child: ChipWidget(
-                                              text:
-                                                  'Не хватает некоторых функций',
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                '95l4bk9r' /* Не хватает некоторых функций */,
+                                              ),
                                               currentSelected: _model.chips,
                                               img:
                                                   'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/m3l806hbtb67/%E2%9C%88%EF%B8%8F.png',
@@ -359,49 +395,107 @@ class _RateAppWidgetState extends State<RateAppWidget> {
             ],
           ),
         ),
-        wrapWithModel(
-          model: _model.buttonModel,
-          updateCallback: () => safeSetState(() {}),
-          child: ButtonWidget(
-            text: valueOrDefault<String>(
-              _model.pageViewCurrentIndex == 0
-                  ? 'Отправить'
-                  : 'Всегда пожайлуста',
-              'Отправить',
-            ),
-            action: () async {
-              if (_model.nameTextController.text != '') {
-                if (_model.pageViewCurrentIndex == 0) {
-                  unawaited(
-                    () async {
-                      await RewiewsOfTheAppRecord.collection
-                          .doc()
-                          .set(createRewiewsOfTheAppRecordData(
-                            chips: _model.chips,
-                            comment: _model.nameTextController.text,
-                            date: getCurrentTimestamp,
-                            user: currentUserReference,
-                          ));
-                    }(),
-                  );
-                  await _model.pageViewController?.nextPage(
-                    duration: Duration(milliseconds: 300),
-                    curve: Curves.ease,
-                  );
-                } else {
-                  Navigator.pop(context);
-                  return;
-                }
-              } else {
-                await actions.showTopNotification(
-                  context,
-                  'Напишите хотя бы пару слов',
-                  '',
-                  true,
-                );
-                return;
-              }
-            },
+        Padding(
+          padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 0.0),
+          child: Row(
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              Expanded(
+                child: wrapWithModel(
+                  model: _model.buttonModel,
+                  updateCallback: () => safeSetState(() {}),
+                  child: ButtonWidget(
+                    text: valueOrDefault<String>(
+                      _model.pageViewCurrentIndex == 0
+                          ? FFLocalizations.of(context).getVariableText(
+                              ruText: 'Отправить',
+                              enText: 'Send',
+                            )
+                          : FFLocalizations.of(context).getVariableText(
+                              ruText: 'Всегда пожайлуста',
+                              enText: 'Done',
+                            ),
+                      'Отправить',
+                    ),
+                    action: () async {
+                      if (_model.nameTextController.text != '') {
+                        if (_model.pageViewCurrentIndex == 0) {
+                          unawaited(
+                            () async {
+                              await RewiewsOfTheAppRecord.collection
+                                  .doc()
+                                  .set(createRewiewsOfTheAppRecordData(
+                                    chips: _model.chips,
+                                    comment: _model.nameTextController.text,
+                                    date: getCurrentTimestamp,
+                                    user: currentUserReference,
+                                  ));
+                            }(),
+                          );
+                          await _model.pageViewController?.nextPage(
+                            duration: Duration(milliseconds: 300),
+                            curve: Curves.ease,
+                          );
+                        } else {
+                          Navigator.pop(context);
+                          return;
+                        }
+                      } else {
+                        await actions.showTopNotification(
+                          context,
+                          'Напишите хотя бы пару слов',
+                          '',
+                          true,
+                        );
+                        return;
+                      }
+                    },
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    0.0,
+                    0.0,
+                    0.0,
+                    valueOrDefault<double>(
+                      (isWeb
+                              ? MediaQuery.viewInsetsOf(context).bottom > 0
+                              : _isKeyboardVisible)
+                          ? 6.0
+                          : 35.0,
+                      6.0,
+                    )),
+                child: Container(
+                  decoration: BoxDecoration(
+                    boxShadow: [
+                      BoxShadow(
+                        blurRadius: 7.0,
+                        color: Color(0x0D2C2C2C),
+                        offset: Offset(
+                          0.0,
+                          2.0,
+                        ),
+                      )
+                    ],
+                    shape: BoxShape.circle,
+                  ),
+                  child: FlutterFlowIconButton(
+                    borderRadius: 50.0,
+                    buttonSize: 60.0,
+                    fillColor: FlutterFlowTheme.of(context).primaryBackground,
+                    icon: Icon(
+                      Icons.close_sharp,
+                      color: FlutterFlowTheme.of(context).error,
+                      size: 20.0,
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(context);
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],

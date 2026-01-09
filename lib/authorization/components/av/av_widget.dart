@@ -1,11 +1,13 @@
 import '/backend/backend.dart';
 import '/components/button/button_widget.dart';
+import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'av_model.dart';
 export 'av_model.dart';
 
@@ -26,6 +28,9 @@ class AvWidget extends StatefulWidget {
 class _AvWidgetState extends State<AvWidget> {
   late AvModel _model;
 
+  late StreamSubscription<bool> _keyboardVisibilitySubscription;
+  bool _isKeyboardVisible = false;
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -36,12 +41,24 @@ class _AvWidgetState extends State<AvWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => AvModel());
+
+    if (!isWeb) {
+      _keyboardVisibilitySubscription =
+          KeyboardVisibilityController().onChange.listen((bool visible) {
+        safeSetState(() {
+          _isKeyboardVisible = visible;
+        });
+      });
+    }
   }
 
   @override
   void dispose() {
     _model.maybeDispose();
 
+    if (!isWeb) {
+      _keyboardVisibilitySubscription.cancel();
+    }
     super.dispose();
   }
 
@@ -78,7 +95,7 @@ class _AvWidgetState extends State<AvWidget> {
                           EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
                       child: Text(
                         FFLocalizations.of(context).getText(
-                          'zlkfpu1u' /* какой ты сегодня */,
+                          'zlkfpu1u' /* Какой ты сегодня */,
                         ),
                         textAlign: TextAlign.start,
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
@@ -144,22 +161,81 @@ class _AvWidgetState extends State<AvWidget> {
                         );
                       },
                     ),
-                    wrapWithModel(
-                      model: _model.buttonModel,
-                      updateCallback: () => safeSetState(() {}),
-                      child: ButtonWidget(
-                        text: 'Сохранить',
-                        action: () async {
-                          unawaited(
-                            () async {
-                              await widget.ation?.call(
-                                widget.avatarDoc!.images.elementAtOrNull(
-                                    _model.carouselCurrentIndex)!,
-                              );
-                            }(),
-                          );
-                          Navigator.pop(context);
-                        },
+                    Padding(
+                      padding:
+                          EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 0.0),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.max,
+                        children: [
+                          Expanded(
+                            child: wrapWithModel(
+                              model: _model.buttonModel,
+                              updateCallback: () => safeSetState(() {}),
+                              child: ButtonWidget(
+                                text: FFLocalizations.of(context).getText(
+                                  'v5m8e59n' /* Сохранить */,
+                                ),
+                                action: () async {
+                                  unawaited(
+                                    () async {
+                                      await widget.ation?.call(
+                                        widget.avatarDoc!.images
+                                            .elementAtOrNull(
+                                                _model.carouselCurrentIndex)!,
+                                      );
+                                    }(),
+                                  );
+                                  Navigator.pop(context);
+                                },
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                0.0,
+                                0.0,
+                                0.0,
+                                valueOrDefault<double>(
+                                  (isWeb
+                                          ? MediaQuery.viewInsetsOf(context)
+                                                  .bottom >
+                                              0
+                                          : _isKeyboardVisible)
+                                      ? 6.0
+                                      : 35.0,
+                                  6.0,
+                                )),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                boxShadow: [
+                                  BoxShadow(
+                                    blurRadius: 7.0,
+                                    color: Color(0x0D2C2C2C),
+                                    offset: Offset(
+                                      0.0,
+                                      2.0,
+                                    ),
+                                  )
+                                ],
+                                shape: BoxShape.circle,
+                              ),
+                              child: FlutterFlowIconButton(
+                                borderRadius: 50.0,
+                                buttonSize: 60.0,
+                                fillColor: FlutterFlowTheme.of(context)
+                                    .primaryBackground,
+                                icon: Icon(
+                                  Icons.close_sharp,
+                                  color: FlutterFlowTheme.of(context).error,
+                                  size: 20.0,
+                                ),
+                                onPressed: () async {
+                                  Navigator.pop(context);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ]

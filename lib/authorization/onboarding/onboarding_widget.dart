@@ -78,10 +78,11 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                             padding: EdgeInsetsDirectional.fromSTEB(
                                 10.0, 8.0, 10.0, 2.0),
                             child: Image.asset(
-                              'assets/images/eeed62211805403.672a1eceaed58_1.png',
+                              'assets/images/logo.png',
                               width: double.infinity,
                               height: double.infinity,
                               fit: BoxFit.contain,
+                              alignment: Alignment(0.0, -0.2),
                             ),
                           ),
                         ),

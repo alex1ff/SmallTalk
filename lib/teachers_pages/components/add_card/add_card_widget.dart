@@ -1,6 +1,7 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/button/button_widget.dart';
+import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'dart:async';
@@ -8,6 +9,7 @@ import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'add_card_model.dart';
 export 'add_card_model.dart';
@@ -22,6 +24,9 @@ class AddCardWidget extends StatefulWidget {
 class _AddCardWidgetState extends State<AddCardWidget> {
   late AddCardModel _model;
 
+  late StreamSubscription<bool> _keyboardVisibilitySubscription;
+  bool _isKeyboardVisible = false;
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -33,6 +38,15 @@ class _AddCardWidgetState extends State<AddCardWidget> {
     super.initState();
     _model = createModel(context, () => AddCardModel());
 
+    if (!isWeb) {
+      _keyboardVisibilitySubscription =
+          KeyboardVisibilityController().onChange.listen((bool visible) {
+        safeSetState(() {
+          _isKeyboardVisible = visible;
+        });
+      });
+    }
+
     _model.nameTextController ??= TextEditingController();
     _model.nameFocusNode ??= FocusNode();
     _model.nameFocusNode!.addListener(() => safeSetState(() {}));
@@ -43,6 +57,9 @@ class _AddCardWidgetState extends State<AddCardWidget> {
   void dispose() {
     _model.maybeDispose();
 
+    if (!isWeb) {
+      _keyboardVisibilitySubscription.cancel();
+    }
     super.dispose();
   }
 
@@ -113,9 +130,9 @@ class _AddCardWidgetState extends State<AddCardWidget> {
                             child: Align(
                               alignment: AlignmentDirectional(0.0, 0.0),
                               child: Icon(
-                                Icons.person,
+                                FFIcons.kcreditCardPlus,
                                 color: FlutterFlowTheme.of(context).primaryText,
-                                size: 18.0,
+                                size: 20.0,
                               ),
                             ),
                           ),
@@ -182,28 +199,85 @@ class _AddCardWidgetState extends State<AddCardWidget> {
                   ),
                 ),
               ),
-              wrapWithModel(
-                model: _model.buttonModel,
-                updateCallback: () => safeSetState(() {}),
-                child: ButtonWidget(
-                  text: 'Добавить карту',
-                  action: () async {
-                    if (_model.formKey.currentState == null ||
-                        !_model.formKey.currentState!.validate()) {
-                      return;
-                    }
-                    unawaited(
-                      () async {
-                        await CardsRecord.createDoc(currentUserReference!)
-                            .set(createCardsRecordData(
-                          num: _model.nameTextController.text,
-                          pan: functions
-                              .maskCardNumber(_model.nameTextController.text),
-                        ));
-                      }(),
-                    );
-                    Navigator.pop(context);
-                  },
+              Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 0.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    Expanded(
+                      child: wrapWithModel(
+                        model: _model.buttonModel,
+                        updateCallback: () => safeSetState(() {}),
+                        child: ButtonWidget(
+                          text: FFLocalizations.of(context).getText(
+                            'v2jfujr9' /* Добавить карту */,
+                          ),
+                          action: () async {
+                            if (_model.formKey.currentState == null ||
+                                !_model.formKey.currentState!.validate()) {
+                              return;
+                            }
+                            unawaited(
+                              () async {
+                                await CardsRecord.createDoc(
+                                        currentUserReference!)
+                                    .set(createCardsRecordData(
+                                  num: _model.nameTextController.text,
+                                  pan: functions.maskCardNumber(
+                                      _model.nameTextController.text),
+                                ));
+                              }(),
+                            );
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          0.0,
+                          0.0,
+                          0.0,
+                          valueOrDefault<double>(
+                            (isWeb
+                                    ? MediaQuery.viewInsetsOf(context).bottom >
+                                        0
+                                    : _isKeyboardVisible)
+                                ? 6.0
+                                : 35.0,
+                            6.0,
+                          )),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          boxShadow: [
+                            BoxShadow(
+                              blurRadius: 7.0,
+                              color: Color(0x0D2C2C2C),
+                              offset: Offset(
+                                0.0,
+                                2.0,
+                              ),
+                            )
+                          ],
+                          shape: BoxShape.circle,
+                        ),
+                        child: FlutterFlowIconButton(
+                          borderRadius: 50.0,
+                          buttonSize: 60.0,
+                          fillColor:
+                              FlutterFlowTheme.of(context).primaryBackground,
+                          icon: Icon(
+                            Icons.close_sharp,
+                            color: FlutterFlowTheme.of(context).error,
+                            size: 20.0,
+                          ),
+                          onPressed: () async {
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ].divide(SizedBox(height: 16.0)).addToStart(SizedBox(height: 16.0)),

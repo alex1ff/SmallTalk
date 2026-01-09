@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'chips_model.dart';
@@ -107,12 +108,13 @@ class _ChipsWidgetState extends State<ChipsWidget> {
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
-                child: Text(
+                child: AutoSizeText(
                   valueOrDefault<String>(
                     widget.text,
                     '-',
                   ),
                   textAlign: TextAlign.center,
+                  maxLines: 1,
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'sf pro display',
                         color: widget.selected

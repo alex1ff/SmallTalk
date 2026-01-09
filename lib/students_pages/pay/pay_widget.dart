@@ -248,10 +248,10 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                   child: Align(
                                     alignment: AlignmentDirectional(0.0, 0.0),
                                     child: Icon(
-                                      Icons.person,
+                                      FFIcons.kgift02,
                                       color: FlutterFlowTheme.of(context)
                                           .primaryText,
-                                      size: 18.0,
+                                      size: 20.0,
                                     ),
                                   ),
                                 ),

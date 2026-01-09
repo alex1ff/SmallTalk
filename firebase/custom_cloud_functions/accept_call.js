@@ -16,7 +16,7 @@ exports.acceptCall = functions.https.onCall(async (data, context) => {
     }
 
     const tutorId = context.auth.uid;
-    const { sessionId } = data; // Изменено с callRequestId на sessionId
+    const { sessionId } = data;
 
     console.log("👨‍🏫 Tutor ID:", tutorId);
     console.log("📺 Session ID:", sessionId);
@@ -176,8 +176,31 @@ exports.acceptCall = functions.https.onCall(async (data, context) => {
       );
     }
 
+    // 🔔 === ОТПРАВКА VOIP PUSH СТУДЕНТУ (ДОБАВЛЕНО) ===
+    console.log("📲 Sending VoIP push notification to student...");
+    try {
+      await sendVoipPushToStudent(sessionData.studentId, {
+        sessionId: sessionId,
+        callerName: tutorData.display_name || "Преподаватель",
+        callerId: tutorId,
+        callerPhoto: tutorData.photo_url || null,
+        roomUrl: dailyRoom.url,
+        meetingToken: dailyRoom.token,
+      });
+      console.log("✅ VoIP push notification sent to student");
+    } catch (pushError) {
+      console.error(
+        "⚠️ Failed to send VoIP push (non-critical):",
+        pushError.message,
+      );
+      // Продолжаем работу даже если push не отправился
+    }
+
     // === 6. ОБНОВЛЕНИЕ СЕССИИ В ТРАНЗАКЦИИ ===
     console.log("🔄 Updating session and user statuses in transaction...");
+    const activeExpiresAt = admin.firestore.Timestamp.fromDate(
+      new Date(Date.now() + 60 * 60 * 1000),
+    );
     await admin.firestore().runTransaction(async (transaction) => {
       // Обновляем сессию - добавляем данные для активной сессии
       transaction.update(
@@ -193,6 +216,7 @@ exports.acceptCall = functions.https.onCall(async (data, context) => {
           dailyRoomUrl: dailyRoom.url,
           dailyRoomName: dailyRoom.name,
           meetingToken: dailyRoom.token,
+          expiresAt: activeExpiresAt,
 
           // Добавляем информацию о преподавателе
           tutorInfo: {
@@ -280,8 +304,96 @@ exports.acceptCall = functions.https.onCall(async (data, context) => {
 });
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
-// (createDailyRoom, createMeetingToken, updateNotificationStatus, cancelOtherNotifications, logAnalyticsEvent)
-// Остаются теми же, что в предыдущей версии
+
+// 🔔 ОТПРАВКА VOIP PUSH NOTIFICATION (НОВАЯ ФУНКЦИЯ)
+async function sendVoipPushToStudent(studentId, callData) {
+  try {
+    console.log("📲 Preparing VoIP push for student:", studentId);
+
+    // Получаем данные студента из Firestore
+    const studentDoc = await admin
+      .firestore()
+      .collection("users")
+      .doc(studentId)
+      .get();
+
+    if (!studentDoc.exists) {
+      console.log("⚠️ Student document not found:", studentId);
+      return;
+    }
+
+    const studentData = studentDoc.data();
+    const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
+    const voipToken =
+      studentData.voipPushToken || // PushKit
+      studentData.voipToken; // FCM fallback
+
+    if (!voipToken) {
+      console.log("⚠️ Student has no VoIP token saved.");
+      console.log("⚠️ Student data keys:", Object.keys(studentData));
+      return;
+    }
+
+    console.log("📱 VoIP token found:", voipToken.substring(0, 20) + "...");
+    console.log("📦 Using bundleId for apns-topic:", bundleId);
+
+    // Формируем push notification message
+    const message = {
+      token: voipToken,
+      data: {
+        type: "incoming_call",
+        sessionId: callData.sessionId,
+        callerName: callData.callerName,
+        callerId: callData.callerId,
+        callerPhoto: callData.callerPhoto || "",
+        roomUrl: callData.roomUrl || "",
+        meetingToken: callData.meetingToken || "",
+      },
+      // iOS VoIP Push настройки
+      apns: {
+        headers: {
+          "apns-priority": "10",
+          "apns-push-type": "voip",
+          "apns-topic": bundleId,
+        },
+        payload: {
+          aps: {
+            "content-available": 1,
+          },
+        },
+      },
+      // Android настройки
+      android: {
+        priority: "high",
+      },
+    };
+
+    console.log("📤 Sending VoIP push via FCM...");
+
+    // Отправляем push через Firebase Cloud Messaging
+    const response = await admin.messaging().send(message);
+
+    console.log("✅ VoIP push sent successfully. Message ID:", response);
+
+    return response;
+  } catch (error) {
+    console.error("❌ Error sending VoIP push:", error);
+
+    // Логируем детали ошибки
+    if (error.code) {
+      console.error("❌ Error code:", error.code);
+    }
+    if (error.message) {
+      console.error("❌ Error message:", error.message);
+    }
+    if (error.errorInfo) {
+      console.error("❌ Error info:", JSON.stringify(error.errorInfo));
+    }
+
+    // Бросаем ошибку дальше, чтобы она была залогирована
+    throw error;
+  }
+}
 
 // СОЗДАНИЕ КОМНАТЫ DAILY
 async function createDailyRoom(
@@ -320,7 +432,7 @@ async function createDailyRoom(
       privacy: "private",
       properties: {
         max_participants: 2,
-        enable_chat: false, // 🔴 Отключаем чат для производительности
+        enable_chat: false,
         enable_screenshare: true,
         enable_recording: false,
         start_audio_off: false,
@@ -328,29 +440,19 @@ async function createDailyRoom(
         exp: Math.floor(Date.now() / 1000) + 3600,
         enable_knocking: false,
         enable_prejoin_ui: false,
-        enable_people_ui: false, // 🔴 Отключаем UI участников
-        enable_pip_ui: false, // 🔴 Отключаем PiP для производительности
+        enable_people_ui: false,
+        enable_pip_ui: false,
         enable_network_ui: false,
-        enable_noise_cancellation_ui: true, // Оставляем для качества аудио
+        enable_noise_cancellation_ui: true,
         lang: language,
         enable_dialin: false,
         enable_dialout: false,
         enable_terse_logging: false,
         signaling_impl: "ws",
         geo: "auto",
-
-        // 🎬 Согласно документации, эти параметры влияют на качество:
-        sfu_switchover: 0.5, // Переключение на SFU при 2 участниках
-
-        // 🔥🔥🔥 Daily Adaptive Bitrate - КЛЮЧ К КАЧЕСТВУ!
-        // По умолчанию: enable_adaptive_simulcast = true
-        // Можно НЕ указывать, но явно включаем для ясности:
-        enable_adaptive_simulcast: true, // ✅ Авто-адаптация до 2 Mbps @ 720p
-
-        // Для звонков с 3+ участниками (по умолчанию false):
-        enable_multiparty_adaptive_simulcast: false, // Оставляем false для 2 участников
-
-        // ⚠️ Adaptive Bitrate работает только для камеры, не для демонстрации экрана
+        sfu_switchover: 0.5,
+        enable_adaptive_simulcast: true,
+        enable_multiparty_adaptive_simulcast: false,
       },
     };
 
@@ -415,7 +517,7 @@ async function createDailyRoom(
   }
 }
 
-// СОЗДАНИЕ ТОКЕНА ВСТРЕЧИ С ОПТИМИЗАЦИЕЙ КАЧЕСТВА
+// СОЗДАНИЕ ТОКЕНА ВСТРЕЧИ
 async function createMeetingToken(roomName, studentId, tutorId) {
   try {
     const apiKey = process.env.DAILY_API_KEY;
@@ -461,7 +563,7 @@ async function updateNotificationStatus(sessionId, tutorId, status) {
     const notificationsQuery = await admin
       .firestore()
       .collection("notifications")
-      .where("sessionId", "==", sessionId) // Изменено с callRequestId на sessionId
+      .where("sessionId", "==", sessionId)
       .where("recipientId", "==", tutorId)
       .where("status", "==", "sent")
       .get();
@@ -497,7 +599,7 @@ async function cancelOtherNotifications(sessionId, acceptedTutorId) {
     const otherNotificationsQuery = await admin
       .firestore()
       .collection("notifications")
-      .where("sessionId", "==", sessionId) // Изменено с callRequestId на sessionId
+      .where("sessionId", "==", sessionId)
       .where("status", "==", "sent")
       .get();
 
