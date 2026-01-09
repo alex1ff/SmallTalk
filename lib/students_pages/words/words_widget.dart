@@ -138,6 +138,7 @@ class _WordsWidgetState extends State<WordsWidget> {
                                                             context),
                                                     child: NewWordWidget(
                                                       word: 'hello',
+                                                      langCode: 'eng',
                                                     ),
                                                   ),
                                                 ),

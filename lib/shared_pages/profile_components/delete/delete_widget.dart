@@ -209,7 +209,9 @@ class _DeleteWidgetState extends State<DeleteWidget> {
                         model: _model.buttonModel,
                         updateCallback: () => safeSetState(() {}),
                         child: ButtonWidget(
-                          text: 'Отменить',
+                          text: FFLocalizations.of(context).getText(
+                            'wxna6225' /* Отменить */,
+                          ),
                           action: () async {
                             Navigator.pop(context);
                           },

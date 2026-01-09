@@ -60,64 +60,55 @@ class _SendWidgetState extends State<SendWidget> {
                 decoration: BoxDecoration(
                   color: FlutterFlowTheme.of(context).secondaryBackground,
                 ),
-                child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Padding(
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
-                        child: Text(
-                          FFLocalizations.of(context).getText(
-                            'olh1jz6w' /* Проверьте почту! */,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      FFLocalizations.of(context).getText(
+                        'olh1jz6w' /* Проверьте почту! */,
+                      ),
+                      textAlign: TextAlign.start,
+                      style: FlutterFlowTheme.of(context).bodyMedium.override(
+                            fontFamily: 'Cool',
+                            fontSize: 26.0,
+                            letterSpacing: 0.0,
+                            fontWeight: FontWeight.normal,
                           ),
-                          textAlign: TextAlign.start,
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 26.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.normal,
-                                  ),
+                    ),
+                    Padding(
+                      padding:
+                          EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+                      child: AutoSizeText(
+                        FFLocalizations.of(context).getText(
+                          '72up7lns' /* Письм с инструкцей по восстано... */,
                         ),
+                        textAlign: TextAlign.center,
+                        style: FlutterFlowTheme.of(context).bodyMedium.override(
+                              fontFamily: 'sf pro display',
+                              color: FlutterFlowTheme.of(context).secondaryText,
+                              fontSize: 16.0,
+                              letterSpacing: 0.0,
+                              fontWeight: FontWeight.normal,
+                              lineHeight: 1.1,
+                            ),
                       ),
-                      Padding(
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
-                        child: AutoSizeText(
-                          FFLocalizations.of(context).getText(
-                            '72up7lns' /* Письм с инструкцей по восстано... */,
-                          ),
-                          textAlign: TextAlign.center,
-                          style: FlutterFlowTheme.of(context)
-                              .bodyMedium
-                              .override(
-                                fontFamily: 'sf pro display',
-                                color:
-                                    FlutterFlowTheme.of(context).secondaryText,
-                                fontSize: 16.0,
-                                letterSpacing: 0.0,
-                                fontWeight: FontWeight.normal,
-                                lineHeight: 1.1,
-                              ),
+                    ),
+                    wrapWithModel(
+                      model: _model.buttonModel,
+                      updateCallback: () => safeSetState(() {}),
+                      child: ButtonWidget(
+                        text: FFLocalizations.of(context).getText(
+                          '4efn2nfa' /* Готово */,
                         ),
+                        action: () async {
+                          Navigator.pop(context);
+                        },
                       ),
-                      wrapWithModel(
-                        model: _model.buttonModel,
-                        updateCallback: () => safeSetState(() {}),
-                        child: ButtonWidget(
-                          text: 'Готово',
-                          action: () async {
-                            Navigator.pop(context);
-                          },
-                        ),
-                      ),
-                    ]
-                        .divide(SizedBox(height: 24.0))
-                        .addToStart(SizedBox(height: 16.0)),
-                  ),
+                    ),
+                  ]
+                      .divide(SizedBox(height: 24.0))
+                      .addToStart(SizedBox(height: 16.0)),
                 ),
               ),
             ],

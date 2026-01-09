@@ -13,20 +13,12 @@ class NativeSpeakerPageModel extends FlutterFlowModel<NativeSpeakerPageWidget> {
   ///  State fields for stateful widgets in this page.
 
   // State field(s) for PageView widget.
-  PageController? pageViewController1;
+  PageController? pageViewController;
 
-  int get pageViewCurrentIndex1 => pageViewController1 != null &&
-          pageViewController1!.hasClients &&
-          pageViewController1!.page != null
-      ? pageViewController1!.page!.round()
-      : 0;
-  // State field(s) for PageView widget.
-  PageController? pageViewController2;
-
-  int get pageViewCurrentIndex2 => pageViewController2 != null &&
-          pageViewController2!.hasClients &&
-          pageViewController2!.page != null
-      ? pageViewController2!.page!.round()
+  int get pageViewCurrentIndex => pageViewController != null &&
+          pageViewController!.hasClients &&
+          pageViewController!.page != null
+      ? pageViewController!.page!.round()
       : 0;
   // Model for Language_Card component.
   late LanguageCardModel languageCardModel;

@@ -582,10 +582,6 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                   decoration: BoxDecoration(
                     color: FlutterFlowTheme.of(context).primaryBackground,
                     borderRadius: BorderRadius.circular(100.0),
-                    border: Border.all(
-                      color: FlutterFlowTheme.of(context).secondaryBackground,
-                      width: 1.0,
-                    ),
                   ),
                   child: Padding(
                     padding: EdgeInsets.all(2.0),
@@ -632,10 +628,11 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                               padding: EdgeInsetsDirectional.fromSTEB(
                                   10.0, 8.0, 10.0, 2.0),
                               child: Image.asset(
-                                'assets/images/eeed62211805403.672a1eceaed58_1.png',
+                                'assets/images/logo.png',
                                 width: double.infinity,
                                 height: double.infinity,
                                 fit: BoxFit.contain,
+                                alignment: Alignment(0.0, -0.2),
                               ),
                             ),
                           ),

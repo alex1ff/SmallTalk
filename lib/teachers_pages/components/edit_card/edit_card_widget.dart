@@ -1,5 +1,6 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -78,7 +79,7 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                     ),
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 6.0, 6.0, 35.0),
+                padding: EdgeInsetsDirectional.fromSTEB(6.0, 6.0, 6.0, 6.0),
                 child: StreamBuilder<List<CardsRecord>>(
                   stream: queryCardsRecord(
                     parent: currentUserReference,
@@ -133,9 +134,9 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                   child: Align(
                                     alignment: AlignmentDirectional(0.0, 0.0),
                                     child: Icon(
-                                      FFIcons.kwallet02,
+                                      FFIcons.kcreditCardEdit,
                                       color: FlutterFlowTheme.of(context)
-                                          .secondaryText,
+                                          .primaryText,
                                       size: 20.0,
                                     ),
                                   ),
@@ -191,6 +192,18 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                         );
                       },
                     );
+                  },
+                ),
+              ),
+              wrapWithModel(
+                model: _model.buttonModel,
+                updateCallback: () => safeSetState(() {}),
+                child: ButtonWidget(
+                  text: FFLocalizations.of(context).getText(
+                    'fj7u70af' /* Готово */,
+                  ),
+                  action: () async {
+                    Navigator.pop(context);
                   },
                 ),
               ),

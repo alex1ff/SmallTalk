@@ -25,6 +25,11 @@ class AcquaintanceNSModel extends FlutterFlowModel<AcquaintanceNSWidget> {
 
   FFUploadedFile? avatar;
 
+  LanguageStruct? nativeLang;
+  void updateNativeLangStruct(Function(LanguageStruct) updateFn) {
+    updateFn(nativeLang ??= LanguageStruct());
+  }
+
   ///  State fields for stateful widgets in this page.
 
   // State field(s) for PageView widget.
@@ -40,7 +45,9 @@ class AcquaintanceNSModel extends FlutterFlowModel<AcquaintanceNSWidget> {
   TextEditingController? nameTextController;
   String? Function(BuildContext, String?)? nameTextControllerValidator;
   // Model for lang component.
-  late LangModel langModel;
+  late LangModel langModel1;
+  // Model for lang component.
+  late LangModel langModel2;
   // State field(s) for SwipeableStack widget.
   late CardSwiperController swipeableStackController;
   // Model for country component.
@@ -56,7 +63,8 @@ class AcquaintanceNSModel extends FlutterFlowModel<AcquaintanceNSWidget> {
 
   @override
   void initState(BuildContext context) {
-    langModel = createModel(context, () => LangModel());
+    langModel1 = createModel(context, () => LangModel());
+    langModel2 = createModel(context, () => LangModel());
     swipeableStackController = CardSwiperController();
     countryModel = createModel(context, () => CountryModel());
   }
@@ -66,7 +74,8 @@ class AcquaintanceNSModel extends FlutterFlowModel<AcquaintanceNSWidget> {
     nameFocusNode?.dispose();
     nameTextController?.dispose();
 
-    langModel.dispose();
+    langModel1.dispose();
+    langModel2.dispose();
     countryModel.dispose();
     aboutMeFocusNode?.dispose();
     aboutMeTextController?.dispose();

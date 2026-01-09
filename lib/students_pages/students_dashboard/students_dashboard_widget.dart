@@ -92,6 +92,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         body: Stack(
           children: [
             SingleChildScrollView(
+              primary: false,
               child: Column(
                 mainAxisSize: MainAxisSize.max,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -121,12 +122,17 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   color: FlutterFlowTheme.of(context)
                                       .secondaryBackground,
                                   image: DecorationImage(
-                                    fit: BoxFit.contain,
+                                    fit: BoxFit.cover,
                                     image: CachedNetworkImageProvider(
                                       currentUserPhoto,
                                     ),
                                   ),
                                   shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: FlutterFlowTheme.of(context)
+                                        .secondaryBackground,
+                                    width: 1.0,
+                                  ),
                                 ),
                               ),
                             ),
@@ -475,6 +481,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                         return;
                                       }
                                     }
+
+                                    context.pushNamed(
+                                        WaitingForTeacherPageWidget.routeName);
                                   },
                                   child: Container(
                                     width: 233.9,
@@ -766,7 +775,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                               ),
                                             ),
                                             child: Icon(
-                                              FFIcons.ksun,
+                                              FFIcons.kclock,
                                               color:
                                                   FlutterFlowTheme.of(context)
                                                       .secondaryText,

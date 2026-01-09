@@ -18,7 +18,7 @@ exports.declineCall = functions.https.onCall(async (data, context) => {
     }
 
     const tutorId = context.auth.uid;
-    const { sessionId } = data; // Изменено с callRequestId на sessionId
+    const { sessionId } = data;
 
     console.log("👨‍🏫 Tutor ID:", tutorId);
     console.log("📺 Session ID:", sessionId);
@@ -99,7 +99,7 @@ exports.declineCall = functions.https.onCall(async (data, context) => {
       .doc(sessionId)
       .update({
         triedTutors: triedTutors,
-        currentTutorId: null, // сбрасываем текущего преподавателя
+        currentTutorId: null,
         sessionMetadata: {
           ...sessionData.sessionMetadata,
           lastDeclinedBy: tutorId,
@@ -113,7 +113,7 @@ exports.declineCall = functions.https.onCall(async (data, context) => {
     const notificationsQuery = await admin
       .firestore()
       .collection("notifications")
-      .where("sessionId", "==", sessionId) // Изменено с callRequestId
+      .where("sessionId", "==", sessionId)
       .where("recipientId", "==", tutorId)
       .where("status", "==", "sent")
       .get();
@@ -153,3 +153,146 @@ exports.declineCall = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("internal", error.message);
   }
 });
+
+// 🔔 ОТПРАВКА VOIP PUSH ПРЕПОДАВАТЕЛЮ
+async function sendVoipPushToTutor(tutorId, callData) {
+  try {
+    console.log("📲 Preparing VoIP push for tutor:", tutorId);
+
+    const tutorDoc = await admin
+      .firestore()
+      .collection("users")
+      .doc(tutorId)
+      .get();
+
+    if (!tutorDoc.exists) {
+      console.log("⚠️ Tutor document not found:", tutorId);
+      return;
+    }
+
+    const tutorData = tutorDoc.data();
+    const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
+    const voipToken = tutorData.voipPushToken || tutorData.voipToken;
+
+    if (!voipToken) {
+      console.log("⚠️ Tutor has no VoIP token saved");
+      return;
+    }
+
+    console.log("📱 VoIP token found:", voipToken.substring(0, 20) + "...");
+    console.log("📦 Using bundleId for apns-topic:", bundleId);
+
+    const message = {
+      token: voipToken,
+      data: {
+        type: "incoming_call",
+        sessionId: callData.sessionId,
+        callerName: callData.studentName,
+        callerId: callData.studentId,
+        callerPhoto: callData.studentPhoto || "",
+        language: callData.language || "",
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+          "apns-push-type": "voip",
+          "apns-topic": bundleId,
+        },
+        payload: {
+          aps: {
+            "content-available": 1,
+          },
+        },
+      },
+      android: {
+        priority: "high",
+      },
+    };
+
+    const response = await admin.messaging().send(message);
+    console.log("✅ VoIP push sent successfully. Message ID:", response);
+
+    return response;
+  } catch (error) {
+    console.error("❌ Error sending VoIP push to tutor:", error);
+    return null;
+  }
+}
+
+// ОТПРАВКА УВЕДОМЛЕНИЯ СЛЕДУЮЩЕМУ ПРЕПОДАВАТЕЛЮ
+async function sendNotificationToNextTutor(sessionId, sessionData) {
+  try {
+    const availableTutors = sessionData.availableTutors || [];
+    const triedTutors = sessionData.triedTutors || [];
+
+    console.log("🎯 Available tutors:", availableTutors);
+    console.log("❌ Tried tutors:", triedTutors);
+
+    // Находим следующего преподавателя
+    const nextTutor = availableTutors.find(
+      (tutorId) => !triedTutors.includes(tutorId),
+    );
+
+    if (!nextTutor) {
+      console.log("❌ No more tutors available");
+      await admin
+        .firestore()
+        .collection("videoSessions")
+        .doc(sessionId)
+        .update({
+          status: "no_tutors_available",
+          sessionMetadata: {
+            ...sessionData.sessionMetadata,
+            noTutorsReason: "All available tutors have been tried",
+          },
+        });
+      return;
+    }
+
+    console.log("📨 Sending notification to tutor:", nextTutor);
+
+    // Обновляем текущего преподавателя в сессии
+    await admin.firestore().collection("videoSessions").doc(sessionId).update({
+      currentTutorId: nextTutor,
+    });
+
+    // Создаем уведомление в Firestore
+    const expiresAt = new Date();
+    expiresAt.setSeconds(expiresAt.getSeconds() + 45);
+
+    const notificationData = {
+      recipientId: nextTutor,
+      sessionId: sessionId,
+      type: "incoming_call",
+      status: "sent",
+      title: "Входящий звонок",
+      message: `${sessionData.studentInfo.name} хочет попрактиковать ${sessionData.language}`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+      studentInfo: sessionData.studentInfo,
+    };
+
+    await admin.firestore().collection("notifications").add(notificationData);
+    console.log("✅ Firestore notification created for tutor:", nextTutor);
+
+    // 🔔 Отправляем VoIP push преподавателю
+    console.log("📲 Sending VoIP push to next tutor...");
+    try {
+      await sendVoipPushToTutor(nextTutor, {
+        sessionId: sessionId,
+        studentName: sessionData.studentInfo.name,
+        studentId: sessionData.studentId,
+        studentPhoto: sessionData.studentInfo.photo,
+        language: sessionData.language,
+      });
+      console.log("✅ VoIP push sent to next tutor");
+    } catch (pushError) {
+      console.error(
+        "⚠️ Failed to send VoIP push (non-critical):",
+        pushError.message,
+      );
+    }
+  } catch (error) {
+    console.error("❌ Error sending notification to tutor:", error);
+  }
+}
