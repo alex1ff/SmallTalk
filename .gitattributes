@@ -1,0 +1,3 @@
+# Keep VoIP wiring stable when merging FlutterFlow exports
+lib/main.dart merge=ours
+lib/services/voip_service.dart merge=ours

@@ -56,6 +56,28 @@ class VoIPService {
         _saveVoipToken(newToken);
       });
 
+      // 3.1. Обработка входящих уведомлений в фореграунде
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        if (message.data['type'] != 'incoming_call') return;
+        if (kIsWeb) return;
+
+        debugPrint('📞 VoIPService: Foreground incoming call received');
+        try {
+          await showIncomingCall(
+            sessionId: message.data['sessionId'] ?? '',
+            callerName: message.data['callerName'] ?? 'Unknown Caller',
+            callerId: message.data['callerId'] ?? '',
+            callerPhoto: message.data['callerPhoto'],
+            extraData: {
+              'roomUrl': message.data['roomUrl'],
+              'meetingToken': message.data['meetingToken'],
+            },
+          );
+        } catch (e) {
+          debugPrint('❌ VoIPService: Failed to show CallKit in foreground: $e');
+        }
+      });
+
       // 4. Слушаем события CallKit/ConnectionService
       FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent);
 
@@ -294,22 +316,16 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     // Создаем DocumentReference на videoSession
     final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
 
-    debugPrint('🎬 VoIPService: Navigating to VideoCallPageStudent...');
+    debugPrint('🎬 VoIPService: Scheduling tutor navigation...');
 
-    // Переходим на страницу видеозвонка через FFAppState
-    // Используем deep link для навигации
-    final deepLink = '/videoCallPageStudent?videoDocRef=${videoDocRef.path}';
-    
-    debugPrint('🔗 VoIPService: Deep link: $deepLink');
-    
     // Сохраняем данные в Firestore для последующей навигации
     await videoDocRef.update({
-      'studentNavigationTriggered': true,
+      'tutorNavigationTriggered': true,
       'navigationTimestamp': FieldValue.serverTimestamp(),
     });
 
-    debugPrint('✅ VoIPService: Navigation data saved to Firestore');
-    debugPrint('⚠️ VoIPService: App will navigate to VideoCallPage when opened');
+    debugPrint('✅ VoIPService: Tutor navigation data saved to Firestore');
+    debugPrint('⚠️ VoIPService: App will navigate to VideoCallPageNS when opened');
 
   } catch (e) {
     debugPrint('❌ VoIPService: Error accepting call: $e');
@@ -320,7 +336,11 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   Future<void> _handleCallDecline(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-    final sessionId = data['sessionId'] as String?;
+    final extra = data['extra'] is Map
+        ? Map<String, dynamic>.from(data['extra'] as Map)
+        : <String, dynamic>{};
+    final sessionId =
+        data['sessionId'] as String? ?? data['id'] as String? ?? extra['sessionId'] as String?;
     if (sessionId == null) {
       debugPrint('❌ VoIPService: No sessionId in decline event');
       return;
@@ -344,7 +364,11 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   Future<void> _handleCallEnded(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-    final sessionId = data['sessionId'] as String?;
+    final extra = data['extra'] is Map
+        ? Map<String, dynamic>.from(data['extra'] as Map)
+        : <String, dynamic>{};
+    final sessionId =
+        data['sessionId'] as String? ?? data['id'] as String? ?? extra['sessionId'] as String?;
     if (sessionId == null) {
       debugPrint('❌ VoIPService: No sessionId in ended event');
       return;
@@ -371,7 +395,11 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   Future<void> _handleCallTimeout(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-    final sessionId = data['sessionId'] as String?;
+    final extra = data['extra'] is Map
+        ? Map<String, dynamic>.from(data['extra'] as Map)
+        : <String, dynamic>{};
+    final sessionId =
+        data['sessionId'] as String? ?? data['id'] as String? ?? extra['sessionId'] as String?;
     if (sessionId == null) {
       debugPrint('❌ VoIPService: No sessionId in timeout event');
       return;
