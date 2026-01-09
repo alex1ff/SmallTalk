@@ -71,7 +71,7 @@ import flutter_callkit_incoming
       handle: handle,
       type: isVideo ? 1 : 0
     )
-    data.extra = payloadDict
+    data.extra = NSDictionary(dictionary: payloadDict)
 
     SwiftFlutterCallkitIncomingPlugin.sharedInstance?.showCallkitIncoming(data, fromPushKit: true) {
       completion()
