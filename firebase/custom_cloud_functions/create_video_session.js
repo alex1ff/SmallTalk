@@ -56,46 +56,30 @@ exports.createVideoSession = functions.https.onCall(async (data, context) => {
       );
     }
 
-    const normalizedLanguage = String(language).toLowerCase();
+    const normalizedLanguage = String(language).trim().toLowerCase();
+    const tutorRoles = ["tutor", "native_speaker"];
 
-    // Базовый запрос: ищем преподавателей по языку обучения
-    console.log("🔍 Searching for tutors...");
+    // Базовый запрос: ищем преподавателей по роли (фильтруем языки в коде)
+    console.log("🔍 Searching for tutors with roles:", tutorRoles.join(", "));
 
     const tutorBaseQuery = admin
       .firestore()
       .collection("users")
-      .where("role", "==", "tutor");
+      .where("role", "in", tutorRoles);
 
     let tutorsQuery;
     try {
-      tutorsQuery = await tutorBaseQuery
-        .where("teachingLanguages", "array-contains", language)
-        .get();
-
-      if (tutorsQuery.empty) {
-        console.log(
-          "⚠️ No tutors via teachingLanguages, fallback to language_instruction_NS.code",
-        );
-        tutorsQuery = await tutorBaseQuery
-          .where("language_instruction_NS.code", "==", language)
-          .get();
-      }
-
-      if (tutorsQuery.empty) {
-        console.log(
-          "⚠️ No tutors via language_instruction_NS.code, fallback to language_instruction_NS.alternateCodes",
-        );
-        tutorsQuery = await tutorBaseQuery
-          .where("language_instruction_NS.alternateCodes", "array-contains", language)
-          .get();
-      }
-    } catch (queryError) {
-      console.error("❌ Tutor query failed, fallback to role only:", queryError.message);
       tutorsQuery = await tutorBaseQuery.get();
+    } catch (queryError) {
+      console.error(
+        "❌ Tutor query failed, fallback to all users:",
+        queryError.message,
+      );
+      tutorsQuery = await admin.firestore().collection("users").get();
     }
 
     if (tutorsQuery.empty) {
-      console.log("❌ No tutors found for language:", language);
+      console.log("❌ No tutors found for roles:", tutorRoles.join(", "));
       return {
         status: "no_tutors_available",
         message: "No tutors available for this language right now",
@@ -174,27 +158,21 @@ exports.createVideoSession = functions.https.onCall(async (data, context) => {
         continue;
       }
 
-      const teachingLangs = new Set();
-      const addLang = (value) => {
-        if (typeof value === "string" && value.trim()) {
-          teachingLangs.add(value.toLowerCase());
-        }
-      };
-
-      if (Array.isArray(tutorData.teachingLanguages)) {
-        tutorData.teachingLanguages.forEach(addLang);
-      }
-
       const instructionLang = tutorData.language_instruction_NS;
-      if (instructionLang && typeof instructionLang === "object") {
-        addLang(instructionLang.code);
-        if (Array.isArray(instructionLang.alternateCodes)) {
-          instructionLang.alternateCodes.forEach(addLang);
-        }
+      const instructionCode =
+        instructionLang && typeof instructionLang === "object"
+          ? String(instructionLang.code || "").trim().toLowerCase()
+          : "";
+
+      if (!instructionCode) {
+        console.log(`⚠️ Tutor ${tutorId} has no language_instruction_NS.code`);
+        continue;
       }
 
-      if (teachingLangs.size > 0 && !teachingLangs.has(normalizedLanguage)) {
-        console.log(`⏭️ Tutor ${tutorId} doesn't teach ${language}`);
+      if (instructionCode !== normalizedLanguage) {
+        console.log(
+          `⏭️ Tutor ${tutorId} doesn't match instruction code: ${instructionCode}`,
+        );
         continue;
       }
 
@@ -205,8 +183,13 @@ exports.createVideoSession = functions.https.onCall(async (data, context) => {
         const tutorNativeLanguage = tutorData.native_language_NS;
 
         if (tutorNativeLanguage && typeof tutorNativeLanguage === "object") {
-          const nativeLanguageCode = tutorNativeLanguage.code;
-          nativeLanguageMatch = nativeLanguageCode === preferredNativeLanguage;
+          const nativeLanguageCode = String(tutorNativeLanguage.code || "")
+            .trim()
+            .toLowerCase();
+          const preferredNative = String(preferredNativeLanguage)
+            .trim()
+            .toLowerCase();
+          nativeLanguageMatch = nativeLanguageCode === preferredNative;
 
           console.log(
             `🔤 Tutor ${tutorId} native language: ${nativeLanguageCode} (match: ${nativeLanguageMatch})`,

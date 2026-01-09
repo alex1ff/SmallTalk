@@ -78,7 +78,8 @@ exports.declineCall = functions.https.onCall(async (data, context) => {
       .collection("users")
       .doc(tutorId)
       .get();
-    if (!tutorDoc.exists || tutorDoc.data().role !== "tutor") {
+    const allowedRoles = ["tutor", "native_speaker"];
+    if (!tutorDoc.exists || !allowedRoles.includes(tutorDoc.data().role)) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "Only tutors can decline calls",
