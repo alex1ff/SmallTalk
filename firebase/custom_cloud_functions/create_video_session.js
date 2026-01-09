@@ -56,28 +56,42 @@ exports.createVideoSession = functions.https.onCall(async (data, context) => {
       );
     }
 
+    const normalizedLanguage = String(language).toLowerCase();
+
     // Базовый запрос: ищем преподавателей по языку обучения
     console.log("🔍 Searching for tutors...");
 
+    const tutorBaseQuery = admin
+      .firestore()
+      .collection("users")
+      .where("role", "==", "tutor");
+
     let tutorsQuery;
     try {
-      tutorsQuery = await admin
-        .firestore()
-        .collection("users")
-        .where("role", "==", "tutor")
+      tutorsQuery = await tutorBaseQuery
         .where("teachingLanguages", "array-contains", language)
-        .where("isAvailable", "==", true)
-        .where("isInCall", "!=", true)
         .get();
+
+      if (tutorsQuery.empty) {
+        console.log(
+          "⚠️ No tutors via teachingLanguages, fallback to language_instruction_NS.code",
+        );
+        tutorsQuery = await tutorBaseQuery
+          .where("language_instruction_NS.code", "==", language)
+          .get();
+      }
+
+      if (tutorsQuery.empty) {
+        console.log(
+          "⚠️ No tutors via language_instruction_NS.code, fallback to language_instruction_NS.alternateCodes",
+        );
+        tutorsQuery = await tutorBaseQuery
+          .where("language_instruction_NS.alternateCodes", "array-contains", language)
+          .get();
+      }
     } catch (queryError) {
-      console.error("❌ Tutor query failed, fallback:", queryError.message);
-      tutorsQuery = await admin
-        .firestore()
-        .collection("users")
-        .where("role", "==", "tutor")
-        .where("teachingLanguages", "array-contains", language)
-        .where("isAvailable", "==", true)
-        .get();
+      console.error("❌ Tutor query failed, fallback to role only:", queryError.message);
+      tutorsQuery = await tutorBaseQuery.get();
     }
 
     if (tutorsQuery.empty) {
@@ -149,13 +163,37 @@ exports.createVideoSession = functions.https.onCall(async (data, context) => {
         continue;
       }
 
-      if (!tutorData.isAvailable || tutorData.isInCall) {
+      const availabilityToday = tutorData.availabilityToday;
+      const isAvailable =
+        tutorData.isAvailable !== undefined
+          ? tutorData.isAvailable
+          : availabilityToday?.enabled ?? true;
+
+      if (!isAvailable || tutorData.isInCall) {
         console.log(`⏭️ Tutor ${tutorId} is not available or in call`);
         continue;
       }
 
-      const teachingLangs = tutorData.teachingLanguages || [];
-      if (!teachingLangs.includes(language)) {
+      const teachingLangs = new Set();
+      const addLang = (value) => {
+        if (typeof value === "string" && value.trim()) {
+          teachingLangs.add(value.toLowerCase());
+        }
+      };
+
+      if (Array.isArray(tutorData.teachingLanguages)) {
+        tutorData.teachingLanguages.forEach(addLang);
+      }
+
+      const instructionLang = tutorData.language_instruction_NS;
+      if (instructionLang && typeof instructionLang === "object") {
+        addLang(instructionLang.code);
+        if (Array.isArray(instructionLang.alternateCodes)) {
+          instructionLang.alternateCodes.forEach(addLang);
+        }
+      }
+
+      if (teachingLangs.size > 0 && !teachingLangs.has(normalizedLanguage)) {
         console.log(`⏭️ Tutor ${tutorId} doesn't teach ${language}`);
         continue;
       }

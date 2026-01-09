@@ -102,10 +102,17 @@ exports.acceptCall = functions.https.onCall(async (data, context) => {
     }
 
     const tutorData = tutorDoc.data();
+    const availabilityToday = tutorData.availabilityToday;
+    const isAvailable =
+      tutorData.isAvailable !== undefined
+        ? tutorData.isAvailable
+        : availabilityToday?.enabled ?? true;
+
     console.log("👨‍🏫 Tutor data:", {
       display_name: tutorData.display_name,
       role: tutorData.role,
       isAvailable: tutorData.isAvailable,
+      availabilityTodayEnabled: availabilityToday?.enabled,
       isInCall: tutorData.isInCall,
     });
 
@@ -117,7 +124,7 @@ exports.acceptCall = functions.https.onCall(async (data, context) => {
       );
     }
 
-    if (!tutorData.isAvailable) {
+    if (!isAvailable) {
       console.log("❌ Tutor is not available");
       throw new functions.https.HttpsError(
         "invalid-argument",
