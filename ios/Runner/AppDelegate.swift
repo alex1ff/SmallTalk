@@ -1,13 +1,80 @@
 import UIKit
 import Flutter
+import PushKit
+import flutter_callkit_incoming
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, PKPushRegistryDelegate {
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
+
+    let mainQueue = DispatchQueue.main
+    let voipRegistry: PKPushRegistry = PKPushRegistry(queue: mainQueue)
+    voipRegistry.delegate = self
+    voipRegistry.desiredPushTypes = [PKPushType.voIP]
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  func pushRegistry(
+    _ registry: PKPushRegistry,
+    didUpdate credentials: PKPushCredentials,
+    for type: PKPushType
+  ) {
+    guard type == .voIP else { return }
+    let deviceToken = credentials.token.map { String(format: "%02x", $0) }.joined()
+    SwiftFlutterCallkitIncomingPlugin.sharedInstance?.setDevicePushTokenVoIP(deviceToken)
+  }
+
+  func pushRegistry(
+    _ registry: PKPushRegistry,
+    didInvalidatePushTokenFor type: PKPushType
+  ) {
+    guard type == .voIP else { return }
+    SwiftFlutterCallkitIncomingPlugin.sharedInstance?.setDevicePushTokenVoIP("")
+  }
+
+  func pushRegistry(
+    _ registry: PKPushRegistry,
+    didReceiveIncomingPushWith payload: PKPushPayload,
+    for type: PKPushType,
+    completion: @escaping () -> Void
+  ) {
+    guard type == .voIP else {
+      completion()
+      return
+    }
+
+    let payloadDict = payload.dictionaryPayload.reduce(into: [String: Any]()) { result, entry in
+      if let key = entry.key as? String {
+        result[key] = entry.value
+      }
+    }
+
+    let id = (payloadDict["sessionId"] as? String) ??
+      (payloadDict["id"] as? String) ??
+      UUID().uuidString
+    let nameCaller = (payloadDict["callerName"] as? String) ??
+      (payloadDict["nameCaller"] as? String) ??
+      "Incoming call"
+    let handle = (payloadDict["callerId"] as? String) ??
+      (payloadDict["handle"] as? String) ??
+      ""
+    let isVideo = payloadDict["isVideo"] as? Bool ?? true
+
+    let data = flutter_callkit_incoming.Data(
+      id: id,
+      nameCaller: nameCaller,
+      handle: handle,
+      type: isVideo ? 1 : 0
+    )
+    data.extra = payloadDict
+
+    SwiftFlutterCallkitIncomingPlugin.sharedInstance?.showCallkitIncoming(data, fromPushKit: true) {
+      completion()
+    }
   }
 }

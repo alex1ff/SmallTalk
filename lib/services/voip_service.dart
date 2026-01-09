@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -58,13 +59,16 @@ class VoIPService {
       // 4. Слушаем события CallKit/ConnectionService
       FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent);
 
+      // 5. Пытаемся получить PushKit токен (iOS) если доступен
+      await _syncPushKitToken();
+
       debugPrint('✅ VoIPService: Initialized successfully');
     } catch (e) {
       debugPrint('❌ VoIPService: Initialization error: $e');
     }
   }
 
-  /// Сохранение VoIP токена в Firestore
+  /// Сохранение FCM токена в Firestore
   Future<void> _saveVoipToken(String token) async {
     try {
       final user = _auth.currentUser;
@@ -81,6 +85,40 @@ class VoIPService {
       debugPrint('✅ VoIPService: Token saved for user ${user.uid}');
     } catch (e) {
       debugPrint('❌ VoIPService: Error saving token: $e');
+    }
+  }
+
+  /// Сохранение PushKit токена в Firestore (iOS)
+  Future<void> _savePushKitToken(String token) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        debugPrint('⚠️ VoIPService: No authenticated user, skipping PushKit token save');
+        return;
+      }
+
+      await _firestore.collection('users').doc(user.uid).update({
+        'voipPushToken': token,
+        'voipPushTokenUpdatedAt': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint('✅ VoIPService: PushKit token saved for user ${user.uid}');
+    } catch (e) {
+      debugPrint('❌ VoIPService: Error saving PushKit token: $e');
+    }
+  }
+
+  /// Пробуем синхронизировать PushKit токен (iOS)
+  Future<void> _syncPushKitToken() async {
+    if (kIsWeb) return;
+
+    try {
+      final token = await FlutterCallkitIncoming.getDevicePushTokenVoIP();
+      if (token is String && token.isNotEmpty) {
+        await _savePushKitToken(token);
+      }
+    } catch (e) {
+      debugPrint('⚠️ VoIPService: PushKit token not available yet: $e');
     }
   }
 
@@ -157,6 +195,9 @@ class VoIPService {
 
     try {
       switch (event.event) {
+        case Event.actionDidUpdateDevicePushTokenVoip:
+          await _handlePushKitTokenUpdate(event.body);
+          break;
         case Event.actionCallAccept:
           await _handleCallAccept(event.body);
           break;
@@ -183,12 +224,30 @@ class VoIPService {
     }
   }
 
+  Future<void> _handlePushKitTokenUpdate(dynamic body) async {
+    try {
+      if (kIsWeb) return;
+      if (body is Map) {
+        final token = body['deviceTokenVoIP'];
+        if (token is String && token.isNotEmpty) {
+          await _savePushKitToken(token);
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ VoIPService: Failed to handle PushKit token update: $e');
+    }
+  }
+
   /// Пользователь принял звонок
   /// Пользователь принял звонок
 Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   if (data == null) return;
 
-  final sessionId = data['sessionId'] as String?;
+  final extra = data['extra'] is Map
+      ? Map<String, dynamic>.from(data['extra'] as Map)
+      : <String, dynamic>{};
+  final sessionId =
+      data['sessionId'] as String? ?? data['id'] as String? ?? extra['sessionId'] as String?;
   if (sessionId == null) {
     debugPrint('❌ VoIPService: No sessionId in accept event');
     return;
@@ -197,6 +256,21 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   debugPrint('✅ VoIPService: Call accepted: $sessionId');
 
   try {
+    final roomUrl = extra['roomUrl'] ?? data['roomUrl'];
+    final meetingToken = extra['meetingToken'] ?? data['meetingToken'];
+
+    // Если в payload уже есть данные комнаты, значит это студент
+    if ((roomUrl is String && roomUrl.isNotEmpty) ||
+        (meetingToken is String && meetingToken.isNotEmpty)) {
+      final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
+      await videoDocRef.update({
+        'studentNavigationTriggered': true,
+        'navigationTimestamp': FieldValue.serverTimestamp(),
+      });
+      debugPrint('✅ VoIPService: Student navigation triggered (no acceptCall)');
+      return;
+    }
+
     // Вызываем Cloud Function acceptCall
     debugPrint('☁️ VoIPService: Calling acceptCall function...');
     final result = await _functions
