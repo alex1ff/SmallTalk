@@ -1,12 +1,17 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { sendApnsVoip } = require("./apns_voip");
+
+const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 
 /*
 ОБНОВЛЕННАЯ ФУНКЦИЯ: declineCall
 Теперь работает с sessionId и обновляет videoSessions
 */
 
-exports.declineCall = functions.https.onCall(async (data, context) => {
+exports.declineCall = functions
+  .runWith({ secrets: apnsSecrets })
+  .https.onCall(async (data, context) => {
   console.log("❌ Tutor declining call (updated version)...");
 
   try {
@@ -176,19 +181,48 @@ async function sendVoipPushToTutor(tutorId, callData) {
     const voipTopic =
       process.env.IOS_VOIP_TOPIC ||
       (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
-    const isPushKit = !!tutorData.voipPushToken;
-    const voipToken = tutorData.voipPushToken || tutorData.voipToken;
+    const voipPushToken = tutorData.voipPushToken;
+    const fcmToken = tutorData.voipToken;
 
-    if (!voipToken) {
-      console.log("⚠️ Tutor has no VoIP token saved");
+    if (!voipPushToken && !fcmToken) {
+      console.log("⚠️ Tutor has no push tokens saved");
       return;
     }
 
-    console.log("📱 VoIP token found:", voipToken.substring(0, 20) + "...");
-    console.log("📦 Using apns-topic:", isPushKit ? voipTopic : bundleId);
+    if (voipPushToken) {
+      const apnsPayload = {
+        aps: { "content-available": 1 },
+        type: "incoming_call",
+        sessionId: callData.sessionId,
+        callerName: callData.studentName,
+        callerId: callData.studentId,
+        callerPhoto: callData.studentPhoto || "",
+        language: callData.language || "",
+      };
+
+      try {
+        await sendApnsVoip({
+          deviceToken: voipPushToken,
+          topic: voipTopic,
+          payload: apnsPayload,
+        });
+        console.log("✅ APNs VoIP push sent successfully");
+        return;
+      } catch (error) {
+        console.error("❌ Error sending APNs VoIP push:", error.message);
+      }
+    }
+
+    if (!fcmToken) {
+      console.log("⚠️ No FCM token available for fallback");
+      return;
+    }
+
+    console.log("📱 FCM token found:", fcmToken.substring(0, 20) + "...");
+    console.log("📦 Using apns-topic for FCM fallback:", bundleId);
 
     const message = {
-      token: voipToken,
+      token: fcmToken,
       data: {
         type: "incoming_call",
         sessionId: callData.sessionId,
@@ -198,30 +232,20 @@ async function sendVoipPushToTutor(tutorId, callData) {
         language: callData.language || "",
       },
       apns: {
-        headers: isPushKit
-          ? {
-              "apns-priority": "10",
-              "apns-push-type": "voip",
-              "apns-topic": voipTopic,
-            }
-          : {
-              "apns-priority": "10",
-              "apns-push-type": "alert",
-              "apns-topic": bundleId,
-            },
+        headers: {
+          "apns-priority": "10",
+          "apns-push-type": "alert",
+          "apns-topic": bundleId,
+        },
         payload: {
-          aps: isPushKit
-            ? {
-                "content-available": 1,
-              }
-            : {
-                "content-available": 1,
-                alert: {
-                  title: "Входящий звонок",
-                  body: `${callData.studentName} хочет попрактиковать ${callData.language}`,
-                },
-                sound: "default",
-              },
+          aps: {
+            "content-available": 1,
+            alert: {
+              title: "Входящий звонок",
+              body: `${callData.studentName} хочет попрактиковать ${callData.language}`,
+            },
+            sound: "default",
+          },
         },
       },
       android: {
@@ -230,7 +254,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
     };
 
     const response = await admin.messaging().send(message);
-    console.log("✅ VoIP push sent successfully. Message ID:", response);
+    console.log("✅ FCM push sent successfully. Message ID:", response);
 
     return response;
   } catch (error) {
