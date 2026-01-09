@@ -343,6 +343,10 @@ async function sendVoipPushToTutor(tutorId, callData) {
 
     const tutorData = tutorDoc.data();
     const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
+    const voipTopic =
+      process.env.IOS_VOIP_TOPIC ||
+      (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
+    const isPushKit = !!tutorData.voipPushToken;
     const voipToken = tutorData.voipPushToken || tutorData.voipToken;
 
     if (!voipToken) {
@@ -351,7 +355,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
     }
 
     console.log("📱 VoIP token found:", voipToken.substring(0, 20) + "...");
-    console.log("📦 Using bundleId for apns-topic:", bundleId);
+    console.log("📦 Using apns-topic:", isPushKit ? voipTopic : bundleId);
 
     const message = {
       token: voipToken,
@@ -364,15 +368,30 @@ async function sendVoipPushToTutor(tutorId, callData) {
         language: callData.language || "",
       },
       apns: {
-        headers: {
-          "apns-priority": "10",
-          "apns-push-type": "voip",
-          "apns-topic": bundleId,
-        },
+        headers: isPushKit
+          ? {
+              "apns-priority": "10",
+              "apns-push-type": "voip",
+              "apns-topic": voipTopic,
+            }
+          : {
+              "apns-priority": "10",
+              "apns-push-type": "alert",
+              "apns-topic": bundleId,
+            },
         payload: {
-          aps: {
-            "content-available": 1,
-          },
+          aps: isPushKit
+            ? {
+                "content-available": 1,
+              }
+            : {
+                "content-available": 1,
+                alert: {
+                  title: "Входящий звонок",
+                  body: `${callData.studentName} хочет попрактиковать ${callData.language}`,
+                },
+                sound: "default",
+              },
         },
       },
       android: {

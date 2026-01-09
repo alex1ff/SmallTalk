@@ -155,52 +155,93 @@ if (user.loggedIn) {
       final userData = userDoc.data();
       final userRole = userData?['role'] as String?;
       
-      // Проверяем только для студентов
-      if (userRole != 'student') {
-        debugPrint('ℹ️ User is not a student, skipping session check');
+      if (userRole == 'student') {
+        // Ищем активную сессию для этого студента
+        final activeSessions = await FirebaseFirestore.instance
+            .collection('videoSessions')
+            .where('studentId', isEqualTo: userId)
+            .where('status', isEqualTo: 'active')
+            .where('studentNavigationTriggered', isEqualTo: true)
+            .limit(1)
+            .get();
+
+        if (activeSessions.docs.isEmpty) {
+          debugPrint('📭 No active sessions requiring navigation');
+          return;
+        }
+
+        final sessionDoc = activeSessions.docs.first;
+        final sessionId = sessionDoc.id;
+
+        debugPrint('✅ Found active session requiring navigation: $sessionId');
+
+        // Сбрасываем флаг навигации
+        await sessionDoc.reference.update({
+          'studentNavigationTriggered': false,
+          'navigationCompletedAt': FieldValue.serverTimestamp(),
+        });
+
+        debugPrint('🎬 Navigating to VideoCallPageStudent...');
+
+        // Даем время на инициализацию роутера
+        await Future.delayed(Duration(milliseconds: 1500));
+
+        // Переходим на страницу видеозвонка
+        final videoDocRef = sessionDoc.reference;
+
+        // Используем query parameters для навигации (совместимо с FlutterFlow)
+        _router.go(
+          '/videoCallPageStudent?videoDocRef=${Uri.encodeComponent(videoDocRef.path)}',
+        );
+
+        debugPrint('✅ Navigation triggered successfully');
         return;
       }
-      
-      // Ищем активную сессию для этого студента
-      final activeSessions = await FirebaseFirestore.instance
-          .collection('videoSessions')
-          .where('studentId', isEqualTo: userId)
-          .where('status', isEqualTo: 'active')
-          .where('studentNavigationTriggered', isEqualTo: true)
-          .limit(1)
-          .get();
-      
-      if (activeSessions.docs.isEmpty) {
-        debugPrint('📭 No active sessions requiring navigation');
+
+      if (userRole == 'tutor') {
+        // Ищем активную сессию для этого преподавателя
+        final activeSessions = await FirebaseFirestore.instance
+            .collection('videoSessions')
+            .where('tutorId', isEqualTo: userId)
+            .where('status', isEqualTo: 'active')
+            .where('tutorNavigationTriggered', isEqualTo: true)
+            .limit(1)
+            .get();
+
+        if (activeSessions.docs.isEmpty) {
+          debugPrint('📭 No active sessions requiring navigation');
+          return;
+        }
+
+        final sessionDoc = activeSessions.docs.first;
+        final sessionId = sessionDoc.id;
+
+        debugPrint('✅ Found active tutor session requiring navigation: $sessionId');
+
+        // Сбрасываем флаг навигации
+        await sessionDoc.reference.update({
+          'tutorNavigationTriggered': false,
+          'navigationCompletedAt': FieldValue.serverTimestamp(),
+        });
+
+        debugPrint('🎬 Navigating to VideoCallPageNS...');
+
+        // Даем время на инициализацию роутера
+        await Future.delayed(Duration(milliseconds: 1500));
+
+        // Переходим на страницу видеозвонка
+        final videoDocRef = sessionDoc.reference;
+
+        _router.go(
+          '/videoCallPageNS?videoDocRef=${Uri.encodeComponent(videoDocRef.path)}',
+        );
+
+        debugPrint('✅ Tutor navigation triggered successfully');
         return;
       }
-      
-      final sessionDoc = activeSessions.docs.first;
-      final sessionId = sessionDoc.id;
-      
-      debugPrint('✅ Found active session requiring navigation: $sessionId');
-      
-      // Сбрасываем флаг навигации
-      await sessionDoc.reference.update({
-        'studentNavigationTriggered': false,
-        'navigationCompletedAt': FieldValue.serverTimestamp(),
-      });
-      
-      debugPrint('🎬 Navigating to VideoCallPageStudent...');
-      
-      // Даем время на инициализацию роутера
-      await Future.delayed(Duration(milliseconds: 1500));
-      
-      // Переходим на страницу видеозвонка
-      final videoDocRef = sessionDoc.reference;
-      
-      // Используем query parameters для навигации (совместимо с FlutterFlow)
-      _router.go(
-        '/videoCallPageStudent?videoDocRef=${Uri.encodeComponent(videoDocRef.path)}',
-      );
-      
-      debugPrint('✅ Navigation triggered successfully');
-      
+
+      debugPrint('ℹ️ User role not supported for session navigation');
+      return;
     } catch (e) {
       debugPrint('❌ Error checking for active video session: $e');
     }
