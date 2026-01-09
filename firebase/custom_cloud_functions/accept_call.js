@@ -116,7 +116,8 @@ exports.acceptCall = functions.https.onCall(async (data, context) => {
       isInCall: tutorData.isInCall,
     });
 
-    if (tutorData.role !== "tutor") {
+    const allowedRoles = ["tutor", "native_speaker"];
+    if (!allowedRoles.includes(tutorData.role)) {
       console.log("❌ User is not a tutor, role:", tutorData.role);
       throw new functions.https.HttpsError(
         "permission-denied",
