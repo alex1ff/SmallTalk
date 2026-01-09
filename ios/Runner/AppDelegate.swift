@@ -48,15 +48,32 @@ import flutter_callkit_incoming
       return
     }
 
+    var didComplete = false
+    func finish() {
+      if didComplete { return }
+      didComplete = true
+      completion()
+    }
+
     let payloadDict = payload.dictionaryPayload.reduce(into: [String: Any]()) { result, entry in
       if let key = entry.key as? String {
         result[key] = entry.value
       }
     }
 
-    let id = (payloadDict["sessionId"] as? String) ??
-      (payloadDict["id"] as? String) ??
+    let sessionId = (payloadDict["sessionId"] as? String) ??
+      (payloadDict["id"] as? String)
+    if let sessionId {
+      payloadDict["sessionId"] = sessionId
+    }
+
+    let rawCallKitId =
+      (payloadDict["callKitId"] as? String) ??
+      sessionId ??
       UUID().uuidString
+    let callKitId = UUID(uuidString: rawCallKitId) != nil
+      ? rawCallKitId
+      : UUID().uuidString
     let nameCaller = (payloadDict["callerName"] as? String) ??
       (payloadDict["nameCaller"] as? String) ??
       "Incoming call"
@@ -66,15 +83,23 @@ import flutter_callkit_incoming
     let isVideo = payloadDict["isVideo"] as? Bool ?? true
 
     let data = flutter_callkit_incoming.Data(
-      id: id,
+      id: callKitId,
       nameCaller: nameCaller,
       handle: handle,
       type: isVideo ? 1 : 0
     )
     data.extra = NSDictionary(dictionary: payloadDict)
 
-    SwiftFlutterCallkitIncomingPlugin.sharedInstance?.showCallkitIncoming(data, fromPushKit: true) {
-      completion()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+      finish()
+    }
+
+    if let plugin = SwiftFlutterCallkitIncomingPlugin.sharedInstance {
+      plugin.showCallkitIncoming(data, fromPushKit: true) {
+        finish()
+      }
+    } else {
+      finish()
     }
   }
 }

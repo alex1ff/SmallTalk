@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:uuid/uuid.dart';
 
 // Импорт для навигации и backend
 import '/backend/backend.dart';
@@ -155,8 +156,9 @@ class VoIPService {
     try {
       debugPrint('📞 VoIPService: Showing incoming call from $callerName');
 
+      final callKitId = const Uuid().v4();
       final callKitParams = CallKitParams(
-        id: sessionId,
+        id: callKitId,
         nameCaller: callerName,
         appName: 'Small Talk',
         avatar: callerPhoto,
@@ -167,6 +169,7 @@ class VoIPService {
         duration: 45000,
         extra: <String, dynamic>{
           'sessionId': sessionId,
+          'callKitId': callKitId,
           'callerId': callerId,
           ...?extraData,
         },
@@ -269,7 +272,9 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       ? Map<String, dynamic>.from(data['extra'] as Map)
       : <String, dynamic>{};
   final sessionId =
-      data['sessionId'] as String? ?? data['id'] as String? ?? extra['sessionId'] as String?;
+      extra['sessionId'] as String? ??
+      data['sessionId'] as String? ??
+      data['id'] as String?;
   if (sessionId == null) {
     debugPrint('❌ VoIPService: No sessionId in accept event');
     return;
@@ -340,7 +345,9 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
         ? Map<String, dynamic>.from(data['extra'] as Map)
         : <String, dynamic>{};
     final sessionId =
-        data['sessionId'] as String? ?? data['id'] as String? ?? extra['sessionId'] as String?;
+        extra['sessionId'] as String? ??
+        data['sessionId'] as String? ??
+        data['id'] as String?;
     if (sessionId == null) {
       debugPrint('❌ VoIPService: No sessionId in decline event');
       return;
@@ -368,7 +375,9 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
         ? Map<String, dynamic>.from(data['extra'] as Map)
         : <String, dynamic>{};
     final sessionId =
-        data['sessionId'] as String? ?? data['id'] as String? ?? extra['sessionId'] as String?;
+        extra['sessionId'] as String? ??
+        data['sessionId'] as String? ??
+        data['id'] as String?;
     if (sessionId == null) {
       debugPrint('❌ VoIPService: No sessionId in ended event');
       return;
@@ -399,7 +408,9 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
         ? Map<String, dynamic>.from(data['extra'] as Map)
         : <String, dynamic>{};
     final sessionId =
-        data['sessionId'] as String? ?? data['id'] as String? ?? extra['sessionId'] as String?;
+        extra['sessionId'] as String? ??
+        data['sessionId'] as String? ??
+        data['id'] as String?;
     if (sessionId == null) {
       debugPrint('❌ VoIPService: No sessionId in timeout event');
       return;
