@@ -61,10 +61,8 @@ dependencies:
   firebase_storage_web: 3.10.14
   # 🔔 VoIP поддержка
   flutter_callkit_incoming: ^3.0.0
-  firebase_messaging: ^15.2.7
   flutter_animate: 4.5.0
   flutter_cache_manager: 3.4.1
-  flutter_callkit_incoming: ^3.0.0
   flutter_card_swiper: 6.0.0
   flutter_keyboard_visibility: 
     git:
@@ -302,4 +300,3 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/custom-fonts/#from-packages
-
