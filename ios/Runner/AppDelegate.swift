@@ -55,7 +55,7 @@ import flutter_callkit_incoming
       completion()
     }
 
-    let payloadDict = payload.dictionaryPayload.reduce(into: [String: Any]()) { result, entry in
+    var payloadDict = payload.dictionaryPayload.reduce(into: [String: Any]()) { result, entry in
       if let key = entry.key as? String {
         result[key] = entry.value
       }
