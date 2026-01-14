@@ -169,7 +169,7 @@ if (user.loggedIn) {
           .split('.')
           .last
           .toLowerCase()
-          .replaceAll(RegExp(r'[\\s-]+'), '_');
+          .replaceAll(RegExp(r'[\s-]+'), '_');
 
       debugPrint(
         '🔍 User role raw: $rawRole, normalized: $normalizedRole',
