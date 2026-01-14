@@ -154,11 +154,34 @@ if (user.loggedIn) {
       
       final userData = userDoc.data();
       final rawRole = userData?['role'];
-      final userRole = rawRole is String
-          ? rawRole
-          : rawRole?.toString().split('.').last;
+      String? roleValue;
+      if (rawRole is String) {
+        roleValue = rawRole;
+      } else if (rawRole is Map) {
+        final name = rawRole['name'] ?? rawRole['value'] ?? rawRole['role'];
+        if (name is String) {
+          roleValue = name;
+        }
+      }
+      roleValue ??= rawRole?.toString();
+      final normalizedRole = (roleValue ?? '')
+          .trim()
+          .split('.')
+          .last
+          .toLowerCase()
+          .replaceAll(RegExp(r'[\\s-]+'), '_');
 
-      if (userRole == 'student') {
+      debugPrint(
+        '🔍 User role raw: $rawRole, normalized: $normalizedRole',
+      );
+
+      final isStudent = normalizedRole == 'student';
+      final isTutor = normalizedRole == 'native_speaker' ||
+          normalizedRole == 'nativespeaker' ||
+          normalizedRole == 'tutor' ||
+          normalizedRole == 'teacher';
+
+      if (isStudent) {
         // Ищем активную сессию для этого студента
         final activeSessions = await FirebaseFirestore.instance
             .collection('videoSessions')
@@ -212,7 +235,7 @@ if (user.loggedIn) {
         return;
       }
 
-      if (userRole == 'native_speaker' || userRole == 'tutor') {
+      if (isTutor) {
         // Ищем активную сессию для этого преподавателя
         final activeSessions = await FirebaseFirestore.instance
             .collection('videoSessions')
@@ -265,7 +288,9 @@ if (user.loggedIn) {
         return;
       }
 
-      debugPrint('ℹ️ User role not supported for session navigation: $userRole');
+      debugPrint(
+        'ℹ️ User role not supported for session navigation: $normalizedRole',
+      );
       return;
     } catch (e) {
       debugPrint('❌ Error checking for active video session: $e');
