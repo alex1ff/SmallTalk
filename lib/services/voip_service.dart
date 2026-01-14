@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 // Импорт для навигации и backend
 import '/backend/backend.dart';
+import '/flutter_flow/nav/nav.dart';
 
 /// VoIP сервис для обработки входящих звонков
 /// Использует CallKit (iOS) и ConnectionService (Android)
@@ -22,6 +23,7 @@ class VoIPService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  String? _lastNavigatedSessionId;
 
   // Для навигации нужен context - сохраним глобальный navigatorKey
   //static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -295,6 +297,7 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
         'navigationTimestamp': FieldValue.serverTimestamp(),
       });
       debugPrint('✅ VoIPService: Student navigation triggered (no acceptCall)');
+      _tryNavigateToVideoCall(sessionId: sessionId, isTutor: false);
       return;
     }
 
@@ -331,11 +334,46 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
 
     debugPrint('✅ VoIPService: Tutor navigation data saved to Firestore');
     debugPrint('⚠️ VoIPService: App will navigate to VideoCallPageNS when opened');
+    _tryNavigateToVideoCall(sessionId: sessionId, isTutor: true);
 
   } catch (e) {
     debugPrint('❌ VoIPService: Error accepting call: $e');
   }
 }
+
+  void _tryNavigateToVideoCall({
+    required String sessionId,
+    required bool isTutor,
+  }) {
+    final navContext = appNavigatorKey.currentContext;
+    if (navContext == null) {
+      debugPrint('⚠️ VoIPService: Navigation context not ready');
+      return;
+    }
+
+    if (_lastNavigatedSessionId == sessionId) {
+      return;
+    }
+
+    final route = isTutor ? '/videoCallPageNS' : '/videoCallPageStudent';
+    final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
+    final target =
+        '$route?videoDocRef=${Uri.encodeComponent(videoDocRef.path)}';
+
+    final router = GoRouter.of(navContext);
+    final currentLocation = router.getCurrentLocation();
+    if (currentLocation.startsWith(route)) {
+      _lastNavigatedSessionId = sessionId;
+      debugPrint('ℹ️ VoIPService: Already on $route, skip navigation');
+      return;
+    }
+
+    _lastNavigatedSessionId = sessionId;
+    router.go(target);
+    debugPrint(
+      '🎬 VoIPService: Navigated to ${isTutor ? 'VideoCallPageNS' : 'VideoCallPageStudent'}',
+    );
+  }
 
   /// Пользователь отклонил звонок
   Future<void> _handleCallDecline(Map<String, dynamic>? data) async {
