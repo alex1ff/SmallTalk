@@ -153,16 +153,18 @@ if (user.loggedIn) {
       }
       
       final userData = userDoc.data();
-      final userRole = userData?['role'] as String?;
-      
+      final rawRole = userData?['role'];
+      final userRole = rawRole is String
+          ? rawRole
+          : rawRole?.toString().split('.').last;
+
       if (userRole == 'student') {
         // Ищем активную сессию для этого студента
         final activeSessions = await FirebaseFirestore.instance
             .collection('videoSessions')
             .where('studentId', isEqualTo: userId)
-            .where('status', isEqualTo: 'active')
             .where('studentNavigationTriggered', isEqualTo: true)
-            .limit(1)
+            .limit(5)
             .get();
 
         if (activeSessions.docs.isEmpty) {
@@ -170,7 +172,19 @@ if (user.loggedIn) {
           return;
         }
 
-        final sessionDoc = activeSessions.docs.first;
+        QueryDocumentSnapshot<Map<String, dynamic>>? sessionDoc;
+        for (final doc in activeSessions.docs) {
+          final status = doc.data()['status'] as String?;
+          if (status == null || status == 'active' || status == 'connected') {
+            sessionDoc = doc;
+            break;
+          }
+        }
+
+        if (sessionDoc == null) {
+          debugPrint('📭 No active sessions with matching status');
+          return;
+        }
         final sessionId = sessionDoc.id;
 
         debugPrint('✅ Found active session requiring navigation: $sessionId');
@@ -198,14 +212,13 @@ if (user.loggedIn) {
         return;
       }
 
-      if (userRole == 'tutor') {
+      if (userRole == 'native_speaker' || userRole == 'tutor') {
         // Ищем активную сессию для этого преподавателя
         final activeSessions = await FirebaseFirestore.instance
             .collection('videoSessions')
             .where('tutorId', isEqualTo: userId)
-            .where('status', isEqualTo: 'active')
             .where('tutorNavigationTriggered', isEqualTo: true)
-            .limit(1)
+            .limit(5)
             .get();
 
         if (activeSessions.docs.isEmpty) {
@@ -213,7 +226,19 @@ if (user.loggedIn) {
           return;
         }
 
-        final sessionDoc = activeSessions.docs.first;
+        QueryDocumentSnapshot<Map<String, dynamic>>? sessionDoc;
+        for (final doc in activeSessions.docs) {
+          final status = doc.data()['status'] as String?;
+          if (status == null || status == 'active' || status == 'connected') {
+            sessionDoc = doc;
+            break;
+          }
+        }
+
+        if (sessionDoc == null) {
+          debugPrint('📭 No active tutor sessions with matching status');
+          return;
+        }
         final sessionId = sessionDoc.id;
 
         debugPrint('✅ Found active tutor session requiring navigation: $sessionId');
@@ -240,7 +265,7 @@ if (user.loggedIn) {
         return;
       }
 
-      debugPrint('ℹ️ User role not supported for session navigation');
+      debugPrint('ℹ️ User role not supported for session navigation: $userRole');
       return;
     } catch (e) {
       debugPrint('❌ Error checking for active video session: $e');

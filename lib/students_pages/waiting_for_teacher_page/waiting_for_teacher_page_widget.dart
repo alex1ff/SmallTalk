@@ -1,14 +1,12 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/backend/backend.dart';
 import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.dart';
 import '/backend/schema/enums/enums.dart';
+import '/backend/schema/structs/index.dart';
+import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
-import '/flutter_flow/instant_timer.dart';
 import 'dart:async';
-import '/flutter_flow/custom_functions.dart' as functions;
-import '/index.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -62,34 +60,23 @@ class _WaitingForTeacherPageWidgetState
         );
       }
 
-      _model.instantTimer = InstantTimer.periodic(
-        duration: Duration(milliseconds: 3000),
-        callback: (timer) async {
-          _model.videosession = await VideoSessionsRecord.getDocumentOnce(
-              functions.videoSessionsToRef(_model.newSession!.data!.sessionId));
-          if (_model.videosession?.status == CallStatus.active.name) {
-            _model.instantTimer?.cancel();
+      if (!mounted) {
+        return;
+      }
 
-            context.goNamed(
-              VideoCallPageStudentWidget.routeName,
-              queryParameters: {
-                'videoDocRef': serializeParam(
-                  _model.videosession?.reference,
-                  ParamType.DocumentReference,
-                ),
-              }.withoutNulls,
-            );
+      final sessionId = _model.newSession?.data?.sessionId;
+      if (sessionId == null || sessionId.isEmpty) {
+        debugPrint('⚠️ WaitingForTeacherPage: Missing sessionId, skip polling');
+        return;
+      }
 
-            return;
-          }
-        },
-        startImmediately: false,
-      );
+      await actions.startStudentSessionListener(context, sessionId);
     });
   }
 
   @override
   void dispose() {
+    actions.stopStudentSessionListener();
     _model.dispose();
 
     super.dispose();
@@ -137,6 +124,11 @@ class _WaitingForTeacherPageWidgetState
                             succeeded: false,
                           );
                         }
+                      }(),
+                    );
+                    unawaited(
+                      () async {
+                        await actions.stopStudentSessionListener();
                       }(),
                     );
                     context.safePop();
