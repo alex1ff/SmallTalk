@@ -356,9 +356,7 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     }
 
     final route = isTutor ? '/videoCallPageNS' : '/videoCallPageStudent';
-    final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
-    final target =
-        '$route?videoDocRef=${Uri.encodeComponent(videoDocRef.path)}';
+    final target = '$route?videoDocRef=$sessionId';
 
     final router = GoRouter.of(navContext);
     final currentLocation = router.getCurrentLocation();
