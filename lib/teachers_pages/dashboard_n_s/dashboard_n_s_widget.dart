@@ -42,7 +42,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
 
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
-      if (widget.zn == true) {
+      if (widget.zn!) {
         await showModalBottomSheet(
           isScrollControlled: true,
           backgroundColor: Colors.transparent,

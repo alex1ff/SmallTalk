@@ -14,12 +14,10 @@ export '/shared_pages/profile/profile_widget.dart' show ProfileWidget;
 export '/students_pages/words/words_widget.dart' show WordsWidget;
 export '/shared_pages/call_summary/call_summary_widget.dart'
     show CallSummaryWidget;
-export '/students_pages/video_call_page_student/video_call_page_student_widget.dart'
-    show VideoCallPageStudentWidget;
+export '/shared_pages/video_call_page/video_call_page_widget.dart'
+    show VideoCallPageWidget;
 export '/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart'
     show WaitingForTeacherPageWidget;
-export '/teachers_pages/video_call_page_n_s/video_call_page_n_s_widget.dart'
-    show VideoCallPageNSWidget;
 export '/shared_pages/profile_edit/profile_edit_widget.dart'
     show ProfileEditWidget;
 export '/students_pages/native_speaker_page/native_speaker_page_widget.dart'

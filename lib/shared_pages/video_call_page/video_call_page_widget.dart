@@ -1,6 +1,7 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.dart';
+import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/students_pages/components/new_word/new_word_widget.dart';
@@ -12,33 +13,33 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
-import 'video_call_page_n_s_model.dart';
-export 'video_call_page_n_s_model.dart';
+import 'video_call_page_model.dart';
+export 'video_call_page_model.dart';
 
-class VideoCallPageNSWidget extends StatefulWidget {
-  const VideoCallPageNSWidget({
+class VideoCallPageWidget extends StatefulWidget {
+  const VideoCallPageWidget({
     super.key,
     required this.videoDocRef,
   });
 
   final DocumentReference? videoDocRef;
 
-  static String routeName = 'VideoCallPage_NS';
-  static String routePath = '/videoCallPageNS';
+  static String routeName = 'VideoCallPage';
+  static String routePath = '/videoCallPage';
 
   @override
-  State<VideoCallPageNSWidget> createState() => _VideoCallPageNSWidgetState();
+  State<VideoCallPageWidget> createState() => _VideoCallPageWidgetState();
 }
 
-class _VideoCallPageNSWidgetState extends State<VideoCallPageNSWidget> {
-  late VideoCallPageNSModel _model;
+class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
+  late VideoCallPageModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
     super.initState();
-    _model = createModel(context, () => VideoCallPageNSModel());
+    _model = createModel(context, () => VideoCallPageModel());
   }
 
   @override
@@ -70,7 +71,7 @@ class _VideoCallPageNSWidgetState extends State<VideoCallPageNSWidget> {
           );
         }
 
-        final videoCallPageNSVideoSessionsRecord = snapshot.data!;
+        final videoCallPageVideoSessionsRecord = snapshot.data!;
 
         return GestureDetector(
           onTap: () {
@@ -87,16 +88,10 @@ class _VideoCallPageNSWidgetState extends State<VideoCallPageNSWidget> {
                 child: custom_widgets.MinimalDailyWidget(
                   width: double.infinity,
                   height: double.infinity,
-                  roomUrl: valueOrDefault<String>(
-                    videoCallPageNSVideoSessionsRecord.dailyRoomUrl,
-                    '0',
-                  ),
-                  meetingToken: valueOrDefault<String>(
-                    videoCallPageNSVideoSessionsRecord.meetingToken,
-                    '0',
-                  ),
+                  roomUrl: videoCallPageVideoSessionsRecord.dailyRoomUrl,
+                  meetingToken: videoCallPageVideoSessionsRecord.meetingToken,
                   deepgramApiKey: 'REDACTED_DEEPGRAM_KEY',
-                  deepgramLanguage: videoCallPageNSVideoSessionsRecord.language,
+                  deepgramLanguage: videoCallPageVideoSessionsRecord.language,
                   username: currentUserDisplayName,
                   actionCallback: (word, sentence) async {
                     await showModalBottomSheet(
@@ -115,7 +110,7 @@ class _VideoCallPageNSWidgetState extends State<VideoCallPageNSWidget> {
                               child: NewWordWidget(
                                 word: word,
                                 langCode:
-                                    videoCallPageNSVideoSessionsRecord.language,
+                                    videoCallPageVideoSessionsRecord.language,
                               ),
                             ),
                           ),
@@ -150,8 +145,11 @@ class _VideoCallPageNSWidgetState extends State<VideoCallPageNSWidget> {
                       CallSummaryWidget.routeName,
                       queryParameters: {
                         'userRef': serializeParam(
-                          functions.stringToRef(
-                              videoCallPageNSVideoSessionsRecord.studentId),
+                          functions.stringToRef(currentUserDocument?.role ==
+                                  UserRole.native_speaker
+                              ? videoCallPageVideoSessionsRecord.studentId
+                              : videoCallPageVideoSessionsRecord
+                                  .currentTutorId),
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
@@ -159,11 +157,11 @@ class _VideoCallPageNSWidgetState extends State<VideoCallPageNSWidget> {
                           ParamType.DocumentReference,
                         ),
                         'lang': serializeParam(
-                          videoCallPageNSVideoSessionsRecord.language,
+                          videoCallPageVideoSessionsRecord.language,
                           ParamType.String,
                         ),
                         'dur': serializeParam(
-                          videoCallPageNSVideoSessionsRecord.duration,
+                          videoCallPageVideoSessionsRecord.duration,
                           ParamType.int,
                         ),
                       }.withoutNulls,
@@ -177,7 +175,7 @@ class _VideoCallPageNSWidgetState extends State<VideoCallPageNSWidget> {
                       queryParameters: {
                         'userRef': serializeParam(
                           functions.stringToRef(
-                              videoCallPageNSVideoSessionsRecord.studentId),
+                              videoCallPageVideoSessionsRecord.currentTutorId),
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
@@ -185,11 +183,11 @@ class _VideoCallPageNSWidgetState extends State<VideoCallPageNSWidget> {
                           ParamType.DocumentReference,
                         ),
                         'lang': serializeParam(
-                          videoCallPageNSVideoSessionsRecord.language,
+                          videoCallPageVideoSessionsRecord.language,
                           ParamType.String,
                         ),
                         'dur': serializeParam(
-                          videoCallPageNSVideoSessionsRecord.duration,
+                          videoCallPageVideoSessionsRecord.duration,
                           ParamType.int,
                         ),
                       }.withoutNulls,

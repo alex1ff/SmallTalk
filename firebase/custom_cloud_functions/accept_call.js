@@ -8,313 +8,319 @@ const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 exports.acceptCall = functions
   .runWith({ secrets: apnsSecrets })
   .https.onCall(async (data, context) => {
-  console.log("✅ Tutor accepting call (updated version)...");
+    console.log("✅ Tutor accepting call (updated version)...");
 
-  try {
-    // === 1. АУТЕНТИФИКАЦИЯ И ВАЛИДАЦИЯ ===
-    if (!context.auth) {
-      console.log("❌ User not authenticated");
-      throw new functions.https.HttpsError(
-        "unauthenticated",
-        "User must be authenticated",
-      );
-    }
-
-    const tutorId = context.auth.uid;
-    const { sessionId } = data;
-
-    console.log("👨‍🏫 Tutor ID:", tutorId);
-    console.log("📺 Session ID:", sessionId);
-
-    if (!sessionId) {
-      console.log("❌ Missing sessionId parameter");
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "sessionId is required",
-      );
-    }
-
-    // === 2. ПОЛУЧЕНИЕ И ВАЛИДАЦИЯ ДАННЫХ СЕССИИ ===
-    console.log("📋 Fetching video session data...");
-    const sessionDoc = await admin
-      .firestore()
-      .collection("videoSessions")
-      .doc(sessionId)
-      .get();
-
-    if (!sessionDoc.exists) {
-      console.log("❌ Video session not found:", sessionId);
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Video session not found",
-      );
-    }
-
-    const sessionData = sessionDoc.data();
-    console.log("📋 Session data:", {
-      status: sessionData.status,
-      currentTutorId: sessionData.currentTutorId,
-      studentId: sessionData.studentId,
-      language: sessionData.language,
-    });
-
-    // Проверяем, что сессия в статусе поиска
-    if (sessionData.status !== "searching") {
-      console.log(
-        "❌ Session is not in searching status, current status:",
-        sessionData.status,
-      );
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Session is not available for acceptance",
-      );
-    }
-
-    // Проверяем, что звонок адресован этому преподавателю
-    if (sessionData.currentTutorId !== tutorId) {
-      console.log(
-        "❌ Session is not for this tutor. Expected:",
-        sessionData.currentTutorId,
-        "Got:",
-        tutorId,
-      );
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "This session is not assigned to you",
-      );
-    }
-
-    // Проверяем, что сессия не истекла
-    if (sessionData.expiresAt && sessionData.expiresAt.toDate() < new Date()) {
-      console.log("❌ Session has expired");
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Session has expired",
-      );
-    }
-
-    // === 3. ПОЛУЧЕНИЕ И ВАЛИДАЦИЯ ДАННЫХ ПРЕПОДАВАТЕЛЯ ===
-    console.log("👨‍🏫 Fetching tutor data...");
-    const tutorDoc = await admin
-      .firestore()
-      .collection("users")
-      .doc(tutorId)
-      .get();
-
-    if (!tutorDoc.exists) {
-      console.log("❌ Tutor not found:", tutorId);
-      throw new functions.https.HttpsError("not-found", "Tutor not found");
-    }
-
-    const tutorData = tutorDoc.data();
-    const availabilityToday = tutorData.availabilityToday;
-    const isAvailable =
-      tutorData.isAvailable !== undefined
-        ? tutorData.isAvailable
-        : availabilityToday?.enabled ?? true;
-
-    console.log("👨‍🏫 Tutor data:", {
-      display_name: tutorData.display_name,
-      role: tutorData.role,
-      isAvailable: tutorData.isAvailable,
-      availabilityTodayEnabled: availabilityToday?.enabled,
-      isInCall: tutorData.isInCall,
-    });
-
-    const allowedRoles = ["tutor", "native_speaker"];
-    if (!allowedRoles.includes(tutorData.role)) {
-      console.log("❌ User is not a tutor, role:", tutorData.role);
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "Only tutors can accept calls",
-      );
-    }
-
-    if (!isAvailable) {
-      console.log("❌ Tutor is not available");
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Tutor is not available",
-      );
-    }
-
-    if (tutorData.isInCall) {
-      console.log("❌ Tutor is already in a call");
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Tutor is already in a call",
-      );
-    }
-
-    // === 4. ПОЛУЧЕНИЕ ДАННЫХ СТУДЕНТА ===
-    console.log("👨‍🎓 Fetching student data...");
-    const studentDoc = await admin
-      .firestore()
-      .collection("users")
-      .doc(sessionData.studentId)
-      .get();
-
-    if (!studentDoc.exists) {
-      console.log("❌ Student not found:", sessionData.studentId);
-      throw new functions.https.HttpsError("not-found", "Student not found");
-    }
-
-    const studentData = studentDoc.data();
-    console.log("👨‍🎓 Student data:", {
-      display_name: studentData.display_name,
-      role: studentData.role,
-    });
-
-    // === 5. СОЗДАНИЕ КОМНАТЫ DAILY.CO ===
-    console.log("🏠 Creating Daily.co room...");
-    let dailyRoom;
     try {
-      dailyRoom = await createDailyRoom(
-        sessionData.language,
-        sessionData.studentId,
-        tutorId,
-        sessionData.studentInfo?.name || studentData.display_name || "Student",
-        tutorData.display_name || "Tutor",
-      );
-      console.log("✅ Daily room created successfully:", {
-        name: dailyRoom.name,
-        url: dailyRoom.url,
-        hasToken: !!dailyRoom.token,
+      // === 1. АУТЕНТИФИКАЦИЯ И ВАЛИДАЦИЯ ===
+      if (!context.auth) {
+        console.log("❌ User not authenticated");
+        throw new functions.https.HttpsError(
+          "unauthenticated",
+          "User must be authenticated",
+        );
+      }
+
+      const tutorId = context.auth.uid;
+      const { sessionId } = data;
+
+      console.log("👨‍🏫 Tutor ID:", tutorId);
+      console.log("📺 Session ID:", sessionId);
+
+      if (!sessionId) {
+        console.log("❌ Missing sessionId parameter");
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "sessionId is required",
+        );
+      }
+
+      // === 2. ПОЛУЧЕНИЕ И ВАЛИДАЦИЯ ДАННЫХ СЕССИИ ===
+      console.log("📋 Fetching video session data...");
+      const sessionDoc = await admin
+        .firestore()
+        .collection("videoSessions")
+        .doc(sessionId)
+        .get();
+
+      if (!sessionDoc.exists) {
+        console.log("❌ Video session not found:", sessionId);
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Video session not found",
+        );
+      }
+
+      const sessionData = sessionDoc.data();
+      console.log("📋 Session data:", {
+        status: sessionData.status,
+        currentTutorId: sessionData.currentTutorId,
+        studentId: sessionData.studentId,
+        language: sessionData.language,
       });
-    } catch (roomError) {
-      console.error("❌ Failed to create Daily room:", roomError);
+
+      // Проверяем, что сессия в статусе поиска
+      if (sessionData.status !== "searching") {
+        console.log(
+          "❌ Session is not in searching status, current status:",
+          sessionData.status,
+        );
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Session is not available for acceptance",
+        );
+      }
+
+      // Проверяем, что звонок адресован этому преподавателю
+      if (sessionData.currentTutorId !== tutorId) {
+        console.log(
+          "❌ Session is not for this tutor. Expected:",
+          sessionData.currentTutorId,
+          "Got:",
+          tutorId,
+        );
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "This session is not assigned to you",
+        );
+      }
+
+      // Проверяем, что сессия не истекла
+      if (
+        sessionData.expiresAt &&
+        sessionData.expiresAt.toDate() < new Date()
+      ) {
+        console.log("❌ Session has expired");
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Session has expired",
+        );
+      }
+
+      // === 3. ПОЛУЧЕНИЕ И ВАЛИДАЦИЯ ДАННЫХ ПРЕПОДАВАТЕЛЯ ===
+      console.log("👨‍🏫 Fetching tutor data...");
+      const tutorDoc = await admin
+        .firestore()
+        .collection("users")
+        .doc(tutorId)
+        .get();
+
+      if (!tutorDoc.exists) {
+        console.log("❌ Tutor not found:", tutorId);
+        throw new functions.https.HttpsError("not-found", "Tutor not found");
+      }
+
+      const tutorData = tutorDoc.data();
+      const availabilityToday = tutorData.availabilityToday;
+      const isAvailable =
+        tutorData.isAvailable !== undefined
+          ? tutorData.isAvailable
+          : (availabilityToday?.enabled ?? true);
+
+      console.log("👨‍🏫 Tutor data:", {
+        display_name: tutorData.display_name,
+        role: tutorData.role,
+        isAvailable: tutorData.isAvailable,
+        availabilityTodayEnabled: availabilityToday?.enabled,
+        isInCall: tutorData.isInCall,
+      });
+
+      const allowedRoles = ["tutor", "native_speaker"];
+      if (!allowedRoles.includes(tutorData.role)) {
+        console.log("❌ User is not a tutor, role:", tutorData.role);
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "Only tutors can accept calls",
+        );
+      }
+
+      if (!isAvailable) {
+        console.log("❌ Tutor is not available");
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Tutor is not available",
+        );
+      }
+
+      if (tutorData.isInCall) {
+        console.log("❌ Tutor is already in a call");
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Tutor is already in a call",
+        );
+      }
+
+      // === 4. ПОЛУЧЕНИЕ ДАННЫХ СТУДЕНТА ===
+      console.log("👨‍🎓 Fetching student data...");
+      const studentDoc = await admin
+        .firestore()
+        .collection("users")
+        .doc(sessionData.studentId)
+        .get();
+
+      if (!studentDoc.exists) {
+        console.log("❌ Student not found:", sessionData.studentId);
+        throw new functions.https.HttpsError("not-found", "Student not found");
+      }
+
+      const studentData = studentDoc.data();
+      console.log("👨‍🎓 Student data:", {
+        display_name: studentData.display_name,
+        role: studentData.role,
+      });
+
+      // === 5. СОЗДАНИЕ КОМНАТЫ DAILY.CO ===
+      console.log("🏠 Creating Daily.co room...");
+      let dailyRoom;
+      try {
+        dailyRoom = await createDailyRoom(
+          sessionData.language,
+          sessionData.studentId,
+          tutorId,
+          sessionData.studentInfo?.name ||
+            studentData.display_name ||
+            "Student",
+          tutorData.display_name || "Tutor",
+        );
+        console.log("✅ Daily room created successfully:", {
+          name: dailyRoom.name,
+          url: dailyRoom.url,
+          hasToken: !!dailyRoom.token,
+        });
+      } catch (roomError) {
+        console.error("❌ Failed to create Daily room:", roomError);
+        throw new functions.https.HttpsError(
+          "internal",
+          "Failed to create video room",
+        );
+      }
+
+      // 🔔 === ОТПРАВКА VOIP PUSH СТУДЕНТУ (ДОБАВЛЕНО) ===
+      console.log("📲 Sending VoIP push notification to student...");
+      try {
+        await sendVoipPushToStudent(sessionData.studentId, {
+          sessionId: sessionId,
+          callerName: tutorData.display_name || "Преподаватель",
+          callerId: tutorId,
+          callerPhoto: tutorData.photo_url || null,
+          roomUrl: dailyRoom.url,
+          meetingToken: dailyRoom.token,
+        });
+        console.log("✅ VoIP push notification sent to student");
+      } catch (pushError) {
+        console.error(
+          "⚠️ Failed to send VoIP push (non-critical):",
+          pushError.message,
+        );
+        // Продолжаем работу даже если push не отправился
+      }
+
+      // === 6. ОБНОВЛЕНИЕ СЕССИИ В ТРАНЗАКЦИИ ===
+      console.log("🔄 Updating session and user statuses in transaction...");
+      const activeExpiresAt = admin.firestore.Timestamp.fromDate(
+        new Date(Date.now() + 60 * 60 * 1000),
+      );
+      await admin.firestore().runTransaction(async (transaction) => {
+        // Обновляем сессию - добавляем данные для активной сессии
+        transaction.update(
+          admin.firestore().collection("videoSessions").doc(sessionId),
+          {
+            // Обновляем основные поля
+            tutorId: tutorId,
+            status: "active",
+            acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+            startedAt: admin.firestore.FieldValue.serverTimestamp(),
+
+            // Добавляем данные Daily.co
+            dailyRoomUrl: dailyRoom.url,
+            dailyRoomName: dailyRoom.name,
+            meetingToken: dailyRoom.token,
+            expiresAt: activeExpiresAt,
+
+            // Добавляем информацию о преподавателе
+            tutorInfo: {
+              name: tutorData.display_name || "Tutor",
+              photo: tutorData.photo_url || null,
+            },
+
+            // Очищаем поля поиска (уже не нужны)
+            currentTutorId: null,
+
+            // Обновляем метаданные
+            sessionMetadata: {
+              acceptedBy: tutorId,
+              acceptedAt: Date.now(),
+              roomProvider: "daily",
+              roomCreatedAt: dailyRoom.created_at,
+            },
+          },
+        );
+
+        // Обновляем статус преподавателя
+        transaction.update(admin.firestore().collection("users").doc(tutorId), {
+          isInCall: true,
+          currentSessionId: sessionId,
+        });
+
+        console.log("✅ Transaction completed successfully");
+      });
+
+      // === 7. ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ ===
+      console.log("🔔 Updating notifications...");
+      await updateNotificationStatus(sessionId, tutorId, "accepted");
+      await cancelOtherNotifications(sessionId, tutorId);
+
+      // === 8. ПОДГОТОВКА ОТВЕТА ===
+      console.log("🎉 Call accepted successfully, preparing response...");
+
+      const response = {
+        status: "connected",
+        sessionId: sessionId,
+        roomUrl: dailyRoom.url,
+        roomName: dailyRoom.name,
+        meetingToken: dailyRoom.token,
+        studentInfo: {
+          name:
+            sessionData.studentInfo?.name ||
+            studentData.display_name ||
+            "Student",
+          photo:
+            sessionData.studentInfo?.photo || studentData.photo_url || null,
+        },
+        sessionData: {
+          language: sessionData.language,
+          startedAt: Date.now(),
+          maxDuration: 3600000, // 1 час в миллисекундах
+        },
+      };
+
+      console.log("📤 Returning response:", {
+        status: response.status,
+        sessionId: response.sessionId,
+        hasRoomUrl: !!response.roomUrl,
+        hasToken: !!response.meetingToken,
+        studentName: response.studentInfo.name,
+      });
+
+      return response;
+    } catch (error) {
+      console.error("❌ Error in acceptCall function:", error);
+
+      if (error.code && error.message) {
+        throw error;
+      }
+
+      console.error("❌ Unexpected error details:", {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      });
+
       throw new functions.https.HttpsError(
         "internal",
-        "Failed to create video room",
+        `Internal server error: ${error.message}`,
       );
     }
-
-    // 🔔 === ОТПРАВКА VOIP PUSH СТУДЕНТУ (ДОБАВЛЕНО) ===
-    console.log("📲 Sending VoIP push notification to student...");
-    try {
-      await sendVoipPushToStudent(sessionData.studentId, {
-        sessionId: sessionId,
-        callerName: tutorData.display_name || "Преподаватель",
-        callerId: tutorId,
-        callerPhoto: tutorData.photo_url || null,
-        roomUrl: dailyRoom.url,
-        meetingToken: dailyRoom.token,
-      });
-      console.log("✅ VoIP push notification sent to student");
-    } catch (pushError) {
-      console.error(
-        "⚠️ Failed to send VoIP push (non-critical):",
-        pushError.message,
-      );
-      // Продолжаем работу даже если push не отправился
-    }
-
-    // === 6. ОБНОВЛЕНИЕ СЕССИИ В ТРАНЗАКЦИИ ===
-    console.log("🔄 Updating session and user statuses in transaction...");
-    const activeExpiresAt = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + 60 * 60 * 1000),
-    );
-    await admin.firestore().runTransaction(async (transaction) => {
-      // Обновляем сессию - добавляем данные для активной сессии
-      transaction.update(
-        admin.firestore().collection("videoSessions").doc(sessionId),
-        {
-          // Обновляем основные поля
-          tutorId: tutorId,
-          status: "active",
-          acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
-          startedAt: admin.firestore.FieldValue.serverTimestamp(),
-
-          // Добавляем данные Daily.co
-          dailyRoomUrl: dailyRoom.url,
-          dailyRoomName: dailyRoom.name,
-          meetingToken: dailyRoom.token,
-          expiresAt: activeExpiresAt,
-
-          // Добавляем информацию о преподавателе
-          tutorInfo: {
-            name: tutorData.display_name || "Tutor",
-            photo: tutorData.photo_url || null,
-          },
-
-          // Очищаем поля поиска (уже не нужны)
-          currentTutorId: null,
-
-          // Обновляем метаданные
-          sessionMetadata: {
-            acceptedBy: tutorId,
-            acceptedAt: Date.now(),
-            roomProvider: "daily",
-            roomCreatedAt: dailyRoom.created_at,
-          },
-        },
-      );
-
-      // Обновляем статус преподавателя
-      transaction.update(admin.firestore().collection("users").doc(tutorId), {
-        isInCall: true,
-        currentSessionId: sessionId,
-      });
-
-      console.log("✅ Transaction completed successfully");
-    });
-
-    // === 7. ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ ===
-    console.log("🔔 Updating notifications...");
-    await updateNotificationStatus(sessionId, tutorId, "accepted");
-    await cancelOtherNotifications(sessionId, tutorId);
-
-    // === 8. ПОДГОТОВКА ОТВЕТА ===
-    console.log("🎉 Call accepted successfully, preparing response...");
-
-    const response = {
-      status: "connected",
-      sessionId: sessionId,
-      roomUrl: dailyRoom.url,
-      roomName: dailyRoom.name,
-      meetingToken: dailyRoom.token,
-      studentInfo: {
-        name:
-          sessionData.studentInfo?.name ||
-          studentData.display_name ||
-          "Student",
-        photo: sessionData.studentInfo?.photo || studentData.photo_url || null,
-      },
-      sessionData: {
-        language: sessionData.language,
-        startedAt: Date.now(),
-        maxDuration: 3600000, // 1 час в миллисекундах
-      },
-    };
-
-    console.log("📤 Returning response:", {
-      status: response.status,
-      sessionId: response.sessionId,
-      hasRoomUrl: !!response.roomUrl,
-      hasToken: !!response.meetingToken,
-      studentName: response.studentInfo.name,
-    });
-
-    return response;
-  } catch (error) {
-    console.error("❌ Error in acceptCall function:", error);
-
-    if (error.code && error.message) {
-      throw error;
-    }
-
-    console.error("❌ Unexpected error details:", {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
-    });
-
-    throw new functions.https.HttpsError(
-      "internal",
-      `Internal server error: ${error.message}`,
-    );
-  }
-});
+  });
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 
