@@ -33,6 +33,7 @@ class VoIPService {
   String? _lastAcceptedSessionId;
   bool _lastAcceptedIsTutor = false;
   String? _lastNavigatedSessionId;
+  bool? _lastNavigatedIsTutor;
   String? _pendingSessionId;
   bool _pendingIsTutor = false;
   bool _navRetryInProgress = false;
@@ -319,10 +320,14 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   try {
     final payloadRoomUrl = extra['roomUrl'] ?? data['roomUrl'];
     final payloadMeetingToken = extra['meetingToken'] ?? data['meetingToken'];
+    final hasPayloadRoomUrl =
+        payloadRoomUrl is String && payloadRoomUrl.isNotEmpty;
+    final hasPayloadMeetingToken =
+        payloadMeetingToken is String && payloadMeetingToken.isNotEmpty;
+    _lastAcceptedIsTutor = !(hasPayloadRoomUrl || hasPayloadMeetingToken);
 
     // Если в payload уже есть данные комнаты, значит это студент
-    if ((payloadRoomUrl is String && payloadRoomUrl.isNotEmpty) ||
-        (payloadMeetingToken is String && payloadMeetingToken.isNotEmpty)) {
+    if (hasPayloadRoomUrl || hasPayloadMeetingToken) {
       _lastAcceptedIsTutor = false;
       final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
       await videoDocRef.update({
@@ -389,7 +394,8 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       return;
     }
 
-    if (_lastNavigatedSessionId == sessionId) {
+    if (_lastNavigatedSessionId == sessionId &&
+        _lastNavigatedIsTutor == isTutor) {
       return;
     }
 
@@ -400,11 +406,13 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     final currentLocation = router.getCurrentLocation();
     if (currentLocation.startsWith(route)) {
       _lastNavigatedSessionId = sessionId;
+      _lastNavigatedIsTutor = isTutor;
       debugPrint('ℹ️ VoIPService: Already on $route, skip navigation');
       return;
     }
 
     _lastNavigatedSessionId = sessionId;
+    _lastNavigatedIsTutor = isTutor;
     router.go(target);
     debugPrint(
       '🎬 VoIPService: Navigated to ${isTutor ? 'VideoCallPageNS' : 'VideoCallPageStudent'}',
