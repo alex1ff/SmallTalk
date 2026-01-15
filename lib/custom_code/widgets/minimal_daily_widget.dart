@@ -101,6 +101,7 @@ class MinimalDailyWidget extends StatefulWidget {
     required this.roomUrl,
     this.meetingToken,
     this.deepgramApiKey,
+    this.enableDeepgram = true,
     required this.deepgramLanguage,
     this.actionCallback,
     this.endCallCallback,
@@ -113,6 +114,7 @@ class MinimalDailyWidget extends StatefulWidget {
   final String roomUrl;
   final String? meetingToken;
   final String? deepgramApiKey;
+  final bool enableDeepgram;
   final String deepgramLanguage;
   final Future Function(String word, String sentence)? actionCallback;
   final Future Function()? endCallCallback;
@@ -137,6 +139,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   final Set<Timer> _activeTimers = {};
   final Set<StreamSubscription> _activeSubscriptions = {};
   final Set<StreamController> _activeControllers = {};
+
+  bool _resumeCameraEnabled = true;
+  bool _resumeMicrophoneEnabled = true;
+  bool _isInitializing = false;
 
   // Deepgram integration
   FlutterSoundRecorder? _recorder;
@@ -207,6 +213,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Simplified initialization
   Future<void> _initializeCall() async {
     if (!mounted) return;
+    if (_isInitializing ||
+        _state.connectionState == ConnectionState.connected) {
+      return;
+    }
+    _isInitializing = true;
 
     _updateState(_state.copyWith(
       connectionState: ConnectionState.connecting,
@@ -228,13 +239,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       await _joinRoomWithEnhancedSettings();
 
       // Start Deepgram if configured
-      if (widget.deepgramApiKey?.isNotEmpty ?? false) {
+      if (widget.enableDeepgram &&
+          (widget.deepgramApiKey?.isNotEmpty ?? false)) {
         _scheduleDeepgramStart();
       }
 
       // Quality monitoring removed - Daily Adaptive Bitrate handles this
     } catch (e) {
       await _handleConnectionError(e);
+    } finally {
+      _isInitializing = false;
     }
   }
 
@@ -977,6 +991,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Handle app going to background
   void _handleAppBackground() {
     if (_state.connectionState == ConnectionState.connected) {
+      _resumeCameraEnabled = _state.cameraEnabled;
+      _resumeMicrophoneEnabled = _state.microphoneEnabled;
       _updateInputSettings(camera: false, microphone: false);
       _stopDeepgramStreaming();
     }
@@ -986,11 +1002,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void _handleAppForeground() {
     if (_state.connectionState == ConnectionState.connected) {
       _updateInputSettings(
-        camera: _state.cameraEnabled,
-        microphone: _state.microphoneEnabled,
+        camera: _resumeCameraEnabled,
+        microphone: _resumeMicrophoneEnabled,
       );
 
-      if (widget.deepgramApiKey != null && !_state.isStreamingToDeepgram) {
+      if (widget.enableDeepgram &&
+          widget.deepgramApiKey != null &&
+          !_state.isStreamingToDeepgram) {
         _startDeepgramStreaming(widget.deepgramApiKey!);
       }
     }
@@ -1203,6 +1221,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         return _buildPlaceholder('Участник недоступен');
       }
 
+      final hasVideo = participant.media?.camera.state != MediaState.off ||
+          participant.media?.screenVideo.state != MediaState.off;
+      if (!hasVideo) {
+        return _buildPlaceholder('Камера участника выключена');
+      }
+
       // Check if video track is actually set on the controller
       // This is more reliable than checking media state
       try {
@@ -1213,14 +1237,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           fit: VideoViewFit.cover,
         );
       } catch (e) {
-        // If there's an error with the video view, check media state as fallback
-        final hasVideo = participant.media?.camera.state != MediaState.off ||
-            participant.media?.screenVideo.state != MediaState.off;
-
-        if (!hasVideo) {
-          return _buildPlaceholder('Камера участника выключена');
-        }
-
         // If media state says video is available but VideoView failed, show loading
         return _buildPlaceholder('Загрузка видео...');
       }
