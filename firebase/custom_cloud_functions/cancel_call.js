@@ -12,32 +12,24 @@ exports.cancelCall = functions.https.onCall(async (data, context) => {
     }
 
     const studentId = context.auth.uid;
-    const { sessionId, callId } = data;
-    const resolvedSessionId = sessionId || callId;
+    const { sessionId } = data; // Изменено с callId на sessionId
 
     console.log("👨‍🎓 Student ID:", studentId);
-    console.log("📺 Session ID:", resolvedSessionId);
-
-    if (!resolvedSessionId) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Session ID is required",
-      );
-    }
+    console.log("📺 Session ID:", sessionId);
 
     // Проверяем, что студент может отменить эту сессию
     const sessionDoc = await admin
       .firestore()
       .collection("videoSessions")
-      .doc(resolvedSessionId)
+      .doc(sessionId)
       .get();
 
     if (!sessionDoc.exists) {
-    console.log("❌ Video session not found:", resolvedSessionId);
-    throw new functions.https.HttpsError(
-      "not-found",
-      "Video session not found",
-    );
+      console.log("❌ Video session not found:", sessionId);
+      throw new functions.https.HttpsError(
+        "not-found",
+        "Video session not found",
+      );
     }
 
     const sessionData = sessionDoc.data();
@@ -71,7 +63,7 @@ exports.cancelCall = functions.https.onCall(async (data, context) => {
     await admin
       .firestore()
       .collection("videoSessions")
-      .doc(resolvedSessionId)
+      .doc(sessionId)
       .update({
         status: "cancelled",
         endedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -89,7 +81,7 @@ exports.cancelCall = functions.https.onCall(async (data, context) => {
     const activeNotificationsQuery = await admin
       .firestore()
       .collection("notifications")
-      .where("sessionId", "==", resolvedSessionId) // Изменено с callRequestId
+      .where("sessionId", "==", sessionId) // Изменено с callRequestId
       .where("status", "==", "sent")
       .get();
 
@@ -136,8 +128,7 @@ exports.cancelCall = functions.https.onCall(async (data, context) => {
     return {
       status: "cancelled",
       message: "Video session cancelled successfully",
-      sessionId: resolvedSessionId,
-      callId: resolvedSessionId,
+      sessionId: sessionId,
     };
   } catch (error) {
     console.error("❌ Error cancelling video session:", error);

@@ -178,9 +178,9 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
           ),
         ),
         FFRoute(
-          name: VideoCallPageStudentWidget.routeName,
-          path: VideoCallPageStudentWidget.routePath,
-          builder: (context, params) => VideoCallPageStudentWidget(
+          name: VideoCallPageWidget.routeName,
+          path: VideoCallPageWidget.routePath,
+          builder: (context, params) => VideoCallPageWidget(
             videoDocRef: params.getParam(
               'videoDocRef',
               ParamType.DocumentReference,
@@ -193,18 +193,6 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
           name: WaitingForTeacherPageWidget.routeName,
           path: WaitingForTeacherPageWidget.routePath,
           builder: (context, params) => WaitingForTeacherPageWidget(),
-        ),
-        FFRoute(
-          name: VideoCallPageNSWidget.routeName,
-          path: VideoCallPageNSWidget.routePath,
-          builder: (context, params) => VideoCallPageNSWidget(
-            videoDocRef: params.getParam(
-              'videoDocRef',
-              ParamType.DocumentReference,
-              isList: false,
-              collectionNamePath: ['videoSessions'],
-            ),
-          ),
         ),
         FFRoute(
           name: ProfileEditWidget.routeName,

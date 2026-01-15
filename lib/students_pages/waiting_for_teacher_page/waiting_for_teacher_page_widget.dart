@@ -2,11 +2,11 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.dart';
 import '/backend/schema/enums/enums.dart';
 import '/backend/schema/structs/index.dart';
-import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import 'dart:async';
+import '/custom_code/actions/index.dart' as actions;
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -60,23 +60,24 @@ class _WaitingForTeacherPageWidgetState
         );
       }
 
-      if (!mounted) {
-        return;
-      }
-
-      final sessionId = _model.newSession?.data?.sessionId;
-      if (sessionId == null || sessionId.isEmpty) {
-        debugPrint('⚠️ WaitingForTeacherPage: Missing sessionId, skip polling');
-        return;
-      }
-
-      await actions.startStudentSessionListener(context, sessionId);
+      await actions.startStudentSessionListener(
+        context,
+        _model.newSession!.data!.sessionId,
+      );
     });
   }
 
   @override
   void dispose() {
-    actions.stopStudentSessionListener();
+    // On page dispose action.
+    () async {
+      unawaited(
+        () async {
+          await actions.stopStudentSessionListener();
+        }(),
+      );
+    }();
+
     _model.dispose();
 
     super.dispose();

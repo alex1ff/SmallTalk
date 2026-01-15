@@ -11,6 +11,8 @@ import 'package:flutter/material.dart';
 // Begin custom widget code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
+import 'index.dart'; // Imports other custom widgets
+
 import 'package:flutter/foundation.dart';
 import 'package:daily_flutter/daily_flutter.dart';
 import 'dart:async';
@@ -266,64 +268,31 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _trackSubscription(_eventSubscription!);
   }
 
-  /// Join room with FIXED quality settings sequence
+  /// Join room with default settings to avoid SDK parsing errors
   Future<void> _joinRoomWithEnhancedSettings() async {
     final roomUri = Uri.parse(widget.roomUrl);
+    final token =
+        (widget.meetingToken?.isNotEmpty ?? false) ? widget.meetingToken : null;
 
-    // 1. Подключаемся к комнате С настройками качества
     await _callClient!.join(
       url: roomUri,
-      token: widget.meetingToken,
-      clientSettings: ClientSettingsUpdate.set(
-        // Устанавливаем качество ДО включения камеры
-        publishing: PublishingSettingsUpdate.set(
-          camera: CameraPublishingSettingsUpdate.set(
-            isPublishing: const BoolUpdate.set(false), // Камера пока выключена
-            sendSettings: VideoSendSettingsUpdate.set(
-              maxQuality: VideoSendSettingsMaxQualityUpdate.high,
-              encodings: VideoEncodingSettingsConfigsByQualityUpdate.set(
-                low: VideoEncodingSettingsConfigUpdate.set(
-                  scaleResolutionDownBy: const DoubleUpdate.set(4.0),
-                  maxBitrate: IntUpdate(600000), // 500 kbps
-                  maxFrameRate: const DoubleUpdate.set(15.0),
-                ),
-                medium: VideoEncodingSettingsConfigUpdate.set(
-                  scaleResolutionDownBy: const DoubleUpdate.set(2.0),
-                  maxBitrate:
-                      IntUpdate(1200000), // 1.5 Mbps - reduced for stability
-                  maxFrameRate: const DoubleUpdate.set(24.0),
-                ),
-                high: VideoEncodingSettingsConfigUpdate.set(
-                  scaleResolutionDownBy: const DoubleUpdate.set(1.0),
-                  maxBitrate:
-                      IntUpdate(1800000), // 2.5 Mbps - reduced for stability
-                  maxFrameRate: const DoubleUpdate.set(30.0),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      token: token,
     );
-    // 2. Enable microphone
+
     await _callClient!.updatePublishing(
       publishing: PublishingSettingsUpdate.set(
         microphone: const MicrophonePublishingSettingsUpdate.set(
           isPublishing: BoolUpdate.set(true),
         ),
-      ),
-    );
-
-    // 3. Enable camera
-    await _callClient!.updatePublishing(
-      publishing: PublishingSettingsUpdate.set(
         camera: CameraPublishingSettingsUpdate.set(
           isPublishing: const BoolUpdate.set(true),
+          sendSettings: VideoSendSettingsUpdate.set(
+            maxQuality: VideoSendSettingsMaxQualityUpdate.high,
+          ),
         ),
       ),
     );
 
-    // 4. Configure input devices
     await _callClient!.updateInputs(
       inputs: const InputSettingsUpdate.set(
         camera: CameraInputSettingsUpdate.set(isEnabled: BoolUpdate.set(true)),
@@ -332,7 +301,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       ),
     );
 
-    // 5. Configure username if provided
     await _configureUsername();
   }
 
