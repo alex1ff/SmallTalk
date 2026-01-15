@@ -737,7 +737,7 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Home',
     },
   },
-  // VideoCallPageStudent
+  // VideoCallPage
   {
     '4hy313iv': {
       'ru': 'Home',
@@ -751,13 +751,6 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Cancel',
     },
     'bxqyl515': {
-      'ru': 'Home',
-      'en': 'Home',
-    },
-  },
-  // VideoCallPage_NS
-  {
-    'quu8vs0q': {
       'ru': 'Home',
       'en': 'Home',
     },
