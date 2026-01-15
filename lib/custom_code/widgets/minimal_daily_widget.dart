@@ -1686,8 +1686,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// End call and cleanup
   Future<void> _endCall() async {
-    await _cleanup(leaveCall: true);
-    await widget.endCallCallback?.call();
+    try {
+      await widget.endCallCallback?.call();
+    } catch (e) {
+      if (kDebugMode) print('End call callback failed: $e');
+      if (mounted) {
+        context.safePop();
+      }
+    } finally {
+      unawaited(_cleanup(leaveCall: true));
+    }
   }
 
   /// Cleanup all resources
