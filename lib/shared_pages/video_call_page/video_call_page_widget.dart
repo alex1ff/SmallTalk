@@ -93,6 +93,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                   deepgramApiKey: 'REDACTED_DEEPGRAM_KEY',
                   deepgramLanguage: videoCallPageVideoSessionsRecord.language,
                   username: currentUserDisplayName,
+                  enableDeepgram: false,
                   actionCallback: (word, sentence) async {
                     await showModalBottomSheet(
                       isScrollControlled: true,
@@ -174,8 +175,11 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       CallSummaryWidget.routeName,
                       queryParameters: {
                         'userRef': serializeParam(
-                          functions.stringToRef(
-                              videoCallPageVideoSessionsRecord.currentTutorId),
+                          functions.stringToRef(currentUserDocument?.role ==
+                                  UserRole.native_speaker
+                              ? videoCallPageVideoSessionsRecord.studentId
+                              : videoCallPageVideoSessionsRecord
+                                  .currentTutorId),
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
