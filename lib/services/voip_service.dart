@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
@@ -23,7 +25,17 @@ class VoIPService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
+
+  bool _initialized = false;
+  bool _initializing = false;
+  StreamSubscription<CallEvent?>? _callKitSubscription;
+  final Set<String> _acceptInProgress = {};
+  String? _lastAcceptedSessionId;
+  bool _lastAcceptedIsTutor = false;
   String? _lastNavigatedSessionId;
+  String? _pendingSessionId;
+  bool _pendingIsTutor = false;
+  bool _navRetryInProgress = false;
 
   // Для навигации нужен context - сохраним глобальный navigatorKey
   //static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -31,6 +43,11 @@ class VoIPService {
   /// Инициализация VoIP сервиса
   /// Вызывается один раз при запуске приложения
   Future<void> initialize() async {
+    if (_initialized || _initializing) {
+      debugPrint('🔔 VoIPService: Initialize skipped (already running)');
+      return;
+    }
+    _initializing = true;
     debugPrint('🔔 VoIPService: Initializing...');
 
     try {
@@ -82,14 +99,18 @@ class VoIPService {
       });
 
       // 4. Слушаем события CallKit/ConnectionService
-      FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent);
+      _callKitSubscription ??=
+          FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent);
 
       // 5. Пытаемся получить PushKit токен (iOS) если доступен
       await _syncPushKitToken();
 
+      _initialized = true;
       debugPrint('✅ VoIPService: Initialized successfully');
     } catch (e) {
       debugPrint('❌ VoIPService: Initialization error: $e');
+    } finally {
+      _initializing = false;
     }
   }
 
@@ -199,6 +220,7 @@ class VoIPService {
           audioSessionActive: true,
           audioSessionPreferredSampleRate: 44100.0,
           audioSessionPreferredIOBufferDuration: 0.005,
+          configureAudioSession: true,
           supportsDTMF: false,
           supportsHolding: false,
           supportsGrouping: false,
@@ -236,6 +258,9 @@ class VoIPService {
           break;
         case Event.actionCallTimeout:
           await _handleCallTimeout(event.body);
+          break;
+        case Event.actionCallToggleAudioSession:
+          _handleAudioSessionToggle(event.body);
           break;
         case Event.actionCallIncoming:
           debugPrint('📞 VoIPService: Call incoming (display state)');
@@ -282,6 +307,13 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     return;
   }
 
+  if (_acceptInProgress.contains(sessionId)) {
+    debugPrint('⚠️ VoIPService: Accept already in progress for $sessionId');
+    return;
+  }
+  _acceptInProgress.add(sessionId);
+  _lastAcceptedSessionId = sessionId;
+
   debugPrint('✅ VoIPService: Call accepted: $sessionId');
 
   try {
@@ -291,6 +323,7 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     // Если в payload уже есть данные комнаты, значит это студент
     if ((payloadRoomUrl is String && payloadRoomUrl.isNotEmpty) ||
         (payloadMeetingToken is String && payloadMeetingToken.isNotEmpty)) {
+      _lastAcceptedIsTutor = false;
       final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
       await videoDocRef.update({
         'studentNavigationTriggered': true,
@@ -321,6 +354,8 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       return;
     }
 
+    _lastAcceptedIsTutor = true;
+
     // Создаем DocumentReference на videoSession
     final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
 
@@ -338,6 +373,8 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
 
   } catch (e) {
     debugPrint('❌ VoIPService: Error accepting call: $e');
+  } finally {
+    _acceptInProgress.remove(sessionId);
   }
 }
 
@@ -348,6 +385,7 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     final navContext = appNavigatorKey.currentContext;
     if (navContext == null) {
       debugPrint('⚠️ VoIPService: Navigation context not ready');
+      _queueNavigation(sessionId: sessionId, isTutor: isTutor);
       return;
     }
 
@@ -371,6 +409,54 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     debugPrint(
       '🎬 VoIPService: Navigated to ${isTutor ? 'VideoCallPageNS' : 'VideoCallPageStudent'}',
     );
+  }
+
+  void _queueNavigation({
+    required String sessionId,
+    required bool isTutor,
+  }) {
+    _pendingSessionId = sessionId;
+    _pendingIsTutor = isTutor;
+    if (_navRetryInProgress) {
+      return;
+    }
+    _navRetryInProgress = true;
+    _retryPendingNavigation();
+  }
+
+  Future<void> _retryPendingNavigation() async {
+    int attempts = 0;
+    while (_pendingSessionId != null && attempts < 10) {
+      final navContext = appNavigatorKey.currentContext;
+      if (navContext != null) {
+        final sessionId = _pendingSessionId!;
+        final isTutor = _pendingIsTutor;
+        _pendingSessionId = null;
+        _navRetryInProgress = false;
+        _tryNavigateToVideoCall(sessionId: sessionId, isTutor: isTutor);
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 500));
+      attempts++;
+    }
+    if (_pendingSessionId != null) {
+      debugPrint('⚠️ VoIPService: Navigation context not ready after retries');
+    }
+    _pendingSessionId = null;
+    _navRetryInProgress = false;
+  }
+
+  void _handleAudioSessionToggle(dynamic body) {
+    final isActive = body is Map && body['isActivate'] == true;
+    debugPrint(
+      '🔈 VoIPService: Audio session ${isActive ? 'activated' : 'deactivated'}',
+    );
+    if (isActive && _lastAcceptedSessionId != null) {
+      _tryNavigateToVideoCall(
+        sessionId: _lastAcceptedSessionId!,
+        isTutor: _lastAcceptedIsTutor,
+      );
+    }
   }
 
   /// Пользователь отклонил звонок
