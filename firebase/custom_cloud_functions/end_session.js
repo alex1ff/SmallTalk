@@ -18,14 +18,13 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     }
 
     const userId = context.auth.uid;
-    const { sessionId, callId, endReason } = data;
-    const resolvedSessionId = sessionId || callId;
+    const { sessionId, endReason } = data;
 
     console.log("👤 User ID:", userId);
-    console.log("📺 Session ID:", resolvedSessionId);
+    console.log("📺 Session ID:", sessionId);
     console.log("📝 End reason:", endReason || "not_specified");
 
-    if (!resolvedSessionId) {
+    if (!sessionId) {
       throw new functions.https.HttpsError(
         "invalid-argument",
         "Session ID is required",
@@ -36,11 +35,11 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     const sessionDoc = await admin
       .firestore()
       .collection("videoSessions")
-      .doc(resolvedSessionId)
+      .doc(sessionId)
       .get();
 
     if (!sessionDoc.exists) {
-      console.log("❌ Video session not found:", resolvedSessionId);
+      console.log("❌ Video session not found:", sessionId);
       throw new functions.https.HttpsError(
         "not-found",
         "Video session not found",
@@ -99,7 +98,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     await admin.firestore().runTransaction(async (transaction) => {
       // Обновляем статус сессии
       transaction.update(
-        admin.firestore().collection("videoSessions").doc(resolvedSessionId),
+        admin.firestore().collection("videoSessions").doc(sessionId),
         {
           status: "ended",
           endedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -138,7 +137,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
 
     // Логируем завершение сессии для аналитики
     console.log("📊 Logging session end event...");
-    await logSessionEndEvent(resolvedSessionId, sessionData, {
+    await logSessionEndEvent(sessionId, sessionData, {
       endedBy: endedBy,
       endedByRole: endedByRole,
       endReason: endReason || "manual",
@@ -147,15 +146,14 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     });
 
     // Отменяем все активные уведомления для этой сессии (на случай если что-то осталось)
-    await cancelAllSessionNotifications(resolvedSessionId);
+    await cancelAllSessionNotifications(sessionId);
 
     console.log("🎉 Session ended successfully");
 
     return {
       status: "ended",
       message: "Session ended successfully",
-      sessionId: resolvedSessionId,
-      callId: resolvedSessionId,
+      sessionId: sessionId,
       duration: duration,
       endedBy: endedByRole,
       endedAt: now,

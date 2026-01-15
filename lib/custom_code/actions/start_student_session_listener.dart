@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 // Begin custom action code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
+import 'index.dart'; // Imports other custom actions
+
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '/index.dart' as app;
@@ -76,7 +78,7 @@ Future startStudentSessionListener(
     }
 
     context.goNamed(
-      app.VideoCallPageStudentWidget.routeName,
+      app.VideoCallPageWidget.routeName,
       queryParameters: {
         'videoDocRef': serializeParam(
           sessionRef,

@@ -11,26 +11,23 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import 'flutter_flow/flutter_flow_util.dart';
 import 'flutter_flow/internationalization.dart';
 
-// 🔔 VoIP импорты
+// 🔔 VoIP imports
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'services/voip_service.dart';
 
-// 🔔 Обработчик VoIP уведомлений в фоновом режиме
-// Вызывается когда приложение закрыто или в фоне
+// 🔔 Background VoIP handler
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await initFirebase();
-  
+
   debugPrint('🔔 Background message received: ${message.messageId}');
   debugPrint('🔔 Message data: ${message.data}');
-  
-  // Проверяем тип уведомления
+
   if (message.data['type'] == 'incoming_call') {
     debugPrint('📞 Incoming VoIP call detected in background');
-    
+
     try {
-      // Показываем CallKit UI
       await VoIPService().showIncomingCall(
         sessionId: message.data['sessionId'] ?? '',
         callerName: message.data['callerName'] ?? 'Unknown Caller',
@@ -53,14 +50,14 @@ void main() async {
   GoRouter.optionURLReflectsImperativeAPIs = true;
   usePathUrlStrategy();
 
-  // 🔔 Регистрация обработчика фоновых VoIP уведомлений
+  // 🔔 Register background handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   debugPrint('🔔 VoIP background handler registered');
 
   await initFirebase();
   await FFLocalizations.initialize();
 
-  // 🔔 Инициализация VoIP сервиса
+  // 🔔 Initialize VoIP service
   try {
     await VoIPService().initialize();
     debugPrint('✅ VoIP Service initialized successfully');
@@ -120,14 +117,13 @@ class _MyAppState extends State<MyApp> {
     userStream = smallTalkFirebaseUserStream()
       ..listen((user) {
         _appStateNotifier.update(user);
-        
-// 🔔 Проверяем активные видео-сессии при смене пользователя
-if (user.loggedIn) {
-  final userId = user.uid;
-  if (userId != null && userId.isNotEmpty) {
-    _checkForActiveVideoSession(userId);
-  }
-}
+
+        if (user.loggedIn) {
+          final userId = user.uid;
+          if (userId != null && userId.isNotEmpty) {
+            _checkForActiveVideoSession(userId);
+          }
+        }
       });
     jwtTokenStream.listen((_) {});
     Future.delayed(
@@ -136,22 +132,19 @@ if (user.loggedIn) {
     );
   }
 
-  // 🔔 Проверка активной видео-сессии для автоматической навигации
+  // 🔔 Check active video session for automatic navigation
   Future<void> _checkForActiveVideoSession(String userId) async {
     try {
       debugPrint('🔍 Checking for active video session for user: $userId');
-      
-      // Получаем пользователя из Firestore
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .get();
-      
+
+      final userDoc =
+          await FirebaseFirestore.instance.collection('users').doc(userId).get();
+
       if (!userDoc.exists) {
         debugPrint('⚠️ User document not found');
         return;
       }
-      
+
       final userData = userDoc.data();
       final rawRole = userData?['role'];
       String? roleValue;
@@ -182,7 +175,6 @@ if (user.loggedIn) {
           normalizedRole == 'teacher';
 
       if (isStudent) {
-        // Ищем активную сессию для этого студента
         final activeSessions = await FirebaseFirestore.instance
             .collection('videoSessions')
             .where('studentId', isEqualTo: userId)
@@ -212,23 +204,17 @@ if (user.loggedIn) {
 
         debugPrint('✅ Found active session requiring navigation: $sessionId');
 
-        // Сбрасываем флаг навигации
         await sessionDoc.reference.update({
           'studentNavigationTriggered': false,
           'navigationCompletedAt': FieldValue.serverTimestamp(),
         });
 
-        debugPrint('🎬 Navigating to VideoCallPageStudent...');
+        debugPrint('🎬 Navigating to VideoCallPage...');
 
-        // Даем время на инициализацию роутера
         await Future.delayed(Duration(milliseconds: 1500));
 
-        // Переходим на страницу видеозвонка
-        final videoDocRef = sessionDoc.reference;
-
-        // Используем query parameters для навигации (совместимо с FlutterFlow)
         _router.go(
-          '/videoCallPageStudent?videoDocRef=${Uri.encodeComponent(videoDocRef.path)}',
+          '/videoCallPage?videoDocRef=${Uri.encodeComponent(sessionId)}',
         );
 
         debugPrint('✅ Navigation triggered successfully');
@@ -236,7 +222,6 @@ if (user.loggedIn) {
       }
 
       if (isTutor) {
-        // Ищем активную сессию для этого преподавателя
         final activeSessions = await FirebaseFirestore.instance
             .collection('videoSessions')
             .where('tutorId', isEqualTo: userId)
@@ -266,22 +251,17 @@ if (user.loggedIn) {
 
         debugPrint('✅ Found active tutor session requiring navigation: $sessionId');
 
-        // Сбрасываем флаг навигации
         await sessionDoc.reference.update({
           'tutorNavigationTriggered': false,
           'navigationCompletedAt': FieldValue.serverTimestamp(),
         });
 
-        debugPrint('🎬 Navigating to VideoCallPageNS...');
+        debugPrint('🎬 Navigating to VideoCallPage...');
 
-        // Даем время на инициализацию роутера
         await Future.delayed(Duration(milliseconds: 1500));
 
-        // Переходим на страницу видеозвонка
-        final videoDocRef = sessionDoc.reference;
-
         _router.go(
-          '/videoCallPageNS?videoDocRef=${Uri.encodeComponent(videoDocRef.path)}',
+          '/videoCallPage?videoDocRef=${Uri.encodeComponent(sessionId)}',
         );
 
         debugPrint('✅ Tutor navigation triggered successfully');
@@ -310,7 +290,7 @@ if (user.loggedIn) {
   }
 
   void setThemeMode(ThemeMode mode) => safeSetState(() {
-        _themeMode = mode;  // ← Исправлено: точка с запятой
+        _themeMode = mode;
       });
 
   void setTextScaleFactor(double updatedFactor) {

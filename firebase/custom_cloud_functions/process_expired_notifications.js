@@ -6,8 +6,7 @@ const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 
 exports.processExpiredNotifications = functions
   .runWith({ secrets: apnsSecrets })
-  .pubsub
-  .schedule("every 1 minutes")
+  .pubsub.schedule("every 1 minutes")
   .onRun(async (context) => {
     console.log("⏰ Processing expired notifications (updated version)...");
     const now = admin.firestore.Timestamp.now();

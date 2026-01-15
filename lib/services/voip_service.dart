@@ -373,7 +373,7 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     });
 
     debugPrint('✅ VoIPService: Tutor navigation data saved to Firestore');
-    debugPrint('⚠️ VoIPService: App will navigate to VideoCallPageNS when opened');
+    debugPrint('⚠️ VoIPService: App will navigate to VideoCallPage when opened');
     _tryNavigateToVideoCall(sessionId: sessionId, isTutor: true);
 
   } catch (e) {
@@ -399,7 +399,7 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       return;
     }
 
-    final route = isTutor ? '/videoCallPageNS' : '/videoCallPageStudent';
+    const route = '/videoCallPage';
     final target = '$route?videoDocRef=$sessionId';
 
     final router = GoRouter.of(navContext);
@@ -414,9 +414,7 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     _lastNavigatedSessionId = sessionId;
     _lastNavigatedIsTutor = isTutor;
     router.go(target);
-    debugPrint(
-      '🎬 VoIPService: Navigated to ${isTutor ? 'VideoCallPageNS' : 'VideoCallPageStudent'}',
-    );
+    debugPrint('🎬 VoIPService: Navigated to VideoCallPage');
   }
 
   void _queueNavigation({
