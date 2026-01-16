@@ -65,6 +65,13 @@
 	<key>NSMicrophoneUsageDescription</key>
     <string>Для голосового общения и создания субтитров во время урока</string>
 
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>voip</string>
+		<string>remote-notification</string>
+		<string>audio</string>
+	</array>
+
 
 
 	<key>UILaunchStoryboardName</key>
