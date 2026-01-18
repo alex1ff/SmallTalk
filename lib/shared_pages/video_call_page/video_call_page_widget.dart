@@ -83,10 +83,17 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
             body: AuthUserStreamWidget(
               builder: (context) {
-                final targetUserId = currentUserDocument?.role ==
-                        UserRole.native_speaker
-                    ? videoCallPageVideoSessionsRecord.studentId
-                    : videoCallPageVideoSessionsRecord.tutorId;
+                final currentUid = currentUserUid;
+                final currentTutorId = valueOrDefault<String>(
+                  videoCallPageVideoSessionsRecord.currentTutorId,
+                  '',
+                );
+                final targetUserId =
+                    currentUid == videoCallPageVideoSessionsRecord.studentId
+                        ? (currentTutorId.isNotEmpty
+                            ? currentTutorId
+                            : videoCallPageVideoSessionsRecord.tutorId)
+                        : videoCallPageVideoSessionsRecord.studentId;
                 final targetUserRef = targetUserId.isNotEmpty
                     ? functions.stringToRef(targetUserId)
                     : null;
@@ -198,7 +205,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       }.withoutNulls,
                     );
                   },
-                  ),
+                ),
                 );
               },
             ),
