@@ -13,7 +13,6 @@ import 'flutter_flow/internationalization.dart';
 
 // 🔔 VoIP imports
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'services/voip_service.dart';
 
 // 🔔 Background VoIP handler
@@ -118,163 +117,12 @@ class _MyAppState extends State<MyApp> {
       ..listen((user) {
         _appStateNotifier.update(user);
 
-        if (user.loggedIn) {
-          final userId = user.uid;
-          if (userId != null && userId.isNotEmpty) {
-            _checkForActiveVideoSession(userId);
-          }
-        }
       });
     jwtTokenStream.listen((_) {});
     Future.delayed(
       Duration(milliseconds: 1000),
       () => _appStateNotifier.stopShowingSplashImage(),
     );
-  }
-
-  // 🔔 Check active video session for automatic navigation
-  Future<void> _checkForActiveVideoSession(String userId) async {
-    try {
-      debugPrint('🔍 Checking for active video session for user: $userId');
-
-      final userDoc =
-          await FirebaseFirestore.instance.collection('users').doc(userId).get();
-
-      if (!userDoc.exists) {
-        debugPrint('⚠️ User document not found');
-        return;
-      }
-
-      final userData = userDoc.data();
-      final rawRole = userData?['role'];
-      String? roleValue;
-      if (rawRole is String) {
-        roleValue = rawRole;
-      } else if (rawRole is Map) {
-        final name = rawRole['name'] ?? rawRole['value'] ?? rawRole['role'];
-        if (name is String) {
-          roleValue = name;
-        }
-      }
-      roleValue ??= rawRole?.toString();
-      final normalizedRole = (roleValue ?? '')
-          .trim()
-          .split('.')
-          .last
-          .toLowerCase()
-          .replaceAll(RegExp(r'[\s-]+'), '_');
-
-      debugPrint(
-        '🔍 User role raw: $rawRole, normalized: $normalizedRole',
-      );
-
-      final isStudent = normalizedRole == 'student';
-      final isTutor = normalizedRole == 'native_speaker' ||
-          normalizedRole == 'nativespeaker' ||
-          normalizedRole == 'tutor' ||
-          normalizedRole == 'teacher';
-
-      if (isStudent) {
-        final activeSessions = await FirebaseFirestore.instance
-            .collection('videoSessions')
-            .where('studentId', isEqualTo: userId)
-            .where('studentNavigationTriggered', isEqualTo: true)
-            .limit(5)
-            .get();
-
-        if (activeSessions.docs.isEmpty) {
-          debugPrint('📭 No active sessions requiring navigation');
-          return;
-        }
-
-        QueryDocumentSnapshot<Map<String, dynamic>>? sessionDoc;
-        for (final doc in activeSessions.docs) {
-          final status = doc.data()['status'] as String?;
-          if (status == null || status == 'active' || status == 'connected') {
-            sessionDoc = doc;
-            break;
-          }
-        }
-
-        if (sessionDoc == null) {
-          debugPrint('📭 No active sessions with matching status');
-          return;
-        }
-        final sessionId = sessionDoc.id;
-
-        debugPrint('✅ Found active session requiring navigation: $sessionId');
-
-        await sessionDoc.reference.update({
-          'studentNavigationTriggered': false,
-          'navigationCompletedAt': FieldValue.serverTimestamp(),
-        });
-
-        debugPrint('🎬 Navigating to VideoCallPage...');
-
-        await Future.delayed(Duration(milliseconds: 1500));
-
-        _router.go(
-          '/videoCallPage?videoDocRef=${Uri.encodeComponent(sessionId)}',
-        );
-
-        debugPrint('✅ Navigation triggered successfully');
-        return;
-      }
-
-      if (isTutor) {
-        final activeSessions = await FirebaseFirestore.instance
-            .collection('videoSessions')
-            .where('tutorId', isEqualTo: userId)
-            .where('tutorNavigationTriggered', isEqualTo: true)
-            .limit(5)
-            .get();
-
-        if (activeSessions.docs.isEmpty) {
-          debugPrint('📭 No active sessions requiring navigation');
-          return;
-        }
-
-        QueryDocumentSnapshot<Map<String, dynamic>>? sessionDoc;
-        for (final doc in activeSessions.docs) {
-          final status = doc.data()['status'] as String?;
-          if (status == null || status == 'active' || status == 'connected') {
-            sessionDoc = doc;
-            break;
-          }
-        }
-
-        if (sessionDoc == null) {
-          debugPrint('📭 No active tutor sessions with matching status');
-          return;
-        }
-        final sessionId = sessionDoc.id;
-
-        debugPrint('✅ Found active tutor session requiring navigation: $sessionId');
-
-        await sessionDoc.reference.update({
-          'tutorNavigationTriggered': false,
-          'navigationCompletedAt': FieldValue.serverTimestamp(),
-        });
-
-        debugPrint('🎬 Navigating to VideoCallPage...');
-
-        await Future.delayed(Duration(milliseconds: 1500));
-
-        _router.go(
-          '/videoCallPage?videoDocRef=${Uri.encodeComponent(sessionId)}',
-        );
-
-        debugPrint('✅ Tutor navigation triggered successfully');
-        return;
-      }
-
-      debugPrint(
-        'ℹ️ User role not supported for session navigation: $normalizedRole',
-      );
-      return;
-    } catch (e) {
-      debugPrint('❌ Error checking for active video session: $e');
-    }
   }
 
   @override

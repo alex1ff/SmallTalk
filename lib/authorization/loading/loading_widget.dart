@@ -2,6 +2,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -30,9 +31,16 @@ class _LoadingWidgetState extends State<LoadingWidget> {
 
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
+      _model.check = await actions.checkActiveSessionAndNavigate(
+        context,
+      );
+      if (_model.check == true) {
+        return;
+      }
+
       await Future.delayed(
         Duration(
-          milliseconds: 2000,
+          milliseconds: 1000,
         ),
       );
       if (currentUserDocument?.role == UserRole.native_speaker) {
