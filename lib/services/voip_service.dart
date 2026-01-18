@@ -30,6 +30,7 @@ class VoIPService {
   bool _initializing = false;
   StreamSubscription<CallEvent?>? _callKitSubscription;
   final Set<String> _acceptInProgress = {};
+  final Set<String> _acceptedSessions = {};
   String? _lastAcceptedSessionId;
   bool _lastAcceptedIsTutor = false;
   String? _lastNavigatedSessionId;
@@ -308,6 +309,10 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     return;
   }
 
+  if (_acceptedSessions.contains(sessionId)) {
+    debugPrint('⚠️ VoIPService: Call already accepted: $sessionId');
+    return;
+  }
   if (_acceptInProgress.contains(sessionId)) {
     debugPrint('⚠️ VoIPService: Accept already in progress for $sessionId');
     return;
@@ -335,6 +340,7 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
         'navigationTimestamp': FieldValue.serverTimestamp(),
       });
       debugPrint('✅ VoIPService: Student navigation triggered (no acceptCall)');
+      _acceptedSessions.add(sessionId);
       _tryNavigateToVideoCall(sessionId: sessionId, isTutor: false);
       return;
     }
@@ -374,6 +380,7 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
 
     debugPrint('✅ VoIPService: Tutor navigation data saved to Firestore');
     debugPrint('⚠️ VoIPService: App will navigate to VideoCallPage when opened');
+    _acceptedSessions.add(sessionId);
     _tryNavigateToVideoCall(sessionId: sessionId, isTutor: true);
 
   } catch (e) {
@@ -481,6 +488,8 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       return;
     }
 
+    _acceptInProgress.remove(sessionId);
+    _acceptedSessions.remove(sessionId);
     debugPrint('❌ VoIPService: Call declined: $sessionId');
 
     try {
@@ -511,6 +520,8 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       return;
     }
 
+    _acceptInProgress.remove(sessionId);
+    _acceptedSessions.remove(sessionId);
     debugPrint('🔚 VoIPService: Call ended: $sessionId');
 
     try {
@@ -544,6 +555,8 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       return;
     }
 
+    _acceptInProgress.remove(sessionId);
+    _acceptedSessions.remove(sessionId);
     debugPrint('⏰ VoIPService: Call timeout: $sessionId');
 
     // Ничего не делаем - Cloud Function processExpiredNotifications обработает
