@@ -334,7 +334,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             isDense: false,
                             hintText: valueOrDefault<String>(
                               () {
-                                if (_model.rait! <= 3) {
+                                if (_model.rait <= 3) {
                                   return 'Расскажтите, что пошло не так';
                                 } else if (_model.rait == 4) {
                                   return 'Расскажтите, что могло бы быть лучше';
@@ -656,48 +656,46 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                     'duynuhus' /* Готово */,
                   ),
                   action: () async {
-                    if (_model.rait != null) {
-                      if (_model.aboutMeTextController.text != '') {
-                        await ReviewsRecord.collection
-                            .doc()
-                            .set(createReviewsRecordData(
-                              sessionId: widget.sessionID,
-                              fromUserId: currentUserReference,
-                              toUserId: widget.userRef,
-                              rating: _model.rait,
-                              comment: _model.aboutMeTextController.text,
-                              createdAt: getCurrentTimestamp,
-                            ));
-                      } else {
-                        await ReviewsRecord.collection
-                            .doc()
-                            .set(createReviewsRecordData(
-                              sessionId: widget.sessionID,
-                              fromUserId: currentUserReference,
-                              toUserId: widget.userRef,
-                              rating: _model.rait,
-                              createdAt: getCurrentTimestamp,
-                            ));
-                      }
-
-                      unawaited(
-                        () async {
-                          await widget.userRef!.update(createUsersRecordData(
-                            rating: createURatingStruct(
-                              average: functions.recalculateRatingWithNewReview(
-                                  _model.user!.rating.totalReviews,
-                                  _model.user!.rating.average,
-                                  _model.rait!),
-                              fieldValues: {
-                                'totalReviews': FieldValue.increment(1),
-                              },
-                              clearUnsetFields: false,
-                            ),
+                    if (_model.aboutMeTextController.text != '') {
+                      await ReviewsRecord.collection
+                          .doc()
+                          .set(createReviewsRecordData(
+                            sessionId: widget.sessionID,
+                            fromUserId: currentUserReference,
+                            toUserId: widget.userRef,
+                            rating: _model.rait,
+                            comment: _model.aboutMeTextController.text,
+                            createdAt: getCurrentTimestamp,
                           ));
-                        }(),
-                      );
+                    } else {
+                      await ReviewsRecord.collection
+                          .doc()
+                          .set(createReviewsRecordData(
+                            sessionId: widget.sessionID,
+                            fromUserId: currentUserReference,
+                            toUserId: widget.userRef,
+                            rating: _model.rait,
+                            createdAt: getCurrentTimestamp,
+                          ));
                     }
-                    if (_model.fav) {
+
+                    unawaited(
+                      () async {
+                        await widget.userRef!.update(createUsersRecordData(
+                          rating: createURatingStruct(
+                            average: functions.recalculateRatingWithNewReview(
+                                _model.user!.rating.totalReviews,
+                                _model.user!.rating.average,
+                                _model.rait),
+                            fieldValues: {
+                              'totalReviews': FieldValue.increment(1),
+                            },
+                            clearUnsetFields: false,
+                          ),
+                        ));
+                      }(),
+                    );
+                                      if (_model.fav) {
                       unawaited(
                         () async {
                           await currentUserReference!.update({
