@@ -82,10 +82,19 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             key: scaffoldKey,
             backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
             body: AuthUserStreamWidget(
-              builder: (context) => Container(
-                width: double.infinity,
-                height: double.infinity,
-                child: custom_widgets.MinimalDailyWidget(
+              builder: (context) {
+                final targetUserId = currentUserDocument?.role ==
+                        UserRole.native_speaker
+                    ? videoCallPageVideoSessionsRecord.studentId
+                    : videoCallPageVideoSessionsRecord.tutorId;
+                final targetUserRef = targetUserId.isNotEmpty
+                    ? functions.stringToRef(targetUserId)
+                    : null;
+
+                return Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: custom_widgets.MinimalDailyWidget(
                   width: double.infinity,
                   height: double.infinity,
                   roomUrl: videoCallPageVideoSessionsRecord.dailyRoomUrl,
@@ -146,11 +155,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       CallSummaryWidget.routeName,
                       queryParameters: {
                         'userRef': serializeParam(
-                          functions.stringToRef(currentUserDocument?.role ==
-                                  UserRole.native_speaker
-                              ? videoCallPageVideoSessionsRecord.studentId
-                              : videoCallPageVideoSessionsRecord
-                                  .currentTutorId),
+                          targetUserRef,
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
@@ -175,11 +180,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       CallSummaryWidget.routeName,
                       queryParameters: {
                         'userRef': serializeParam(
-                          functions.stringToRef(currentUserDocument?.role ==
-                                  UserRole.native_speaker
-                              ? videoCallPageVideoSessionsRecord.studentId
-                              : videoCallPageVideoSessionsRecord
-                                  .currentTutorId),
+                          targetUserRef,
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
@@ -197,8 +198,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       }.withoutNulls,
                     );
                   },
-                ),
-              ),
+                  ),
+                );
+              },
             ),
           ),
         );
