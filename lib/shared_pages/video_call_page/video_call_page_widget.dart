@@ -182,8 +182,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                                   '-',
                                 )
                               : valueOrDefault<String>(
-                                  videoCallPageVideoSessionsRecord
-                                      .currentTutorId,
+                                  videoCallPageVideoSessionsRecord.tutorId,
                                   '-',
                                 )),
                           ParamType.DocumentReference,

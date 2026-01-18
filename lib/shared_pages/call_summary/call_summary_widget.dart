@@ -816,7 +816,10 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                 image: DecorationImage(
                                   fit: BoxFit.cover,
                                   image: Image.network(
-                                    stackUsersRecord.photoUrl,
+                                    valueOrDefault<String>(
+                                      stackUsersRecord.photoUrl,
+                                      'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/2f5l2g4dvdt8/Group_1171275313.png',
+                                    ),
                                   ).image,
                                 ),
                                 shape: BoxShape.circle,
