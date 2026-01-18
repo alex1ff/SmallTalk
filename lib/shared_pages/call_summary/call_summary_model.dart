@@ -16,7 +16,7 @@ class CallSummaryModel extends FlutterFlowModel<CallSummaryWidget> {
 
   ///  State fields for stateful widgets in this page.
 
-  // Stores action output result for [Backend Call - Read Document] action in Stack widget.
+  // Stores action output result for [Backend Call - Read Document] action in CallSummary widget.
   UsersRecord? user;
   // State field(s) for aboutMe widget.
   FocusNode? aboutMeFocusNode;
