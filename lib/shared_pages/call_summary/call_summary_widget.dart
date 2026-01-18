@@ -47,7 +47,13 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
+      if (widget.userRef == null) {
+        return;
+      }
       _model.user = await UsersRecord.getDocumentOnce(widget.userRef!);
+      if (mounted) {
+        safeSetState(() {});
+      }
     });
 
     _model.aboutMeTextController ??= TextEditingController();
@@ -63,6 +69,21 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final user = _model.user;
+
+    if (widget.userRef == null) {
+      return Scaffold(
+        key: scaffoldKey,
+        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        body: Center(
+          child: Text(
+            'Пользователь не найден',
+            style: FlutterFlowTheme.of(context).bodyMedium,
+          ),
+        ),
+      );
+    }
+
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -71,15 +92,25 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
       child: Scaffold(
         key: scaffoldKey,
         backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: Stack(
-          children: [
-            Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
+        body: user == null
+            ? Center(
+                child: SizedBox(
+                  width: 50.0,
+                  height: 50.0,
+                  child: CircularProgressIndicator(
+                    color: FlutterFlowTheme.of(context).secondary,
+                  ),
+                ),
+              )
+            : Stack(
+                children: [
+                  Padding(
+                    padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.max,
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
                     Padding(
                       padding:
                           EdgeInsetsDirectional.fromSTEB(10.0, 16.0, 10.0, 0.0),
@@ -684,8 +715,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                         await widget.userRef!.update(createUsersRecordData(
                           rating: createURatingStruct(
                             average: functions.recalculateRatingWithNewReview(
-                                _model.user!.rating.totalReviews,
-                                _model.user!.rating.average,
+                                      user.rating.totalReviews,
+                                      user.rating.average,
                                 _model.rait),
                             fieldValues: {
                               'totalReviews': FieldValue.increment(1),
@@ -768,9 +799,9 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             color: FlutterFlowTheme.of(context)
                                 .secondaryBackground,
                             image: DecorationImage(
-                              fit: BoxFit.contain,
+                              fit: BoxFit.cover,
                               image: Image.network(
-                                _model.user!.photoUrl,
+                                  user.photoUrl,
                               ).image,
                             ),
                             shape: BoxShape.circle,
@@ -782,7 +813,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                 12.0, 0.0, 0.0, 0.0),
                             child: Text(
                               valueOrDefault<String>(
-                                _model.user?.displayName,
+                                  user.displayName,
                                 '-',
                               ),
                               maxLines: 2,
