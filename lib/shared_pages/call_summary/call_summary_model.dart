@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 class CallSummaryModel extends FlutterFlowModel<CallSummaryWidget> {
   ///  Local state fields for this page.
 
-  int? rait;
+  int rait = 0;
 
   bool fav = false;
 
