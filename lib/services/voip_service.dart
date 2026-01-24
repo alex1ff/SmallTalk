@@ -38,6 +38,8 @@ class VoIPService {
   String? _pendingSessionId;
   bool _pendingIsTutor = false;
   bool _navRetryInProgress = false;
+  final Map<String, String> _sessionCallKitIds = {};
+  String? _lastCallKitId;
 
   // Для навигации нужен context - сохраним глобальный navigatorKey
   //static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -182,6 +184,10 @@ class VoIPService {
       debugPrint('📞 VoIPService: Showing incoming call from $callerName');
 
       final callKitId = const Uuid().v4();
+      if (sessionId.isNotEmpty) {
+        _sessionCallKitIds[sessionId] = callKitId;
+        _lastCallKitId = callKitId;
+      }
       final callKitParams = CallKitParams(
         id: callKitId,
         nameCaller: callerName,
@@ -301,9 +307,15 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       ? Map<String, dynamic>.from(data['extra'] as Map)
       : <String, dynamic>{};
   final sessionId =
-      extra['sessionId'] as String? ??
-      data['sessionId'] as String? ??
-      data['id'] as String?;
+      extra['sessionId'] as String? ?? data['sessionId'] as String?;
+  final callKitId =
+      data['id'] as String? ?? extra['callKitId'] as String?;
+  if (callKitId != null) {
+    _lastCallKitId = callKitId;
+  }
+  if (sessionId != null && callKitId != null) {
+    _sessionCallKitIds[sessionId] = callKitId;
+  }
   if (sessionId == null) {
     debugPrint('❌ VoIPService: No sessionId in accept event');
     return;
@@ -476,17 +488,15 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   Future<void> _handleCallDecline(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-    final extra = data['extra'] is Map
-        ? Map<String, dynamic>.from(data['extra'] as Map)
-        : <String, dynamic>{};
-    final sessionId =
-        extra['sessionId'] as String? ??
-        data['sessionId'] as String? ??
-        data['id'] as String?;
-    if (sessionId == null) {
-      debugPrint('❌ VoIPService: No sessionId in decline event');
-      return;
-    }
+  final extra = data['extra'] is Map
+      ? Map<String, dynamic>.from(data['extra'] as Map)
+      : <String, dynamic>{};
+  final sessionId =
+      extra['sessionId'] as String? ?? data['sessionId'] as String?;
+  if (sessionId == null) {
+    debugPrint('❌ VoIPService: No sessionId in decline event');
+    return;
+  }
 
     _acceptInProgress.remove(sessionId);
     _acceptedSessions.remove(sessionId);
@@ -498,27 +508,27 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
           .httpsCallable('declineCall')
           .call({'sessionId': sessionId});
 
-      debugPrint('✅ VoIPService: declineCall completed');
-    } catch (e) {
-      debugPrint('❌ VoIPService: Error declining call: $e');
-    }
+    debugPrint('✅ VoIPService: declineCall completed');
+  } catch (e) {
+    debugPrint('❌ VoIPService: Error declining call: $e');
+  }
+
+  _sessionCallKitIds.remove(sessionId);
   }
 
   /// Звонок завершен
   Future<void> _handleCallEnded(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-    final extra = data['extra'] is Map
-        ? Map<String, dynamic>.from(data['extra'] as Map)
-        : <String, dynamic>{};
-    final sessionId =
-        extra['sessionId'] as String? ??
-        data['sessionId'] as String? ??
-        data['id'] as String?;
-    if (sessionId == null) {
-      debugPrint('❌ VoIPService: No sessionId in ended event');
-      return;
-    }
+  final extra = data['extra'] is Map
+      ? Map<String, dynamic>.from(data['extra'] as Map)
+      : <String, dynamic>{};
+  final sessionId =
+      extra['sessionId'] as String? ?? data['sessionId'] as String?;
+  if (sessionId == null) {
+    debugPrint('❌ VoIPService: No sessionId in ended event');
+    return;
+  }
 
     _acceptInProgress.remove(sessionId);
     _acceptedSessions.remove(sessionId);
@@ -533,38 +543,64 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
             'endReason': 'user_ended',
           });
 
-      debugPrint('✅ VoIPService: endSession completed');
-    } catch (e) {
-      debugPrint('❌ VoIPService: Error ending session: $e');
-    }
+    debugPrint('✅ VoIPService: endSession completed');
+  } catch (e) {
+    debugPrint('❌ VoIPService: Error ending session: $e');
+  }
+
+  _sessionCallKitIds.remove(sessionId);
   }
 
   /// Таймаут звонка (45 секунд без ответа)
   Future<void> _handleCallTimeout(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-    final extra = data['extra'] is Map
-        ? Map<String, dynamic>.from(data['extra'] as Map)
-        : <String, dynamic>{};
-    final sessionId =
-        extra['sessionId'] as String? ??
-        data['sessionId'] as String? ??
-        data['id'] as String?;
-    if (sessionId == null) {
-      debugPrint('❌ VoIPService: No sessionId in timeout event');
-      return;
-    }
+  final extra = data['extra'] is Map
+      ? Map<String, dynamic>.from(data['extra'] as Map)
+      : <String, dynamic>{};
+  final sessionId =
+      extra['sessionId'] as String? ?? data['sessionId'] as String?;
+  if (sessionId == null) {
+    debugPrint('❌ VoIPService: No sessionId in timeout event');
+    return;
+  }
 
     _acceptInProgress.remove(sessionId);
     _acceptedSessions.remove(sessionId);
     debugPrint('⏰ VoIPService: Call timeout: $sessionId');
 
     // Ничего не делаем - Cloud Function processExpiredNotifications обработает
+    _sessionCallKitIds.remove(sessionId);
+  }
+
+  /// Отметить звонок как подключенный (CallKit)
+  Future<void> markCallConnected({String? sessionId}) async {
+    try {
+      final callKitId =
+          sessionId != null ? _sessionCallKitIds[sessionId] : _lastCallKitId;
+      if (callKitId == null) return;
+      await FlutterCallkitIncoming.setCallConnected(callKitId);
+    } catch (e) {
+      debugPrint('❌ VoIPService: Error marking call connected: $e');
+    }
   }
 
   /// Завершить текущий активный звонок (программно)
-  Future<void> endCurrentCall() async {
+  Future<void> endCurrentCall({String? sessionId}) async {
     try {
+      final callKitId =
+          sessionId != null ? _sessionCallKitIds[sessionId] : _lastCallKitId;
+      if (callKitId != null) {
+        await FlutterCallkitIncoming.endCall(callKitId);
+        if (sessionId != null) {
+          _sessionCallKitIds.remove(sessionId);
+        }
+        if (_lastCallKitId == callKitId) {
+          _lastCallKitId = null;
+        }
+        debugPrint('✅ VoIPService: Call ended via CallKit');
+        return;
+      }
       await FlutterCallkitIncoming.endAllCalls();
       debugPrint('✅ VoIPService: All calls ended');
     } catch (e) {
