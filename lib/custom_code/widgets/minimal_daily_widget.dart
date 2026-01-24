@@ -497,6 +497,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _updateLocalVideoTrack();
     } else {
       _updateRemoteParticipant(participant);
+      _updateState(_state.copyWith());
     }
   }
 
@@ -572,8 +573,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       _updateState(_state.copyWith(remoteControllers: controllers));
 
+      _updateRemoteParticipant(participant);
+
       // Delay to ensure controller is initialized and video track is set
-      Timer(const Duration(milliseconds: 500), () {
+      Timer(const Duration(milliseconds: 200), () {
         if (mounted) {
           _updateRemoteParticipant(participant);
         }
