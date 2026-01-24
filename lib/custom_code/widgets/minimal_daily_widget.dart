@@ -23,6 +23,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
+import '/services/voip_service.dart';
 
 // VideoQuality enum simplified - only auto mode needed
 // Daily Adaptive Bitrate handles all quality adjustments automatically
@@ -475,6 +476,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           connectionState: ConnectionState.disconnected,
         ));
         _stopDeepgramStreaming();
+        unawaited(_endSystemCallUi());
         break;
 
       default:
@@ -501,6 +503,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Handle participant left event
   void _handleParticipantLeft(Participant participant) {
     _removeRemoteParticipant(participant.id);
+    unawaited(_endSystemCallUi());
     // Call callback when remote participant leaves (ends call)
     widget.participantLeftCallback?.call();
   }
@@ -1042,6 +1045,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _updateState(_state.copyWith(
       error: '$context: ${error.toString()}',
     ));
+  }
+
+  Future<void> _endSystemCallUi() async {
+    if (kIsWeb) return;
+    final platform = defaultTargetPlatform;
+    if (platform != TargetPlatform.iOS &&
+        platform != TargetPlatform.android) {
+      return;
+    }
+    try {
+      await VoIPService().endCurrentCall();
+    } catch (e) {
+      if (kDebugMode) print('Failed to end system call UI: $e');
+    }
   }
 
   /// Track timer for cleanup
@@ -1689,6 +1706,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// End call and cleanup
   Future<void> _endCall() async {
     try {
+      unawaited(_endSystemCallUi());
       await widget.endCallCallback?.call();
     } catch (e) {
       if (kDebugMode) print('End call callback failed: $e');
