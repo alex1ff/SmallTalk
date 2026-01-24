@@ -155,8 +155,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           functions.stringToRef(currentUserDocument?.role ==
                                   UserRole.native_speaker
                               ? videoCallPageVideoSessionsRecord.studentId
-                              : videoCallPageVideoSessionsRecord
-                                  .currentTutorId),
+                              : videoCallPageVideoSessionsRecord.tutorId),
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
