@@ -53,6 +53,8 @@ exports.cleanupExpiredSessions = functions.pubsub
           status: "ended",
           endedAt: admin.firestore.FieldValue.serverTimestamp(),
           duration: duration,
+          tutorNavigationTriggered: false,
+          studentNavigationTriggered: false,
           sessionMetadata: {
             ...sessionData.sessionMetadata,
             endReason: "expired",

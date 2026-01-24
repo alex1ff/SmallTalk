@@ -103,6 +103,8 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           status: "ended",
           endedAt: admin.firestore.FieldValue.serverTimestamp(),
           duration: duration,
+          tutorNavigationTriggered: false,
+          studentNavigationTriggered: false,
           sessionMetadata: {
             ...sessionData.sessionMetadata,
             endedBy: endedBy,
