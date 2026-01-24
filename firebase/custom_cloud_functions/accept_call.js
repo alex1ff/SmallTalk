@@ -58,6 +58,41 @@ exports.acceptCall = functions
         language: sessionData.language,
       });
 
+      // Идемпотентность: если сессия уже активна для этого же преподавателя,
+      // возвращаем существующие данные комнаты, не создавая новую.
+      if (["active", "connecting"].includes(sessionData.status)) {
+        if (sessionData.tutorId === tutorId && sessionData.dailyRoomUrl) {
+          console.log(
+            "ℹ️ Session already active for this tutor, returning existing room",
+          );
+          return {
+            status: "connected",
+            sessionId: sessionId,
+            roomUrl: sessionData.dailyRoomUrl,
+            roomName: sessionData.dailyRoomName || null,
+            meetingToken: sessionData.meetingToken || null,
+            studentInfo: sessionData.studentInfo || null,
+            sessionData: {
+              language: sessionData.language,
+              startedAt:
+                sessionData.startedAt?.toMillis?.() ||
+                sessionData.startedAt ||
+                null,
+              maxDuration: 3600000,
+            },
+          };
+        }
+
+        console.log(
+          "❌ Session is already active with another tutor or missing room data",
+          sessionData.status,
+        );
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Session is already active",
+        );
+      }
+
       // Проверяем, что сессия в статусе поиска
       if (sessionData.status !== "searching") {
         console.log(
@@ -186,6 +221,10 @@ exports.acceptCall = functions
           url: dailyRoom.url,
           hasToken: !!dailyRoom.token,
         });
+        if (!dailyRoom.token) {
+          console.error("❌ Daily meeting token creation failed");
+          throw new Error("Daily meeting token creation failed");
+        }
       } catch (roomError) {
         console.error("❌ Failed to create Daily room:", roomError);
         throw new functions.https.HttpsError(
@@ -244,6 +283,8 @@ exports.acceptCall = functions
 
             // Очищаем поля поиска (уже не нужны)
             currentTutorId: null,
+            tutorNavigationTriggered: false,
+            studentNavigationTriggered: false,
 
             // Обновляем метаданные
             sessionMetadata: {
