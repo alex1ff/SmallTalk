@@ -2,17 +2,23 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.dart';
 import '/backend/schema/enums/enums.dart';
+import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/flutter_flow/flutter_flow_widgets.dart';
 import '/students_pages/components/new_word/new_word_widget.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
+
 import 'video_call_page_model.dart';
 export 'video_call_page_model.dart';
 
@@ -52,7 +58,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<VideoSessionsRecord>(
-      stream: VideoSessionsRecord.getDocument(widget.videoDocRef!),
+      stream: VideoSessionsRecord.getDocument(widget!.videoDocRef!),
       builder: (context, snapshot) {
         // Customize what your widget looks like when it's loading.
         if (!snapshot.hasData) {
@@ -60,11 +66,11 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
             body: Center(
               child: SizedBox(
-                width: 50.0,
-                height: 50.0,
+                width: 50,
+                height: 50,
                 child: SpinKitCircle(
                   color: FlutterFlowTheme.of(context).secondary,
-                  size: 50.0,
+                  size: 50,
                 ),
               ),
             ),
@@ -82,26 +88,10 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             key: scaffoldKey,
             backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
             body: AuthUserStreamWidget(
-              builder: (context) {
-                final currentUid = currentUserUid;
-                final currentTutorId = valueOrDefault<String>(
-                  videoCallPageVideoSessionsRecord.currentTutorId,
-                  '',
-                );
-                final targetUserId =
-                    currentUid == videoCallPageVideoSessionsRecord.studentId
-                        ? (currentTutorId.isNotEmpty
-                            ? currentTutorId
-                            : videoCallPageVideoSessionsRecord.tutorId)
-                        : videoCallPageVideoSessionsRecord.studentId;
-                final targetUserRef = targetUserId.isNotEmpty
-                    ? functions.stringToRef(targetUserId)
-                    : null;
-
-                return Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  child: custom_widgets.MinimalDailyWidget(
+              builder: (context) => Container(
+                width: double.infinity,
+                height: double.infinity,
+                child: custom_widgets.MinimalDailyWidget(
                   width: double.infinity,
                   height: double.infinity,
                   roomUrl: videoCallPageVideoSessionsRecord.dailyRoomUrl,
@@ -142,7 +132,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           final result = await FirebaseFunctions.instance
                               .httpsCallable('endSession')
                               .call({
-                            "sessionId": widget.videoDocRef!.id,
+                            "sessionId": widget!.videoDocRef!.id,
                           });
                           _model.cloudFunctiona1y =
                               EndSessionCloudFunctionCallResponse(
@@ -162,11 +152,15 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       CallSummaryWidget.routeName,
                       queryParameters: {
                         'userRef': serializeParam(
-                          targetUserRef,
+                          functions.stringToRef(currentUserDocument?.role ==
+                                  UserRole.native_speaker
+                              ? videoCallPageVideoSessionsRecord.studentId
+                              : videoCallPageVideoSessionsRecord
+                                  .currentTutorId),
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
-                          widget.videoDocRef,
+                          widget!.videoDocRef,
                           ParamType.DocumentReference,
                         ),
                         'lang': serializeParam(
@@ -174,7 +168,10 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           ParamType.String,
                         ),
                         'dur': serializeParam(
-                          videoCallPageVideoSessionsRecord.duration,
+                          valueOrDefault<int>(
+                            videoCallPageVideoSessionsRecord.duration,
+                            0,
+                          ),
                           ParamType.int,
                         ),
                       }.withoutNulls,
@@ -187,11 +184,20 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       CallSummaryWidget.routeName,
                       queryParameters: {
                         'userRef': serializeParam(
-                          targetUserRef,
+                          functions.stringToRef(currentUserDocument?.role ==
+                                  UserRole.native_speaker
+                              ? valueOrDefault<String>(
+                                  videoCallPageVideoSessionsRecord.studentId,
+                                  '-',
+                                )
+                              : valueOrDefault<String>(
+                                  videoCallPageVideoSessionsRecord.tutorId,
+                                  '-',
+                                )),
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
-                          widget.videoDocRef,
+                          widget!.videoDocRef,
                           ParamType.DocumentReference,
                         ),
                         'lang': serializeParam(
@@ -199,15 +205,17 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           ParamType.String,
                         ),
                         'dur': serializeParam(
-                          videoCallPageVideoSessionsRecord.duration,
+                          valueOrDefault<int>(
+                            videoCallPageVideoSessionsRecord.duration,
+                            0,
+                          ),
                           ParamType.int,
                         ),
                       }.withoutNulls,
                     );
                   },
                 ),
-                );
-              },
+              ),
             ),
           ),
         );

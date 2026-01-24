@@ -5,12 +5,19 @@ import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/flutter_flow/flutter_flow_widgets.dart';
 import 'dart:async';
+import 'dart:ui';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
 import 'call_summary_model.dart';
 export 'call_summary_model.dart';
 
@@ -20,13 +27,13 @@ class CallSummaryWidget extends StatefulWidget {
     required this.userRef,
     required this.sessionID,
     required this.lang,
-    required this.dur,
-  });
+    int? dur,
+  }) : this.dur = dur ?? 0;
 
   final DocumentReference? userRef;
   final DocumentReference? sessionID;
   final String? lang;
-  final int? dur;
+  final int dur;
 
   static String routeName = 'CallSummary';
   static String routePath = '/callSummary';
@@ -47,13 +54,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
-      if (widget.userRef == null) {
-        return;
-      }
-      _model.user = await UsersRecord.getDocumentOnce(widget.userRef!);
-      if (mounted) {
-        safeSetState(() {});
-      }
+      _model.user = await UsersRecord.getDocumentOnce(widget!.userRef!);
     });
 
     _model.aboutMeTextController ??= TextEditingController();
@@ -69,21 +70,6 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final user = _model.user;
-
-    if (widget.userRef == null) {
-      return Scaffold(
-        key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: Center(
-          child: Text(
-            'Пользователь не найден',
-            style: FlutterFlowTheme.of(context).bodyMedium,
-          ),
-        ),
-      );
-    }
-
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -92,36 +78,25 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
       child: Scaffold(
         key: scaffoldKey,
         backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: user == null
-            ? Center(
-                child: SizedBox(
-                  width: 50.0,
-                  height: 50.0,
-                  child: CircularProgressIndicator(
-                    color: FlutterFlowTheme.of(context).secondary,
-                  ),
-                ),
-              )
-            : Stack(
-                children: [
-                  Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.max,
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
+        body: Stack(
+          children: [
+            Padding(
+              padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.max,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(10.0, 16.0, 10.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(10, 16, 10, 0),
                       child: Text(
                         FFLocalizations.of(context).getText(
-                          'nkmvs84c' /* Как прошёл звонок? */,
+                          'nkmvs84c' /* ÐÐ°Ðº Ð¿ÑÐ¾ÑÑÐ» Ð·Ð²Ð¾Ð½Ð¾Ðº? */,
                         ),
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
                               fontFamily: 'Cool',
                               color: FlutterFlowTheme.of(context).primaryText,
-                              fontSize: 43.0,
+                              fontSize: 43,
                               letterSpacing: 0.0,
                               fontWeight: FontWeight.normal,
                               lineHeight: 1.1,
@@ -129,14 +104,13 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(10.0, 4.0, 10.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(10, 4, 10, 0),
                       child: Row(
                         mainAxisSize: MainAxisSize.max,
                         children: [
                           Text(
-                            '${(((widget.dur!) / 60).round()).toString()}${FFLocalizations.of(context).getVariableText(
-                              ruText: ' мин',
+                            '${((widget!.dur / 60).round()).toString()}${FFLocalizations.of(context).getVariableText(
+                              ruText: ' Ð¼Ð¸Ð½',
                               enText: ' min',
                             )}',
                             style: FlutterFlowTheme.of(context)
@@ -145,21 +119,21 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   fontFamily: 'sf pro display',
                                   color: FlutterFlowTheme.of(context)
                                       .secondaryText,
-                                  fontSize: 15.0,
+                                  fontSize: 15,
                                   letterSpacing: 0.0,
                                 ),
                           ),
                           SizedBox(
-                            height: 10.0,
+                            height: 10,
                             child: VerticalDivider(
-                              thickness: 1.0,
+                              thickness: 1,
                               color: FlutterFlowTheme.of(context).secondaryText,
                             ),
                           ),
                           Flexible(
                             child: Text(
                               valueOrDefault<String>(
-                                widget.lang,
+                                widget!.lang,
                                 '-',
                               ),
                               style: FlutterFlowTheme.of(context)
@@ -168,7 +142,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                     fontFamily: 'sf pro display',
                                     color: FlutterFlowTheme.of(context)
                                         .secondaryText,
-                                    fontSize: 15.0,
+                                    fontSize: 15,
                                     letterSpacing: 0.0,
                                   ),
                             ),
@@ -177,18 +151,16 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 40.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
                       child: Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
                           color: FlutterFlowTheme.of(context).primaryBackground,
-                          borderRadius: BorderRadius.circular(20.0),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        alignment: AlignmentDirectional(0.0, 0.0),
+                        alignment: AlignmentDirectional(0, 0),
                         child: Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              8.0, 35.0, 8.0, 35.0),
+                          padding: EdgeInsetsDirectional.fromSTEB(8, 35, 8, 35),
                           child: Row(
                             mainAxisSize: MainAxisSize.max,
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -196,8 +168,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               Expanded(
                                 child: FlutterFlowIconButton(
                                   borderColor: Colors.transparent,
-                                  borderRadius: 8.0,
-                                  buttonSize: 55.0,
+                                  borderRadius: 8,
+                                  buttonSize: 55,
                                   icon: Icon(
                                     FFIcons.kstar012,
                                     color: valueOrDefault<Color>(
@@ -220,7 +192,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                       FlutterFlowTheme.of(context)
                                           .secondaryBackground,
                                     ),
-                                    size: 40.0,
+                                    size: 40,
                                   ),
                                   onPressed: () async {
                                     _model.rait = 1;
@@ -231,8 +203,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               Expanded(
                                 child: FlutterFlowIconButton(
                                   borderColor: Colors.transparent,
-                                  borderRadius: 8.0,
-                                  buttonSize: 55.0,
+                                  borderRadius: 8,
+                                  buttonSize: 55,
                                   icon: Icon(
                                     FFIcons.kstar012,
                                     color: valueOrDefault<Color>(
@@ -253,7 +225,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                       FlutterFlowTheme.of(context)
                                           .secondaryBackground,
                                     ),
-                                    size: 40.0,
+                                    size: 40,
                                   ),
                                   onPressed: () async {
                                     _model.rait = 2;
@@ -264,8 +236,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               Expanded(
                                 child: FlutterFlowIconButton(
                                   borderColor: Colors.transparent,
-                                  borderRadius: 8.0,
-                                  buttonSize: 55.0,
+                                  borderRadius: 8,
+                                  buttonSize: 55,
                                   icon: Icon(
                                     FFIcons.kstar012,
                                     color: valueOrDefault<Color>(
@@ -284,7 +256,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                       FlutterFlowTheme.of(context)
                                           .secondaryBackground,
                                     ),
-                                    size: 40.0,
+                                    size: 40,
                                   ),
                                   onPressed: () async {
                                     _model.rait = 3;
@@ -295,8 +267,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               Expanded(
                                 child: FlutterFlowIconButton(
                                   borderColor: Colors.transparent,
-                                  borderRadius: 8.0,
-                                  buttonSize: 55.0,
+                                  borderRadius: 8,
+                                  buttonSize: 55,
                                   icon: Icon(
                                     FFIcons.kstar012,
                                     color: valueOrDefault<Color>(
@@ -313,7 +285,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                       FlutterFlowTheme.of(context)
                                           .secondaryBackground,
                                     ),
-                                    size: 40.0,
+                                    size: 40,
                                   ),
                                   onPressed: () async {
                                     _model.rait = 4;
@@ -324,8 +296,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               Expanded(
                                 child: FlutterFlowIconButton(
                                   borderColor: Colors.transparent,
-                                  borderRadius: 8.0,
-                                  buttonSize: 55.0,
+                                  borderRadius: 8,
+                                  buttonSize: 55,
                                   icon: Icon(
                                     FFIcons.kstar012,
                                     color: valueOrDefault<Color>(
@@ -336,7 +308,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                       FlutterFlowTheme.of(context)
                                           .secondaryBackground,
                                     ),
-                                    size: 40.0,
+                                    size: 40,
                                   ),
                                   onPressed: () async {
                                     _model.rait = 5;
@@ -350,8 +322,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
                       child: Container(
                         width: double.infinity,
                         child: TextFormField(
@@ -366,16 +337,16 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             hintText: valueOrDefault<String>(
                               () {
                                 if (_model.rait <= 3) {
-                                  return 'Расскажтите, что пошло не так';
+                                  return 'Ð Ð°ÑÑÐºÐ°Ð¶ÑÐ¸ÑÐµ, ÑÑÐ¾ Ð¿Ð¾ÑÐ»Ð¾ Ð½Ðµ ÑÐ°Ðº';
                                 } else if (_model.rait == 4) {
-                                  return 'Расскажтите, что могло бы быть лучше';
+                                  return 'Ð Ð°ÑÑÐºÐ°Ð¶ÑÐ¸ÑÐµ, ÑÑÐ¾ Ð¼Ð¾Ð³Ð»Ð¾ Ð±Ñ Ð±ÑÑÑ Ð»ÑÑÑÐµ';
                                 } else if (_model.rait == 5) {
-                                  return 'Расскажтите, что понравилось';
+                                  return 'Ð Ð°ÑÑÐºÐ°Ð¶ÑÐ¸ÑÐµ, ÑÑÐ¾ Ð¿Ð¾Ð½ÑÐ°Ð²Ð¸Ð»Ð¾ÑÑ';
                                 } else {
-                                  return 'Отзыв на собеседника';
+                                  return 'ÐÑÐ·ÑÐ² Ð½Ð° ÑÐ¾Ð±ÐµÑÐµÐ´Ð½Ð¸ÐºÐ°';
                                 }
                               }(),
-                              'Отзыв на собеседника',
+                              'ÐÑÐ·ÑÐ² Ð½Ð° ÑÐ¾Ð±ÐµÑÐµÐ´Ð½Ð¸ÐºÐ°',
                             ),
                             hintStyle: FlutterFlowTheme.of(context)
                                 .bodyMedium
@@ -383,48 +354,48 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   fontFamily: 'sf pro display',
                                   color: FlutterFlowTheme.of(context)
                                       .secondaryText,
-                                  fontSize: 16.0,
+                                  fontSize: 16,
                                   letterSpacing: 0.0,
                                 ),
                             enabledBorder: OutlineInputBorder(
                               borderSide: BorderSide(
                                 color: Color(0x00000000),
-                                width: 1.0,
+                                width: 1,
                               ),
-                              borderRadius: BorderRadius.circular(16.0),
+                              borderRadius: BorderRadius.circular(16),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderSide: BorderSide(
                                 color: Color(0x00000000),
-                                width: 1.0,
+                                width: 1,
                               ),
-                              borderRadius: BorderRadius.circular(16.0),
+                              borderRadius: BorderRadius.circular(16),
                             ),
                             errorBorder: OutlineInputBorder(
                               borderSide: BorderSide(
                                 color: FlutterFlowTheme.of(context).error,
-                                width: 1.0,
+                                width: 1,
                               ),
-                              borderRadius: BorderRadius.circular(16.0),
+                              borderRadius: BorderRadius.circular(16),
                             ),
                             focusedErrorBorder: OutlineInputBorder(
                               borderSide: BorderSide(
                                 color: FlutterFlowTheme.of(context).error,
-                                width: 1.0,
+                                width: 1,
                               ),
-                              borderRadius: BorderRadius.circular(16.0),
+                              borderRadius: BorderRadius.circular(16),
                             ),
                             filled: true,
                             fillColor:
                                 FlutterFlowTheme.of(context).primaryBackground,
-                            contentPadding: EdgeInsets.all(16.0),
+                            contentPadding: EdgeInsets.all(16),
                             hoverColor:
                                 FlutterFlowTheme.of(context).primaryBackground,
                           ),
                           style:
                               FlutterFlowTheme.of(context).bodyMedium.override(
                                     fontFamily: 'sf pro display',
-                                    fontSize: 16.0,
+                                    fontSize: 16,
                                     letterSpacing: 0.0,
                                   ),
                           maxLines: 12,
@@ -448,8 +419,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 40.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
                       child: Row(
                         mainAxisSize: MainAxisSize.max,
                         children: [
@@ -457,8 +427,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               !_model.black)
                             Expanded(
                               child: Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    0.0, 0.0, 6.0, 0.0),
+                                padding:
+                                    EdgeInsetsDirectional.fromSTEB(0, 0, 6, 0),
                                 child: AuthUserStreamWidget(
                                   builder: (context) => InkWell(
                                     splashColor: Colors.transparent,
@@ -470,8 +440,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                       safeSetState(() {});
                                     },
                                     child: Container(
-                                      width: 222.0,
-                                      height: 60.0,
+                                      width: 222,
+                                      height: 60,
                                       decoration: BoxDecoration(
                                         color: valueOrDefault<Color>(
                                           _model.fav
@@ -482,17 +452,16 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                           FlutterFlowTheme.of(context)
                                               .primaryBackground,
                                         ),
-                                        borderRadius:
-                                            BorderRadius.circular(55.0),
+                                        borderRadius: BorderRadius.circular(55),
                                       ),
                                       child: Padding(
-                                        padding: EdgeInsets.all(2.0),
+                                        padding: EdgeInsets.all(2),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           children: [
                                             Container(
-                                              width: 56.0,
-                                              height: 56.0,
+                                              width: 56,
+                                              height: 56,
                                               decoration: BoxDecoration(
                                                 color: valueOrDefault<Color>(
                                                   _model.fav
@@ -506,7 +475,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                                       .secondaryBackground,
                                                 ),
                                                 borderRadius:
-                                                    BorderRadius.circular(55.0),
+                                                    BorderRadius.circular(55),
                                               ),
                                               child: Icon(
                                                 FFIcons.kheart,
@@ -521,18 +490,17 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                                   FlutterFlowTheme.of(context)
                                                       .secondaryText,
                                                 ),
-                                                size: 20.0,
+                                                size: 20,
                                               ),
                                             ),
                                             Expanded(
                                               child: Padding(
                                                 padding: EdgeInsetsDirectional
-                                                    .fromSTEB(
-                                                        12.0, 0.0, 0.0, 0.0),
+                                                    .fromSTEB(12, 0, 0, 0),
                                                 child: Text(
                                                   FFLocalizations.of(context)
                                                       .getText(
-                                                    '2gz8zlq9' /* В избранное */,
+                                                    '2gz8zlq9' /* Ð Ð¸Ð·Ð±ÑÐ°Ð½Ð½Ð¾Ðµ */,
                                                   ),
                                                   style:
                                                       FlutterFlowTheme.of(
@@ -555,7 +523,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                                                       context)
                                                                   .primaryText,
                                                             ),
-                                                            fontSize: 15.0,
+                                                            fontSize: 15,
                                                             letterSpacing: 0.0,
                                                           ),
                                                   overflow:
@@ -583,8 +551,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                 safeSetState(() {});
                               },
                               child: Container(
-                                width: 222.0,
-                                height: 60.0,
+                                width: 222,
+                                height: 60,
                                 decoration: BoxDecoration(
                                   color: valueOrDefault<Color>(
                                     _model.black
@@ -594,16 +562,16 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                     FlutterFlowTheme.of(context)
                                         .primaryBackground,
                                   ),
-                                  borderRadius: BorderRadius.circular(55.0),
+                                  borderRadius: BorderRadius.circular(55),
                                 ),
                                 child: Padding(
-                                  padding: EdgeInsets.all(2.0),
+                                  padding: EdgeInsets.all(2),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
                                     children: [
                                       Container(
-                                        width: 56.0,
-                                        height: 56.0,
+                                        width: 56,
+                                        height: 56,
                                         decoration: BoxDecoration(
                                           color: valueOrDefault<Color>(
                                             _model.black
@@ -615,7 +583,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                                 .secondaryBackground,
                                           ),
                                           borderRadius:
-                                              BorderRadius.circular(55.0),
+                                              BorderRadius.circular(55),
                                         ),
                                         child: Icon(
                                           FFIcons.kthumbsDown,
@@ -628,17 +596,17 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                             FlutterFlowTheme.of(context)
                                                 .secondaryText,
                                           ),
-                                          size: 20.0,
+                                          size: 20,
                                         ),
                                       ),
                                       Expanded(
                                         child: Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  12.0, 0.0, 0.0, 0.0),
+                                                  12, 0, 0, 0),
                                           child: Text(
                                             FFLocalizations.of(context).getText(
-                                              'kth7l1fn' /* Не соединять */,
+                                              'kth7l1fn' /* ÐÐµ ÑÐ¾ÐµÐ´Ð¸Ð½ÑÑÑ */,
                                             ),
                                             style: FlutterFlowTheme.of(context)
                                                 .bodyMedium
@@ -655,7 +623,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                                     FlutterFlowTheme.of(context)
                                                         .primaryText,
                                                   ),
-                                                  fontSize: 15.0,
+                                                  fontSize: 15,
                                                   letterSpacing: 0.0,
                                                 ),
                                             overflow: TextOverflow.ellipsis,
@@ -672,68 +640,71 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                       ),
                     ),
                   ]
-                      .addToStart(SizedBox(height: 115.0))
-                      .addToEnd(SizedBox(height: 120.0)),
+                      .addToStart(SizedBox(height: 115))
+                      .addToEnd(SizedBox(height: 120)),
                 ),
               ),
             ),
             Align(
-              alignment: AlignmentDirectional(0.0, 1.0),
+              alignment: AlignmentDirectional(0, 1),
               child: wrapWithModel(
                 model: _model.buttonModel,
                 updateCallback: () => safeSetState(() {}),
                 child: ButtonWidget(
                   text: FFLocalizations.of(context).getText(
-                    'duynuhus' /* Готово */,
+                    'duynuhus' /* ÐÐ¾ÑÐ¾Ð²Ð¾ */,
                   ),
                   action: () async {
-                    if (_model.aboutMeTextController.text != '') {
-                      await ReviewsRecord.collection
-                          .doc()
-                          .set(createReviewsRecordData(
-                            sessionId: widget.sessionID,
-                            fromUserId: currentUserReference,
-                            toUserId: widget.userRef,
-                            rating: _model.rait,
-                            comment: _model.aboutMeTextController.text,
-                            createdAt: getCurrentTimestamp,
-                          ));
-                    } else {
-                      await ReviewsRecord.collection
-                          .doc()
-                          .set(createReviewsRecordData(
-                            sessionId: widget.sessionID,
-                            fromUserId: currentUserReference,
-                            toUserId: widget.userRef,
-                            rating: _model.rait,
-                            createdAt: getCurrentTimestamp,
-                          ));
-                    }
+                    if (_model.rait != null) {
+                      if (_model.aboutMeTextController.text != null &&
+                          _model.aboutMeTextController.text != '') {
+                        await ReviewsRecord.collection
+                            .doc()
+                            .set(createReviewsRecordData(
+                              sessionId: widget!.sessionID,
+                              fromUserId: currentUserReference,
+                              toUserId: widget!.userRef,
+                              rating: _model.rait,
+                              comment: _model.aboutMeTextController.text,
+                              createdAt: getCurrentTimestamp,
+                            ));
+                      } else {
+                        await ReviewsRecord.collection
+                            .doc()
+                            .set(createReviewsRecordData(
+                              sessionId: widget!.sessionID,
+                              fromUserId: currentUserReference,
+                              toUserId: widget!.userRef,
+                              rating: _model.rait,
+                              createdAt: getCurrentTimestamp,
+                            ));
+                      }
 
-                    unawaited(
-                      () async {
-                        await widget.userRef!.update(createUsersRecordData(
-                          rating: createURatingStruct(
-                            average: functions.recalculateRatingWithNewReview(
-                                      user.rating.totalReviews,
-                                      user.rating.average,
-                                _model.rait),
-                            fieldValues: {
-                              'totalReviews': FieldValue.increment(1),
-                            },
-                            clearUnsetFields: false,
-                          ),
-                        ));
-                      }(),
-                    );
-                                      if (_model.fav) {
+                      unawaited(
+                        () async {
+                          await widget!.userRef!.update(createUsersRecordData(
+                            rating: createURatingStruct(
+                              average: functions.recalculateRatingWithNewReview(
+                                  _model.user!.rating.totalReviews,
+                                  _model.user!.rating.average,
+                                  _model.rait),
+                              fieldValues: {
+                                'totalReviews': FieldValue.increment(1),
+                              },
+                              clearUnsetFields: false,
+                            ),
+                          ));
+                        }(),
+                      );
+                    }
+                    if (_model.fav) {
                       unawaited(
                         () async {
                           await currentUserReference!.update({
                             ...mapToFirestore(
                               {
                                 'favoriteNativeSpeakers':
-                                    FieldValue.arrayUnion([widget.userRef]),
+                                    FieldValue.arrayUnion([widget!.userRef]),
                               },
                             ),
                           });
@@ -746,7 +717,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             ...mapToFirestore(
                               {
                                 'blockedUsers':
-                                    FieldValue.arrayUnion([widget.userRef]),
+                                    FieldValue.arrayUnion([widget!.userRef]),
                               },
                             ),
                           });
@@ -771,37 +742,37 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                     Color(0xEFF2F2F7),
                     Color(0x00F2F2F7)
                   ],
-                  stops: [0.0, 0.8, 1.0],
-                  begin: AlignmentDirectional(0.0, -1.0),
-                  end: AlignmentDirectional(0, 1.0),
+                  stops: [0, 0.8, 1],
+                  begin: AlignmentDirectional(0, -1),
+                  end: AlignmentDirectional(0, 1),
                 ),
               ),
               child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 55.0, 6.0, 6.0),
+                padding: EdgeInsetsDirectional.fromSTEB(6, 55, 6, 6),
                 child: Container(
-                  height: 70.0,
+                  height: 70,
                   decoration: BoxDecoration(
                     color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(50.0),
+                    borderRadius: BorderRadius.circular(50),
                     border: Border.all(
                       color: FlutterFlowTheme.of(context).secondaryBackground,
                     ),
                   ),
                   child: Padding(
-                    padding: EdgeInsets.all(2.0),
+                    padding: EdgeInsets.all(2),
                     child: Row(
                       mainAxisSize: MainAxisSize.max,
                       children: [
                         Container(
-                          width: 66.0,
-                          height: 66.0,
+                          width: 66,
+                          height: 66,
                           decoration: BoxDecoration(
                             color: FlutterFlowTheme.of(context)
                                 .secondaryBackground,
                             image: DecorationImage(
                               fit: BoxFit.cover,
                               image: Image.network(
-                                  user.photoUrl,
+                                _model.user!.photoUrl,
                               ).image,
                             ),
                             shape: BoxShape.circle,
@@ -809,11 +780,11 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                         ),
                         Expanded(
                           child: Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                12.0, 0.0, 0.0, 0.0),
+                            padding:
+                                EdgeInsetsDirectional.fromSTEB(12, 0, 0, 0),
                             child: Text(
                               valueOrDefault<String>(
-                                  user.displayName,
+                                _model.user?.displayName,
                                 '-',
                               ),
                               maxLines: 2,
@@ -821,7 +792,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'sf pro display',
-                                    fontSize: 16.0,
+                                    fontSize: 16,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -850,10 +821,10 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             children: [
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    12.0, 0.0, 12.0, 0.0),
+                                    12, 0, 12, 0),
                                 child: Text(
                                   FFLocalizations.of(context).getText(
-                                    's918m7k5' /* Пропустить */,
+                                    's918m7k5' /* ÐÑÐ¾Ð¿ÑÑÑÐ¸ÑÑ */,
                                   ),
                                   style: FlutterFlowTheme.of(context)
                                       .bodyMedium
@@ -866,20 +837,20 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                 ),
                               ),
                               Container(
-                                width: 66.0,
-                                height: 66.0,
+                                width: 66,
+                                height: 66,
                                 decoration: BoxDecoration(
                                   color: FlutterFlowTheme.of(context)
                                       .secondaryBackground,
                                   shape: BoxShape.circle,
                                 ),
                                 child: Align(
-                                  alignment: AlignmentDirectional(0.0, 0.0),
+                                  alignment: AlignmentDirectional(0, 0),
                                   child: Icon(
                                     Icons.close_rounded,
                                     color: FlutterFlowTheme.of(context)
                                         .primaryText,
-                                    size: 20.0,
+                                    size: 20,
                                   ),
                                 ),
                               ),
