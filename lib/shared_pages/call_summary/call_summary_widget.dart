@@ -54,13 +54,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
-      if (widget.userRef == null) {
-        return;
-      }
-      _model.user = await UsersRecord.getDocumentOnce(widget.userRef!);
-      if (mounted) {
-        safeSetState(() {});
-      }
+      _model.user = await UsersRecord.getDocumentOnce(widget!.userRef!);
     });
 
     _model.aboutMeTextController ??= TextEditingController();
@@ -76,36 +70,6 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.userRef == null) {
-      return Scaffold(
-        key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: Center(
-          child: Text(
-            'Пользователь не найден',
-            style: FlutterFlowTheme.of(context).bodyMedium,
-          ),
-        ),
-      );
-    }
-
-    final user = _model.user;
-    if (user == null) {
-      return Scaffold(
-        key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: Center(
-          child: SizedBox(
-            width: 50,
-            height: 50,
-            child: CircularProgressIndicator(
-              color: FlutterFlowTheme.of(context).secondary,
-            ),
-          ),
-        ),
-      );
-    }
-
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -808,7 +772,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             image: DecorationImage(
                               fit: BoxFit.cover,
                               image: Image.network(
-                                user.photoUrl,
+                                _model.user!.photoUrl,
                               ).image,
                             ),
                             shape: BoxShape.circle,
