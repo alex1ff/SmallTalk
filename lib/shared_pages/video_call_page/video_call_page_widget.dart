@@ -163,7 +163,10 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           ParamType.DocumentReference,
                         ),
                         'lang': serializeParam(
-                          videoCallPageVideoSessionsRecord.language,
+                          valueOrDefault<String>(
+                            videoCallPageVideoSessionsRecord.language,
+                            'en',
+                          ),
                           ParamType.String,
                         ),
                         'dur': serializeParam(
@@ -200,7 +203,10 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           ParamType.DocumentReference,
                         ),
                         'lang': serializeParam(
-                          videoCallPageVideoSessionsRecord.language,
+                          valueOrDefault<String>(
+                            videoCallPageVideoSessionsRecord.language,
+                            'en',
+                          ),
                           ParamType.String,
                         ),
                         'dur': serializeParam(
