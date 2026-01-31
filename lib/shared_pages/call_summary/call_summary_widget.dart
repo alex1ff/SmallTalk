@@ -26,13 +26,14 @@ class CallSummaryWidget extends StatefulWidget {
     super.key,
     required this.userRef,
     required this.sessionID,
-    required this.lang,
+    String? lang,
     int? dur,
-  }) : this.dur = dur ?? 0;
+  })  : this.lang = lang ?? '-',
+        this.dur = dur ?? 0;
 
   final DocumentReference? userRef;
   final DocumentReference? sessionID;
-  final String? lang;
+  final String lang;
   final int dur;
 
   static String routeName = 'CallSummary';
@@ -91,7 +92,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                       padding: EdgeInsetsDirectional.fromSTEB(10, 16, 10, 0),
                       child: Text(
                         FFLocalizations.of(context).getText(
-                          'nkmvs84c' /* ÐÐ°Ðº Ð¿ÑÐ¾ÑÑÐ» Ð·Ð²Ð¾Ð½Ð¾Ðº? */,
+                          'nkmvs84c' /* Как прошёл звонок? */,
                         ),
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
                               fontFamily: 'Cool',
@@ -109,8 +110,11 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                         mainAxisSize: MainAxisSize.max,
                         children: [
                           Text(
-                            '${((widget!.dur / 60).round()).toString()}${FFLocalizations.of(context).getVariableText(
-                              ruText: ' Ð¼Ð¸Ð½',
+                            '${((valueOrDefault<int>(
+                                  widget!.dur,
+                                  0,
+                                ) / 60).round()).toString()}${FFLocalizations.of(context).getVariableText(
+                              ruText: ' мин',
                               enText: ' min',
                             )}',
                             style: FlutterFlowTheme.of(context)
@@ -337,16 +341,16 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             hintText: valueOrDefault<String>(
                               () {
                                 if (_model.rait <= 3) {
-                                  return 'Ð Ð°ÑÑÐºÐ°Ð¶ÑÐ¸ÑÐµ, ÑÑÐ¾ Ð¿Ð¾ÑÐ»Ð¾ Ð½Ðµ ÑÐ°Ðº';
+                                  return 'Расскажтите, что пошло не так';
                                 } else if (_model.rait == 4) {
-                                  return 'Ð Ð°ÑÑÐºÐ°Ð¶ÑÐ¸ÑÐµ, ÑÑÐ¾ Ð¼Ð¾Ð³Ð»Ð¾ Ð±Ñ Ð±ÑÑÑ Ð»ÑÑÑÐµ';
+                                  return 'Расскажтите, что могло бы быть лучше';
                                 } else if (_model.rait == 5) {
-                                  return 'Ð Ð°ÑÑÐºÐ°Ð¶ÑÐ¸ÑÐµ, ÑÑÐ¾ Ð¿Ð¾Ð½ÑÐ°Ð²Ð¸Ð»Ð¾ÑÑ';
+                                  return 'Расскажтите, что понравилось';
                                 } else {
-                                  return 'ÐÑÐ·ÑÐ² Ð½Ð° ÑÐ¾Ð±ÐµÑÐµÐ´Ð½Ð¸ÐºÐ°';
+                                  return 'Отзыв на собеседника';
                                 }
                               }(),
-                              'ÐÑÐ·ÑÐ² Ð½Ð° ÑÐ¾Ð±ÐµÑÐµÐ´Ð½Ð¸ÐºÐ°',
+                              'Отзыв на собеседника',
                             ),
                             hintStyle: FlutterFlowTheme.of(context)
                                 .bodyMedium
@@ -500,7 +504,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                                 child: Text(
                                                   FFLocalizations.of(context)
                                                       .getText(
-                                                    '2gz8zlq9' /* Ð Ð¸Ð·Ð±ÑÐ°Ð½Ð½Ð¾Ðµ */,
+                                                    '2gz8zlq9' /* В избранное */,
                                                   ),
                                                   style:
                                                       FlutterFlowTheme.of(
@@ -606,7 +610,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                                   12, 0, 0, 0),
                                           child: Text(
                                             FFLocalizations.of(context).getText(
-                                              'kth7l1fn' /* ÐÐµ ÑÐ¾ÐµÐ´Ð¸Ð½ÑÑÑ */,
+                                              'kth7l1fn' /* Не соединять */,
                                             ),
                                             style: FlutterFlowTheme.of(context)
                                                 .bodyMedium
@@ -652,7 +656,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                 updateCallback: () => safeSetState(() {}),
                 child: ButtonWidget(
                   text: FFLocalizations.of(context).getText(
-                    'duynuhus' /* ÐÐ¾ÑÐ¾Ð²Ð¾ */,
+                    'duynuhus' /* Готово */,
                   ),
                   action: () async {
                     if (_model.rait != null) {
@@ -824,7 +828,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                     12, 0, 12, 0),
                                 child: Text(
                                   FFLocalizations.of(context).getText(
-                                    's918m7k5' /* ÐÑÐ¾Ð¿ÑÑÑÐ¸ÑÑ */,
+                                    's918m7k5' /* Пропустить */,
                                   ),
                                   style: FlutterFlowTheme.of(context)
                                       .bodyMedium
