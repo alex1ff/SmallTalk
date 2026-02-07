@@ -642,14 +642,14 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                 padding: EdgeInsetsDirectional.fromSTEB(
                                     0.0, 60.0, 0.0, 0.0),
                                 child: FlutterFlowSwipeableStack(
-                                  onSwipeFn: (index) async {
+                                  onSwipeFn: (swipeableStackIndex) async {
                                     _model.genderMALE = !_model.genderMALE;
                                     safeSetState(() {});
                                   },
-                                  onLeftSwipe: (index) {},
-                                  onRightSwipe: (index) {},
-                                  onUpSwipe: (index) {},
-                                  onDownSwipe: (index) {},
+                                  onLeftSwipe: (swipeableStackIndex) {},
+                                  onRightSwipe: (swipeableStackIndex) {},
+                                  onUpSwipe: (swipeableStackIndex) {},
+                                  onDownSwipe: (swipeableStackIndex) {},
                                   itemBuilder: (context, index) {
                                     return [
                                       () => Align(

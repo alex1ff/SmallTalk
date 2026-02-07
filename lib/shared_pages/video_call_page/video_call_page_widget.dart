@@ -149,8 +149,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           functions.stringToRef(currentUserDocument?.role ==
                                   UserRole.native_speaker
                               ? videoCallPageVideoSessionsRecord.studentId
-                              : videoCallPageVideoSessionsRecord
-                                  .currentTutorId),
+                              : videoCallPageVideoSessionsRecord.tutorId),
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
@@ -158,11 +157,17 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           ParamType.DocumentReference,
                         ),
                         'lang': serializeParam(
-                          videoCallPageVideoSessionsRecord.language,
+                          valueOrDefault<String>(
+                            videoCallPageVideoSessionsRecord.language,
+                            'en',
+                          ),
                           ParamType.String,
                         ),
                         'dur': serializeParam(
-                          videoCallPageVideoSessionsRecord.duration,
+                          valueOrDefault<int>(
+                            videoCallPageVideoSessionsRecord.duration,
+                            0,
+                          ),
                           ParamType.int,
                         ),
                       }.withoutNulls,
@@ -192,11 +197,17 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           ParamType.DocumentReference,
                         ),
                         'lang': serializeParam(
-                          videoCallPageVideoSessionsRecord.language,
+                          valueOrDefault<String>(
+                            videoCallPageVideoSessionsRecord.language,
+                            'en',
+                          ),
                           ParamType.String,
                         ),
                         'dur': serializeParam(
-                          videoCallPageVideoSessionsRecord.duration,
+                          valueOrDefault<int>(
+                            videoCallPageVideoSessionsRecord.duration,
+                            0,
+                          ),
                           ParamType.int,
                         ),
                       }.withoutNulls,

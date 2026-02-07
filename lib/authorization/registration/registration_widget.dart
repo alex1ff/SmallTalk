@@ -433,10 +433,11 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                     errorBorder: InputBorder.none,
                                     focusedErrorBorder: InputBorder.none,
                                     suffixIcon: InkWell(
-                                      onTap: () => safeSetState(
-                                        () => _model.passVisibility =
-                                            !_model.passVisibility,
-                                      ),
+                                      onTap: () async {
+                                        safeSetState(() =>
+                                            _model.passVisibility =
+                                                !_model.passVisibility);
+                                      },
                                       focusNode: FocusNode(skipTraversal: true),
                                       child: Icon(
                                         _model.passVisibility

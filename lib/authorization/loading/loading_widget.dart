@@ -48,7 +48,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
           context.goNamed(
             DashboardNSWidget.routeName,
             extra: <String, dynamic>{
-              kTransitionInfoKey: TransitionInfo(
+              '__transition_info__': TransitionInfo(
                 hasTransition: true,
                 transitionType: PageTransitionType.fade,
                 duration: Duration(milliseconds: 0),
@@ -65,7 +65,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
               ),
             }.withoutNulls,
             extra: <String, dynamic>{
-              kTransitionInfoKey: TransitionInfo(
+              '__transition_info__': TransitionInfo(
                 hasTransition: true,
                 transitionType: PageTransitionType.fade,
                 duration: Duration(milliseconds: 0),
@@ -80,7 +80,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
             context.goNamed(
               StudentsDashboardWidget.routeName,
               extra: <String, dynamic>{
-                kTransitionInfoKey: TransitionInfo(
+                '__transition_info__': TransitionInfo(
                   hasTransition: true,
                   transitionType: PageTransitionType.fade,
                   duration: Duration(milliseconds: 0),
@@ -108,7 +108,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
               ),
             }.withoutNulls,
             extra: <String, dynamic>{
-              kTransitionInfoKey: TransitionInfo(
+              '__transition_info__': TransitionInfo(
                 hasTransition: true,
                 transitionType: PageTransitionType.fade,
                 duration: Duration(milliseconds: 0),

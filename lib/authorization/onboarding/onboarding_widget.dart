@@ -142,7 +142,7 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
               ),
               Expanded(
                 child: FlutterFlowSwipeableStack(
-                  onSwipeFn: (index) async {
+                  onSwipeFn: (swipeableStackIndex) async {
                     if (_model.index <= 2) {
                       _model.index = _model.index + 1;
                       safeSetState(() {});
@@ -156,10 +156,10 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                       context.pushNamed(LoginWidget.routeName);
                     }
                   },
-                  onLeftSwipe: (index) {},
-                  onRightSwipe: (index) {},
-                  onUpSwipe: (index) {},
-                  onDownSwipe: (index) {},
+                  onLeftSwipe: (swipeableStackIndex) {},
+                  onRightSwipe: (swipeableStackIndex) {},
+                  onUpSwipe: (swipeableStackIndex) {},
+                  onDownSwipe: (swipeableStackIndex) {},
                   itemBuilder: (context, index) {
                     return [
                       () => Container(

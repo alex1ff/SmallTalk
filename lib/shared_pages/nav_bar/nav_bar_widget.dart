@@ -125,7 +125,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                                     context.pushNamed(
                                       DashboardNSWidget.routeName,
                                       extra: <String, dynamic>{
-                                        kTransitionInfoKey: TransitionInfo(
+                                        '__transition_info__': TransitionInfo(
                                           hasTransition: true,
                                           transitionType:
                                               PageTransitionType.fade,
@@ -194,7 +194,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                                     context.pushNamed(
                                       ProfileWidget.routeName,
                                       extra: <String, dynamic>{
-                                        kTransitionInfoKey: TransitionInfo(
+                                        '__transition_info__': TransitionInfo(
                                           hasTransition: true,
                                           transitionType:
                                               PageTransitionType.fade,
@@ -313,7 +313,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                                         ),
                                       }.withoutNulls,
                                       extra: <String, dynamic>{
-                                        kTransitionInfoKey: TransitionInfo(
+                                        '__transition_info__': TransitionInfo(
                                           hasTransition: true,
                                           transitionType:
                                               PageTransitionType.fade,
@@ -382,7 +382,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                                     context.pushNamed(
                                       WordsWidget.routeName,
                                       extra: <String, dynamic>{
-                                        kTransitionInfoKey: TransitionInfo(
+                                        '__transition_info__': TransitionInfo(
                                           hasTransition: true,
                                           transitionType:
                                               PageTransitionType.fade,
@@ -451,7 +451,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                                     context.pushNamed(
                                       ProfileWidget.routeName,
                                       extra: <String, dynamic>{
-                                        kTransitionInfoKey: TransitionInfo(
+                                        '__transition_info__': TransitionInfo(
                                           hasTransition: true,
                                           transitionType:
                                               PageTransitionType.fade,

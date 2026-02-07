@@ -67,6 +67,8 @@ exports.cancelCall = functions.https.onCall(async (data, context) => {
       .update({
         status: "cancelled",
         endedAt: admin.firestore.FieldValue.serverTimestamp(),
+        tutorNavigationTriggered: false,
+        studentNavigationTriggered: false,
         sessionMetadata: {
           ...sessionData.sessionMetadata,
           cancelledBy: studentId,

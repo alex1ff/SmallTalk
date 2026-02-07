@@ -506,14 +506,14 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                 padding: EdgeInsetsDirectional.fromSTEB(
                                     0.0, 60.0, 0.0, 0.0),
                                 child: FlutterFlowSwipeableStack(
-                                  onSwipeFn: (index) async {
+                                  onSwipeFn: (swipeableStackIndex) async {
                                     _model.genderISMALE = !_model.genderISMALE;
                                     safeSetState(() {});
                                   },
-                                  onLeftSwipe: (index) {},
-                                  onRightSwipe: (index) {},
-                                  onUpSwipe: (index) {},
-                                  onDownSwipe: (index) {},
+                                  onLeftSwipe: (swipeableStackIndex) {},
+                                  onRightSwipe: (swipeableStackIndex) {},
+                                  onUpSwipe: (swipeableStackIndex) {},
+                                  onDownSwipe: (swipeableStackIndex) {},
                                   itemBuilder: (context, index) {
                                     return [
                                       () => Align(

@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 
 import 'index.dart'; // Imports other custom widgets
 
+import 'index.dart'; // Imports other custom widgets
+
 import 'package:flutter/foundation.dart';
 import 'package:daily_flutter/daily_flutter.dart';
 import 'dart:async';
@@ -23,6 +25,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
+import '/services/voip_service.dart';
 
 // VideoQuality enum simplified - only auto mode needed
 // Daily Adaptive Bitrate handles all quality adjustments automatically
@@ -142,9 +145,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   final Set<StreamSubscription> _activeSubscriptions = {};
   final Set<StreamController> _activeControllers = {};
 
+  // Remote track readiness tracking
+  final Map<ParticipantId, DateTime> _remoteJoinTimes = {};
+  final Map<ParticipantId, bool> _remoteTrackReady = {};
+
   bool _resumeCameraEnabled = true;
   bool _resumeMicrophoneEnabled = true;
   bool _isInitializing = false;
+  bool _systemCallMarkedConnected = false;
 
   // Deepgram integration
   FlutterSoundRecorder? _recorder;
@@ -159,6 +167,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   static const int _baseRetryDelayMs = 1000;
   static const int _maxRetryDelayMs = 30000;
   static const int _captionClearDelayMs = 20000; // Increased to 20 seconds
+  static const int _remoteVideoGraceMs = 4000;
 
   @override
   void initState() {
@@ -212,6 +221,21 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
   }
 
+  String? _sanitizeMeetingToken(String? token) {
+    if (token == null) return null;
+    final trimmed = token.trim();
+    if (trimmed.isEmpty) return null;
+    final lower = trimmed.toLowerCase();
+    if (lower == 'null' ||
+        lower == 'undefined' ||
+        lower == 'false' ||
+        lower == '0' ||
+        lower == 'none') {
+      return null;
+    }
+    return trimmed;
+  }
+
   /// Simplified initialization
   Future<void> _initializeCall() async {
     if (!mounted) return;
@@ -220,6 +244,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return;
     }
     _isInitializing = true;
+    _systemCallMarkedConnected = false;
 
     _updateState(_state.copyWith(
       connectionState: ConnectionState.connecting,
@@ -285,8 +310,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Join room with default settings to avoid SDK parsing errors
   Future<void> _joinRoomWithEnhancedSettings() async {
     final roomUri = Uri.parse(widget.roomUrl);
-    final token =
-        (widget.meetingToken?.isNotEmpty ?? false) ? widget.meetingToken : null;
+    final token = _sanitizeMeetingToken(widget.meetingToken);
 
     await _callClient!.join(
       url: roomUri,
@@ -468,6 +492,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           retryCount: 0,
         ));
         _updateLocalVideoTrack();
+        unawaited(_markSystemCallConnected());
         break;
 
       case CallState.left:
@@ -475,6 +500,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           connectionState: ConnectionState.disconnected,
         ));
         _stopDeepgramStreaming();
+        unawaited(_endSystemCallUi());
         break;
 
       default:
@@ -495,12 +521,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _updateLocalVideoTrack();
     } else {
       _updateRemoteParticipant(participant);
+      _updateState(_state.copyWith());
+      unawaited(_prioritizeRemoteSubscription(participant.id));
     }
   }
 
   /// Handle participant left event
   void _handleParticipantLeft(Participant participant) {
     _removeRemoteParticipant(participant.id);
+    unawaited(_endSystemCallUi());
     // Call callback when remote participant leaves (ends call)
     widget.participantLeftCallback?.call();
   }
@@ -562,15 +591,21 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         return;
       }
 
+      _remoteJoinTimes[participant.id] = DateTime.now();
+      _remoteTrackReady[participant.id] = false;
+
       final controller = VideoViewController();
       final controllers = Map<ParticipantId, VideoViewController>.from(
           _state.remoteControllers);
       controllers[participant.id] = controller;
 
       _updateState(_state.copyWith(remoteControllers: controllers));
+      unawaited(_prioritizeRemoteSubscription(participant.id));
+
+      _updateRemoteParticipant(participant);
 
       // Delay to ensure controller is initialized and video track is set
-      Timer(const Duration(milliseconds: 500), () {
+      Timer(const Duration(milliseconds: 200), () {
         if (mounted) {
           _updateRemoteParticipant(participant);
         }
@@ -602,8 +637,54 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           : media?.camera.track;
 
       controller.setTrack(track);
+      final wasReady = _remoteTrackReady[participant.id] ?? false;
+      final isReady = track != null;
+      if (wasReady != isReady) {
+        _remoteTrackReady[participant.id] = isReady;
+        if (mounted) {
+          _updateState(_state.copyWith());
+        }
+        if (isReady) {
+          unawaited(_markSystemCallConnected());
+        }
+      }
     } catch (e) {
       if (kDebugMode) print('Failed to update remote participant track: $e');
+    }
+  }
+
+  Future<void> _prioritizeRemoteSubscription(ParticipantId id) async {
+    if (_callClient == null) return;
+    try {
+      await _callClient!.updateSubscriptions(
+        forParticipants: {
+          id: SubscriptionSettingsUpdate.set(
+            media: MediaSubscriptionSettingsUpdate.set(
+              camera: VideoSubscriptionSettingsUpdate.set(
+                subscriptionState: SubscriptionStateUpdate.subscribed,
+                receiveSettings: VideoReceiveSettingsUpdate.set(
+                  maxQuality: VideoReceiveSettingsMaxQualityUpdate.high,
+                ),
+              ),
+              screenVideo: VideoSubscriptionSettingsUpdate.set(
+                subscriptionState: SubscriptionStateUpdate.subscribed,
+                receiveSettings: VideoReceiveSettingsUpdate.set(
+                  maxQuality: VideoReceiveSettingsMaxQualityUpdate.high,
+                ),
+              ),
+              microphone: AudioSubscriptionSettingsUpdate.set(
+                subscriptionState: SubscriptionStateUpdate.subscribed,
+              ),
+              screenAudio: AudioSubscriptionSettingsUpdate.set(
+                subscriptionState: SubscriptionStateUpdate.subscribed,
+              ),
+            ),
+          ),
+        },
+      );
+    } catch (e) {
+      if (kDebugMode)
+        print('Failed to prioritize remote subscription for $id: $e');
     }
   }
 
@@ -612,6 +693,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (!mounted) return;
 
     try {
+      _remoteJoinTimes.remove(id);
+      _remoteTrackReady.remove(id);
+
       final controllers = Map<ParticipantId, VideoViewController>.from(
           _state.remoteControllers);
       final controller = controllers.remove(id);
@@ -1044,6 +1128,34 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     ));
   }
 
+  Future<void> _endSystemCallUi() async {
+    if (kIsWeb) return;
+    final platform = defaultTargetPlatform;
+    if (platform != TargetPlatform.iOS && platform != TargetPlatform.android) {
+      return;
+    }
+    try {
+      await VoIPService().endCurrentCall();
+    } catch (e) {
+      if (kDebugMode) print('Failed to end system call UI: $e');
+    }
+  }
+
+  Future<void> _markSystemCallConnected() async {
+    if (_systemCallMarkedConnected) return;
+    if (kIsWeb) return;
+    final platform = defaultTargetPlatform;
+    if (platform != TargetPlatform.iOS && platform != TargetPlatform.android) {
+      return;
+    }
+    try {
+      await VoIPService().markCallConnected();
+      _systemCallMarkedConnected = true;
+    } catch (e) {
+      if (kDebugMode) print('Failed to mark system call connected: $e');
+    }
+  }
+
   /// Track timer for cleanup
   void _trackTimer(Timer timer) {
     _activeTimers.add(timer);
@@ -1225,23 +1337,27 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       final hasVideo = participant.media?.camera.state != MediaState.off ||
           participant.media?.screenVideo.state != MediaState.off;
-      if (!hasVideo) {
-        return _buildPlaceholder('Камера участника выключена');
-      }
+      final isTrackReady = _remoteTrackReady[participantId] ?? false;
+      final joinTime = _remoteJoinTimes[participantId];
+      final withinGrace = joinTime == null
+          ? true
+          : DateTime.now().difference(joinTime).inMilliseconds <
+              _remoteVideoGraceMs;
 
-      // Check if video track is actually set on the controller
-      // This is more reliable than checking media state
-      try {
-        // If controller has no track set yet, show loading
-        // The track will be set asynchronously in _updateRemoteParticipant
+      if (isTrackReady) {
         return VideoView(
           controller: controller,
           fit: VideoViewFit.cover,
         );
-      } catch (e) {
-        // If media state says video is available but VideoView failed, show loading
-        return _buildPlaceholder('Загрузка видео...');
       }
+
+      if (!hasVideo) {
+        return withinGrace
+            ? _buildPlaceholder('Загрузка видео...')
+            : _buildPlaceholder('Камера участника выключена');
+      }
+
+      return _buildPlaceholder('Загрузка видео...');
     } catch (e) {
       if (kDebugMode) print('Error building remote video: $e');
       return _buildPlaceholder('Видео недоступно');
@@ -1689,6 +1805,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// End call and cleanup
   Future<void> _endCall() async {
     try {
+      unawaited(_endSystemCallUi());
       await widget.endCallCallback?.call();
     } catch (e) {
       if (kDebugMode) print('End call callback failed: $e');
@@ -1741,6 +1858,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           if (kDebugMode) print('Error disposing remote video controller: $e');
         }
       }
+      _remoteJoinTimes.clear();
+      _remoteTrackReady.clear();
+      _systemCallMarkedConnected = false;
 
       // Leave call if requested
       if (_callClient != null && leaveCall) {
