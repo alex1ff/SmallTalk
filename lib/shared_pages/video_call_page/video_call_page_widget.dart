@@ -66,15 +66,34 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       stream: VideoSessionsRecord.getDocument(widget!.videoDocRef!),
       builder: (context, snapshot) {
         final videoCallPageVideoSessionsRecord = snapshot.data;
-        final resolvedRoomUrl =
-            videoCallPageVideoSessionsRecord?.dailyRoomUrl ??
-                widget.initialRoomUrl ??
-                '';
-        final resolvedMeetingToken =
-            videoCallPageVideoSessionsRecord?.meetingToken ??
-                widget.initialMeetingToken;
-        final resolvedLanguage =
-            videoCallPageVideoSessionsRecord?.language ?? 'en';
+        String? _nonEmpty(String? value) {
+          if (value == null) return null;
+          final trimmed = value.trim();
+          if (trimmed.isEmpty) return null;
+          final lowered = trimmed.toLowerCase();
+          if (lowered == 'null' ||
+              lowered == 'undefined' ||
+              lowered == 'false' ||
+              lowered == '0' ||
+              lowered == 'none') {
+            return null;
+          }
+          return trimmed;
+        }
+
+        final resolvedRoomUrl = _nonEmpty(
+              videoCallPageVideoSessionsRecord?.dailyRoomUrl,
+            ) ??
+            _nonEmpty(widget.initialRoomUrl) ??
+            '';
+        final resolvedMeetingToken = _nonEmpty(
+              videoCallPageVideoSessionsRecord?.meetingToken,
+            ) ??
+            _nonEmpty(widget.initialMeetingToken);
+        final resolvedLanguage = _nonEmpty(
+              videoCallPageVideoSessionsRecord?.language,
+            ) ??
+            'en';
 
         return GestureDetector(
           onTap: () {
