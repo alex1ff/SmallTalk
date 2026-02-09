@@ -187,6 +187,18 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
               isList: false,
               collectionNamePath: ['videoSessions'],
             ),
+            initialRoomUrl: params.getParam(
+              'roomUrl',
+              ParamType.String,
+            ),
+            initialMeetingToken: params.getParam(
+              'meetingToken',
+              ParamType.String,
+            ),
+            initialRoomName: params.getParam(
+              'roomName',
+              ParamType.String,
+            ),
           ),
         ),
         FFRoute(

@@ -86,6 +86,18 @@ Future startStudentSessionListener(
           sessionRef,
           ParamType.DocumentReference,
         ),
+        'roomUrl': serializeParam(
+          data?['dailyRoomUrl'] as String?,
+          ParamType.String,
+        ),
+        'meetingToken': serializeParam(
+          data?['meetingToken'] as String?,
+          ParamType.String,
+        ),
+        'roomName': serializeParam(
+          data?['dailyRoomName'] as String?,
+          ParamType.String,
+        ),
       }.withoutNulls,
     );
   });

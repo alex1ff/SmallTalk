@@ -38,6 +38,12 @@ class VoIPService {
   String? _pendingSessionId;
   bool _pendingIsTutor = false;
   bool _navRetryInProgress = false;
+  String? _pendingRoomUrl;
+  String? _pendingMeetingToken;
+  String? _pendingRoomName;
+  String? _lastRoomUrl;
+  String? _lastMeetingToken;
+  String? _lastRoomName;
   final Map<String, String> _sessionCallKitIds = {};
   String? _lastCallKitId;
 
@@ -95,6 +101,7 @@ class VoIPService {
             extraData: {
               'roomUrl': message.data['roomUrl'],
               'meetingToken': message.data['meetingToken'],
+              'roomName': message.data['roomName'],
             },
           );
         } catch (e) {
@@ -300,7 +307,7 @@ class VoIPService {
 
   /// Пользователь принял звонок
   /// Пользователь принял звонок
-Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
+  Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   if (data == null) return;
 
   final extra = data['extra'] is Map
@@ -337,6 +344,7 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   try {
     final payloadRoomUrl = extra['roomUrl'] ?? data['roomUrl'];
     final payloadMeetingToken = extra['meetingToken'] ?? data['meetingToken'];
+    final payloadRoomName = extra['roomName'] ?? data['roomName'];
     final hasPayloadRoomUrl =
         payloadRoomUrl is String && payloadRoomUrl.isNotEmpty;
     final hasPayloadMeetingToken =
@@ -346,6 +354,10 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     // Если в payload уже есть данные комнаты, значит это студент
     if (hasPayloadRoomUrl || hasPayloadMeetingToken) {
       _lastAcceptedIsTutor = false;
+      _lastRoomUrl = hasPayloadRoomUrl ? payloadRoomUrl as String : null;
+      _lastMeetingToken =
+          hasPayloadMeetingToken ? payloadMeetingToken as String : null;
+      _lastRoomName = payloadRoomName is String ? payloadRoomName : null;
       final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
       await videoDocRef.update({
         'studentNavigationTriggered': true,
@@ -353,7 +365,13 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       });
       debugPrint('✅ VoIPService: Student navigation triggered (no acceptCall)');
       _acceptedSessions.add(sessionId);
-      _tryNavigateToVideoCall(sessionId: sessionId, isTutor: false);
+      _tryNavigateToVideoCall(
+        sessionId: sessionId,
+        isTutor: false,
+        roomUrl: _lastRoomUrl,
+        meetingToken: _lastMeetingToken,
+        roomName: _lastRoomName,
+      );
       return;
     }
 
@@ -369,6 +387,8 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     final responseData = result.data as Map<String, dynamic>;
     final status = responseData['status'];
     final responseRoomUrl = responseData['roomUrl'];
+    final responseRoomName = responseData['roomName'];
+    final responseMeetingToken = responseData['meetingToken'];
 
     debugPrint('📊 VoIPService: Status: $status, Room URL: ${responseRoomUrl != null ? "present" : "missing"}');
 
@@ -378,6 +398,10 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     }
 
     _lastAcceptedIsTutor = true;
+    _lastRoomUrl = responseRoomUrl is String ? responseRoomUrl : null;
+    _lastMeetingToken =
+        responseMeetingToken is String ? responseMeetingToken : null;
+    _lastRoomName = responseRoomName is String ? responseRoomName : null;
 
     // Создаем DocumentReference на videoSession
     final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
@@ -393,7 +417,13 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     debugPrint('✅ VoIPService: Tutor navigation data saved to Firestore');
     debugPrint('⚠️ VoIPService: App will navigate to VideoCallPage when opened');
     _acceptedSessions.add(sessionId);
-    _tryNavigateToVideoCall(sessionId: sessionId, isTutor: true);
+    _tryNavigateToVideoCall(
+      sessionId: sessionId,
+      isTutor: true,
+      roomUrl: _lastRoomUrl,
+      meetingToken: _lastMeetingToken,
+      roomName: _lastRoomName,
+    );
 
   } catch (e) {
     debugPrint('❌ VoIPService: Error accepting call: $e');
@@ -405,11 +435,20 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   void _tryNavigateToVideoCall({
     required String sessionId,
     required bool isTutor,
+    String? roomUrl,
+    String? meetingToken,
+    String? roomName,
   }) {
     final navContext = appNavigatorKey.currentContext;
     if (navContext == null) {
       debugPrint('⚠️ VoIPService: Navigation context not ready');
-      _queueNavigation(sessionId: sessionId, isTutor: isTutor);
+      _queueNavigation(
+        sessionId: sessionId,
+        isTutor: isTutor,
+        roomUrl: roomUrl,
+        meetingToken: meetingToken,
+        roomName: roomName,
+      );
       return;
     }
 
@@ -419,7 +458,20 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
     }
 
     const route = '/videoCallPage';
-    final target = '$route?videoDocRef=$sessionId';
+    final params = <String, String>{
+      'videoDocRef': sessionId,
+    };
+    if (roomUrl != null && roomUrl.isNotEmpty) {
+      params['roomUrl'] = Uri.encodeComponent(roomUrl);
+    }
+    if (meetingToken != null && meetingToken.isNotEmpty) {
+      params['meetingToken'] = Uri.encodeComponent(meetingToken);
+    }
+    if (roomName != null && roomName.isNotEmpty) {
+      params['roomName'] = Uri.encodeComponent(roomName);
+    }
+    final query = params.entries.map((e) => '${e.key}=${e.value}').join('&');
+    final target = '$route?$query';
 
     final router = GoRouter.of(navContext);
     final currentLocation = router.getCurrentLocation();
@@ -439,9 +491,15 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
   void _queueNavigation({
     required String sessionId,
     required bool isTutor,
+    String? roomUrl,
+    String? meetingToken,
+    String? roomName,
   }) {
     _pendingSessionId = sessionId;
     _pendingIsTutor = isTutor;
+    _pendingRoomUrl = roomUrl;
+    _pendingMeetingToken = meetingToken;
+    _pendingRoomName = roomName;
     if (_navRetryInProgress) {
       return;
     }
@@ -456,9 +514,18 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       if (navContext != null) {
         final sessionId = _pendingSessionId!;
         final isTutor = _pendingIsTutor;
+        final roomUrl = _pendingRoomUrl;
+        final meetingToken = _pendingMeetingToken;
+        final roomName = _pendingRoomName;
         _pendingSessionId = null;
         _navRetryInProgress = false;
-        _tryNavigateToVideoCall(sessionId: sessionId, isTutor: isTutor);
+        _tryNavigateToVideoCall(
+          sessionId: sessionId,
+          isTutor: isTutor,
+          roomUrl: roomUrl,
+          meetingToken: meetingToken,
+          roomName: roomName,
+        );
         return;
       }
       await Future.delayed(const Duration(milliseconds: 500));
@@ -480,6 +547,9 @@ Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
       _tryNavigateToVideoCall(
         sessionId: _lastAcceptedSessionId!,
         isTutor: _lastAcceptedIsTutor,
+        roomUrl: _lastRoomUrl,
+        meetingToken: _lastMeetingToken,
+        roomName: _lastRoomName,
       );
     }
   }

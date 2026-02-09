@@ -14,7 +14,6 @@ import '/index.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
@@ -26,9 +25,15 @@ class VideoCallPageWidget extends StatefulWidget {
   const VideoCallPageWidget({
     super.key,
     required this.videoDocRef,
+    this.initialRoomUrl,
+    this.initialMeetingToken,
+    this.initialRoomName,
   });
 
   final DocumentReference? videoDocRef;
+  final String? initialRoomUrl;
+  final String? initialMeetingToken;
+  final String? initialRoomName;
 
   static String routeName = 'VideoCallPage';
   static String routePath = '/videoCallPage';
@@ -60,24 +65,16 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     return StreamBuilder<VideoSessionsRecord>(
       stream: VideoSessionsRecord.getDocument(widget!.videoDocRef!),
       builder: (context, snapshot) {
-        // Customize what your widget looks like when it's loading.
-        if (!snapshot.hasData) {
-          return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
-            body: Center(
-              child: SizedBox(
-                width: 50,
-                height: 50,
-                child: SpinKitCircle(
-                  color: FlutterFlowTheme.of(context).secondary,
-                  size: 50,
-                ),
-              ),
-            ),
-          );
-        }
-
-        final videoCallPageVideoSessionsRecord = snapshot.data!;
+        final videoCallPageVideoSessionsRecord = snapshot.data;
+        final resolvedRoomUrl =
+            videoCallPageVideoSessionsRecord?.dailyRoomUrl ??
+                widget.initialRoomUrl ??
+                '';
+        final resolvedMeetingToken =
+            videoCallPageVideoSessionsRecord?.meetingToken ??
+                widget.initialMeetingToken;
+        final resolvedLanguage =
+            videoCallPageVideoSessionsRecord?.language ?? 'en';
 
         return GestureDetector(
           onTap: () {
@@ -94,10 +91,10 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                 child: custom_widgets.MinimalDailyWidget(
                   width: double.infinity,
                   height: double.infinity,
-                  roomUrl: videoCallPageVideoSessionsRecord.dailyRoomUrl,
-                  meetingToken: videoCallPageVideoSessionsRecord.meetingToken,
+                  roomUrl: resolvedRoomUrl,
+                  meetingToken: resolvedMeetingToken,
                   deepgramApiKey: 'REDACTED_DEEPGRAM_KEY',
-                  deepgramLanguage: videoCallPageVideoSessionsRecord.language,
+                  deepgramLanguage: resolvedLanguage,
                   username: currentUserDisplayName,
                   enableDeepgram: false,
                   actionCallback: (word, sentence) async {
@@ -116,8 +113,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                               padding: MediaQuery.viewInsetsOf(context),
                               child: NewWordWidget(
                                 word: word,
-                                langCode:
-                                    videoCallPageVideoSessionsRecord.language,
+                                  langCode:
+                                    resolvedLanguage,
                               ),
                             ),
                           ),
@@ -152,10 +149,10 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       CallSummaryWidget.routeName,
                       queryParameters: {
                         'userRef': serializeParam(
-                          functions.stringToRef(currentUserDocument?.role ==
-                                  UserRole.native_speaker
-                              ? videoCallPageVideoSessionsRecord.studentId
-                              : videoCallPageVideoSessionsRecord.tutorId),
+                        functions.stringToRef(currentUserDocument?.role ==
+                                UserRole.native_speaker
+                              ? videoCallPageVideoSessionsRecord?.studentId
+                              : videoCallPageVideoSessionsRecord?.tutorId),
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
@@ -164,14 +161,14 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                         ),
                         'lang': serializeParam(
                           valueOrDefault<String>(
-                            videoCallPageVideoSessionsRecord.language,
+                            videoCallPageVideoSessionsRecord?.language,
                             'en',
                           ),
                           ParamType.String,
                         ),
                         'dur': serializeParam(
                           valueOrDefault<int>(
-                            videoCallPageVideoSessionsRecord.duration,
+                            videoCallPageVideoSessionsRecord?.duration,
                             0,
                           ),
                           ParamType.int,
@@ -186,14 +183,14 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       CallSummaryWidget.routeName,
                       queryParameters: {
                         'userRef': serializeParam(
-                          functions.stringToRef(currentUserDocument?.role ==
-                                  UserRole.native_speaker
+                        functions.stringToRef(currentUserDocument?.role ==
+                                UserRole.native_speaker
                               ? valueOrDefault<String>(
-                                  videoCallPageVideoSessionsRecord.studentId,
+                                  videoCallPageVideoSessionsRecord?.studentId,
                                   '-',
                                 )
                               : valueOrDefault<String>(
-                                  videoCallPageVideoSessionsRecord.tutorId,
+                                  videoCallPageVideoSessionsRecord?.tutorId,
                                   '-',
                                 )),
                           ParamType.DocumentReference,
@@ -204,14 +201,14 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                         ),
                         'lang': serializeParam(
                           valueOrDefault<String>(
-                            videoCallPageVideoSessionsRecord.language,
+                            videoCallPageVideoSessionsRecord?.language,
                             'en',
                           ),
                           ParamType.String,
                         ),
                         'dur': serializeParam(
                           valueOrDefault<int>(
-                            videoCallPageVideoSessionsRecord.duration,
+                            videoCallPageVideoSessionsRecord?.duration,
                             0,
                           ),
                           ParamType.int,

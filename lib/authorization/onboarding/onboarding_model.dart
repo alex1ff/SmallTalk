@@ -1,3 +1,4 @@
+import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
 import 'onboarding_widget.dart' show OnboardingWidget;
@@ -8,6 +9,7 @@ class OnboardingModel extends FlutterFlowModel<OnboardingWidget> {
   ///  Local state fields for this page.
 
   int index = 1;
+  VideoSessionsRecord? nnn;
 
   ///  State fields for stateful widgets in this page.
 

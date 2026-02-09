@@ -1,6 +1,10 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
+const {
+  createDailyRoom,
+  createMeetingToken,
+} = require("./daily_room");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 
@@ -289,6 +293,40 @@ exports.createVideoSession = functions
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + 5);
 
+      let precreatedRoomUrl = null;
+      let precreatedRoomName = null;
+      let precreatedMeetingToken = null;
+      let precreatedRoomCreatedAt = null;
+      let precreatedRoomOk = false;
+
+      try {
+        const dailyRoom = await createDailyRoom({
+          language: normalizedLanguage,
+          studentId,
+          tutorId: null,
+          studentName: studentData.display_name || "Student",
+          tutorName: "Tutor",
+          expSeconds: 15 * 60,
+        });
+
+        precreatedRoomUrl = dailyRoom.url;
+        precreatedRoomName = dailyRoom.name;
+        precreatedRoomCreatedAt = Date.now();
+        precreatedMeetingToken = await createMeetingToken({
+          roomName: dailyRoom.name,
+          expSeconds: 60 * 60,
+        });
+        precreatedRoomOk = !!(precreatedRoomUrl && precreatedMeetingToken);
+
+        console.log("✅ Precreated Daily room for session", {
+          roomName: precreatedRoomName,
+          roomUrl: precreatedRoomUrl,
+          hasToken: !!precreatedMeetingToken,
+        });
+      } catch (roomError) {
+        console.error("⚠️ Failed to precreate Daily room:", roomError.message);
+      }
+
       const sessionData = {
         studentId,
         tutorId: null,
@@ -313,9 +351,9 @@ exports.createVideoSession = functions
         },
 
         // Активная сессия (пока null)
-        dailyRoomUrl: null,
-        dailyRoomName: null,
-        meetingToken: null,
+        dailyRoomUrl: precreatedRoomUrl,
+        dailyRoomName: precreatedRoomName,
+        meetingToken: precreatedMeetingToken,
         acceptedAt: null,
         startedAt: null,
         endedAt: null,
@@ -333,6 +371,8 @@ exports.createVideoSession = functions
             country: preferredCountry || "any",
             blocklistEnabled: true,
           },
+          roomPrecreated: precreatedRoomOk,
+          roomCreatedAt: precreatedRoomCreatedAt,
         },
       };
 
