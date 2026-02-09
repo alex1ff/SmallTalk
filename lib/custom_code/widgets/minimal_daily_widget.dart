@@ -1129,8 +1129,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Future<void> _endSystemCallUi() async {
     if (kIsWeb) return;
     final platform = defaultTargetPlatform;
-    if (platform != TargetPlatform.iOS &&
-        platform != TargetPlatform.android) {
+    if (platform != TargetPlatform.iOS && platform != TargetPlatform.android) {
       return;
     }
     try {
@@ -1144,8 +1143,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (_systemCallMarkedConnected) return;
     if (kIsWeb) return;
     final platform = defaultTargetPlatform;
-    if (platform != TargetPlatform.iOS &&
-        platform != TargetPlatform.android) {
+    if (platform != TargetPlatform.iOS && platform != TargetPlatform.android) {
       return;
     }
     try {
@@ -1192,7 +1190,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               child: _state.connectionState == ConnectionState.connected
                   ? (_state.remoteControllers.isNotEmpty
                       ? _buildRemoteVideo()
-                      : _buildLocalVideo())
+                      : _buildConnectingBackground())
                   : _buildConnectingBackground(),
             ),
           ),
