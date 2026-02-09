@@ -1177,6 +1177,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return _buildConnectingScreen();
     }
 
+    final showPip = _shouldShowPictureInPicture();
+
     return Container(
       width: widget.width ?? double.infinity,
       height: widget.height ?? double.infinity,
@@ -1187,16 +1189,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           Positioned.fill(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 250),
-              child: _state.connectionState == ConnectionState.connected
-                  ? (_state.remoteControllers.isNotEmpty
-                      ? _buildRemoteVideo()
-                      : _buildConnectingBackground())
-                  : _buildConnectingBackground(),
+              child: _buildPrimaryVideo(),
             ),
           ),
 
-          // Picture-in-picture (always visible once local controller is ready)
-          if (_localVideoController != null)
+          // Picture-in-picture (only after remote video is ready)
+          if (showPip)
             Positioned(
               top: 55,
               right: 20,
@@ -1256,21 +1254,49 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       height: widget.height ?? double.infinity,
       child: Stack(
         children: [
-          Positioned.fill(child: _buildConnectingBackground()),
+          Positioned.fill(child: _buildPrimaryVideo()),
           Positioned.fill(child: _buildConnectingOverlay()),
         ],
       ),
     );
   }
 
-  Widget _buildConnectingBackground() {
-    return Container(
-      decoration: const BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage('assets/images/Frame_1321318897.jpg'),
-          fit: BoxFit.cover,
-        ),
-      ),
+  Widget _buildNeutralBackground() {
+    return Container(color: Colors.black);
+  }
+
+  bool _hasRemoteVideoReady() {
+    for (final ready in _remoteTrackReady.values) {
+      if (ready == true) return true;
+    }
+    return false;
+  }
+
+  bool _shouldShowPictureInPicture() {
+    return _hasRemoteVideoReady() &&
+        _localVideoController != null &&
+        _state.cameraEnabled;
+  }
+
+  Widget _buildPrimaryVideo() {
+    if (_hasRemoteVideoReady()) {
+      return _buildRemoteVideo();
+    }
+    return _buildLocalFullScreen();
+  }
+
+  Widget _buildLocalFullScreen() {
+    if (_localVideoController == null) {
+      return _buildNeutralBackground();
+    }
+
+    if (!_state.cameraEnabled) {
+      return _buildPlaceholder('Камера выключена');
+    }
+
+    return VideoView(
+      controller: _localVideoController!,
+      fit: VideoViewFit.cover,
     );
   }
 
@@ -1323,20 +1349,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildRemoteVideo() {
     try {
       if (_state.remoteControllers.isEmpty) {
-        return _buildConnectingBackground();
+        return _buildLocalFullScreen();
       }
 
       final controller = _state.remoteControllers.values.firstOrNull;
       final participantId = _state.remoteControllers.keys.firstOrNull;
 
       if (controller == null || participantId == null) {
-        return _buildConnectingBackground();
+        return _buildLocalFullScreen();
       }
 
       final participant = _callClient?.participants.remote[participantId];
 
       if (participant == null) {
-        return _buildConnectingBackground();
+        return _buildLocalFullScreen();
       }
 
       final hasVideo = participant.media?.camera.state != MediaState.off ||
@@ -1357,11 +1383,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       if (!hasVideo) {
         return withinGrace
-            ? _buildConnectingBackground()
+            ? _buildLocalFullScreen()
             : _buildPlaceholder('Камера участника выключена');
       }
 
-      return _buildConnectingBackground();
+      return _buildLocalFullScreen();
     } catch (e) {
       if (kDebugMode) print('Error building remote video: $e');
       return _buildPlaceholder('Видео недоступно');
