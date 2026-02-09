@@ -109,7 +109,13 @@ async function createDailyRoom({
   };
 }
 
-async function createMeetingToken({ roomName, expSeconds = 3600 }) {
+async function createMeetingToken({
+  roomName,
+  expSeconds = 3600,
+  isOwner = false,
+  userId = null,
+  userName = null,
+}) {
   if (!roomName) {
     throw new Error("roomName is required for meeting token");
   }
@@ -118,12 +124,19 @@ async function createMeetingToken({ roomName, expSeconds = 3600 }) {
   const tokenConfig = {
     properties: {
       room_name: roomName,
-      is_owner: false,
+      is_owner: !!isOwner,
       exp: Math.floor(Date.now() / 1000) + expSeconds,
       enable_screenshare: true,
       enable_recording: false,
     },
   };
+
+  if (userId) {
+    tokenConfig.properties.user_id = String(userId);
+  }
+  if (userName) {
+    tokenConfig.properties.user_name = String(userName);
+  }
 
   const response = await axios.post(
     "https://api.daily.co/v1/meeting-tokens",
@@ -137,7 +150,11 @@ async function createMeetingToken({ roomName, expSeconds = 3600 }) {
     },
   );
 
-  console.log("✅ Meeting token created");
+  console.log("✅ Meeting token created", {
+    roomName,
+    isOwner: !!isOwner,
+    hasUser: !!userId,
+  });
   return response.data.token;
 }
 

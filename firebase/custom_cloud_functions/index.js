@@ -16,4 +16,5 @@ const endSession = require("./end_session.js");
 exports.endSession = endSession.endSession;
 const cleanupExpiredSessions = require("./cleanup_expired_sessions.js");
 exports.cleanupExpiredSessions = cleanupExpiredSessions.cleanupExpiredSessions;
-// NOTE: get_session_tokens.js removed; if needed, re-add file and export here.
+const getSessionTokens = require("./get_session_tokens.js");
+exports.getSessionTokens = getSessionTokens.getSessionTokens;

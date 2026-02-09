@@ -79,6 +79,9 @@ exports.acceptCall = functions
               existingMeetingToken = await createMeetingToken({
                 roomName: existingRoomName,
                 expSeconds: 3600,
+                isOwner: false,
+                userId: tutorId,
+                userName: tutorData.display_name || "Tutor",
               });
             } catch (tokenError) {
               console.error(
@@ -248,6 +251,9 @@ exports.acceptCall = functions
             meetingToken = await createMeetingToken({
               roomName,
               expSeconds: 3600,
+              isOwner: false,
+              userId: tutorId,
+              userName: tutorData.display_name || "Tutor",
             });
           } catch (tokenError) {
             console.error(
@@ -287,6 +293,9 @@ exports.acceptCall = functions
           meetingToken = await createMeetingToken({
             roomName,
             expSeconds: 3600,
+            isOwner: false,
+            userId: tutorId,
+            userName: tutorData.display_name || "Tutor",
           });
         } catch (roomError) {
           console.error("❌ Failed to create Daily room:", roomError);
@@ -314,7 +323,6 @@ exports.acceptCall = functions
           callerId: tutorId,
           callerPhoto: tutorData.photo_url || null,
           roomUrl: roomUrl,
-          meetingToken: meetingToken,
         });
         console.log("✅ VoIP push notification sent to student");
       } catch (pushError) {
@@ -478,7 +486,6 @@ async function sendVoipPushToStudent(studentId, callData) {
         callerId: callData.callerId,
         callerPhoto: callData.callerPhoto || "",
         roomUrl: callData.roomUrl || "",
-        meetingToken: callData.meetingToken || "",
       };
 
       try {
@@ -511,7 +518,6 @@ async function sendVoipPushToStudent(studentId, callData) {
         callerId: callData.callerId,
         callerPhoto: callData.callerPhoto || "",
         roomUrl: callData.roomUrl || "",
-        meetingToken: callData.meetingToken || "",
       },
       apns: {
         headers: {

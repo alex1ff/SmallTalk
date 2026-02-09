@@ -46,11 +46,27 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   late VideoCallPageModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  String? _freshRoomUrl;
+  String? _freshMeetingToken;
+  bool _tokenLoading = false;
+  String? _lastTokenSessionId;
 
   @override
   void initState() {
     super.initState();
     _model = createModel(context, () => VideoCallPageModel());
+    unawaited(_fetchSessionTokens());
+  }
+
+  @override
+  void didUpdateWidget(VideoCallPageWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoDocRef?.id != widget.videoDocRef?.id) {
+      _freshRoomUrl = null;
+      _freshMeetingToken = null;
+      _lastTokenSessionId = null;
+      unawaited(_fetchSessionTokens(force: true));
+    }
   }
 
   @override
@@ -58,6 +74,40 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     _model.dispose();
 
     super.dispose();
+  }
+
+  Future<String?> _fetchSessionTokens({bool force = false}) async {
+    final sessionId = widget.videoDocRef?.id;
+    if (sessionId == null || sessionId.isEmpty) return null;
+    if (_tokenLoading) return _freshMeetingToken;
+    if (!force && _lastTokenSessionId == sessionId && _freshMeetingToken != null) {
+      return _freshMeetingToken;
+    }
+
+    setState(() {
+      _tokenLoading = true;
+    });
+
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('getSessionTokens')
+          .call({
+        'sessionId': sessionId,
+      });
+      final data = result.data as Map<String, dynamic>? ?? {};
+      _freshRoomUrl = data['roomUrl'] as String?;
+      _freshMeetingToken = data['meetingToken'] as String?;
+      _lastTokenSessionId = sessionId;
+      return _freshMeetingToken;
+    } catch (e) {
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _tokenLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -81,15 +131,11 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
           return trimmed;
         }
 
-        final resolvedRoomUrl = _nonEmpty(
-              videoCallPageVideoSessionsRecord?.dailyRoomUrl,
-            ) ??
+        final resolvedRoomUrl = _nonEmpty(_freshRoomUrl) ??
+            _nonEmpty(videoCallPageVideoSessionsRecord?.dailyRoomUrl) ??
             _nonEmpty(widget.initialRoomUrl) ??
             '';
-        final resolvedMeetingToken = _nonEmpty(
-              videoCallPageVideoSessionsRecord?.meetingToken,
-            ) ??
-            _nonEmpty(widget.initialMeetingToken);
+        final resolvedMeetingToken = _nonEmpty(_freshMeetingToken);
         final resolvedLanguage = _nonEmpty(
               videoCallPageVideoSessionsRecord?.language,
             ) ??
@@ -112,6 +158,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                   height: double.infinity,
                   roomUrl: resolvedRoomUrl,
                   meetingToken: resolvedMeetingToken,
+                  tokenRefreshCallback: () async {
+                    return await _fetchSessionTokens(force: true);
+                  },
                   deepgramApiKey: '7a3a2c915f8282f6f09c33215d25c20737ae6adc',
                   deepgramLanguage: resolvedLanguage,
                   username: currentUserDisplayName,
