@@ -1103,8 +1103,17 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void didUpdateWidget(MinimalDailyWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (!_isValidRoomUrl(oldWidget.roomUrl) &&
-        _isValidRoomUrl(widget.roomUrl)) {
+    final oldUrl = oldWidget.roomUrl;
+    final newUrl = widget.roomUrl;
+    final oldValid = _isValidRoomUrl(oldUrl);
+    final newValid = _isValidRoomUrl(newUrl);
+
+    if (oldUrl != newUrl && newValid) {
+      unawaited(_cleanup(leaveCall: true).then((_) => _initializeCall()));
+      return;
+    }
+
+    if (!oldValid && newValid) {
       _initializeCall();
     }
   }
