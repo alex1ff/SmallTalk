@@ -1,5 +1,6 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { deleteDailyRoom } = require("./daily_room");
 /*
 АВТОМАТИЧЕСКАЯ ФУНКЦИЯ: cleanupExpiredSessions
 Завершает истекшие активные сессии (запускается по расписанию)
@@ -67,6 +68,10 @@ exports.cleanupExpiredSessions = functions.pubsub
         // Добавляем преподавателя для освобождения
         if (sessionData.tutorId) {
           tutorsToRelease.add(sessionData.tutorId);
+        }
+
+        if (sessionData.dailyRoomName) {
+          deleteDailyRoom(sessionData.dailyRoomName);
         }
       });
 

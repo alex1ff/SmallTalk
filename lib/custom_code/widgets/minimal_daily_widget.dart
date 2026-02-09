@@ -1176,7 +1176,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget build(BuildContext context) {
     // Show waiting screen if room URL invalid
     if (!_isValidRoomUrl(widget.roomUrl)) {
-      return _buildWaitingScreen();
+      return _buildConnectingScreen();
     }
 
     return Container(
@@ -1185,21 +1185,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       color: Colors.black,
       child: Stack(
         children: [
-          // Main video view
-          if (_state.connectionState == ConnectionState.connected)
-            Positioned.fill(
-              child: Container(
-                width: double.infinity,
-                height: double.infinity,
-                child: _state.remoteControllers.isNotEmpty
-                    ? _buildRemoteVideo()
-                    : _buildLocalVideo(),
-              ),
+          // Main video/placeholder layer
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: _state.connectionState == ConnectionState.connected
+                  ? (_state.remoteControllers.isNotEmpty
+                      ? _buildRemoteVideo()
+                      : _buildLocalVideo())
+                  : _buildConnectingBackground(),
             ),
+          ),
 
-          // Picture-in-picture
-          if (_state.connectionState == ConnectionState.connected &&
-              _state.remoteControllers.isNotEmpty)
+          // Picture-in-picture (always visible once local controller is ready)
+          if (_localVideoController != null)
             Positioned(
               top: 55,
               right: 20,
@@ -1242,50 +1241,57 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               child: _buildErrorDisplay(),
             ),
 
-          // Loading indicator
+          // Connecting overlay (single state)
           if (_state.connectionState == ConnectionState.connecting)
             Positioned.fill(
-              child: _buildLoadingIndicator(),
+              child: _buildConnectingOverlay(),
             ),
         ],
       ),
     );
   }
 
-  /// Build waiting screen
-  Widget _buildWaitingScreen() {
+  /// Build unified connecting screen
+  Widget _buildConnectingScreen() {
     return SizedBox(
       width: widget.width ?? double.infinity,
       height: widget.height ?? double.infinity,
-      child: Container(
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('assets/images/Frame_1321318897.jpg'),
-            fit: BoxFit.cover,
-          ),
+      child: Stack(
+        children: [
+          Positioned.fill(child: _buildConnectingBackground()),
+          Positioned.fill(child: _buildConnectingOverlay()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConnectingBackground() {
+    return Container(
+      decoration: const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/images/Frame_1321318897.jpg'),
+          fit: BoxFit.cover,
         ),
-        child: const SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                ),
-                SizedBox(height: 24),
-                Text(
-                  'Подключаемся...',
-                  style: TextStyle(color: Colors.white, fontSize: 18),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Ожидание комнаты',
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
-                ),
-              ],
+      ),
+    );
+  }
+
+  Widget _buildConnectingOverlay() {
+    return SafeArea(
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
             ),
-          ),
+            SizedBox(height: 24),
+            Text(
+              'Подключаемся...',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ],
         ),
       ),
     );
@@ -1319,20 +1325,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildRemoteVideo() {
     try {
       if (_state.remoteControllers.isEmpty) {
-        return _buildPlaceholder('Ожидание участников...');
+        return _buildConnectingBackground();
       }
 
       final controller = _state.remoteControllers.values.firstOrNull;
       final participantId = _state.remoteControllers.keys.firstOrNull;
 
       if (controller == null || participantId == null) {
-        return _buildPlaceholder('Ожидание участников...');
+        return _buildConnectingBackground();
       }
 
       final participant = _callClient?.participants.remote[participantId];
 
       if (participant == null) {
-        return _buildPlaceholder('Участник недоступен');
+        return _buildConnectingBackground();
       }
 
       final hasVideo = participant.media?.camera.state != MediaState.off ||
@@ -1353,11 +1359,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       if (!hasVideo) {
         return withinGrace
-            ? _buildPlaceholder('Загрузка видео...')
+            ? _buildConnectingBackground()
             : _buildPlaceholder('Камера участника выключена');
       }
 
-      return _buildPlaceholder('Загрузка видео...');
+      return _buildConnectingBackground();
     } catch (e) {
       if (kDebugMode) print('Error building remote video: $e');
       return _buildPlaceholder('Видео недоступно');
@@ -1751,56 +1757,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     );
   }
 
-  /// Build loading indicator
-  Widget _buildLoadingIndicator() {
-    String roomName = '';
-    try {
-      final uri = Uri.tryParse(widget.roomUrl);
-      if (uri != null && uri.pathSegments.isNotEmpty) {
-        roomName = uri.pathSegments.last;
-      }
-    } catch (e) {
-      // Ignore URI parsing errors
-    }
-
-    return Container(
-      decoration: const BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage('assets/images/Frame_1321318897.jpg'),
-          fit: BoxFit.cover,
-        ),
-      ),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.black54,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Подключение к комнате...',
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
-              if (roomName.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  roomName,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  /// Loading indicator removed in favor of unified connecting overlay
 
   /// End call and cleanup
   Future<void> _endCall() async {

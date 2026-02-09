@@ -18,6 +18,11 @@ PODS:
     - firebase_core
     - Flutter
   - CryptoSwift (1.8.4)
+  - daily_flutter (0.34.0):
+    - DailyFlutter-iOS (= 0.34.0)
+    - Flutter
+  - DailyFlutter-iOS (0.34.0):
+    - Flutter
   - device_info_plus (0.0.1):
     - Flutter
   - DKImagePickerController/Core (4.3.9):
@@ -296,6 +301,7 @@ PODS:
 DEPENDENCIES:
   - cloud_firestore (from `.symlinks/plugins/cloud_firestore/ios`)
   - cloud_functions (from `.symlinks/plugins/cloud_functions/ios`)
+  - daily_flutter (from `.symlinks/plugins/daily_flutter/ios`)
   - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - firebase_auth (from `.symlinks/plugins/firebase_auth/ios`)
@@ -325,6 +331,7 @@ SPEC REPOS:
     - AppAuth
     - AppCheckCore
     - CryptoSwift
+    - DailyFlutter-iOS
     - DKImagePickerController
     - DKPhotoGallery
     - Firebase
@@ -370,6 +377,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/cloud_firestore/ios"
   cloud_functions:
     :path: ".symlinks/plugins/cloud_functions/ios"
+  daily_flutter:
+    :path: ".symlinks/plugins/daily_flutter/ios"
   device_info_plus:
     :path: ".symlinks/plugins/device_info_plus/ios"
   file_picker:
@@ -429,6 +438,8 @@ SPEC CHECKSUMS:
   cloud_firestore: 2fdc3301bcc486957ff7fa705430a185468c1987
   cloud_functions: 9c4252b4a2372f96feb0bf5368e1b850c47505ca
   CryptoSwift: e64e11850ede528a02a0f3e768cec8e9d92ecb90
+  daily_flutter: 9cc0cfc5dcd4879823cc57516cf0d61c8f091272
+  DailyFlutter-iOS: fe5428ed16b5388a14da4276610864eb17ddc943
   device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
   DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
   DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60

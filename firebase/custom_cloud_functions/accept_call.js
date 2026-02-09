@@ -1,7 +1,11 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const axios = require("axios");
 const { sendApnsVoip } = require("./apns_voip");
+const {
+  createDailyRoom,
+  createMeetingToken,
+  getRoomNameFromUrl,
+} = require("./daily_room");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 
@@ -65,12 +69,31 @@ exports.acceptCall = functions
           console.log(
             "ℹ️ Session already active for this tutor, returning existing room",
           );
+          let existingRoomName =
+            sessionData.dailyRoomName ||
+            getRoomNameFromUrl(sessionData.dailyRoomUrl);
+          let existingMeetingToken = sessionData.meetingToken || null;
+
+          if (!existingMeetingToken && existingRoomName) {
+            try {
+              existingMeetingToken = await createMeetingToken({
+                roomName: existingRoomName,
+                expSeconds: 3600,
+              });
+            } catch (tokenError) {
+              console.error(
+                "⚠️ Failed to create meeting token for existing room:",
+                tokenError.message,
+              );
+            }
+          }
+
           return {
             status: "connected",
             sessionId: sessionId,
             roomUrl: sessionData.dailyRoomUrl,
-            roomName: sessionData.dailyRoomName || null,
-            meetingToken: sessionData.meetingToken || null,
+            roomName: existingRoomName || null,
+            meetingToken: existingMeetingToken || null,
             studentInfo: sessionData.studentInfo || null,
             sessionData: {
               language: sessionData.language,
@@ -203,33 +226,82 @@ exports.acceptCall = functions
         role: studentData.role,
       });
 
-      // === 5. СОЗДАНИЕ КОМНАТЫ DAILY.CO ===
-      console.log("🏠 Creating Daily.co room...");
-      let dailyRoom;
-      try {
-        dailyRoom = await createDailyRoom(
-          sessionData.language,
-          sessionData.studentId,
-          tutorId,
-          sessionData.studentInfo?.name ||
-            studentData.display_name ||
-            "Student",
-          tutorData.display_name || "Tutor",
-        );
-        console.log("✅ Daily room created successfully:", {
-          name: dailyRoom.name,
-          url: dailyRoom.url,
-          hasToken: !!dailyRoom.token,
+      // === 5. ПОЛУЧЕНИЕ ИЛИ СОЗДАНИЕ КОМНАТЫ DAILY.CO ===
+      console.log("🏠 Resolving Daily.co room...");
+
+      let roomUrl = sessionData.dailyRoomUrl || null;
+      let roomName =
+        sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
+      let meetingToken = sessionData.meetingToken || null;
+      let roomPrecreated = false;
+      let roomCreatedAt = sessionData.sessionMetadata?.roomCreatedAt || null;
+
+      if (roomUrl) {
+        roomPrecreated = true;
+        console.log("♻️ Using precreated Daily room:", {
+          roomName,
+          roomUrl,
+          hasToken: !!meetingToken,
         });
-        if (!dailyRoom.token) {
-          console.error("❌ Daily meeting token creation failed");
-          throw new Error("Daily meeting token creation failed");
+        if (!meetingToken && roomName) {
+          try {
+            meetingToken = await createMeetingToken({
+              roomName,
+              expSeconds: 3600,
+            });
+          } catch (tokenError) {
+            console.error(
+              "❌ Failed to create meeting token for precreated room:",
+              tokenError.message,
+            );
+          }
         }
-      } catch (roomError) {
-        console.error("❌ Failed to create Daily room:", roomError);
+        if (!meetingToken) {
+          console.error(
+            "⚠️ Precreated room has no valid meeting token, recreating room",
+          );
+          roomUrl = null;
+          roomName = null;
+          roomPrecreated = false;
+          roomCreatedAt = null;
+        }
+      }
+
+      if (!roomUrl) {
+        try {
+          const dailyRoom = await createDailyRoom({
+            language: sessionData.language,
+            studentId: sessionData.studentId,
+            tutorId,
+            studentName:
+              sessionData.studentInfo?.name ||
+              studentData.display_name ||
+              "Student",
+            tutorName: tutorData.display_name || "Tutor",
+            expSeconds: 3600,
+          });
+          roomUrl = dailyRoom.url;
+          roomName = dailyRoom.name;
+          roomCreatedAt = Date.now();
+
+          meetingToken = await createMeetingToken({
+            roomName,
+            expSeconds: 3600,
+          });
+        } catch (roomError) {
+          console.error("❌ Failed to create Daily room:", roomError);
+          throw new functions.https.HttpsError(
+            "internal",
+            "Failed to create video room",
+          );
+        }
+      }
+
+      if (!meetingToken) {
+        console.error("❌ Daily meeting token creation failed");
         throw new functions.https.HttpsError(
           "internal",
-          "Failed to create video room",
+          "Failed to create meeting token",
         );
       }
 
@@ -241,8 +313,8 @@ exports.acceptCall = functions
           callerName: tutorData.display_name || "Преподаватель",
           callerId: tutorId,
           callerPhoto: tutorData.photo_url || null,
-          roomUrl: dailyRoom.url,
-          meetingToken: dailyRoom.token,
+          roomUrl: roomUrl,
+          meetingToken: meetingToken,
         });
         console.log("✅ VoIP push notification sent to student");
       } catch (pushError) {
@@ -270,9 +342,9 @@ exports.acceptCall = functions
             startedAt: admin.firestore.FieldValue.serverTimestamp(),
 
             // Добавляем данные Daily.co
-            dailyRoomUrl: dailyRoom.url,
-            dailyRoomName: dailyRoom.name,
-            meetingToken: dailyRoom.token,
+            dailyRoomUrl: roomUrl,
+            dailyRoomName: roomName,
+            meetingToken: meetingToken,
             expiresAt: activeExpiresAt,
 
             // Добавляем информацию о преподавателе
@@ -291,7 +363,8 @@ exports.acceptCall = functions
               acceptedBy: tutorId,
               acceptedAt: Date.now(),
               roomProvider: "daily",
-              roomCreatedAt: dailyRoom.created_at,
+              roomCreatedAt: roomCreatedAt || Date.now(),
+              roomPrecreated: roomPrecreated,
             },
           },
         );
@@ -316,9 +389,9 @@ exports.acceptCall = functions
       const response = {
         status: "connected",
         sessionId: sessionId,
-        roomUrl: dailyRoom.url,
-        roomName: dailyRoom.name,
-        meetingToken: dailyRoom.token,
+        roomUrl: roomUrl,
+        roomName: roomName,
+        meetingToken: meetingToken,
         studentInfo: {
           name:
             sessionData.studentInfo?.name ||
@@ -488,165 +561,7 @@ async function sendVoipPushToStudent(studentId, callData) {
   }
 }
 
-// СОЗДАНИЕ КОМНАТЫ DAILY
-async function createDailyRoom(
-  language,
-  studentId,
-  tutorId,
-  studentName,
-  tutorName,
-) {
-  try {
-    const apiKey = process.env.DAILY_API_KEY;
-    const domain = process.env.DAILY_DOMAIN;
-
-    if (!apiKey) {
-      throw new Error("DAILY_API_KEY environment variable not set");
-    }
-
-    if (!domain) {
-      throw new Error("DAILY_DOMAIN environment variable not set");
-    }
-
-    const timestamp = Date.now();
-    const randomStr = Math.random().toString(36).substr(2, 9);
-    const roomName = `session_${timestamp}_${randomStr}`;
-
-    console.log("🏠 Creating Daily room with ADAPTIVE BITRATE:", {
-      name: roomName,
-      language: language,
-      participants: [studentName, tutorName],
-      adaptive_bitrate: "ENABLED (up to 2 Mbps @ 720p)",
-      expected_quality: "720p @ 30 fps",
-    });
-
-    const roomConfig = {
-      name: roomName,
-      privacy: "private",
-      properties: {
-        max_participants: 2,
-        enable_chat: false,
-        enable_screenshare: true,
-        enable_recording: false,
-        start_audio_off: false,
-        start_video_off: false,
-        exp: Math.floor(Date.now() / 1000) + 3600,
-        enable_knocking: false,
-        enable_prejoin_ui: false,
-        enable_people_ui: false,
-        enable_pip_ui: false,
-        enable_network_ui: false,
-        enable_noise_cancellation_ui: true,
-        lang: language,
-        enable_dialin: false,
-        enable_dialout: false,
-        enable_terse_logging: false,
-        signaling_impl: "ws",
-        geo: "auto",
-        sfu_switchover: 0.5,
-        enable_adaptive_simulcast: true,
-        enable_multiparty_adaptive_simulcast: false,
-      },
-    };
-
-    console.log("🌐 Making request to Daily API...");
-    const response = await axios.post(
-      "https://api.daily.co/v1/rooms",
-      roomConfig,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "User-Agent": "SmallTalk-App/1.0",
-        },
-        timeout: 10000,
-      },
-    );
-
-    const room = response.data;
-    console.log("✅ Daily room created successfully:", {
-      name: room.name,
-      url: room.url,
-      privacy: room.privacy,
-      created_at: room.created_at,
-      config: room.config,
-    });
-
-    console.log("🎫 Creating meeting token...");
-    const meetingToken = await createMeetingToken(
-      room.name,
-      studentId,
-      tutorId,
-    );
-
-    return {
-      name: room.name,
-      url: room.url,
-      token: meetingToken,
-      config: room.config,
-      created_at: room.created_at,
-    };
-  } catch (error) {
-    console.error(
-      "❌ Error creating Daily room:",
-      error.response?.data || error.message,
-    );
-
-    if (error.response?.status === 401) {
-      throw new Error("Invalid Daily API key");
-    } else if (error.response?.status === 403) {
-      throw new Error("Daily API access forbidden - check your plan limits");
-    } else if (error.response?.status === 429) {
-      throw new Error("Daily API rate limit exceeded");
-    } else if (error.code === "ENOTFOUND" || error.code === "ECONNREFUSED") {
-      throw new Error("Cannot connect to Daily API - network error");
-    } else if (error.code === "ECONNABORTED") {
-      throw new Error("Daily API request timeout");
-    }
-
-    throw new Error(
-      `Failed to create Daily room: ${error.response?.data?.error || error.message}`,
-    );
-  }
-}
-
-// СОЗДАНИЕ ТОКЕНА ВСТРЕЧИ
-async function createMeetingToken(roomName, studentId, tutorId) {
-  try {
-    const apiKey = process.env.DAILY_API_KEY;
-
-    const tokenConfig = {
-      properties: {
-        room_name: roomName,
-        is_owner: false,
-        exp: Math.floor(Date.now() / 1000) + 3600,
-        enable_screenshare: true,
-        enable_recording: false,
-      },
-    };
-
-    const response = await axios.post(
-      "https://api.daily.co/v1/meeting-tokens",
-      tokenConfig,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        timeout: 5000,
-      },
-    );
-
-    console.log("✅ Meeting token created successfully");
-    return response.data.token;
-  } catch (error) {
-    console.error(
-      "⚠️ Error creating meeting token (non-critical):",
-      error.response?.data || error.message,
-    );
-    return null;
-  }
-}
+// Daily room helpers moved to daily_room.js
 
 // ОБНОВЛЕНИЕ СТАТУСА УВЕДОМЛЕНИЯ
 async function updateNotificationStatus(sessionId, tutorId, status) {
