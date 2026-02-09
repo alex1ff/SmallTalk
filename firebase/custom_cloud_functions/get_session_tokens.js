@@ -5,7 +5,11 @@ const {
   getRoomNameFromUrl,
 } = require("./daily_room");
 
-exports.getSessionTokens = functions.https.onCall(async (data, context) => {
+const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+
+exports.getSessionTokens = functions
+  .runWith({ secrets: dailySecrets })
+  .https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError(
       "unauthenticated",
@@ -89,4 +93,4 @@ exports.getSessionTokens = functions.https.onCall(async (data, context) => {
     meetingToken,
     isOwner: isStudent,
   };
-});
+  });

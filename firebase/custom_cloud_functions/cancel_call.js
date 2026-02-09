@@ -1,7 +1,10 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const { deleteDailyRoom } = require("./daily_room");
-exports.cancelCall = functions.https.onCall(async (data, context) => {
+const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+exports.cancelCall = functions
+  .runWith({ secrets: dailySecrets })
+  .https.onCall(async (data, context) => {
   console.log("❌ Cancelling video session (updated version)...");
 
   try {
@@ -148,7 +151,7 @@ exports.cancelCall = functions.https.onCall(async (data, context) => {
 
     throw new functions.https.HttpsError("internal", error.message);
   }
-});
+  });
 
 // ОТПРАВКА УВЕДОМЛЕНИЯ СЛЕДУЮЩЕМУ ПРЕПОДАВАТЕЛЮ
 async function sendNotificationToNextTutor(sessionId, sessionData) {
