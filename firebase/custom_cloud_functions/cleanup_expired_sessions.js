@@ -1,12 +1,15 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const { deleteDailyRoom } = require("./daily_room");
+const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 /*
 АВТОМАТИЧЕСКАЯ ФУНКЦИЯ: cleanupExpiredSessions
 Завершает истекшие активные сессии (запускается по расписанию)
 */
 
-exports.cleanupExpiredSessions = functions.pubsub
+exports.cleanupExpiredSessions = functions
+  .runWith({ secrets: dailySecrets })
+  .pubsub
   .schedule("every 5 minutes")
   .onRun(async (context) => {
     console.log("🧹 Cleaning up expired sessions...");

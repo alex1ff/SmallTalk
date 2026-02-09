@@ -7,6 +7,7 @@ const {
 } = require("./daily_room");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
+const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 
 /*
 ОБНОВЛЁННАЯ ФУНКЦИЯ: createVideoSession
@@ -14,7 +15,7 @@ const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 */
 
 exports.createVideoSession = functions
-  .runWith({ secrets: apnsSecrets })
+  .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .https.onCall(async (data, context) => {
     console.log("📹 Creating video session with filters...");
 
