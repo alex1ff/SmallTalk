@@ -338,6 +338,12 @@ class VoIPService {
   }
   _acceptInProgress.add(sessionId);
   _lastAcceptedSessionId = sessionId;
+  _lastAcceptedIsTutor = false;
+  _lastRoomUrl = null;
+  _lastMeetingToken = null;
+  _lastRoomName = null;
+  _lastNavigatedSessionId = null;
+  _lastNavigatedIsTutor = null;
 
   debugPrint('✅ VoIPService: Call accepted: $sessionId');
 
@@ -543,7 +549,10 @@ class VoIPService {
     debugPrint(
       '🔈 VoIPService: Audio session ${isActive ? 'activated' : 'deactivated'}',
     );
-    if (isActive && _lastAcceptedSessionId != null) {
+    if (isActive &&
+        _lastAcceptedSessionId != null &&
+        _lastRoomUrl != null &&
+        _lastRoomUrl!.isNotEmpty) {
       _tryNavigateToVideoCall(
         sessionId: _lastAcceptedSessionId!,
         isTutor: _lastAcceptedIsTutor,
@@ -568,8 +577,7 @@ class VoIPService {
     return;
   }
 
-    _acceptInProgress.remove(sessionId);
-    _acceptedSessions.remove(sessionId);
+    _clearSessionState(sessionId);
     debugPrint('❌ VoIPService: Call declined: $sessionId');
 
     try {
@@ -583,7 +591,6 @@ class VoIPService {
     debugPrint('❌ VoIPService: Error declining call: $e');
   }
 
-  _sessionCallKitIds.remove(sessionId);
   }
 
   /// Звонок завершен
@@ -600,8 +607,7 @@ class VoIPService {
     return;
   }
 
-    _acceptInProgress.remove(sessionId);
-    _acceptedSessions.remove(sessionId);
+    _clearSessionState(sessionId);
     debugPrint('🔚 VoIPService: Call ended: $sessionId');
 
     try {
@@ -618,7 +624,6 @@ class VoIPService {
     debugPrint('❌ VoIPService: Error ending session: $e');
   }
 
-  _sessionCallKitIds.remove(sessionId);
   }
 
   /// Таймаут звонка (45 секунд без ответа)
@@ -635,11 +640,32 @@ class VoIPService {
     return;
   }
 
-    _acceptInProgress.remove(sessionId);
-    _acceptedSessions.remove(sessionId);
+    _clearSessionState(sessionId);
     debugPrint('⏰ VoIPService: Call timeout: $sessionId');
 
     // Ничего не делаем - Cloud Function processExpiredNotifications обработает
+  }
+
+  void _clearSessionState(String sessionId) {
+    _acceptInProgress.remove(sessionId);
+    _acceptedSessions.remove(sessionId);
+    if (_lastAcceptedSessionId == sessionId) {
+      _lastAcceptedSessionId = null;
+      _lastAcceptedIsTutor = false;
+      _lastRoomUrl = null;
+      _lastMeetingToken = null;
+      _lastRoomName = null;
+      _lastNavigatedSessionId = null;
+      _lastNavigatedIsTutor = null;
+    }
+    if (_pendingSessionId == sessionId) {
+      _pendingSessionId = null;
+      _pendingIsTutor = false;
+      _pendingRoomUrl = null;
+      _pendingMeetingToken = null;
+      _pendingRoomName = null;
+      _navRetryInProgress = false;
+    }
     _sessionCallKitIds.remove(sessionId);
   }
 
