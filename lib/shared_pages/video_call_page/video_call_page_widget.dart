@@ -113,8 +113,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                               padding: MediaQuery.viewInsetsOf(context),
                               child: NewWordWidget(
                                 word: word,
-                                  langCode:
-                                    resolvedLanguage,
+                                langCode: resolvedLanguage,
                               ),
                             ),
                           ),
@@ -149,10 +148,16 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       CallSummaryWidget.routeName,
                       queryParameters: {
                         'userRef': serializeParam(
-                        functions.stringToRef(currentUserDocument?.role ==
-                                UserRole.native_speaker
-                              ? videoCallPageVideoSessionsRecord?.studentId
-                              : videoCallPageVideoSessionsRecord?.tutorId),
+                          functions.stringToRef(currentUserDocument?.role ==
+                                  UserRole.native_speaker
+                              ? valueOrDefault<String>(
+                                  videoCallPageVideoSessionsRecord?.studentId,
+                                  '-',
+                                )
+                              : valueOrDefault<String>(
+                                  videoCallPageVideoSessionsRecord?.tutorId,
+                                  '-',
+                                )),
                           ParamType.DocumentReference,
                         ),
                         'sessionID': serializeParam(
@@ -183,8 +188,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       CallSummaryWidget.routeName,
                       queryParameters: {
                         'userRef': serializeParam(
-                        functions.stringToRef(currentUserDocument?.role ==
-                                UserRole.native_speaker
+                          functions.stringToRef(currentUserDocument?.role ==
+                                  UserRole.native_speaker
                               ? valueOrDefault<String>(
                                   videoCallPageVideoSessionsRecord?.studentId,
                                   '-',
