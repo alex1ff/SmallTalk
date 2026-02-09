@@ -315,6 +315,9 @@ exports.createVideoSession = functions
         precreatedMeetingToken = await createMeetingToken({
           roomName: dailyRoom.name,
           expSeconds: 60 * 60,
+          isOwner: true,
+          userId: studentId,
+          userName: studentData.display_name || "Student",
         });
         precreatedRoomOk = !!(precreatedRoomUrl && precreatedMeetingToken);
 

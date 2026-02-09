@@ -103,6 +103,7 @@ class MinimalDailyWidget extends StatefulWidget {
     this.height,
     required this.roomUrl,
     this.meetingToken,
+    this.tokenRefreshCallback,
     this.deepgramApiKey,
     this.enableDeepgram = true,
     required this.deepgramLanguage,
@@ -116,6 +117,7 @@ class MinimalDailyWidget extends StatefulWidget {
   final double? height;
   final String roomUrl;
   final String? meetingToken;
+  final Future<String?> Function()? tokenRefreshCallback;
   final String? deepgramApiKey;
   final bool enableDeepgram;
   final String deepgramLanguage;
@@ -151,6 +153,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _resumeMicrophoneEnabled = true;
   bool _isInitializing = false;
   bool _systemCallMarkedConnected = false;
+  String? _dynamicMeetingToken;
+  bool _tokenRefreshInProgress = false;
+  int _tokenRefreshAttempts = 0;
+  static const int _maxTokenRefreshAttempts = 2;
 
   // Deepgram integration
   FlutterSoundRecorder? _recorder;
@@ -180,9 +186,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       // Enable hardware acceleration if available
       await _enableHardwareAcceleration();
 
-      // Validate room URL before proceeding
-      if (_isValidRoomUrl(widget.roomUrl)) {
+      if (_hasValidJoinData()) {
         await _initializeCall();
+      } else if (_isValidRoomUrl(widget.roomUrl)) {
+        _updateState(_state.copyWith(
+          connectionState: ConnectionState.connecting,
+          error: null,
+        ));
       }
 
       // Quality monitoring removed - Daily Adaptive Bitrate handles this
@@ -232,6 +242,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return null;
     }
     return trimmed;
+  }
+
+  String? _effectiveMeetingToken() {
+    return _sanitizeMeetingToken(_dynamicMeetingToken ?? widget.meetingToken);
+  }
+
+  bool _hasValidJoinData() {
+    return _isValidRoomUrl(widget.roomUrl) &&
+        _effectiveMeetingToken() != null;
   }
 
   /// Simplified initialization
@@ -308,7 +327,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Join room with default settings to avoid SDK parsing errors
   Future<void> _joinRoomWithEnhancedSettings() async {
     final roomUri = Uri.parse(widget.roomUrl);
-    final token = _sanitizeMeetingToken(widget.meetingToken);
+    final token = _effectiveMeetingToken();
 
     await _callClient!.join(
       url: roomUri,
@@ -489,6 +508,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           error: null,
           retryCount: 0,
         ));
+        _tokenRefreshAttempts = 0;
         _updateLocalVideoTrack();
         unawaited(_markSystemCallConnected());
         break;
@@ -575,7 +595,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Handle event errors
   void _handleEventError(String error) {
-    _handleError('Call error', error);
+    unawaited(_handleConnectionError(error));
   }
 
   /// Add remote participant with proper resource management
@@ -769,6 +789,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Future<void> _handleConnectionError(dynamic error) async {
     if (!mounted) return;
 
+    final refreshed = await _tryRefreshTokenOnError(error);
+    if (refreshed) {
+      return;
+    }
+
     _updateState(_state.copyWith(
       connectionState: ConnectionState.failed,
       error: error.toString(),
@@ -776,6 +801,36 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     if (_state.retryCount < _maxRetryAttempts) {
       _scheduleReconnection();
+    }
+  }
+
+  Future<bool> _tryRefreshTokenOnError(dynamic error) async {
+    if (_tokenRefreshInProgress) return false;
+    if (_tokenRefreshAttempts >= _maxTokenRefreshAttempts) return false;
+    if (widget.tokenRefreshCallback == null) return false;
+
+    final message = error.toString().toLowerCase();
+    final looksLikeTokenError =
+        message.contains('sigauthz') || message.contains('token');
+    if (!looksLikeTokenError) return false;
+
+    _tokenRefreshInProgress = true;
+    _tokenRefreshAttempts += 1;
+    try {
+      final newToken = await widget.tokenRefreshCallback!.call();
+      final sanitized = _sanitizeMeetingToken(newToken);
+      if (sanitized == null) {
+        return false;
+      }
+      _dynamicMeetingToken = sanitized;
+      await _cleanup(leaveCall: true);
+      await _initializeCall();
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('Token refresh failed: $e');
+      return false;
+    } finally {
+      _tokenRefreshInProgress = false;
     }
   }
 
@@ -1107,13 +1162,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     final newUrl = widget.roomUrl;
     final oldValid = _isValidRoomUrl(oldUrl);
     final newValid = _isValidRoomUrl(newUrl);
+    final oldToken = _sanitizeMeetingToken(oldWidget.meetingToken);
+    final newToken = _effectiveMeetingToken();
 
     if (oldUrl != newUrl && newValid) {
       unawaited(_cleanup(leaveCall: true).then((_) => _initializeCall()));
       return;
     }
 
-    if (!oldValid && newValid) {
+    if (oldToken != newToken && newToken != null) {
+      unawaited(_cleanup(leaveCall: true).then((_) => _initializeCall()));
+      return;
+    }
+
+    if (!oldValid && newValid && newToken != null) {
       _initializeCall();
     }
   }
@@ -1851,6 +1913,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _remoteJoinTimes.clear();
       _remoteTrackReady.clear();
       _systemCallMarkedConnected = false;
+      _dynamicMeetingToken = null;
+      _tokenRefreshAttempts = 0;
 
       // Leave call if requested
       if (_callClient != null && leaveCall) {
