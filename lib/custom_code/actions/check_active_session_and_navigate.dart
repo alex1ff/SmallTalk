@@ -116,10 +116,6 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
           sessionDoc.data()['dailyRoomUrl'] as String?,
           ParamType.String,
         ),
-        'meetingToken': serializeParam(
-          sessionDoc.data()['meetingToken'] as String?,
-          ParamType.String,
-        ),
         'roomName': serializeParam(
           sessionDoc.data()['dailyRoomName'] as String?,
           ParamType.String,
