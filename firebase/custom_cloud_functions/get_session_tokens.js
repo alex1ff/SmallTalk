@@ -59,6 +59,22 @@ exports.getSessionTokens = functions
 
   let roomName =
     sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
+  const derivedName = getRoomNameFromUrl(roomUrl);
+  if (derivedName && roomName !== derivedName) {
+    console.log("⚠️ Room name mismatch, using name from URL", {
+      roomName,
+      derivedName,
+    });
+    roomName = derivedName;
+    try {
+      await sessionDoc.ref.update({
+        dailyRoomName: roomName,
+        "sessionMetadata.roomNameFixedAt": Date.now(),
+      });
+    } catch (e) {
+      console.error("⚠️ Failed to update corrected room name:", e.message);
+    }
+  }
   if (!roomName) {
     throw new functions.https.HttpsError(
       "internal",

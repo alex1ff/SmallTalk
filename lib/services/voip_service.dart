@@ -345,7 +345,7 @@ class VoIPService {
   final lastAccept = _recentAcceptBySession[sessionId];
   if (lastAccept != null &&
       DateTime.now().difference(lastAccept) <
-          const Duration(seconds: 2)) {
+          const Duration(seconds: 30)) {
     debugPrint('⚠️ VoIPService: Duplicate accept event (time window)');
     return;
   }
@@ -363,13 +363,16 @@ class VoIPService {
   }
   _recentAcceptBySession[sessionId] = DateTime.now();
   _acceptInProgress.add(sessionId);
+  final isSameSession = _lastAcceptedSessionId == sessionId;
   _lastAcceptedSessionId = sessionId;
   _lastAcceptedIsTutor = false;
   _lastRoomUrl = null;
   _lastMeetingToken = null;
   _lastRoomName = null;
-  _lastNavigatedSessionId = null;
-  _lastNavigatedIsTutor = null;
+  if (!isSameSession) {
+    _lastNavigatedSessionId = null;
+    _lastNavigatedIsTutor = null;
+  }
 
   debugPrint('✅ VoIPService: Call accepted: $sessionId');
 

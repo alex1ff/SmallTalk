@@ -295,6 +295,18 @@ exports.acceptCall = functions
       let roomUrl = sessionData.dailyRoomUrl || null;
       let roomName =
         sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
+      if (roomUrl) {
+        const derivedName = getRoomNameFromUrl(roomUrl);
+        if (derivedName) {
+          if (!roomName || roomName !== derivedName) {
+            console.log("⚠️ Room name mismatch, using name from URL", {
+              roomName,
+              derivedName,
+            });
+            roomName = derivedName;
+          }
+        }
+      }
       let meetingToken = null;
       let roomPrecreated = false;
       let roomCreatedAt = sessionData.sessionMetadata?.roomCreatedAt || null;
