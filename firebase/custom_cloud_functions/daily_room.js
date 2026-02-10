@@ -27,6 +27,46 @@ function getRoomNameFromUrl(roomUrl) {
   }
 }
 
+async function getDailyRoom(roomName) {
+  if (!roomName) return null;
+  const { apiKey } = getDailyEnv();
+  try {
+    const response = await axios.get(
+      `https://api.daily.co/v1/rooms/${roomName}`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "User-Agent": "SmallTalk-App/1.0",
+        },
+        timeout: 5000,
+      },
+    );
+    return response.data;
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function decodeTokenClaims(token) {
+  if (!token || typeof token !== "string") return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const payload = parts[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
+    const decoded = Buffer.from(payload, "base64").toString("utf8");
+    return JSON.parse(decoded);
+  } catch (e) {
+    return null;
+  }
+}
+
 function buildRoomConfig({ name, language, expSeconds }) {
   const exp = Math.floor(Date.now() / 1000) + expSeconds;
   return {
@@ -154,12 +194,23 @@ async function createMeetingToken({
     },
   );
 
-  console.log("✅ Meeting token created", {
-    roomName,
-    isOwner: !!isOwner,
-    hasUser: !!userId,
-  });
-  return response.data.token;
+  const token = response.data.token;
+  const claims = decodeTokenClaims(token);
+  if (claims) {
+    console.log("🔎 Meeting token claims", {
+      room: claims.r,
+      isOwner: claims.o,
+      exp: claims.exp,
+      userId: claims.ud,
+    });
+  } else {
+    console.log("🔎 Meeting token created (claims decode failed)", {
+      roomName,
+      isOwner: !!isOwner,
+      hasUser: !!userId,
+    });
+  }
+  return token;
 }
 
 async function deleteDailyRoom(roomName) {
@@ -190,5 +241,6 @@ module.exports = {
   createDailyRoom,
   createMeetingToken,
   deleteDailyRoom,
+  getDailyRoom,
   getRoomNameFromUrl,
 };

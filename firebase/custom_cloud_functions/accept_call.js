@@ -4,6 +4,7 @@ const { sendApnsVoip } = require("./apns_voip");
 const {
   createDailyRoom,
   createMeetingToken,
+  getDailyRoom,
   getRoomNameFromUrl,
 } = require("./daily_room");
 
@@ -161,6 +162,61 @@ exports.acceptCall = functions
         );
       }
 
+      // === 2.5. БЛОКИРОВКА ACCEPT (защита от параллельных accept) ===
+      const sessionRef = admin
+        .firestore()
+        .collection("videoSessions")
+        .doc(sessionId);
+      const acceptLockWindowMs = 30 * 1000;
+      let lockAcquired = false;
+      await admin.firestore().runTransaction(async (transaction) => {
+        const freshSnap = await transaction.get(sessionRef);
+        if (!freshSnap.exists) {
+          throw new functions.https.HttpsError(
+            "not-found",
+            "Video session not found",
+          );
+        }
+        const fresh = freshSnap.data();
+        if (fresh.status !== "searching") {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "Session is already active",
+          );
+        }
+        if (fresh.currentTutorId !== tutorId) {
+          throw new functions.https.HttpsError(
+            "permission-denied",
+            "This session is not assigned to you",
+          );
+        }
+        const acceptingTutorId = fresh.acceptingTutorId || null;
+        const acceptingAtMs = fresh.acceptingAt?.toMillis?.() || 0;
+        const nowMs = Date.now();
+        if (
+          !acceptingTutorId ||
+          nowMs - acceptingAtMs > acceptLockWindowMs
+        ) {
+          transaction.update(sessionRef, {
+            acceptingTutorId: tutorId,
+            acceptingAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          lockAcquired = true;
+          return;
+        }
+        if (acceptingTutorId === tutorId) {
+          transaction.update(sessionRef, {
+            acceptingAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          lockAcquired = true;
+          return;
+        }
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Session is already being accepted",
+        );
+      });
+
       // === 3. ПОЛУЧЕНИЕ И ВАЛИДАЦИЯ ДАННЫХ ПРЕПОДАВАТЕЛЯ ===
       console.log("👨‍🏫 Fetching tutor data...");
       const tutorDoc = await admin
@@ -250,21 +306,41 @@ exports.acceptCall = functions
           roomUrl,
           hasToken: !!meetingToken,
         });
+        if (!roomName) {
+          roomName = getRoomNameFromUrl(roomUrl);
+        }
         if (roomName) {
-          try {
-            meetingToken = await createMeetingToken({
-              roomName,
-              expSeconds: 3600,
-              isOwner: false,
-              userId: tutorId,
-              userName: tutorData.display_name || "Tutor",
-            });
-          } catch (tokenError) {
-            console.error(
-              "❌ Failed to create meeting token for precreated room:",
-              tokenError.message,
+          const existingRoom = await getDailyRoom(roomName);
+          if (!existingRoom) {
+            console.warn(
+              "⚠️ Precreated room not found in Daily, recreating room",
             );
+            roomUrl = null;
+            roomName = null;
+            roomPrecreated = false;
+            roomCreatedAt = null;
           }
+        } else {
+          roomUrl = null;
+          roomPrecreated = false;
+          roomCreatedAt = null;
+        }
+      }
+
+      if (roomUrl && roomName) {
+        try {
+          meetingToken = await createMeetingToken({
+            roomName,
+            expSeconds: 3600,
+            isOwner: false,
+            userId: tutorId,
+            userName: tutorData.display_name || "Tutor",
+          });
+        } catch (tokenError) {
+          console.error(
+            "❌ Failed to create meeting token for precreated room:",
+            tokenError.message,
+          );
         }
         if (!meetingToken) {
           console.error(
@@ -323,10 +399,6 @@ exports.acceptCall = functions
       const activeExpiresAt = admin.firestore.Timestamp.fromDate(
         new Date(Date.now() + 60 * 60 * 1000),
       );
-      const sessionRef = admin
-        .firestore()
-        .collection("videoSessions")
-        .doc(sessionId);
       const txnResult = await admin
         .firestore()
         .runTransaction(async (transaction) => {
@@ -366,8 +438,9 @@ exports.acceptCall = functions
             // Добавляем данные Daily.co
             dailyRoomUrl: roomUrl,
             dailyRoomName: roomName,
-            meetingToken: meetingToken,
             expiresAt: activeExpiresAt,
+            acceptingTutorId: null,
+            acceptingAt: null,
 
             // Добавляем информацию о преподавателе
             tutorInfo: {
@@ -504,6 +577,24 @@ exports.acceptCall = functions
       return response;
     } catch (error) {
       console.error("❌ Error in acceptCall function:", error);
+
+      if (lockAcquired) {
+        try {
+          await admin.firestore().runTransaction(async (transaction) => {
+            const snap = await transaction.get(sessionRef);
+            if (!snap.exists) return;
+            const data = snap.data();
+            if (data.acceptingTutorId === tutorId) {
+              transaction.update(sessionRef, {
+                acceptingTutorId: null,
+                acceptingAt: null,
+              });
+            }
+          });
+        } catch (lockError) {
+          console.error("⚠️ Failed to release accept lock:", lockError.message);
+        }
+      }
 
       if (error.code && error.message) {
         throw error;
