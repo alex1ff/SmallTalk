@@ -667,8 +667,13 @@ class VoIPService {
     debugPrint(
       '🔈 VoIPService: Audio session ${isActive ? 'activated' : 'deactivated'}',
     );
-    if (isActive &&
-        _lastAcceptedSessionId != null &&
+    // Only care about activation, and only if we haven't already navigated
+    if (!isActive) return;
+    if (_lastNavigatedSessionId != null) {
+      debugPrint('ℹ️ VoIPService: Already navigated, skipping audio session toggle');
+      return;
+    }
+    if (_lastAcceptedSessionId != null &&
         _lastRoomUrl != null &&
         _lastRoomUrl!.isNotEmpty) {
       _tryNavigateToVideoCall(

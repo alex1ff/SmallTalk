@@ -153,6 +153,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   final Map<ParticipantId, DateTime> _remoteJoinTimes = {};
   final Map<ParticipantId, bool> _remoteTrackReady = {};
 
+  bool _disposed = false;
   bool _resumeCameraEnabled = true;
   bool _resumeMicrophoneEnabled = true;
   bool _isInitializing = false;
@@ -262,7 +263,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Simplified initialization
   Future<void> _initializeCall() async {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     if (_isInitializing ||
         _state.connectionState == ConnectionState.connected) {
       return;
@@ -491,7 +492,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Handle call events with comprehensive processing
   void _handleCallEvent(dynamic event) {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
 
     try {
       event.whenOrNull(
@@ -510,7 +511,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Handle call state updates
   void _handleCallStateUpdate(CallStateData data) {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
 
     switch (data.state) {
       case CallState.joined:
@@ -637,7 +638,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Add remote participant with proper resource management
   void _addRemoteParticipant(Participant participant) {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
 
     try {
       // Check if controller already exists to avoid duplicates
@@ -672,7 +673,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Update remote participant video track
   void _updateRemoteParticipant(Participant participant) {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
 
     final controller = _state.remoteControllers[participant.id];
     if (controller == null) {
@@ -745,7 +746,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Remove remote participant and cleanup resources
   void _removeRemoteParticipant(ParticipantId id) {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
 
     try {
       _remoteJoinTimes.remove(id);
@@ -824,7 +825,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Handle connection errors with exponential backoff retry
   Future<void> _handleConnectionError(dynamic error) async {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
 
     final message = error.toString().toLowerCase();
     final isTokenError =
@@ -917,7 +918,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Perform reconnection attempt
   Future<void> _performReconnection() async {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
 
     await _cleanup(leaveCall: false);
     await _initializeCall();
@@ -1231,7 +1232,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Update state immutably
   void _updateState(_CallState newState) {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     setState(() {
       _state = newState;
     });
@@ -1931,31 +1932,70 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Loading indicator removed in favor of unified connecting overlay
 
-  /// End call and cleanup
+  /// End call and cleanup - cleanup BEFORE navigating away
   Future<void> _endCall() async {
     try {
       _userRequestedEnd = true;
       unawaited(_endSystemCallUi());
+
+      // 1. Leave the Daily room first (clean disconnect)
+      await _cleanup(leaveCall: true);
+
+      // 2. Then invoke the callback which navigates away
       await widget.endCallCallback?.call();
     } catch (e) {
       if (kDebugMode) print('End call callback failed: $e');
-      if (mounted) {
+      if (mounted && !_disposed) {
         context.safePop();
       }
-    } finally {
-      unawaited(_cleanup(leaveCall: true));
     }
   }
 
-  /// Cleanup all resources
+  /// Cleanup all resources - proper order to prevent crashes:
+  /// 1. Cancel timers (stop pending operations)
+  /// 2. Stop Deepgram
+  /// 3. Leave call FIRST (signal server while connection still alive)
+  /// 4. Cancel subscriptions
+  /// 5. Clear tracks and dispose video controllers
+  /// 6. Dispose CallClient
   Future<void> _cleanup({bool leaveCall = true}) async {
     if (kDebugMode) print('Cleaning up resources...');
 
     try {
-      // Stop Deepgram first
+      // 1. Cancel all timers first (stop any pending reconnects, retries, etc.)
+      for (final timer in _activeTimers) {
+        timer.cancel();
+      }
+      _activeTimers.clear();
+      _remoteLeftTimer?.cancel();
+      _remoteLeftTimer = null;
+      _remoteLeftNotified = false;
+      _userRequestedEnd = false;
+
+      // 2. Stop Deepgram streaming
       await _stopDeepgramStreaming();
 
-      // Cancel all subscriptions
+      // 3. Leave call FIRST while connection is still alive
+      // This allows the server to receive the disconnect signal properly
+      if (_callClient != null && leaveCall) {
+        try {
+          await _callClient!.leave();
+          // Brief wait for leave signal to be sent over WebSocket
+          await Future.delayed(const Duration(milliseconds: 300));
+        } catch (e) {
+          if (kDebugMode) print('Error leaving call: $e');
+        }
+      }
+
+      // 4. Cancel main event subscription (after leaving to avoid spurious events)
+      try {
+        await _eventSubscription?.cancel();
+        _eventSubscription = null;
+      } catch (e) {
+        if (kDebugMode) print('Error cancelling event subscription: $e');
+      }
+
+      // Cancel all tracked subscriptions
       for (final subscription in _activeSubscriptions) {
         try {
           await subscription.cancel();
@@ -1965,15 +2005,22 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
       _activeSubscriptions.clear();
 
-      // Cancel main event subscription
+      // 5. Clear video tracks before disposing controllers
       try {
-        await _eventSubscription?.cancel();
-        _eventSubscription = null;
+        _localVideoController?.setTrack(null);
       } catch (e) {
-        if (kDebugMode) print('Error cancelling event subscription: $e');
+        if (kDebugMode) print('Error clearing local video track: $e');
       }
 
-      // Dispose video controllers before leaving call
+      for (final controller in _state.remoteControllers.values) {
+        try {
+          controller.setTrack(null);
+        } catch (e) {
+          if (kDebugMode) print('Error clearing remote video track: $e');
+        }
+      }
+
+      // Dispose video controllers
       try {
         _localVideoController?.dispose();
         _localVideoController = null;
@@ -1994,17 +2041,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _dynamicMeetingToken = null;
       _tokenRefreshAttempts = 0;
 
-      // Leave call if requested
-      if (_callClient != null && leaveCall) {
-        try {
-          await _callClient!.leave();
-          await Future.delayed(const Duration(milliseconds: 500));
-        } catch (e) {
-          if (kDebugMode) print('Error leaving call: $e');
-        }
-      }
-
-      // Dispose call client
+      // 6. Dispose call client last
       try {
         await _callClient?.dispose();
         _callClient = null;
@@ -2012,17 +2049,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         if (kDebugMode) print('Error disposing call client: $e');
       }
 
-      // Cancel all timers
-      for (final timer in _activeTimers) {
-        timer.cancel();
-      }
-      _activeTimers.clear();
-      _remoteLeftTimer?.cancel();
-      _remoteLeftTimer = null;
-      _remoteLeftNotified = false;
-      _userRequestedEnd = false;
-
-      // Close all controllers
+      // Close all stream controllers
       for (final controller in _activeControllers) {
         try {
           await controller.close();
@@ -2033,7 +2060,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _activeControllers.clear();
 
       // Reset state
-      if (mounted) {
+      if (mounted && !_disposed) {
         _updateState(const _CallState());
       }
 
@@ -2047,14 +2074,22 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void dispose() {
     if (kDebugMode) print('Disposing widget...');
 
+    _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
 
     // Synchronous cleanup of timers
     for (final timer in _activeTimers) {
       timer.cancel();
     }
+    _activeTimers.clear();
+    _remoteLeftTimer?.cancel();
+    _remoteLeftTimer = null;
 
-    // Schedule async cleanup
+    // Cancel event subscription synchronously to stop incoming events
+    _eventSubscription?.cancel();
+    _eventSubscription = null;
+
+    // Schedule async cleanup (leave call, dispose client)
     _cleanup(leaveCall: true);
 
     super.dispose();

@@ -51,12 +51,27 @@ exports.createVideoSession = functions
         );
       }
 
-      // Получаем данные студента
-      const studentDoc = await admin
+      const normalizedLanguage = String(language).trim().toLowerCase();
+      const tutorRoles = ["tutor", "native_speaker"];
+
+      // Fetch student data and tutor list in parallel for faster startup
+      console.log("🔍 Fetching student + tutors in parallel...");
+      const tutorBaseQuery = admin
         .firestore()
         .collection("users")
-        .doc(studentId)
-        .get();
+        .where("role", "in", tutorRoles);
+
+      const [studentDoc, tutorsQueryResult] = await Promise.all([
+        admin.firestore().collection("users").doc(studentId).get(),
+        tutorBaseQuery.get().catch((queryError) => {
+          console.error(
+            "❌ Tutor query failed, fallback to all users:",
+            queryError.message,
+          );
+          return admin.firestore().collection("users").get();
+        }),
+      ]);
+
       if (!studentDoc.exists) {
         throw new functions.https.HttpsError("not-found", "Student not found");
       }
@@ -69,27 +84,7 @@ exports.createVideoSession = functions
         );
       }
 
-      const normalizedLanguage = String(language).trim().toLowerCase();
-      const tutorRoles = ["tutor", "native_speaker"];
-
-      // Базовый запрос: ищем преподавателей по роли (фильтруем языки в коде)
-      console.log("🔍 Searching for tutors with roles:", tutorRoles.join(", "));
-
-      const tutorBaseQuery = admin
-        .firestore()
-        .collection("users")
-        .where("role", "in", tutorRoles);
-
-      let tutorsQuery;
-      try {
-        tutorsQuery = await tutorBaseQuery.get();
-      } catch (queryError) {
-        console.error(
-          "❌ Tutor query failed, fallback to all users:",
-          queryError.message,
-        );
-        tutorsQuery = await admin.firestore().collection("users").get();
-      }
+      let tutorsQuery = tutorsQueryResult;
 
       if (tutorsQuery.empty) {
         console.log("❌ No tutors found for roles:", tutorRoles.join(", "));
