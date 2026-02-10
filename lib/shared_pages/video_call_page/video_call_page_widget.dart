@@ -50,6 +50,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   String? _freshMeetingToken;
   bool _tokenLoading = false;
   String? _lastTokenSessionId;
+  bool _didNavigateToSummary = false;
 
   @override
   void initState() {
@@ -65,6 +66,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       _freshRoomUrl = null;
       _freshMeetingToken = null;
       _lastTokenSessionId = null;
+      _didNavigateToSummary = false;
       unawaited(_fetchSessionTokens(force: true));
     }
   }
@@ -110,6 +112,59 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     }
   }
 
+  bool _isValidRoomUrl(String value) {
+    if (value.isEmpty) return false;
+    try {
+      final uri = Uri.tryParse(value);
+      return uri != null && uri.hasScheme && uri.hasAuthority;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _isValidUserId(String? value) {
+    if (value == null) return false;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return false;
+    final lowered = trimmed.toLowerCase();
+    return !(lowered == '-' ||
+        lowered == 'null' ||
+        lowered == 'undefined' ||
+        lowered == 'false' ||
+        lowered == '0' ||
+        lowered == 'none');
+  }
+
+  Future<void> _navigateToSummary(VideoSessionsRecord? session) async {
+    if (!mounted || _didNavigateToSummary) return;
+    _didNavigateToSummary = true;
+
+    final sessionRef = widget.videoDocRef;
+    final userId = currentUserDocument?.role == UserRole.native_speaker
+        ? session?.studentId
+        : session?.tutorId;
+
+    final userRef =
+        _isValidUserId(userId) ? functions.stringToRef(userId!.trim()) : null;
+
+    if (sessionRef == null || userRef == null) {
+      if (mounted) {
+        context.safePop();
+      }
+      return;
+    }
+
+    context.goNamed(
+      CallSummaryWidget.routeName,
+      queryParameters: {
+        'userRef': serializeParam(userRef, ParamType.DocumentReference),
+        'sessionID': serializeParam(sessionRef, ParamType.DocumentReference),
+        'lang': serializeParam(session?.language ?? 'en', ParamType.String),
+        'dur': serializeParam(session?.duration ?? 0, ParamType.int),
+      }.withoutNulls,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<VideoSessionsRecord>(
@@ -140,6 +195,23 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
               videoCallPageVideoSessionsRecord?.language,
             ) ??
             'en';
+        final sessionStatus = _nonEmpty(videoCallPageVideoSessionsRecord?.status);
+        final isStudent =
+            currentUserUid != null &&
+            currentUserUid ==
+                _nonEmpty(videoCallPageVideoSessionsRecord?.studentId);
+
+        if (_isValidRoomUrl(resolvedRoomUrl) &&
+            resolvedMeetingToken == null &&
+            !_tokenLoading) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted &&
+                !_tokenLoading &&
+                _freshMeetingToken == null) {
+              unawaited(_fetchSessionTokens());
+            }
+          });
+        }
 
         return GestureDetector(
           onTap: () {
@@ -161,6 +233,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                   tokenRefreshCallback: () async {
                     return await _fetchSessionTokens(force: true);
                   },
+                  sessionStatus: sessionStatus,
+                  isStudent: isStudent,
                   deepgramApiKey: '7a3a2c915f8282f6f09c33215d25c20737ae6adc',
                   deepgramLanguage: resolvedLanguage,
                   username: currentUserDisplayName,
@@ -193,7 +267,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                     unawaited(
                       () async {
                         try {
-                          final result = await FirebaseFunctions.instance
+                          await FirebaseFunctions.instance
                               .httpsCallable('endSession')
                               .call({
                             "sessionId": widget!.videoDocRef!.id,
@@ -211,83 +285,11 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                         }
                       }(),
                     );
-
-                    context.goNamed(
-                      CallSummaryWidget.routeName,
-                      queryParameters: {
-                        'userRef': serializeParam(
-                          functions.stringToRef(currentUserDocument?.role ==
-                                  UserRole.native_speaker
-                              ? valueOrDefault<String>(
-                                  videoCallPageVideoSessionsRecord?.studentId,
-                                  '-',
-                                )
-                              : valueOrDefault<String>(
-                                  videoCallPageVideoSessionsRecord?.tutorId,
-                                  '-',
-                                )),
-                          ParamType.DocumentReference,
-                        ),
-                        'sessionID': serializeParam(
-                          widget!.videoDocRef,
-                          ParamType.DocumentReference,
-                        ),
-                        'lang': serializeParam(
-                          valueOrDefault<String>(
-                            videoCallPageVideoSessionsRecord?.language,
-                            'en',
-                          ),
-                          ParamType.String,
-                        ),
-                        'dur': serializeParam(
-                          valueOrDefault<int>(
-                            videoCallPageVideoSessionsRecord?.duration,
-                            0,
-                          ),
-                          ParamType.int,
-                        ),
-                      }.withoutNulls,
-                    );
-
+                    await _navigateToSummary(videoCallPageVideoSessionsRecord);
                     safeSetState(() {});
                   },
                   participantLeftCallback: () async {
-                    context.goNamed(
-                      CallSummaryWidget.routeName,
-                      queryParameters: {
-                        'userRef': serializeParam(
-                          functions.stringToRef(currentUserDocument?.role ==
-                                  UserRole.native_speaker
-                              ? valueOrDefault<String>(
-                                  videoCallPageVideoSessionsRecord?.studentId,
-                                  '-',
-                                )
-                              : valueOrDefault<String>(
-                                  videoCallPageVideoSessionsRecord?.tutorId,
-                                  '-',
-                                )),
-                          ParamType.DocumentReference,
-                        ),
-                        'sessionID': serializeParam(
-                          widget!.videoDocRef,
-                          ParamType.DocumentReference,
-                        ),
-                        'lang': serializeParam(
-                          valueOrDefault<String>(
-                            videoCallPageVideoSessionsRecord?.language,
-                            'en',
-                          ),
-                          ParamType.String,
-                        ),
-                        'dur': serializeParam(
-                          valueOrDefault<int>(
-                            videoCallPageVideoSessionsRecord?.duration,
-                            0,
-                          ),
-                          ParamType.int,
-                        ),
-                      }.withoutNulls,
-                    );
+                    await _navigateToSummary(videoCallPageVideoSessionsRecord);
                   },
                 ),
               ),

@@ -104,6 +104,8 @@ class MinimalDailyWidget extends StatefulWidget {
     required this.roomUrl,
     this.meetingToken,
     this.tokenRefreshCallback,
+    this.sessionStatus,
+    this.isStudent,
     this.deepgramApiKey,
     this.enableDeepgram = true,
     required this.deepgramLanguage,
@@ -118,6 +120,8 @@ class MinimalDailyWidget extends StatefulWidget {
   final String roomUrl;
   final String? meetingToken;
   final Future<String?> Function()? tokenRefreshCallback;
+  final String? sessionStatus;
+  final bool? isStudent;
   final String? deepgramApiKey;
   final bool enableDeepgram;
   final String deepgramLanguage;
@@ -1308,10 +1312,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               child: _buildErrorDisplay(),
             ),
 
-          // Connecting overlay (single state)
-          if (_state.connectionState == ConnectionState.connecting)
+          // Status overlay (searching/connecting/awaiting remote)
+          if (_statusMessage() != null)
             Positioned.fill(
-              child: _buildConnectingOverlay(),
+              child: IgnorePointer(child: _buildConnectingOverlay()),
             ),
         ],
       ),
@@ -1349,6 +1353,27 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _state.cameraEnabled;
   }
 
+  String? _statusMessage() {
+    if (_hasRemoteVideoReady()) {
+      return null;
+    }
+
+    final status = widget.sessionStatus?.trim().toLowerCase();
+    final isStudent = widget.isStudent == true;
+
+    if (status == 'searching' && isStudent) {
+      return 'Ищем преподавателя...';
+    }
+
+    if (_state.connectionState != ConnectionState.connected) {
+      return 'Соединяемся...';
+    }
+
+    return isStudent
+        ? 'Ожидаем подключение преподавателя...'
+        : 'Ожидаем подключение студента...';
+  }
+
   Widget _buildPrimaryVideo() {
     if (_hasRemoteVideoReady()) {
       return _buildRemoteVideo();
@@ -1372,19 +1397,26 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   Widget _buildConnectingOverlay() {
+    final message = _statusMessage();
+    if (message == null) {
+      return const SizedBox.shrink();
+    }
+
+    final showSpinner = _state.connectionState != ConnectionState.connected;
     return SafeArea(
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-            ),
-            SizedBox(height: 24),
+          children: [
+            if (showSpinner)
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+              ),
+            if (showSpinner) const SizedBox(height: 24),
             Text(
-              'Подключаемся...',
-              style: TextStyle(color: Colors.white, fontSize: 18),
+              message,
+              style: const TextStyle(color: Colors.white, fontSize: 18),
             ),
           ],
         ),
