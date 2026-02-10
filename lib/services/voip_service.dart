@@ -571,12 +571,17 @@ class VoIPService {
     }
 
     const route = '/videoCallPage';
-    final effectiveMeetingToken =
-        _getFreshPrefetchedToken(sessionId) ?? meetingToken;
-    final effectiveRoomUrl =
-        roomUrl ?? _getPrefetchedRoomUrl(sessionId);
-    final effectiveRoomName =
-        roomName ?? _getPrefetchedRoomName(sessionId);
+    final prefetchedToken = _getFreshPrefetchedToken(sessionId);
+    final prefetchedRoomUrl = _getPrefetchedRoomUrl(sessionId);
+    final prefetchedRoomName = _getPrefetchedRoomName(sessionId);
+    final usePrefetch = prefetchedToken != null && prefetchedRoomUrl != null;
+    final effectiveMeetingToken = usePrefetch ? prefetchedToken : meetingToken;
+    final effectiveRoomUrl = usePrefetch
+        ? prefetchedRoomUrl
+        : (roomUrl ?? prefetchedRoomUrl);
+    final effectiveRoomName = usePrefetch
+        ? prefetchedRoomName
+        : (roomName ?? prefetchedRoomName);
     final params = <String, String>{
       'videoDocRef': sessionId,
     };

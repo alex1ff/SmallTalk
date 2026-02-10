@@ -161,6 +161,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _tokenRefreshInProgress = false;
   int _tokenRefreshAttempts = 0;
   static const int _maxTokenRefreshAttempts = 2;
+  Timer? _remoteLeftTimer;
+  bool _remoteLeftNotified = false;
+  bool _userRequestedEnd = false;
 
   // Deepgram integration
   FlutterSoundRecorder? _recorder;
@@ -266,6 +269,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
     _isInitializing = true;
     _systemCallMarkedConnected = false;
+    _userRequestedEnd = false;
+    _remoteLeftNotified = false;
+    _remoteLeftTimer?.cancel();
+    _remoteLeftTimer = null;
 
     _updateState(_state.copyWith(
       connectionState: ConnectionState.connecting,
@@ -522,7 +529,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           connectionState: ConnectionState.disconnected,
         ));
         _stopDeepgramStreaming();
-        unawaited(_endSystemCallUi());
+        if (_userRequestedEnd) {
+          unawaited(_endSystemCallUi());
+        } else {
+          _scheduleReconnection();
+        }
         break;
 
       default:
@@ -533,6 +544,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Handle participant joined event
   void _handleParticipantJoined(Participant participant) {
     if (!participant.info.isLocal && mounted) {
+      _remoteLeftTimer?.cancel();
+      _remoteLeftTimer = null;
+      _remoteLeftNotified = false;
       _addRemoteParticipant(participant);
     }
   }
@@ -542,6 +556,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (participant.info.isLocal) {
       _updateLocalVideoTrack();
     } else {
+      _remoteLeftTimer?.cancel();
+      _remoteLeftTimer = null;
+      _remoteLeftNotified = false;
       _updateRemoteParticipant(participant);
       _updateState(_state.copyWith());
       unawaited(_prioritizeRemoteSubscription(participant.id));
@@ -550,10 +567,26 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Handle participant left event
   void _handleParticipantLeft(Participant participant) {
+    if (participant.info.isLocal) {
+      return;
+    }
     _removeRemoteParticipant(participant.id);
-    unawaited(_endSystemCallUi());
-    // Call callback when remote participant leaves (ends call)
-    widget.participantLeftCallback?.call();
+    if (_state.remoteControllers.isNotEmpty) {
+      return;
+    }
+    if (_remoteLeftNotified) {
+      return;
+    }
+    _remoteLeftTimer?.cancel();
+    final timer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      if (_state.remoteControllers.isNotEmpty) return;
+      _remoteLeftNotified = true;
+      unawaited(_endSystemCallUi());
+      widget.participantLeftCallback?.call();
+    });
+    _remoteLeftTimer = timer;
+    _trackTimer(timer);
   }
 
   /// Handle app messages with validation
@@ -1901,6 +1934,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// End call and cleanup
   Future<void> _endCall() async {
     try {
+      _userRequestedEnd = true;
       unawaited(_endSystemCallUi());
       await widget.endCallCallback?.call();
     } catch (e) {
@@ -1983,6 +2017,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         timer.cancel();
       }
       _activeTimers.clear();
+      _remoteLeftTimer?.cancel();
+      _remoteLeftTimer = null;
+      _remoteLeftNotified = false;
+      _userRequestedEnd = false;
 
       // Close all controllers
       for (final controller in _activeControllers) {
