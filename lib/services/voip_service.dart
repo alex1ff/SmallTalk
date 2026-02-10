@@ -31,6 +31,8 @@ class VoIPService {
   StreamSubscription<CallEvent?>? _callKitSubscription;
   final Set<String> _acceptInProgress = {};
   final Set<String> _acceptedSessions = {};
+  final Set<String> _handledCallKitAcceptIds = {};
+  final Map<String, DateTime> _recentAcceptBySession = {};
   String? _lastAcceptedSessionId;
   bool _lastAcceptedIsTutor = false;
   String? _lastNavigatedSessionId;
@@ -319,8 +321,9 @@ class VoIPService {
   final extra = data['extra'] is Map
       ? Map<String, dynamic>.from(data['extra'] as Map)
       : <String, dynamic>{};
-  final sessionId =
+  final rawSessionId =
       extra['sessionId'] as String? ?? data['sessionId'] as String?;
+  final sessionId = rawSessionId?.trim();
   final callKitId =
       data['id'] as String? ?? extra['callKitId'] as String?;
   if (callKitId != null) {
@@ -329,8 +332,21 @@ class VoIPService {
   if (sessionId != null && callKitId != null) {
     _sessionCallKitIds[sessionId] = callKitId;
   }
-  if (sessionId == null) {
+  if (sessionId == null || sessionId.isEmpty) {
     debugPrint('❌ VoIPService: No sessionId in accept event');
+    return;
+  }
+
+  if (callKitId != null && _handledCallKitAcceptIds.contains(callKitId)) {
+    debugPrint('⚠️ VoIPService: Duplicate accept event (callKitId): $callKitId');
+    return;
+  }
+
+  final lastAccept = _recentAcceptBySession[sessionId];
+  if (lastAccept != null &&
+      DateTime.now().difference(lastAccept) <
+          const Duration(seconds: 2)) {
+    debugPrint('⚠️ VoIPService: Duplicate accept event (time window)');
     return;
   }
 
@@ -342,6 +358,10 @@ class VoIPService {
     debugPrint('⚠️ VoIPService: Accept already in progress for $sessionId');
     return;
   }
+  if (callKitId != null) {
+    _handledCallKitAcceptIds.add(callKitId);
+  }
+  _recentAcceptBySession[sessionId] = DateTime.now();
   _acceptInProgress.add(sessionId);
   _lastAcceptedSessionId = sessionId;
   _lastAcceptedIsTutor = false;
@@ -687,6 +707,11 @@ class VoIPService {
   void _clearSessionState(String sessionId) {
     _acceptInProgress.remove(sessionId);
     _acceptedSessions.remove(sessionId);
+    _recentAcceptBySession.remove(sessionId);
+    final callKitIdForSession = _sessionCallKitIds[sessionId];
+    if (callKitIdForSession != null) {
+      _handledCallKitAcceptIds.remove(callKitIdForSession);
+    }
     if (_lastAcceptedSessionId == sessionId) {
       _lastAcceptedSessionId = null;
       _lastAcceptedIsTutor = false;
