@@ -217,13 +217,12 @@ exports.acceptCall = functions
         );
       });
 
-      // === 3. ПОЛУЧЕНИЕ И ВАЛИДАЦИЯ ДАННЫХ ПРЕПОДАВАТЕЛЯ ===
-      console.log("👨‍🏫 Fetching tutor data...");
-      const tutorDoc = await admin
-        .firestore()
-        .collection("users")
-        .doc(tutorId)
-        .get();
+      // === 3. ПОЛУЧЕНИЕ ДАННЫХ ПРЕПОДАВАТЕЛЯ И СТУДЕНТА (ПАРАЛЛЕЛЬНО) ===
+      console.log("👨‍🏫 Fetching tutor and student data in parallel...");
+      const [tutorDoc, studentDoc] = await Promise.all([
+        admin.firestore().collection("users").doc(tutorId).get(),
+        admin.firestore().collection("users").doc(sessionData.studentId).get(),
+      ]);
 
       if (!tutorDoc.exists) {
         console.log("❌ Tutor not found:", tutorId);
@@ -270,14 +269,6 @@ exports.acceptCall = functions
         );
       }
 
-      // === 4. ПОЛУЧЕНИЕ ДАННЫХ СТУДЕНТА ===
-      console.log("👨‍🎓 Fetching student data...");
-      const studentDoc = await admin
-        .firestore()
-        .collection("users")
-        .doc(sessionData.studentId)
-        .get();
-
       if (!studentDoc.exists) {
         console.log("❌ Student not found:", sessionData.studentId);
         throw new functions.https.HttpsError("not-found", "Student not found");
@@ -322,15 +313,21 @@ exports.acceptCall = functions
           roomName = getRoomNameFromUrl(roomUrl);
         }
         if (roomName) {
-          const existingRoom = await getDailyRoom(roomName);
-          if (!existingRoom) {
-            console.warn(
-              "⚠️ Precreated room not found in Daily, recreating room",
-            );
-            roomUrl = null;
-            roomName = null;
-            roomPrecreated = false;
-            roomCreatedAt = null;
+          // Skip Daily API validation if room was created recently (< 60s)
+          const roomAgeMs = roomCreatedAt ? Date.now() - roomCreatedAt : Infinity;
+          if (roomAgeMs > 60000) {
+            const existingRoom = await getDailyRoom(roomName);
+            if (!existingRoom) {
+              console.warn(
+                "⚠️ Precreated room not found in Daily, recreating room",
+              );
+              roomUrl = null;
+              roomName = null;
+              roomPrecreated = false;
+              roomCreatedAt = null;
+            }
+          } else {
+            console.log("⚡ Skipping room validation - room is fresh (" + roomAgeMs + "ms old)");
           }
         } else {
           roomUrl = null;
@@ -339,18 +336,33 @@ exports.acceptCall = functions
         }
       }
 
+      let studentMeetingToken = null;
+
       if (roomUrl && roomName) {
+        // Create tutor and student tokens in parallel
         try {
-          meetingToken = await createMeetingToken({
-            roomName,
-            expSeconds: 3600,
-            isOwner: false,
-            userId: tutorId,
-            userName: tutorData.display_name || "Tutor",
-          });
+          const studentName = sessionData.studentInfo?.name || studentData.display_name || "Student";
+          const [tutorToken, studentToken] = await Promise.all([
+            createMeetingToken({
+              roomName,
+              expSeconds: 3600,
+              isOwner: false,
+              userId: tutorId,
+              userName: tutorData.display_name || "Tutor",
+            }),
+            createMeetingToken({
+              roomName,
+              expSeconds: 3600,
+              isOwner: true,
+              userId: sessionData.studentId,
+              userName: studentName,
+            }),
+          ]);
+          meetingToken = tutorToken;
+          studentMeetingToken = studentToken;
         } catch (tokenError) {
           console.error(
-            "❌ Failed to create meeting token for precreated room:",
+            "❌ Failed to create meeting tokens for precreated room:",
             tokenError.message,
           );
         }
@@ -362,19 +374,18 @@ exports.acceptCall = functions
           roomName = null;
           roomPrecreated = false;
           roomCreatedAt = null;
+          studentMeetingToken = null;
         }
       }
 
       if (!roomUrl) {
         try {
+          const studentName = sessionData.studentInfo?.name || studentData.display_name || "Student";
           const dailyRoom = await createDailyRoom({
             language: sessionData.language,
             studentId: sessionData.studentId,
             tutorId,
-            studentName:
-              sessionData.studentInfo?.name ||
-              studentData.display_name ||
-              "Student",
+            studentName,
             tutorName: tutorData.display_name || "Tutor",
             expSeconds: 3600,
           });
@@ -382,13 +393,25 @@ exports.acceptCall = functions
           roomName = dailyRoom.name;
           roomCreatedAt = Date.now();
 
-          meetingToken = await createMeetingToken({
-            roomName,
-            expSeconds: 3600,
-            isOwner: false,
-            userId: tutorId,
-            userName: tutorData.display_name || "Tutor",
-          });
+          // Create tutor and student tokens in parallel
+          const [tutorToken, studentToken] = await Promise.all([
+            createMeetingToken({
+              roomName,
+              expSeconds: 3600,
+              isOwner: false,
+              userId: tutorId,
+              userName: tutorData.display_name || "Tutor",
+            }),
+            createMeetingToken({
+              roomName,
+              expSeconds: 3600,
+              isOwner: true,
+              userId: sessionData.studentId,
+              userName: studentName,
+            }),
+          ]);
+          meetingToken = tutorToken;
+          studentMeetingToken = studentToken;
         } catch (roomError) {
           console.error("❌ Failed to create Daily room:", roomError);
           throw new functions.https.HttpsError(
@@ -440,7 +463,7 @@ exports.acceptCall = functions
           }
 
           // Обновляем сессию - добавляем данные для активной сессии
-          transaction.update(sessionRef, {
+          const sessionUpdate = {
             // Обновляем основные поля
             tutorId: tutorId,
             status: "active",
@@ -473,7 +496,14 @@ exports.acceptCall = functions
               roomCreatedAt: roomCreatedAt || Date.now(),
               roomPrecreated: roomPrecreated,
             },
-          });
+          };
+
+          // Store student meeting token in session for faster student join
+          if (studentMeetingToken) {
+            sessionUpdate.studentMeetingToken = studentMeetingToken;
+          }
+
+          transaction.update(sessionRef, sessionUpdate);
 
           // Обновляем статус преподавателя
           transaction.update(
@@ -530,29 +560,27 @@ exports.acceptCall = functions
         };
       }
 
-      // 🔔 === ОТПРАВКА VOIP PUSH СТУДЕНТУ ===
-      console.log("📲 Sending VoIP push notification to student...");
-      try {
-        await sendVoipPushToStudent(sessionData.studentId, {
+      // 🔔 === ОТПРАВКА PUSH + ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ (ПАРАЛЛЕЛЬНО) ===
+      console.log("📲 Sending push + updating notifications in parallel...");
+      await Promise.all([
+        sendVoipPushToStudent(sessionData.studentId, {
           sessionId: sessionId,
           callerName: tutorData.display_name || "Преподаватель",
           callerId: tutorId,
           callerPhoto: tutorData.photo_url || null,
           roomUrl: roomUrl,
-        });
-        console.log("✅ VoIP push notification sent to student");
-      } catch (pushError) {
-        console.error(
-          "⚠️ Failed to send VoIP push (non-critical):",
-          pushError.message,
-        );
-        // Продолжаем работу даже если push не отправился
-      }
-
-      // === 7. ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ ===
-      console.log("🔔 Updating notifications...");
-      await updateNotificationStatus(sessionId, tutorId, "accepted");
-      await cancelOtherNotifications(sessionId, tutorId);
+          meetingToken: studentMeetingToken || "",
+          roomName: roomName || "",
+        }).catch((pushError) => {
+          console.error(
+            "⚠️ Failed to send VoIP push (non-critical):",
+            pushError.message,
+          );
+        }),
+        updateNotificationStatus(sessionId, tutorId, "accepted"),
+        cancelOtherNotifications(sessionId, tutorId),
+      ]);
+      console.log("✅ Push + notifications completed");
 
       // === 8. ПОДГОТОВКА ОТВЕТА ===
       console.log("🎉 Call accepted successfully, preparing response...");
@@ -667,6 +695,8 @@ async function sendVoipPushToStudent(studentId, callData) {
         callerId: callData.callerId,
         callerPhoto: callData.callerPhoto || "",
         roomUrl: callData.roomUrl || "",
+        meetingToken: callData.meetingToken || "",
+        roomName: callData.roomName || "",
       };
 
       try {
@@ -699,6 +729,8 @@ async function sendVoipPushToStudent(studentId, callData) {
         callerId: callData.callerId,
         callerPhoto: callData.callerPhoto || "",
         roomUrl: callData.roomUrl || "",
+        meetingToken: callData.meetingToken || "",
+        roomName: callData.roomName || "",
       },
       apns: {
         headers: {

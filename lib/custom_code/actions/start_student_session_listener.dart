@@ -93,6 +93,11 @@ Future startStudentSessionListener(
           data?['dailyRoomName'] as String?,
           ParamType.String,
         ),
+        // Pass student meeting token from session doc for faster join
+        'meetingToken': serializeParam(
+          data?['studentMeetingToken'] as String?,
+          ParamType.String,
+        ),
       }.withoutNulls,
     );
   });

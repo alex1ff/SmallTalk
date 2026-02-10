@@ -137,18 +137,18 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       );
     });
 
-    // Логируем завершение сессии для аналитики
-    console.log("📊 Logging session end event...");
-    await logSessionEndEvent(sessionId, sessionData, {
-      endedBy: endedBy,
-      endedByRole: endedByRole,
-      endReason: endReason || "manual",
-      duration: duration,
-      endedAt: now,
-    });
-
-    // Отменяем все активные уведомления для этой сессии (на случай если что-то осталось)
-    await cancelAllSessionNotifications(sessionId);
+    // Логируем завершение + отменяем уведомления параллельно
+    console.log("📊 Logging session end + canceling notifications in parallel...");
+    await Promise.all([
+      logSessionEndEvent(sessionId, sessionData, {
+        endedBy: endedBy,
+        endedByRole: endedByRole,
+        endReason: endReason || "manual",
+        duration: duration,
+        endedAt: now,
+      }),
+      cancelAllSessionNotifications(sessionId),
+    ]);
 
     console.log("🎉 Session ended successfully");
 
