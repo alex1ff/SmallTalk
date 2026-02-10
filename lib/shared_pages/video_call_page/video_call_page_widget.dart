@@ -51,6 +51,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   bool _tokenLoading = false;
   String? _lastTokenSessionId;
   bool _didNavigateToSummary = false;
+  String? _lastLoggedTokenSource;
+  String? _lastLoggedRoomName;
+  String? _lastLoggedRoomUrl;
 
   @override
   void initState() {
@@ -192,6 +195,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             '';
         final resolvedMeetingToken =
             _nonEmpty(_freshMeetingToken) ?? _nonEmpty(widget.initialMeetingToken);
+        final resolvedRoomName =
+            _nonEmpty(videoCallPageVideoSessionsRecord?.dailyRoomName) ??
+                _nonEmpty(widget.initialRoomName);
         final resolvedLanguage = _nonEmpty(
               videoCallPageVideoSessionsRecord?.language,
             ) ??
@@ -201,6 +207,24 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             currentUserUid != null &&
             currentUserUid ==
                 _nonEmpty(videoCallPageVideoSessionsRecord?.studentId);
+
+        if (kDebugMode) {
+          final tokenSource = _nonEmpty(_freshMeetingToken) != null
+              ? 'getSessionTokens'
+              : (_nonEmpty(widget.initialMeetingToken) != null
+                  ? 'prefetch/initial'
+                  : 'none');
+          if (tokenSource != _lastLoggedTokenSource ||
+              resolvedRoomName != _lastLoggedRoomName ||
+              resolvedRoomUrl != _lastLoggedRoomUrl) {
+            _lastLoggedTokenSource = tokenSource;
+            _lastLoggedRoomName = resolvedRoomName;
+            _lastLoggedRoomUrl = resolvedRoomUrl;
+            debugPrint(
+              '🎟️ Token source: $tokenSource | roomName: ${resolvedRoomName ?? "null"} | roomUrl: ${resolvedRoomUrl.isNotEmpty ? "present" : "missing"}',
+            );
+          }
+        }
 
         if (_isValidRoomUrl(resolvedRoomUrl) &&
             resolvedMeetingToken == null &&

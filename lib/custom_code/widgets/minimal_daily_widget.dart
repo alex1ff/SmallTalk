@@ -793,8 +793,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Future<void> _handleConnectionError(dynamic error) async {
     if (!mounted) return;
 
+    final message = error.toString().toLowerCase();
+    final isTokenError =
+        message.contains('sigauthz') || message.contains('token');
+
     final refreshed = await _tryRefreshTokenOnError(error);
     if (refreshed) {
+      return;
+    }
+
+    if (isTokenError && _tokenRefreshAttempts >= _maxTokenRefreshAttempts) {
+      _updateState(_state.copyWith(
+        connectionState: ConnectionState.failed,
+        error: 'Ошибка токена, перезапустите звонок',
+      ));
       return;
     }
 

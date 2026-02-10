@@ -1,7 +1,9 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const {
+  createDailyRoom,
   createMeetingToken,
+  getDailyRoom,
   getRoomNameFromUrl,
 } = require("./daily_room");
 
@@ -47,7 +49,7 @@ exports.getSessionTokens = functions
     );
   }
 
-  const roomUrl = sessionData.dailyRoomUrl || null;
+  let roomUrl = sessionData.dailyRoomUrl || null;
   if (!roomUrl) {
     throw new functions.https.HttpsError(
       "failed-precondition",
@@ -55,13 +57,37 @@ exports.getSessionTokens = functions
     );
   }
 
-  const roomName =
+  let roomName =
     sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
   if (!roomName) {
     throw new functions.https.HttpsError(
       "internal",
       "Unable to resolve room name",
     );
+  }
+
+  const existingRoom = await getDailyRoom(roomName);
+  if (!existingRoom) {
+    const dailyRoom = await createDailyRoom({
+      language: sessionData.language || "en",
+      studentId: sessionData.studentId,
+      tutorId: sessionData.tutorId,
+      studentName: sessionData.studentInfo?.name || "Student",
+      tutorName: sessionData.tutorInfo?.name || "Tutor",
+      expSeconds: 15 * 60,
+    });
+    roomUrl = dailyRoom.url;
+    roomName = dailyRoom.name;
+    try {
+      await sessionDoc.ref.update({
+        dailyRoomUrl: roomUrl,
+        dailyRoomName: roomName,
+        "sessionMetadata.roomRecoveredAt": Date.now(),
+        "sessionMetadata.roomPrecreated": false,
+      });
+    } catch (e) {
+      console.error("⚠️ Failed to update recovered room info:", e.message);
+    }
   }
 
   let userName = isStudent
