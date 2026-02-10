@@ -408,6 +408,20 @@ class VoIPService {
       return;
     }
 
+    // Перед acceptCall проверим, не активна ли уже сессия для этого преподавателя
+    final recovered = await _tryRecoverActiveSession(sessionId);
+    if (recovered) {
+      _acceptedSessions.add(sessionId);
+      _tryNavigateToVideoCall(
+        sessionId: sessionId,
+        isTutor: true,
+        roomUrl: _lastRoomUrl,
+        meetingToken: _lastMeetingToken,
+        roomName: _lastRoomName,
+      );
+      return;
+    }
+
     // Вызываем Cloud Function acceptCall
     debugPrint('☁️ VoIPService: Calling acceptCall function...');
     final result = await _functions
@@ -461,10 +475,49 @@ class VoIPService {
 
   } catch (e) {
     debugPrint('❌ VoIPService: Error accepting call: $e');
+    final recovered = await _tryRecoverActiveSession(sessionId);
+    if (recovered) {
+      _acceptedSessions.add(sessionId);
+      _tryNavigateToVideoCall(
+        sessionId: sessionId,
+        isTutor: true,
+        roomUrl: _lastRoomUrl,
+        meetingToken: _lastMeetingToken,
+        roomName: _lastRoomName,
+      );
+    }
   } finally {
     _acceptInProgress.remove(sessionId);
   }
 }
+
+  Future<bool> _tryRecoverActiveSession(String sessionId) async {
+    try {
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) return false;
+      final sessionDoc =
+          await _firestore.collection('videoSessions').doc(sessionId).get();
+      if (!sessionDoc.exists) return false;
+      final data = sessionDoc.data();
+      if (data == null) return false;
+      final status = data['status'] as String?;
+      final tutorId = data['tutorId'] as String?;
+      final roomUrl = data['dailyRoomUrl'] as String?;
+      if (roomUrl == null || roomUrl.isEmpty) return false;
+      if (tutorId != userId) return false;
+      if (status != 'active' && status != 'connecting') return false;
+
+      _lastAcceptedIsTutor = true;
+      _lastRoomUrl = roomUrl;
+      _lastRoomName = data['dailyRoomName'] as String?;
+      _lastMeetingToken = null;
+      unawaited(_prefetchSessionTokens(sessionId));
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ VoIPService: Recovery check failed: $e');
+      return false;
+    }
+  }
 
   String? _getFreshPrefetchedToken(String sessionId) {
     if (_prefetchedSessionId != sessionId ||

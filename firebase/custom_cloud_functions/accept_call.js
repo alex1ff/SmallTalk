@@ -82,7 +82,10 @@ exports.acceptCall = functions
                 expSeconds: 3600,
                 isOwner: false,
                 userId: tutorId,
-                userName: tutorData.display_name || "Tutor",
+                userName:
+                  sessionData.tutorInfo?.name ||
+                  sessionData.tutorName ||
+                  "Tutor",
               });
             } catch (tokenError) {
               console.error(
@@ -315,35 +318,45 @@ exports.acceptCall = functions
         );
       }
 
-      // 🔔 === ОТПРАВКА VOIP PUSH СТУДЕНТУ (ДОБАВЛЕНО) ===
-      console.log("📲 Sending VoIP push notification to student...");
-      try {
-        await sendVoipPushToStudent(sessionData.studentId, {
-          sessionId: sessionId,
-          callerName: tutorData.display_name || "Преподаватель",
-          callerId: tutorId,
-          callerPhoto: tutorData.photo_url || null,
-          roomUrl: roomUrl,
-        });
-        console.log("✅ VoIP push notification sent to student");
-      } catch (pushError) {
-        console.error(
-          "⚠️ Failed to send VoIP push (non-critical):",
-          pushError.message,
-        );
-        // Продолжаем работу даже если push не отправился
-      }
-
       // === 6. ОБНОВЛЕНИЕ СЕССИИ В ТРАНЗАКЦИИ ===
       console.log("🔄 Updating session and user statuses in transaction...");
       const activeExpiresAt = admin.firestore.Timestamp.fromDate(
         new Date(Date.now() + 60 * 60 * 1000),
       );
-      await admin.firestore().runTransaction(async (transaction) => {
-        // Обновляем сессию - добавляем данные для активной сессии
-        transaction.update(
-          admin.firestore().collection("videoSessions").doc(sessionId),
-          {
+      const sessionRef = admin
+        .firestore()
+        .collection("videoSessions")
+        .doc(sessionId);
+      const txnResult = await admin
+        .firestore()
+        .runTransaction(async (transaction) => {
+          const freshSnap = await transaction.get(sessionRef);
+          if (!freshSnap.exists) {
+            throw new functions.https.HttpsError(
+              "not-found",
+              "Video session not found",
+            );
+          }
+          const fresh = freshSnap.data();
+          if (
+            fresh.status !== "searching" ||
+            fresh.currentTutorId !== tutorId
+          ) {
+            if (
+              ["active", "connecting"].includes(fresh.status) &&
+              fresh.tutorId === tutorId &&
+              fresh.dailyRoomUrl
+            ) {
+              return { alreadyAccepted: true, session: fresh };
+            }
+            throw new functions.https.HttpsError(
+              "invalid-argument",
+              "Session is already active",
+            );
+          }
+
+          // Обновляем сессию - добавляем данные для активной сессии
+          transaction.update(sessionRef, {
             // Обновляем основные поля
             tutorId: tutorId,
             status: "active",
@@ -375,17 +388,81 @@ exports.acceptCall = functions
               roomCreatedAt: roomCreatedAt || Date.now(),
               roomPrecreated: roomPrecreated,
             },
-          },
-        );
+          });
 
-        // Обновляем статус преподавателя
-        transaction.update(admin.firestore().collection("users").doc(tutorId), {
-          isInCall: true,
-          currentSessionId: sessionId,
+          // Обновляем статус преподавателя
+          transaction.update(
+            admin.firestore().collection("users").doc(tutorId),
+            {
+              isInCall: true,
+              currentSessionId: sessionId,
+            },
+          );
+
+          console.log("✅ Transaction completed successfully");
+          return { alreadyAccepted: false };
         });
 
-        console.log("✅ Transaction completed successfully");
-      });
+      if (txnResult?.alreadyAccepted) {
+        console.log(
+          "ℹ️ Session already active for this tutor (txn), returning existing room",
+        );
+        const existing = txnResult.session || {};
+        const existingRoomUrl = existing.dailyRoomUrl;
+        const existingRoomName =
+          existing.dailyRoomName || getRoomNameFromUrl(existingRoomUrl);
+        let existingMeetingToken = null;
+        if (existingRoomName) {
+          try {
+            existingMeetingToken = await createMeetingToken({
+              roomName: existingRoomName,
+              expSeconds: 3600,
+              isOwner: false,
+              userId: tutorId,
+              userName: tutorData.display_name || "Tutor",
+            });
+          } catch (tokenError) {
+            console.error(
+              "⚠️ Failed to create meeting token for existing room:",
+              tokenError.message,
+            );
+          }
+        }
+
+        return {
+          status: "connected",
+          sessionId: sessionId,
+          roomUrl: existingRoomUrl,
+          roomName: existingRoomName || null,
+          meetingToken: existingMeetingToken || null,
+          studentInfo: existing.studentInfo || null,
+          sessionData: {
+            language: existing.language,
+            startedAt:
+              existing.startedAt?.toMillis?.() || existing.startedAt || null,
+            maxDuration: 3600000,
+          },
+        };
+      }
+
+      // 🔔 === ОТПРАВКА VOIP PUSH СТУДЕНТУ ===
+      console.log("📲 Sending VoIP push notification to student...");
+      try {
+        await sendVoipPushToStudent(sessionData.studentId, {
+          sessionId: sessionId,
+          callerName: tutorData.display_name || "Преподаватель",
+          callerId: tutorId,
+          callerPhoto: tutorData.photo_url || null,
+          roomUrl: roomUrl,
+        });
+        console.log("✅ VoIP push notification sent to student");
+      } catch (pushError) {
+        console.error(
+          "⚠️ Failed to send VoIP push (non-critical):",
+          pushError.message,
+        );
+        // Продолжаем работу даже если push не отправился
+      }
 
       // === 7. ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ ===
       console.log("🔔 Updating notifications...");
