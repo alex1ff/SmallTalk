@@ -1,8 +1,12 @@
 const axios = require("axios");
 
 function getDailyEnv() {
-  const apiKey = process.env.DAILY_API_KEY;
-  const domain = process.env.DAILY_DOMAIN;
+  const apiKey = process.env.DAILY_API_KEY
+    ? String(process.env.DAILY_API_KEY).trim()
+    : "";
+  const domain = process.env.DAILY_DOMAIN
+    ? String(process.env.DAILY_DOMAIN).trim()
+    : "";
   if (!apiKey) {
     throw new Error("DAILY_API_KEY environment variable not set");
   }
