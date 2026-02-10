@@ -52,11 +52,10 @@ Future startStudentSessionListener(
         status == 'active' ||
         status == 'connected';
     final studentTriggered = data?['studentNavigationTriggered'] == true;
-    final hasRoomUrl = (data?['roomUrl'] as String?)?.isNotEmpty ?? false;
-    final hasMeetingToken =
-        (data?['meetingToken'] as String?)?.isNotEmpty ?? false;
+    final hasRoomUrl =
+        (data?['dailyRoomUrl'] as String?)?.isNotEmpty ?? false;
 
-    if (!(isActive || studentTriggered || hasRoomUrl || hasMeetingToken)) {
+    if (!(isActive || studentTriggered || hasRoomUrl)) {
       return;
     }
 
@@ -88,10 +87,6 @@ Future startStudentSessionListener(
         ),
         'roomUrl': serializeParam(
           data?['dailyRoomUrl'] as String?,
-          ParamType.String,
-        ),
-        'meetingToken': serializeParam(
-          data?['meetingToken'] as String?,
           ParamType.String,
         ),
         'roomName': serializeParam(

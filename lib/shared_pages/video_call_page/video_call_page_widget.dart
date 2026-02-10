@@ -190,7 +190,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             _nonEmpty(videoCallPageVideoSessionsRecord?.dailyRoomUrl) ??
             _nonEmpty(widget.initialRoomUrl) ??
             '';
-        final resolvedMeetingToken = _nonEmpty(_freshMeetingToken);
+        final resolvedMeetingToken =
+            _nonEmpty(_freshMeetingToken) ?? _nonEmpty(widget.initialMeetingToken);
         final resolvedLanguage = _nonEmpty(
               videoCallPageVideoSessionsRecord?.language,
             ) ??
@@ -207,7 +208,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted &&
                 !_tokenLoading &&
-                _freshMeetingToken == null) {
+                _freshMeetingToken == null &&
+                _nonEmpty(widget.initialMeetingToken) == null) {
               unawaited(_fetchSessionTokens());
             }
           });

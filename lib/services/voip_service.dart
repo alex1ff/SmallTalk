@@ -44,6 +44,12 @@ class VoIPService {
   String? _lastRoomUrl;
   String? _lastMeetingToken;
   String? _lastRoomName;
+  String? _prefetchedSessionId;
+  String? _prefetchedMeetingToken;
+  String? _prefetchedRoomUrl;
+  String? _prefetchedRoomName;
+  DateTime? _prefetchedTokenFetchedAt;
+  bool _prefetchInProgress = false;
   final Map<String, String> _sessionCallKitIds = {};
   String? _lastCallKitId;
 
@@ -364,6 +370,7 @@ class VoIPService {
       _lastMeetingToken =
           hasPayloadMeetingToken ? payloadMeetingToken as String : null;
       _lastRoomName = payloadRoomName is String ? payloadRoomName : null;
+      unawaited(_prefetchSessionTokens(sessionId));
       final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
       await videoDocRef.update({
         'studentNavigationTriggered': true,
@@ -408,6 +415,7 @@ class VoIPService {
     _lastMeetingToken =
         responseMeetingToken is String ? responseMeetingToken : null;
     _lastRoomName = responseRoomName is String ? responseRoomName : null;
+    unawaited(_prefetchSessionTokens(sessionId));
 
     // Создаем DocumentReference на videoSession
     final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
@@ -438,6 +446,29 @@ class VoIPService {
   }
 }
 
+  String? _getFreshPrefetchedToken(String sessionId) {
+    if (_prefetchedSessionId != sessionId ||
+        _prefetchedMeetingToken == null ||
+        _prefetchedTokenFetchedAt == null) {
+      return null;
+    }
+    final age = DateTime.now().difference(_prefetchedTokenFetchedAt!);
+    if (age.inMinutes >= 2) {
+      return null;
+    }
+    return _prefetchedMeetingToken;
+  }
+
+  String? _getPrefetchedRoomUrl(String sessionId) {
+    if (_prefetchedSessionId != sessionId) return null;
+    return _prefetchedRoomUrl;
+  }
+
+  String? _getPrefetchedRoomName(String sessionId) {
+    if (_prefetchedSessionId != sessionId) return null;
+    return _prefetchedRoomName;
+  }
+
   void _tryNavigateToVideoCall({
     required String sessionId,
     required bool isTutor,
@@ -464,17 +495,23 @@ class VoIPService {
     }
 
     const route = '/videoCallPage';
+    final effectiveMeetingToken =
+        _getFreshPrefetchedToken(sessionId) ?? meetingToken;
+    final effectiveRoomUrl =
+        roomUrl ?? _getPrefetchedRoomUrl(sessionId);
+    final effectiveRoomName =
+        roomName ?? _getPrefetchedRoomName(sessionId);
     final params = <String, String>{
       'videoDocRef': sessionId,
     };
-    if (roomUrl != null && roomUrl.isNotEmpty) {
-      params['roomUrl'] = Uri.encodeComponent(roomUrl);
+    if (effectiveRoomUrl != null && effectiveRoomUrl.isNotEmpty) {
+      params['roomUrl'] = Uri.encodeComponent(effectiveRoomUrl);
     }
-    if (meetingToken != null && meetingToken.isNotEmpty) {
-      params['meetingToken'] = Uri.encodeComponent(meetingToken);
+    if (effectiveMeetingToken != null && effectiveMeetingToken.isNotEmpty) {
+      params['meetingToken'] = Uri.encodeComponent(effectiveMeetingToken);
     }
-    if (roomName != null && roomName.isNotEmpty) {
-      params['roomName'] = Uri.encodeComponent(roomName);
+    if (effectiveRoomName != null && effectiveRoomName.isNotEmpty) {
+      params['roomName'] = Uri.encodeComponent(effectiveRoomName);
     }
     final query = params.entries.map((e) => '${e.key}=${e.value}').join('&');
     final target = '$route?$query';
@@ -557,7 +594,8 @@ class VoIPService {
         sessionId: _lastAcceptedSessionId!,
         isTutor: _lastAcceptedIsTutor,
         roomUrl: _lastRoomUrl,
-        meetingToken: _lastMeetingToken,
+        meetingToken: _getFreshPrefetchedToken(_lastAcceptedSessionId!) ??
+            _lastMeetingToken,
         roomName: _lastRoomName,
       );
     }
@@ -666,7 +704,45 @@ class VoIPService {
       _pendingRoomName = null;
       _navRetryInProgress = false;
     }
+    if (_prefetchedSessionId == sessionId) {
+      _prefetchedSessionId = null;
+      _prefetchedMeetingToken = null;
+      _prefetchedRoomUrl = null;
+      _prefetchedRoomName = null;
+      _prefetchedTokenFetchedAt = null;
+      _prefetchInProgress = false;
+    }
     _sessionCallKitIds.remove(sessionId);
+  }
+
+  Future<void> _prefetchSessionTokens(String sessionId) async {
+    if (_prefetchInProgress && _prefetchedSessionId == sessionId) return;
+    _prefetchInProgress = true;
+    _prefetchedSessionId = sessionId;
+    try {
+      final result = await _functions
+          .httpsCallable('getSessionTokens')
+          .call({'sessionId': sessionId});
+      final data = result.data as Map<String, dynamic>? ?? {};
+      final token = data['meetingToken'] as String?;
+      final roomUrl = data['roomUrl'] as String?;
+      final roomName = data['roomName'] as String?;
+
+      if (token != null && token.isNotEmpty) {
+        _prefetchedMeetingToken = token;
+        _prefetchedTokenFetchedAt = DateTime.now();
+      }
+      if (roomUrl != null && roomUrl.isNotEmpty) {
+        _prefetchedRoomUrl = roomUrl;
+      }
+      if (roomName != null && roomName.isNotEmpty) {
+        _prefetchedRoomName = roomName;
+      }
+    } catch (e) {
+      debugPrint('⚠️ VoIPService: Prefetch token failed: $e');
+    } finally {
+      _prefetchInProgress = false;
+    }
   }
 
   /// Отметить звонок как подключенный (CallKit)
