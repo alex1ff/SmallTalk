@@ -357,7 +357,6 @@ exports.createVideoSession = functions
         // Активная сессия (пока null)
         dailyRoomUrl: precreatedRoomUrl,
         dailyRoomName: precreatedRoomName,
-        meetingToken: precreatedMeetingToken,
         acceptedAt: null,
         startedAt: null,
         endedAt: null,

@@ -73,9 +73,9 @@ exports.acceptCall = functions
           let existingRoomName =
             sessionData.dailyRoomName ||
             getRoomNameFromUrl(sessionData.dailyRoomUrl);
-          let existingMeetingToken = sessionData.meetingToken || null;
+          let existingMeetingToken = null;
 
-          if (!existingMeetingToken && existingRoomName) {
+          if (existingRoomName) {
             try {
               existingMeetingToken = await createMeetingToken({
                 roomName: existingRoomName,
@@ -236,7 +236,7 @@ exports.acceptCall = functions
       let roomUrl = sessionData.dailyRoomUrl || null;
       let roomName =
         sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
-      let meetingToken = sessionData.meetingToken || null;
+      let meetingToken = null;
       let roomPrecreated = false;
       let roomCreatedAt = sessionData.sessionMetadata?.roomCreatedAt || null;
 
@@ -247,7 +247,7 @@ exports.acceptCall = functions
           roomUrl,
           hasToken: !!meetingToken,
         });
-        if (!meetingToken && roomName) {
+        if (roomName) {
           try {
             meetingToken = await createMeetingToken({
               roomName,
