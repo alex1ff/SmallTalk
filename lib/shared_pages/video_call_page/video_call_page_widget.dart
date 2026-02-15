@@ -19,6 +19,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 
+import '/services/voip_service.dart';
 import 'video_call_page_model.dart';
 export 'video_call_page_model.dart';
 
@@ -255,10 +256,13 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         // status changes to "ended" / "cancelled". Detect this and
         // navigate to summary immediately instead of waiting for the
         // Daily SDK participantLeft timer.
+        // Also end the native CallKit/ConnectionService UI so the
+        // iPhone call screen is dismissed.
         if ((sessionStatus == 'ended' || sessionStatus == 'cancelled') &&
             !_didNavigateToSummary) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && !_didNavigateToSummary) {
+              unawaited(VoIPService().endCurrentCall());
               _navigateToSummary(videoCallPageVideoSessionsRecord);
             }
           });

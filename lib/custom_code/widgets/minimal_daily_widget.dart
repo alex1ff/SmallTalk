@@ -2140,6 +2140,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
 
+    // End the native call UI (CallKit / ConnectionService) as a safety net.
+    // This covers cases where the widget is disposed before participantLeft
+    // fires (e.g. Firestore status-driven navigation).
+    unawaited(_endSystemCallUi());
+
     // Synchronous cleanup of timers
     for (final timer in _activeTimers) {
       timer.cancel();
