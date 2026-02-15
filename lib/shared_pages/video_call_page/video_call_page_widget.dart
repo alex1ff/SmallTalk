@@ -60,7 +60,18 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => VideoCallPageModel());
-    unawaited(_fetchSessionTokens());
+    // Only fetch session tokens if we don't already have valid initial data.
+    // When the student arrives via VoIP push, initialRoomUrl + initialMeetingToken
+    // are already set. Fetching again returns a DIFFERENT token, which used to
+    // trigger MinimalDailyWidget.didUpdateWidget → cleanup → re-init, destroying
+    // the active Daily connection mid-join and causing crashes.
+    final hasInitialRoom = widget.initialRoomUrl != null &&
+        widget.initialRoomUrl!.trim().isNotEmpty;
+    final hasInitialToken = widget.initialMeetingToken != null &&
+        widget.initialMeetingToken!.trim().isNotEmpty;
+    if (!hasInitialRoom || !hasInitialToken) {
+      unawaited(_fetchSessionTokens());
+    }
   }
 
   @override
