@@ -1,9 +1,16 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
+// ─── Pricing ────────────────────────────────────────────────────────────────
+// Student pays ~45-50 RUB/min (10 SmallTalks = 4990₽, 20 SmallTalks = 8900₽)
+// 1 SmallTalk = 10 minutes
+const TUTOR_RATE_PER_MINUTE = 15; // 15 RUB/min paid to tutor
+// Platform margin: ~30-35 RUB/min
+
 /*
-НОВАЯ ФУНКЦИЯ: endSession
-Завершает активную видео сессию и освобождает участников
+endSession
+Завершает активную видео сессию, списывает баланс студента,
+начисляет заработок преподавателю, создаёт транзакции и обновляет статистику.
 */
 
 exports.endSession = functions.https.onCall(async (data, context) => {
@@ -90,19 +97,37 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       sessionData.createdAt?.toMillis() ||
       now;
     const duration = Math.max(0, Math.floor((now - startTime) / 1000)); // в секундах
+    const durationMinutes = Math.max(1, Math.ceil(duration / 60)); // в минутах, минимум 1
+    const tutorEarning = parseFloat((durationMinutes * TUTOR_RATE_PER_MINUTE).toFixed(2));
+    const amountST = parseFloat((durationMinutes / 10).toFixed(2)); // в SmallTalks
 
-    console.log("⏱️ Session duration:", duration, "seconds");
+    console.log("⏱️ Session duration:", duration, "seconds /", durationMinutes, "minutes");
     console.log("👤 Ended by:", endedByRole, endedBy);
+    console.log("💰 Tutor earning:", tutorEarning, "RUB | Student charge:", amountST, "ST");
 
-    // Обновляем сессию в транзакции
+    // ─── MAIN TRANSACTION (fast, affects UX) ────────────────────────────────
+    // 1. Set session status = ended
+    // 2. Release tutor
+    // 3. Deduct student balance (atomic with session end to prevent double-charge)
     await admin.firestore().runTransaction(async (transaction) => {
-      // Обновляем статус сессии
+      // Read student doc inside transaction for consistent balance read
+      const studentDocRef = admin.firestore().collection("users").doc(sessionData.studentId);
+      const studentDoc = await transaction.get(studentDocRef);
+      const studentData = studentDoc.exists ? studentDoc.data() : {};
+      const currentMinutes = studentData?.balanceST?.minutes || 0;
+      const newMinutes = Math.max(0, currentMinutes - durationMinutes);
+      const newSmallTalks = Math.floor(newMinutes / 10);
+
+      console.log("📉 Student balance: ", currentMinutes, "→", newMinutes, "minutes,", newSmallTalks, "ST");
+
+      // 1. Update session status
       transaction.update(
         admin.firestore().collection("videoSessions").doc(sessionId),
         {
           status: "ended",
           endedAt: admin.firestore.FieldValue.serverTimestamp(),
           duration: duration,
+          durationMinutes: durationMinutes,
           tutorNavigationTriggered: false,
           studentNavigationTriggered: false,
           sessionMetadata: {
@@ -116,7 +141,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         },
       );
 
-      // Освобождаем преподавателя, если он участвовал
+      // 2. Release tutor
       if (sessionData.tutorId) {
         console.log("👨‍🏫 Releasing tutor:", sessionData.tutorId);
         transaction.update(
@@ -126,33 +151,22 @@ exports.endSession = functions.https.onCall(async (data, context) => {
             isAvailable: true,
             currentSessionId: admin.firestore.FieldValue.delete(),
             lastCallEndedAt: admin.firestore.FieldValue.serverTimestamp(),
-            // Убираем временную недоступность
             availableAfter: admin.firestore.FieldValue.delete(),
           },
         );
       }
 
-      console.log(
-        "✅ Transaction completed - session ended and participants released",
-      );
+      // 3. Deduct student balance
+      transaction.update(studentDocRef, {
+        "balanceST.minutes": newMinutes,
+        "balanceST.smallTalks": newSmallTalks,
+      });
+
+      console.log("✅ Transaction completed - session ended, tutor released, student charged");
     });
 
-    // Логируем завершение + отменяем уведомления параллельно
-    console.log("📊 Logging session end + canceling notifications in parallel...");
-    await Promise.all([
-      logSessionEndEvent(sessionId, sessionData, {
-        endedBy: endedBy,
-        endedByRole: endedByRole,
-        endReason: endReason || "manual",
-        duration: duration,
-        endedAt: now,
-      }),
-      cancelAllSessionNotifications(sessionId),
-    ]);
-
-    console.log("🎉 Session ended successfully");
-
-    return {
+    // Return response to client IMMEDIATELY — all remaining writes are background
+    const response = {
       status: "ended",
       message: "Session ended successfully",
       sessionId: sessionId,
@@ -160,6 +174,120 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       endedBy: endedByRole,
       endedAt: now,
     };
+
+    // ─── BACKGROUND OPERATIONS (non-blocking for UX) ──────────────────────
+    // These run in parallel after the response is conceptually ready.
+    // We still await them on the server so Cloud Functions doesn't terminate early.
+    console.log("📊 Running background billing, stats & notifications...");
+
+    const db = admin.firestore();
+    const studentRef = db.collection("users").doc(sessionData.studentId);
+    const tutorRef = sessionData.tutorId
+      ? db.collection("users").doc(sessionData.tutorId)
+      : null;
+    const todayStr = new Date().toISOString().slice(0, 10); // "2026-02-15"
+
+    const backgroundTasks = [];
+
+    // a) Student transaction document
+    backgroundTasks.push(
+      db.collection("transactions").add({
+        userId: studentRef,
+        type: "call_charge",
+        status: "completed",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        amount_ST: amountST,
+        callDuration: durationMinutes,
+        sessionId: sessionId,
+      }).catch((e) => console.error("❌ Student transaction doc failed:", e))
+    );
+
+    // b) Tutor balance update + c) Tutor transaction document
+    if (tutorRef) {
+      // b) Increment tutor balance
+      backgroundTasks.push(
+        tutorRef.update({
+          balance_NS: admin.firestore.FieldValue.increment(tutorEarning),
+        }).catch((e) => console.error("❌ Tutor balance update failed:", e))
+      );
+
+      // c) Tutor transaction document
+      backgroundTasks.push(
+        db.collection("transactions").add({
+          userId: tutorRef,
+          type: "earning",
+          status: "completed",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          amount: tutorEarning,
+          callDuration: durationMinutes,
+          sessionId: sessionId,
+        }).catch((e) => console.error("❌ Tutor transaction doc failed:", e))
+      );
+    }
+
+    // d) Analytics summary (single document, atomic increments)
+    backgroundTasks.push(
+      db.collection("analytics").doc("summary").set({
+        totalCalls: admin.firestore.FieldValue.increment(1),
+        totalTransactions: admin.firestore.FieldValue.increment(tutorRef ? 2 : 1),
+        totalDurationMinutes: admin.firestore.FieldValue.increment(durationMinutes),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true }).catch((e) => console.error("❌ Analytics summary failed:", e))
+    );
+
+    // e) Student stats (all-time + today)
+    backgroundTasks.push(
+      studentRef.collection("stats").doc("allTime").set({
+        totalCalls: admin.firestore.FieldValue.increment(1),
+        totalMinutes: admin.firestore.FieldValue.increment(durationMinutes),
+        isAllTime: true,
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true }).catch((e) => console.error("❌ Student allTime stats failed:", e))
+    );
+
+    backgroundTasks.push(
+      studentRef.collection("stats").doc(todayStr).set({
+        callsToday: admin.firestore.FieldValue.increment(1),
+        minutesToday: admin.firestore.FieldValue.increment(durationMinutes),
+        date: new Date(todayStr + "T00:00:00Z"),
+        isAllTime: false,
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true }).catch((e) => console.error("❌ Student today stats failed:", e))
+    );
+
+    // f) Tutor stats (all-time + today)
+    if (tutorRef) {
+      backgroundTasks.push(
+        tutorRef.collection("stats").doc("allTime").set({
+          totalCalls: admin.firestore.FieldValue.increment(1),
+          totalMinutes: admin.firestore.FieldValue.increment(durationMinutes),
+          totalEarned: admin.firestore.FieldValue.increment(tutorEarning),
+          isAllTime: true,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true }).catch((e) => console.error("❌ Tutor allTime stats failed:", e))
+      );
+
+      backgroundTasks.push(
+        tutorRef.collection("stats").doc(todayStr).set({
+          callsToday: admin.firestore.FieldValue.increment(1),
+          minutesToday: admin.firestore.FieldValue.increment(durationMinutes),
+          earnedToday: admin.firestore.FieldValue.increment(tutorEarning),
+          date: new Date(todayStr + "T00:00:00Z"),
+          isAllTime: false,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true }).catch((e) => console.error("❌ Tutor today stats failed:", e))
+      );
+    }
+
+    // g) Cancel notifications
+    backgroundTasks.push(
+      cancelAllSessionNotifications(sessionId)
+    );
+
+    await Promise.all(backgroundTasks);
+    console.log("🎉 Session ended successfully with billing complete");
+
+    return response;
   } catch (error) {
     console.error("❌ Error ending session:", error);
 
@@ -170,33 +298,6 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("internal", error.message);
   }
 });
-
-// ЛОГИРОВАНИЕ ЗАВЕРШЕНИЯ СЕССИИ
-async function logSessionEndEvent(sessionId, sessionData, endEventData) {
-  try {
-    const analyticsData = {
-      event: "session_ended",
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      sessionId: sessionId,
-      studentId: sessionData.studentId,
-      tutorId: sessionData.tutorId,
-      language: sessionData.language,
-      duration: endEventData.duration,
-      endReason: endEventData.endReason,
-      endedBy: endEventData.endedBy,
-      endedByRole: endEventData.endedByRole,
-      sessionStartedAt: sessionData.startedAt?.toMillis() || null,
-      sessionAcceptedAt: sessionData.acceptedAt?.toMillis() || null,
-      version: "2.0",
-    };
-
-    await admin.firestore().collection("analytics").add(analyticsData);
-
-    console.log("✅ Session end event logged successfully");
-  } catch (error) {
-    console.error("❌ Error logging session end event:", error);
-  }
-}
 
 // ОТМЕНА ВСЕХ УВЕДОМЛЕНИЙ ДЛЯ СЕССИИ
 async function cancelAllSessionNotifications(sessionId) {
