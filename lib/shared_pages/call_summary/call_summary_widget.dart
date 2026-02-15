@@ -128,10 +128,12 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             mainAxisSize: MainAxisSize.max,
                             children: [
                               Text(
-                                '${valueOrDefault<String>(
-                                  widget!.dur.toString(),
-                                  '0',
-                                )} мин',
+                                () {
+                                  final totalSeconds = widget!.dur;
+                                  final minutes = totalSeconds ~/ 60;
+                                  final seconds = totalSeconds % 60;
+                                  return '$minutes:${seconds.toString().padLeft(2, '0')} мин';
+                                }(),
                                 style: FlutterFlowTheme.of(context)
                                     .bodyMedium
                                     .override(

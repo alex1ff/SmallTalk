@@ -1463,8 +1463,17 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return null;
     }
 
+    // Remote participant just left — call is ending, not "waiting".
+    if (_remoteLeftTimer != null) {
+      return 'Звонок завершается...';
+    }
+
     final status = widget.sessionStatus?.trim().toLowerCase();
     final isStudent = widget.isStudent == true;
+
+    if (status == 'ended' || status == 'cancelled') {
+      return 'Звонок завершается...';
+    }
 
     if (status == 'searching' && isStudent) {
       return 'Ищем преподавателя...';
