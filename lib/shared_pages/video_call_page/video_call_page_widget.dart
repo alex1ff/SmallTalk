@@ -251,6 +251,19 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
           });
         }
 
+        // When the OTHER side calls endSession, the Firestore document
+        // status changes to "ended" / "cancelled". Detect this and
+        // navigate to summary immediately instead of waiting for the
+        // Daily SDK participantLeft timer.
+        if ((sessionStatus == 'ended' || sessionStatus == 'cancelled') &&
+            !_didNavigateToSummary) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_didNavigateToSummary) {
+              _navigateToSummary(videoCallPageVideoSessionsRecord);
+            }
+          });
+        }
+
         return GestureDetector(
           onTap: () {
             FocusScope.of(context).unfocus();

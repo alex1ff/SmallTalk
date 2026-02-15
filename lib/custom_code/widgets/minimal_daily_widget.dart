@@ -179,7 +179,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   static const int _baseRetryDelayMs = 1000;
   static const int _maxRetryDelayMs = 30000;
   static const int _captionClearDelayMs = 20000; // Increased to 20 seconds
-  static const int _remoteVideoGraceMs = 4000;
+  static const int _remoteVideoGraceMs = 2000;
 
   @override
   void initState() {
@@ -603,7 +603,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return;
     }
     _remoteLeftTimer?.cancel();
-    final timer = Timer(const Duration(seconds: 4), () {
+    final timer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
       if (_state.remoteControllers.isNotEmpty) return;
       _remoteLeftNotified = true;
@@ -2012,11 +2012,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Cleanup all resources - proper order to prevent crashes:
   /// 1. Cancel timers (stop pending operations)
-  /// 2. Stop Deepgram
-  /// 3. Leave call FIRST (signal server while connection still alive)
-  /// 4. Cancel subscriptions
-  /// 5. Clear tracks and dispose video controllers
-  /// 6. Dispose CallClient
+  /// 2. Cancel event subscription FIRST (prevents CallState.left from
+  ///    triggering _scheduleReconnection during cleanup)
+  /// 3. Stop Deepgram
+  /// 4. Leave call (signal server while connection still alive)
+  /// 5. Cancel remaining subscriptions
+  /// 6. Clear tracks and dispose video controllers
+  /// 7. Dispose CallClient
+  ///
+  /// NOTE: _userRequestedEnd is NOT reset here. It is only set by _endCall()
+  /// and reset by _initializeCall() when starting a new session.
   Future<void> _cleanup({bool leaveCall = true}) async {
     if (kDebugMode) print('Cleaning up resources...');
 
@@ -2029,24 +2034,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _remoteLeftTimer?.cancel();
       _remoteLeftTimer = null;
       _remoteLeftNotified = false;
-      _userRequestedEnd = false;
 
-      // 2. Stop Deepgram streaming
-      await _stopDeepgramStreaming();
-
-      // 3. Leave call FIRST while connection is still alive
-      // This allows the server to receive the disconnect signal properly
-      if (_callClient != null && leaveCall) {
-        try {
-          await _callClient!.leave();
-          // Brief wait for leave signal to be sent over WebSocket
-          await Future.delayed(const Duration(milliseconds: 300));
-        } catch (e) {
-          if (kDebugMode) print('Error leaving call: $e');
-        }
-      }
-
-      // 4. Cancel main event subscription (after leaving to avoid spurious events)
+      // 2. Cancel event subscription BEFORE leave() so that the
+      // CallState.left event does not trigger _scheduleReconnection.
       try {
         await _eventSubscription?.cancel();
         _eventSubscription = null;
@@ -2054,7 +2044,21 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         if (kDebugMode) print('Error cancelling event subscription: $e');
       }
 
-      // Cancel all tracked subscriptions
+      // 3. Stop Deepgram streaming
+      await _stopDeepgramStreaming();
+
+      // 4. Leave call while connection is still alive
+      if (_callClient != null && leaveCall) {
+        try {
+          await _callClient!.leave();
+          // Brief wait for leave signal to be sent over WebSocket
+          await Future.delayed(const Duration(milliseconds: 200));
+        } catch (e) {
+          if (kDebugMode) print('Error leaving call: $e');
+        }
+      }
+
+      // 5. Cancel all remaining tracked subscriptions
       for (final subscription in _activeSubscriptions) {
         try {
           await subscription.cancel();
@@ -2064,7 +2068,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
       _activeSubscriptions.clear();
 
-      // 5. Clear video tracks before disposing controllers
+      // 6. Clear video tracks before disposing controllers
       try {
         _localVideoController?.setTrack(null);
       } catch (e) {
@@ -2100,7 +2104,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _dynamicMeetingToken = null;
       _tokenRefreshAttempts = 0;
 
-      // 6. Dispose call client last
+      // 7. Dispose call client last
       try {
         await _callClient?.dispose();
         _callClient = null;
