@@ -170,13 +170,22 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       return;
     }
 
+    // If the Firestore duration is 0 (e.g. endSession cloud function hasn't
+    // finished yet), compute it client-side from startedAt so the summary
+    // page always shows a meaningful value.
+    int duration = session?.duration ?? 0;
+    if (duration <= 0 && session?.startedAt != null) {
+      duration = DateTime.now().difference(session!.startedAt!).inSeconds;
+      if (duration < 0) duration = 0;
+    }
+
     context.goNamed(
       CallSummaryWidget.routeName,
       queryParameters: {
         'userRef': serializeParam(userRef, ParamType.DocumentReference),
         'sessionID': serializeParam(sessionRef, ParamType.DocumentReference),
         'lang': serializeParam(session?.language ?? 'en', ParamType.String),
-        'dur': serializeParam(session?.duration ?? 0, ParamType.int),
+        'dur': serializeParam(duration, ParamType.int),
       }.withoutNulls,
     );
   }
