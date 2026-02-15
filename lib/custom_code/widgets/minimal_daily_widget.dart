@@ -564,11 +564,23 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
   }
 
-  /// Handle participant updated event
+  /// Handle participant updated event.
+  ///
+  /// CRITICAL FIX: Only cancel the remote-left timer if this participant
+  /// is still tracked in _state.remoteControllers. The Daily SDK can send
+  /// stale participantUpdated events AFTER participantLeft (e.g. track
+  /// state transitions during disconnect). Without this guard, the stale
+  /// update cancels the 4-second leave timer and the tutor never receives
+  /// the participantLeftCallback — causing the tutor to hang on
+  /// VideoCallPage with no way to exit.
   void _handleParticipantUpdated(Participant participant) {
     if (participant.info.isLocal) {
       _updateLocalVideoTrack();
     } else {
+      // Ignore updates for participants already removed (stale events)
+      if (!_state.remoteControllers.containsKey(participant.id)) {
+        return;
+      }
       _remoteLeftTimer?.cancel();
       _remoteLeftTimer = null;
       _remoteLeftNotified = false;
@@ -1241,7 +1253,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
   }
 
-  /// Update widget when properties change
+  /// Update widget when properties change.
+  ///
+  /// CRITICAL FIX: Do NOT tear down an active or initializing connection
+  /// just because the meeting token refreshed (e.g. from _fetchSessionTokens
+  /// in VideoCallPageWidget). Destroying the CallClient mid-join causes
+  /// crashes on macOS (AppKit layout cycle) and race conditions in the
+  /// Daily SDK. Only reconnect when the room URL itself changes.
   @override
   void didUpdateWidget(MinimalDailyWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1250,21 +1268,24 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     final newUrl = widget.roomUrl;
     final oldValid = _isValidRoomUrl(oldUrl);
     final newValid = _isValidRoomUrl(newUrl);
-    final oldToken = _sanitizeMeetingToken(oldWidget.meetingToken);
-    final newToken = _effectiveMeetingToken();
 
-    if (oldUrl != newUrl && newValid) {
-      unawaited(_cleanup(leaveCall: true).then((_) => _initializeCall()));
+    // If we're already connected, connecting, or initializing — only
+    // reconnect when the room URL actually changes (different room).
+    // Token changes are harmless: the existing token is still valid for
+    // the duration of the Daily session.
+    if (_callClient != null || _isInitializing) {
+      if (oldUrl != newUrl && newValid) {
+        unawaited(_cleanup(leaveCall: true).then((_) => _initializeCall()));
+      }
       return;
     }
 
-    if (oldToken != newToken && newToken != null) {
-      unawaited(_cleanup(leaveCall: true).then((_) => _initializeCall()));
-      return;
-    }
-
-    if (!oldValid && newValid && newToken != null) {
-      _initializeCall();
+    // Not yet connected — start connecting if we now have valid join data.
+    if (newValid && _effectiveMeetingToken() != null) {
+      if (!_isInitializing &&
+          _state.connectionState != ConnectionState.connected) {
+        _initializeCall();
+      }
     }
   }
 
