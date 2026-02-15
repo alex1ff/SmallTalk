@@ -166,6 +166,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _remoteLeftNotified = false;
   bool _userRequestedEnd = false;
 
+  // Call duration timer
+  int _callDurationSeconds = 0;
+  Timer? _durationTimer;
+
   // Deepgram integration
   FlutterSoundRecorder? _recorder;
   IOWebSocketChannel? _deepgramChannel;
@@ -1292,9 +1296,45 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Update state immutably
   void _updateState(_CallState newState) {
     if (!mounted || _disposed) return;
+
+    // Start/stop duration timer based on connection state changes
+    final wasConnected =
+        _state.connectionState == ConnectionState.connected;
+    final isConnected =
+        newState.connectionState == ConnectionState.connected;
+    if (!wasConnected && isConnected) {
+      _startDurationTimer();
+    } else if (wasConnected && !isConnected) {
+      _stopDurationTimer();
+    }
+
     setState(() {
       _state = newState;
     });
+  }
+
+  void _startDurationTimer() {
+    _durationTimer?.cancel();
+    _callDurationSeconds = 0;
+    _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _state.connectionState == ConnectionState.connected) {
+        setState(() {
+          _callDurationSeconds++;
+        });
+      }
+    });
+    _trackTimer(_durationTimer!);
+  }
+
+  void _stopDurationTimer() {
+    _durationTimer?.cancel();
+    _durationTimer = null;
+  }
+
+  String _formatDuration(int totalSeconds) {
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
   /// Handle errors uniformly
@@ -1372,6 +1412,30 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               child: _buildPrimaryVideo(),
             ),
           ),
+
+          // Call duration timer (top-left)
+          if (_state.connectionState == ConnectionState.connected)
+            Positioned(
+              top: 55,
+              left: 20,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  _formatDuration(_callDurationSeconds),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
 
           // Picture-in-picture (only after remote video is ready)
           if (showPip)

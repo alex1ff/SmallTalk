@@ -302,7 +302,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                   deepgramApiKey: '7a3a2c915f8282f6f09c33215d25c20737ae6adc',
                   deepgramLanguage: resolvedLanguage,
                   username: currentUserDisplayName,
-                  enableDeepgram: false,
+                  enableDeepgram: true,
                   actionCallback: (word, sentence) async {
                     await showModalBottomSheet(
                       isScrollControlled: true,
