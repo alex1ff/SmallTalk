@@ -12,6 +12,9 @@ class WaitingForTeacherPageModel
   // Stores action output result for [Cloud Function - cancelCall] action in Button widget.
   CancelCallCloudFunctionCallResponse? cloudFunction5c0;
 
+  // Session ID returned by createVideoSession, used to listen to Firestore updates.
+  String? sessionId;
+
   @override
   void initState(BuildContext context) {}
 
