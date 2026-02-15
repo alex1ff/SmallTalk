@@ -394,13 +394,9 @@ class VoIPService {
           hasPayloadMeetingToken ? payloadMeetingToken as String : null;
       _lastRoomName = payloadRoomName is String ? payloadRoomName : null;
       unawaited(_prefetchSessionTokens(sessionId));
-      final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
-      await videoDocRef.update({
-        'studentNavigationTriggered': true,
-        'navigationTimestamp': FieldValue.serverTimestamp(),
-      });
-      debugPrint('✅ VoIPService: Student navigation triggered (no acceptCall)');
       _acceptedSessions.add(sessionId);
+
+      // Navigate FIRST, then update Firestore in the background.
       _tryNavigateToVideoCall(
         sessionId: sessionId,
         isTutor: false,
@@ -408,24 +404,21 @@ class VoIPService {
         meetingToken: _lastMeetingToken,
         roomName: _lastRoomName,
       );
+      debugPrint('✅ VoIPService: Student navigation triggered (no acceptCall)');
+
+      // Firestore metadata write — fire-and-forget, not needed for navigation
+      unawaited(_firestore.collection('videoSessions').doc(sessionId).update({
+        'studentNavigationTriggered': true,
+        'navigationTimestamp': FieldValue.serverTimestamp(),
+      }).catchError((_) {}));
       return;
     }
 
-    // Перед acceptCall проверим, не активна ли уже сессия для этого преподавателя
-    final recovered = await _tryRecoverActiveSession(sessionId);
-    if (recovered) {
-      _acceptedSessions.add(sessionId);
-      _tryNavigateToVideoCall(
-        sessionId: sessionId,
-        isTutor: true,
-        roomUrl: _lastRoomUrl,
-        meetingToken: _lastMeetingToken,
-        roomName: _lastRoomName,
-      );
-      return;
-    }
-
-    // Вызываем Cloud Function acceptCall
+    // Вызываем Cloud Function acceptCall.
+    // NOTE: _tryRecoverActiveSession is only called in the catch block
+    // below (error recovery). For fresh calls it always fails because
+    // the session is not "active" yet — skipping it saves a Firestore
+    // round-trip (~200-500 ms).
     debugPrint('☁️ VoIPService: Calling acceptCall function...');
     final result = await _functions
         .httpsCallable('acceptCall')
@@ -452,22 +445,9 @@ class VoIPService {
     _lastMeetingToken =
         responseMeetingToken is String ? responseMeetingToken : null;
     _lastRoomName = responseRoomName is String ? responseRoomName : null;
-    unawaited(_prefetchSessionTokens(sessionId));
-
-    // Создаем DocumentReference на videoSession
-    final videoDocRef = _firestore.collection('videoSessions').doc(sessionId);
-
-    debugPrint('🎬 VoIPService: Scheduling tutor navigation...');
-
-    // Сохраняем данные в Firestore для последующей навигации
-    await videoDocRef.update({
-      'tutorNavigationTriggered': true,
-      'navigationTimestamp': FieldValue.serverTimestamp(),
-    });
-
-    debugPrint('✅ VoIPService: Tutor navigation data saved to Firestore');
-    debugPrint('⚠️ VoIPService: App will navigate to VideoCallPage when opened');
     _acceptedSessions.add(sessionId);
+
+    // Navigate IMMEDIATELY — don't wait for Firestore write or prefetch.
     _tryNavigateToVideoCall(
       sessionId: sessionId,
       isTutor: true,
@@ -475,6 +455,14 @@ class VoIPService {
       meetingToken: _lastMeetingToken,
       roomName: _lastRoomName,
     );
+    debugPrint('🎬 VoIPService: Navigated to VideoCallPage');
+
+    // Background tasks — fire-and-forget, not needed for navigation
+    unawaited(_prefetchSessionTokens(sessionId));
+    unawaited(_firestore.collection('videoSessions').doc(sessionId).update({
+      'tutorNavigationTriggered': true,
+      'navigationTimestamp': FieldValue.serverTimestamp(),
+    }).catchError((_) {}));
 
   } catch (e) {
     debugPrint('❌ VoIPService: Error accepting call: $e');
