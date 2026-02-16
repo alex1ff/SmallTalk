@@ -5,6 +5,10 @@ import 'pay_widget.dart' show PayWidget;
 import 'package:flutter/material.dart';
 
 class PayModel extends FlutterFlowModel<PayWidget> {
+  // Cached queries so they are not recreated on every build().
+  Future<List<PackagesRecord>>? packagesFuture;
+  Stream<List<TransactionsRecord>>? transactionsStream;
+
   ///  Local state fields for this page.
 
   int replenishment = 0;

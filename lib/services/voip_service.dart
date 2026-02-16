@@ -28,6 +28,7 @@ class VoIPService {
 
   bool _initialized = false;
   bool _initializing = false;
+  StreamSubscription<String>? _tokenRefreshSub;
   StreamSubscription<CallEvent?>? _callKitSubscription;
   final Set<String> _acceptInProgress = {};
   final Set<String> _acceptedSessions = {};
@@ -89,7 +90,8 @@ class VoIPService {
       }
 
       // 3. Слушаем обновления токена
-      _fcm.onTokenRefresh.listen((newToken) {
+      _tokenRefreshSub?.cancel();
+      _tokenRefreshSub = _fcm.onTokenRefresh.listen((newToken) {
         debugPrint('🔔 VoIPService: Token refreshed');
         _saveVoipToken(newToken);
       });
@@ -118,7 +120,8 @@ class VoIPService {
       });
 
       // 4. Слушаем события CallKit/ConnectionService
-      _callKitSubscription ??=
+      _callKitSubscription?.cancel();
+      _callKitSubscription =
           FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent);
 
       // 5. Пытаемся получить PushKit токен (iOS) если доступен

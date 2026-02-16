@@ -61,6 +61,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => VideoCallPageModel());
+    _model.sessionStream = VideoSessionsRecord.getDocument(widget.videoDocRef!);
     // Only fetch session tokens if we don't already have valid initial data.
     // When the student arrives via VoIP push, initialRoomUrl + initialMeetingToken
     // are already set. Fetching again returns a DIFFERENT token, which used to
@@ -193,7 +194,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<VideoSessionsRecord>(
-      stream: VideoSessionsRecord.getDocument(widget!.videoDocRef!),
+      stream: _model.sessionStream,
       builder: (context, snapshot) {
         final videoCallPageVideoSessionsRecord = snapshot.data;
         String? _nonEmpty(String? value) {

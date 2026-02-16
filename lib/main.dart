@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 
@@ -106,6 +108,7 @@ class _MyAppState extends State<MyApp> {
   late Stream<BaseAuthUser> userStream;
 
   final authUserSub = authenticatedUserStream.listen((_) {});
+  StreamSubscription? _jwtTokenSub;
 
   @override
   void initState() {
@@ -118,7 +121,7 @@ class _MyAppState extends State<MyApp> {
         _appStateNotifier.update(user);
 
       });
-    jwtTokenStream.listen((_) {});
+    _jwtTokenSub = jwtTokenStream.listen((_) {});
     Future.delayed(
       Duration(milliseconds: 1000),
       () => _appStateNotifier.stopShowingSplashImage(),
@@ -128,6 +131,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     authUserSub.cancel();
+    _jwtTokenSub?.cancel();
 
     super.dispose();
   }

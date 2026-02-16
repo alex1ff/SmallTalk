@@ -13,7 +13,6 @@ import '/custom_code/actions/index.dart' as actions;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'pay_copy_model.dart';
 export 'pay_copy_model.dart';
@@ -40,6 +39,12 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
   void initState() {
     super.initState();
     _model = createModel(context, () => PayCopyModel());
+    _model.cardsStream = queryCardsRecord(parent: currentUserReference);
+    _model.transactionsStream = queryTransactionsRecord(
+      queryBuilder: (transactionsRecord) => transactionsRecord
+          .where('userId', isEqualTo: currentUserReference)
+          .orderBy('createdAt', descending: true),
+    );
 
     animationsMap.addAll({
       'containerOnActionTriggerAnimation': AnimationInfo(
@@ -179,25 +184,10 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                       padding:
                           EdgeInsetsDirectional.fromSTEB(0.0, 40.0, 0.0, 0.0),
                       child: StreamBuilder<List<CardsRecord>>(
-                        stream: queryCardsRecord(
-                          parent: currentUserReference,
-                        ),
+                        stream: _model.cardsStream,
                         builder: (context, snapshot) {
-                          // Customize what your widget looks like when it's loading.
-                          if (!snapshot.hasData) {
-                            return Center(
-                              child: SizedBox(
-                                width: 50.0,
-                                height: 50.0,
-                                child: SpinKitCircle(
-                                  color: FlutterFlowTheme.of(context).secondary,
-                                  size: 50.0,
-                                ),
-                              ),
-                            );
-                          }
                           List<CardsRecord> containerCardsRecordList =
-                              snapshot.data!;
+                              snapshot.data ?? [];
 
                           return Container(
                             decoration: BoxDecoration(),
@@ -707,31 +697,11 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                       padding:
                           EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
                       child: StreamBuilder<List<TransactionsRecord>>(
-                        stream: queryTransactionsRecord(
-                          queryBuilder: (transactionsRecord) =>
-                              transactionsRecord
-                                  .where(
-                                    'userId',
-                                    isEqualTo: currentUserReference,
-                                  )
-                                  .orderBy('createdAt', descending: true),
-                        ),
+                        stream: _model.transactionsStream,
                         builder: (context, snapshot) {
-                          // Customize what your widget looks like when it's loading.
-                          if (!snapshot.hasData) {
-                            return Center(
-                              child: SizedBox(
-                                width: 50.0,
-                                height: 50.0,
-                                child: SpinKitCircle(
-                                  color: FlutterFlowTheme.of(context).secondary,
-                                  size: 50.0,
-                                ),
-                              ),
-                            );
-                          }
                           List<TransactionsRecord>
-                              containerTransactionsRecordList = snapshot.data!;
+                              containerTransactionsRecordList =
+                              snapshot.data ?? [];
 
                           return Container(
                             decoration: BoxDecoration(),

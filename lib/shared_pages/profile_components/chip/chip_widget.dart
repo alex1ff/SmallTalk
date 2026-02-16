@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'chip_model.dart';
 export 'chip_model.dart';
@@ -77,11 +78,15 @@ class _ChipWidgetState extends State<ChipWidget> {
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),
-                  child: Image.network(
-                    widget.img!,
+                  child: CachedNetworkImage(
+                    imageUrl: widget.img!,
                     width: 25.0,
                     height: 25.0,
                     fit: BoxFit.contain,
+                    placeholder: (context, url) =>
+                        const SizedBox.shrink(),
+                    errorWidget: (context, url, error) =>
+                        Icon(Icons.person, size: 24, color: Colors.grey),
                   ),
                 ),
               ),

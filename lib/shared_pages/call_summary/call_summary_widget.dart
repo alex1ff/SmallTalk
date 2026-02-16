@@ -14,8 +14,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 
 import 'call_summary_model.dart';
@@ -52,6 +52,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => CallSummaryModel());
+    _model.userFuture = UsersRecord.getDocumentOnce(widget.userRef!);
 
     _model.aboutMeTextController ??= TextEditingController();
     _model.aboutMeFocusNode ??= FocusNode();
@@ -75,20 +76,10 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
         key: scaffoldKey,
         backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
         body: FutureBuilder<UsersRecord>(
-          future: UsersRecord.getDocumentOnce(widget!.userRef!),
+          future: _model.userFuture,
           builder: (context, snapshot) {
-            // Customize what your widget looks like when it's loading.
             if (!snapshot.hasData) {
-              return Center(
-                child: SizedBox(
-                  width: 50,
-                  height: 50,
-                  child: SpinKitCircle(
-                    color: FlutterFlowTheme.of(context).secondary,
-                    size: 50,
-                  ),
-                ),
-              );
+              return const SizedBox.shrink();
             }
 
             final stackUsersRecord = snapshot.data!;
@@ -707,7 +698,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                         'duynuhus' /* Готово */,
                       ),
                       action: () async {
-                        if (_model.rait != null) {
+                        if (_model.rait != 0) {
                           if (_model.aboutMeTextController.text != null &&
                               _model.aboutMeTextController.text != '') {
                             await ReviewsRecord.collection
@@ -827,9 +818,9 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                     .secondaryBackground,
                                 image: DecorationImage(
                                   fit: BoxFit.cover,
-                                  image: Image.network(
+                                  image: CachedNetworkImageProvider(
                                     stackUsersRecord.photoUrl,
-                                  ).image,
+                                  ),
                                 ),
                                 shape: BoxShape.circle,
                               ),

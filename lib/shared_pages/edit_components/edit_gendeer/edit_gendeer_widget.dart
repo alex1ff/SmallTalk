@@ -9,6 +9,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'dart:math' as math;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
@@ -136,14 +137,20 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
                                   angle: 15.0 * (math.pi / 180),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(20.0),
-                                    child: Image.network(
-                                      FFLocalizations.of(context)
+                                    child: CachedNetworkImage(
+                                      imageUrl: FFLocalizations.of(context)
                                                   .languageCode ==
                                               'ru'
                                           ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/yhizey073y1b/%D0%B0%D1%8B%D0%B04.jpg'
                                           : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/isq53wlqy7ir/Group_1171275311.png',
                                       width: 228.0,
                                       fit: BoxFit.contain,
+                                      placeholder: (context, url) =>
+                                          const SizedBox.shrink(),
+                                      errorWidget: (context, url, error) =>
+                                          Icon(Icons.person,
+                                              size: 24,
+                                              color: Colors.grey),
                                     ),
                                   ),
                                 ),
@@ -154,14 +161,20 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
                                   angle: 350.0 * (math.pi / 180),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(20.0),
-                                    child: Image.network(
-                                      FFLocalizations.of(context)
+                                    child: CachedNetworkImage(
+                                      imageUrl: FFLocalizations.of(context)
                                                   .languageCode ==
                                               'ru'
                                           ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/k1enf0nhdqvc/33%D0%B0%D0%B0.jpg'
                                           : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/avw4u16n2yvl/33%D0%B0%D0%B02.jpg',
                                       width: 228.0,
                                       fit: BoxFit.contain,
+                                      placeholder: (context, url) =>
+                                          const SizedBox.shrink(),
+                                      errorWidget: (context, url, error) =>
+                                          Icon(Icons.person,
+                                              size: 24,
+                                              color: Colors.grey),
                                     ),
                                   ),
                                 ),

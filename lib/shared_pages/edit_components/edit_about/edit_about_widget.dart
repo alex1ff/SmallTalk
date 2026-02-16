@@ -139,7 +139,7 @@ class _EditAboutWidgetState extends State<EditAboutWidget> {
                           return;
                         }
                       },
-                      autofocus: true,
+                      autofocus: false,
                       textCapitalization: TextCapitalization.sentences,
                       textInputAction: TextInputAction.done,
                       obscureText: false,

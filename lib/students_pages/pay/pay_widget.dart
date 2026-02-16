@@ -6,7 +6,6 @@ import '/flutter_flow/flutter_flow_animations.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/students_pages/components/tarif_loader/tarif_loader_widget.dart';
 import 'dart:async';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
@@ -15,7 +14,6 @@ import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'pay_model.dart';
 export 'pay_model.dart';
 
@@ -40,6 +38,12 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _model = createModel(context, () => PayModel());
+    _model.packagesFuture = queryPackagesRecordOnce();
+    _model.transactionsStream = queryTransactionsRecord(
+      queryBuilder: (transactionsRecord) => transactionsRecord
+          .where('userId', isEqualTo: currentUserReference)
+          .orderBy('createdAt', descending: true),
+    );
 
     _model.nameTextController ??= TextEditingController();
     _model.nameFocusNode ??= FocusNode();
@@ -439,7 +443,8 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                                               .promocode,
                                                           amountST: _model
                                                               .codeCopy
-                                                              ?.valueSamllTalk,
+                                                              ?.valueSamllTalk
+                                                              .toDouble(),
                                                           promoCodeDocRef:
                                                               _model.codeCopy
                                                                   ?.reference,
@@ -552,14 +557,11 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                             padding: EdgeInsetsDirectional.fromSTEB(
                                 0.0, 12.0, 0.0, 0.0),
                             child: FutureBuilder<List<PackagesRecord>>(
-                              future: queryPackagesRecordOnce(),
+                              future: _model.packagesFuture,
                               builder: (context, snapshot) {
-                                // Customize what your widget looks like when it's loading.
-                                if (!snapshot.hasData) {
-                                  return TarifLoaderWidget();
-                                }
                                 List<PackagesRecord>
-                                    listViewPackagesRecordList = snapshot.data!;
+                                    listViewPackagesRecordList =
+                                    snapshot.data ?? [];
 
                                 return ListView.separated(
                                   padding: EdgeInsets.zero,
@@ -1005,33 +1007,11 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                         padding:
                             EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
                         child: StreamBuilder<List<TransactionsRecord>>(
-                          stream: queryTransactionsRecord(
-                            queryBuilder: (transactionsRecord) =>
-                                transactionsRecord
-                                    .where(
-                                      'userId',
-                                      isEqualTo: currentUserReference,
-                                    )
-                                    .orderBy('createdAt', descending: true),
-                          ),
+                          stream: _model.transactionsStream,
                           builder: (context, snapshot) {
-                            // Customize what your widget looks like when it's loading.
-                            if (!snapshot.hasData) {
-                              return Center(
-                                child: SizedBox(
-                                  width: 50.0,
-                                  height: 50.0,
-                                  child: SpinKitCircle(
-                                    color:
-                                        FlutterFlowTheme.of(context).secondary,
-                                    size: 50.0,
-                                  ),
-                                ),
-                              );
-                            }
                             List<TransactionsRecord>
                                 containerTransactionsRecordList =
-                                snapshot.data!;
+                                snapshot.data ?? [];
 
                             return Container(
                               decoration: BoxDecoration(),

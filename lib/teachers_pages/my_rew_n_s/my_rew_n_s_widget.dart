@@ -8,7 +8,6 @@ import '/flutter_flow/custom_functions.dart' as functions;
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'my_rew_n_s_model.dart';
 export 'my_rew_n_s_model.dart';
@@ -32,6 +31,14 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => MyRewNSModel());
+    _model.reviewsFuture = queryReviewsRecordOnce(
+      queryBuilder: (reviewsRecord) => reviewsRecord
+          .where(
+            'toUserId',
+            isEqualTo: currentUserReference,
+          )
+          .orderBy('createdAt', descending: true),
+    );
   }
 
   @override
@@ -44,32 +51,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<ReviewsRecord>>(
-      future: queryReviewsRecordOnce(
-        queryBuilder: (reviewsRecord) => reviewsRecord
-            .where(
-              'toUserId',
-              isEqualTo: currentUserReference,
-            )
-            .orderBy('createdAt', descending: true),
-      ),
+      future: _model.reviewsFuture,
       builder: (context, snapshot) {
-        // Customize what your widget looks like when it's loading.
-        if (!snapshot.hasData) {
-          return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-            body: Center(
-              child: SizedBox(
-                width: 50.0,
-                height: 50.0,
-                child: SpinKitCircle(
-                  color: FlutterFlowTheme.of(context).secondary,
-                  size: 50.0,
-                ),
-              ),
-            ),
-          );
-        }
-        List<ReviewsRecord> myRewNSReviewsRecordList = snapshot.data!;
+        List<ReviewsRecord> myRewNSReviewsRecordList = snapshot.data ?? [];
 
         return GestureDetector(
           onTap: () {
@@ -297,7 +281,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 LinearPercentIndicator(
                                               percent: myRewNSReviewsRecordList
                                                       .where(
-                                                          (e) => e.rating == 5)
+                                                          (e) => e.rating == 4)
                                                       .toList()
                                                       .length /
                                                   currentUserDocument!
@@ -383,7 +367,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 LinearPercentIndicator(
                                               percent: myRewNSReviewsRecordList
                                                       .where(
-                                                          (e) => e.rating == 5)
+                                                          (e) => e.rating == 3)
                                                       .toList()
                                                       .length /
                                                   currentUserDocument!
@@ -464,7 +448,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 LinearPercentIndicator(
                                               percent: myRewNSReviewsRecordList
                                                       .where(
-                                                          (e) => e.rating == 5)
+                                                          (e) => e.rating == 2)
                                                       .toList()
                                                       .length /
                                                   currentUserDocument!
@@ -545,7 +529,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 LinearPercentIndicator(
                                               percent: myRewNSReviewsRecordList
                                                       .where(
-                                                          (e) => e.rating == 5)
+                                                          (e) => e.rating == 1)
                                                       .toList()
                                                       .length /
                                                   currentUserDocument!

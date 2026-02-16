@@ -11,7 +11,6 @@ import '/index.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'students_dashboard_model.dart';
 export 'students_dashboard_model.dart';
@@ -70,6 +69,18 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         ).then((value) => safeSetState(() {}));
       }
     });
+
+    // Create stats stream once, not on every build().
+    final now = DateTime.now().toUtc();
+    final todayMidnight = DateTime.utc(now.year, now.month, now.day);
+    _model.statsStream = queryStatsRecord(
+      parent: currentUserReference,
+      queryBuilder: (statsRecord) => statsRecord.where(
+        'date',
+        isEqualTo: todayMidnight,
+      ),
+      singleRecord: true,
+    );
   }
 
   @override
@@ -672,30 +683,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                     padding:
                         EdgeInsetsDirectional.fromSTEB(6.0, 10.0, 6.0, 0.0),
                     child: StreamBuilder<List<StatsRecord>>(
-                      stream: queryStatsRecord(
-                        parent: currentUserReference,
-                        queryBuilder: (statsRecord) => statsRecord.where(
-                          'date',
-                          isEqualTo: getCurrentTimestamp,
-                        ),
-                        singleRecord: true,
-                      ),
+                      stream: _model.statsStream,
                       builder: (context, snapshot) {
-                        // Customize what your widget looks like when it's loading.
-                        if (!snapshot.hasData) {
-                          return Center(
-                            child: SizedBox(
-                              width: 50.0,
-                              height: 50.0,
-                              child: SpinKitCircle(
-                                color: FlutterFlowTheme.of(context).secondary,
-                                size: 50.0,
-                              ),
-                            ),
-                          );
-                        }
                         List<StatsRecord> conditionalBuilderStatsRecordList =
-                            snapshot.data!;
+                            snapshot.data ?? [];
                         final conditionalBuilderStatsRecord =
                             conditionalBuilderStatsRecordList.isNotEmpty
                                 ? conditionalBuilderStatsRecordList.first

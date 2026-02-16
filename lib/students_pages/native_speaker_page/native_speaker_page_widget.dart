@@ -10,7 +10,6 @@ import '/flutter_flow/custom_functions.dart' as functions;
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'native_speaker_page_model.dart';
 export 'native_speaker_page_model.dart';
@@ -40,6 +39,12 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => NativeSpeakerPageModel());
+    _model.userStream = UsersRecord.getDocument(widget.nsUserDocRef!);
+    _model.reviewsFuture = queryReviewsRecordOnce(
+      queryBuilder: (reviewsRecord) => reviewsRecord
+          .where('toUserId', isEqualTo: widget.nsUserDocRef)
+          .orderBy('createdAt', descending: true),
+    );
   }
 
   @override
@@ -52,23 +57,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<UsersRecord>(
-      stream: UsersRecord.getDocument(widget.nsUserDocRef!),
+      stream: _model.userStream,
       builder: (context, snapshot) {
-        // Customize what your widget looks like when it's loading.
         if (!snapshot.hasData) {
-          return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-            body: Center(
-              child: SizedBox(
-                width: 50.0,
-                height: 50.0,
-                child: SpinKitCircle(
-                  color: FlutterFlowTheme.of(context).secondary,
-                  size: 50.0,
-                ),
-              ),
-            ),
-          );
+          return const SizedBox.shrink();
         }
 
         final nativeSpeakerPageUsersRecord = snapshot.data!;
@@ -529,32 +521,11 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 ),
                               ),
                               FutureBuilder<List<ReviewsRecord>>(
-                                future: queryReviewsRecordOnce(
-                                  queryBuilder: (reviewsRecord) => reviewsRecord
-                                      .where(
-                                        'toUserId',
-                                        isEqualTo: widget.nsUserDocRef,
-                                      )
-                                      .orderBy('createdAt', descending: true),
-                                ),
+                                future: _model.reviewsFuture,
                                 builder: (context, snapshot) {
-                                  // Customize what your widget looks like when it's loading.
-                                  if (!snapshot.hasData) {
-                                    return Center(
-                                      child: SizedBox(
-                                        width: 50.0,
-                                        height: 50.0,
-                                        child: SpinKitCircle(
-                                          color: FlutterFlowTheme.of(context)
-                                              .secondary,
-                                          size: 50.0,
-                                        ),
-                                      ),
-                                    );
-                                  }
                                   List<ReviewsRecord>
                                       containerReviewsRecordList =
-                                      snapshot.data!;
+                                      snapshot.data ?? [];
 
                                   return Container(
                                     decoration: BoxDecoration(),

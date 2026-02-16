@@ -15,7 +15,6 @@ import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'edit_avatar_model.dart';
 export 'edit_avatar_model.dart';
@@ -48,6 +47,12 @@ class _EditAvatarWidgetState extends State<EditAvatarWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => EditAvatarModel());
+    _model.avatarsFuture = queryAvatarsRecordOnce(
+      queryBuilder: (avatarsRecord) => avatarsRecord.where(
+        'gender',
+        isEqualTo: currentUserDocument?.gender?.serialize(),
+      ),
+    );
 
     // On component load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
@@ -136,34 +141,13 @@ class _EditAvatarWidgetState extends State<EditAvatarWidget> {
                         child: Container(
                           height: 268.63,
                           decoration: BoxDecoration(),
-                          child: AuthUserStreamWidget(
+                          child:                             AuthUserStreamWidget(
                             builder: (context) =>
                                 FutureBuilder<List<AvatarsRecord>>(
-                              future: queryAvatarsRecordOnce(
-                                queryBuilder: (avatarsRecord) =>
-                                    avatarsRecord.where(
-                                  'gender',
-                                  isEqualTo:
-                                      currentUserDocument?.gender?.serialize(),
-                                ),
-                              ),
+                              future: _model.avatarsFuture,
                               builder: (context, snapshot) {
-                                // Customize what your widget looks like when it's loading.
-                                if (!snapshot.hasData) {
-                                  return Center(
-                                    child: SizedBox(
-                                      width: 50.0,
-                                      height: 50.0,
-                                      child: SpinKitCircle(
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondary,
-                                        size: 50.0,
-                                      ),
-                                    ),
-                                  );
-                                }
                                 List<AvatarsRecord> gridViewAvatarsRecordList =
-                                    snapshot.data!;
+                                    snapshot.data ?? [];
 
                                 return GridView.builder(
                                   padding: EdgeInsets.zero,
