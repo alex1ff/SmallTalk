@@ -499,29 +499,117 @@ async function sendVoipPushToTutor(tutorId, callData) {
   }
 }
 
-async function sendNotificationToNextTutor(sessionId, sessionData) {
+async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) {
   try {
-    const availableTutors = sessionData.availableTutors || [];
-    const triedTutors = sessionData.triedTutors || [];
+    const sessionRef = admin
+      .firestore()
+      .collection("videoSessions")
+      .doc(sessionId);
 
-    const nextTutor = availableTutors.find(
-      (tutorId) => !triedTutors.includes(tutorId),
-    );
-    if (!nextTutor) {
-      await admin
-        .firestore()
-        .collection("videoSessions")
-        .doc(sessionId)
-        .update({
-          status: "no_tutors_available",
+    const assignment = await admin.firestore().runTransaction(
+      async (transaction) => {
+        const freshSessionSnap = await transaction.get(sessionRef);
+        if (!freshSessionSnap.exists) {
+          return {
+            shouldNotify: false,
+            skipReason: "session_not_found",
+          };
+        }
+
+        const freshSessionData = freshSessionSnap.data() || {};
+        const status = freshSessionData.status || "unknown";
+        if (status !== "searching") {
+          return {
+            shouldNotify: false,
+            skipReason: `status_${status}`,
+          };
+        }
+
+        if (freshSessionData.currentTutorId) {
+          return {
+            shouldNotify: false,
+            skipReason: `tutor_already_assigned_${freshSessionData.currentTutorId}`,
+          };
+        }
+
+        const availableTutors = freshSessionData.availableTutors || [];
+        const triedTutors = freshSessionData.triedTutors || [];
+        const nextTutor = availableTutors.find(
+          (tutorId) => !triedTutors.includes(tutorId),
+        );
+
+        if (!nextTutor) {
+          transaction.update(sessionRef, {
+            status: "no_tutors_available",
+            sessionMetadata: {
+              ...(freshSessionData.sessionMetadata || {}),
+              noTutorsReason: "All available tutors have been tried",
+              finalizedAt: Date.now(),
+              skipReason: "no_available_tutors",
+            },
+          });
+          return {
+            shouldNotify: false,
+            skipReason: "no_available_tutors",
+          };
+        }
+
+        transaction.update(sessionRef, {
+          currentTutorId: nextTutor,
+          sessionMetadata: {
+            ...(freshSessionData.sessionMetadata || {}),
+            lastNotifiedTutorId: nextTutor,
+            lastNotifiedAt: Date.now(),
+          },
         });
+
+        return {
+          shouldNotify: true,
+          nextTutor,
+          sessionData: freshSessionData,
+        };
+      },
+    );
+
+    if (!assignment || !assignment.shouldNotify) {
+      console.log(
+        "⏭️ Skipping tutor notification for session",
+        sessionId,
+        "reason:",
+        assignment?.skipReason || "unknown",
+      );
       return;
     }
 
-    // Обновляем текущего преподавателя
-    await admin.firestore().collection("videoSessions").doc(sessionId).update({
-      currentTutorId: nextTutor,
-    });
+    const nextTutor = assignment.nextTutor;
+    const sessionData = assignment.sessionData || fallbackSessionData || {};
+    const studentInfo = sessionData.studentInfo || fallbackSessionData.studentInfo || {};
+    const studentName = studentInfo.name || "Student";
+    const studentPhoto = studentInfo.photo || null;
+    const studentId = sessionData.studentId || fallbackSessionData.studentId || "";
+    const language = sessionData.language || fallbackSessionData.language || "";
+
+    const freshValidationSnap = await sessionRef.get();
+    if (!freshValidationSnap.exists) {
+      console.log(
+        "⏭️ Skipping tutor notification. Session disappeared:",
+        sessionId,
+      );
+      return;
+    }
+
+    const freshValidation = freshValidationSnap.data() || {};
+    if (
+      freshValidation.status !== "searching" ||
+      freshValidation.currentTutorId !== nextTutor
+    ) {
+      console.log(
+        "⏭️ Skipping tutor notification after validation. reason:",
+        `status_${freshValidation.status || "unknown"}`,
+        `currentTutor_${freshValidation.currentTutorId || "none"}`,
+      );
+      return;
+    }
 
     // Создаём уведомление в Firestore
     const expiresAt = new Date();
@@ -533,10 +621,10 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
       type: "incoming_call",
       status: "sent",
       title: "Входящий звонок",
-      message: `${sessionData.studentInfo.name} хочет попрактиковать ${sessionData.language}`,
+      message: `${studentName} хочет попрактиковать ${language}`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-      studentInfo: sessionData.studentInfo,
+      studentInfo,
     };
 
     await admin.firestore().collection("notifications").add(notificationData);
@@ -547,10 +635,10 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
     try {
       await sendVoipPushToTutor(nextTutor, {
         sessionId: sessionId,
-        studentName: sessionData.studentInfo.name,
-        studentId: sessionData.studentId,
-        studentPhoto: sessionData.studentInfo.photo,
-        language: sessionData.language,
+        studentName: studentName,
+        studentId: studentId,
+        studentPhoto: studentPhoto,
+        language: language,
       });
       console.log("✅ VoIP push sent to tutor");
     } catch (pushError) {
