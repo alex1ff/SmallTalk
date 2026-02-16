@@ -1,9 +1,13 @@
+import '/backend/backend.dart';
 import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'edit_avatar_widget.dart' show EditAvatarWidget;
 import 'package:flutter/material.dart';
 
 class EditAvatarModel extends FlutterFlowModel<EditAvatarWidget> {
+  // Cached future so it is not recreated on every build().
+  Future<List<AvatarsRecord>>? avatarsFuture;
+
   ///  Local state fields for this component.
 
   DocumentReference? selectedavatar;

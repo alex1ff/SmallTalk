@@ -7,7 +7,6 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/teachers_pages/components/delete_card/delete_card_widget.dart';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'edit_card_model.dart';
 export 'edit_card_model.dart';
@@ -32,6 +31,9 @@ class _EditCardWidgetState extends State<EditCardWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => EditCardModel());
+    _model.cardsStream = queryCardsRecord(
+      parent: currentUserReference,
+    );
   }
 
   @override
@@ -81,24 +83,10 @@ class _EditCardWidgetState extends State<EditCardWidget> {
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(6.0, 6.0, 6.0, 6.0),
                 child: StreamBuilder<List<CardsRecord>>(
-                  stream: queryCardsRecord(
-                    parent: currentUserReference,
-                  ),
+                  stream: _model.cardsStream,
                   builder: (context, snapshot) {
-                    // Customize what your widget looks like when it's loading.
-                    if (!snapshot.hasData) {
-                      return Center(
-                        child: SizedBox(
-                          width: 50.0,
-                          height: 50.0,
-                          child: SpinKitCircle(
-                            color: FlutterFlowTheme.of(context).secondary,
-                            size: 50.0,
-                          ),
-                        ),
-                      );
-                    }
-                    List<CardsRecord> listViewCardsRecordList = snapshot.data!;
+                    List<CardsRecord> listViewCardsRecordList =
+                        snapshot.data ?? [];
 
                     return ListView.separated(
                       padding: EdgeInsets.zero,

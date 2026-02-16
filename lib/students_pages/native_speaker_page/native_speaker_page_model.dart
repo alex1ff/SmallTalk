@@ -1,4 +1,5 @@
 import '/authorization/components/language_card/language_card_widget.dart';
+import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'native_speaker_page_widget.dart' show NativeSpeakerPageWidget;
 import 'package:flutter/material.dart';
@@ -9,6 +10,10 @@ class NativeSpeakerPageModel extends FlutterFlowModel<NativeSpeakerPageWidget> {
   int numMaxLineAbout = 4;
 
   int rate = 0;
+
+  // Cached queries so they are not recreated on every build().
+  Stream<UsersRecord>? userStream;
+  Future<List<ReviewsRecord>>? reviewsFuture;
 
   ///  State fields for stateful widgets in this page.
 

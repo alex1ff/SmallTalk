@@ -150,7 +150,7 @@ class _AddCardWidgetState extends State<AddCardWidget> {
                                     Duration(milliseconds: 0),
                                     () => safeSetState(() {}),
                                   ),
-                                  autofocus: true,
+                                  autofocus: false,
                                   textCapitalization:
                                       TextCapitalization.sentences,
                                   textInputAction: TextInputAction.done,

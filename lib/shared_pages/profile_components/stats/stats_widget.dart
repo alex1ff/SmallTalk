@@ -6,7 +6,6 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'stats_model.dart';
 export 'stats_model.dart';
 
@@ -30,6 +29,17 @@ class _StatsWidgetState extends State<StatsWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => StatsModel());
+    _model.statsStream = queryStatsRecord(
+      parent: currentUserReference,
+      queryBuilder: (statsRecord) => statsRecord.where(
+        'isAllTime',
+        isEqualTo: true,
+      ),
+      singleRecord: true,
+    );
+    _model.wordsCountFuture = queryUserWordsRecordCount(
+      parent: currentUserReference,
+    );
   }
 
   @override
@@ -78,30 +88,10 @@ class _StatsWidgetState extends State<StatsWidget> {
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(6.0, 16.0, 6.0, 0.0),
                   child: StreamBuilder<List<StatsRecord>>(
-                    stream: queryStatsRecord(
-                      parent: currentUserReference,
-                      queryBuilder: (statsRecord) => statsRecord.where(
-                        'isAllTime',
-                        isEqualTo: true,
-                      ),
-                      singleRecord: true,
-                    ),
+                    stream: _model.statsStream,
                     builder: (context, snapshot) {
-                      // Customize what your widget looks like when it's loading.
-                      if (!snapshot.hasData) {
-                        return Center(
-                          child: SizedBox(
-                            width: 50.0,
-                            height: 50.0,
-                            child: SpinKitCircle(
-                              color: FlutterFlowTheme.of(context).secondary,
-                              size: 50.0,
-                            ),
-                          ),
-                        );
-                      }
                       List<StatsRecord> containerStatsRecordList =
-                          snapshot.data!;
+                          snapshot.data ?? [];
                       final containerStatsRecord =
                           containerStatsRecordList.isNotEmpty
                               ? containerStatsRecordList.first
@@ -128,26 +118,10 @@ class _StatsWidgetState extends State<StatsWidget> {
                                       if (currentUserDocument?.role ==
                                           UserRole.student) {
                                         return FutureBuilder<int>(
-                                          future: queryUserWordsRecordCount(
-                                            parent: currentUserReference,
-                                          ),
+                                          future: _model.wordsCountFuture,
                                           builder: (context, snapshot) {
-                                            // Customize what your widget looks like when it's loading.
-                                            if (!snapshot.hasData) {
-                                              return Center(
-                                                child: SizedBox(
-                                                  width: 50.0,
-                                                  height: 50.0,
-                                                  child: SpinKitCircle(
-                                                    color: FlutterFlowTheme.of(
-                                                            context)
-                                                        .secondary,
-                                                    size: 50.0,
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                            int containerCount = snapshot.data!;
+                                            int containerCount =
+                                                snapshot.data ?? 0;
 
                                             return Container(
                                               decoration: BoxDecoration(),

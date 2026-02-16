@@ -7,7 +7,6 @@ import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/students_pages/components/new_word/new_word_widget.dart';
 import '/students_pages/components/word_card/word_card_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'words_model.dart';
@@ -32,6 +31,9 @@ class _WordsWidgetState extends State<WordsWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => WordsModel());
+    _model.wordsStream = queryUserWordsRecord(
+      parent: currentUserReference,
+    );
   }
 
   @override
@@ -531,25 +533,10 @@ class _WordsWidgetState extends State<WordsWidget> {
                     padding:
                         EdgeInsetsDirectional.fromSTEB(6.0, 12.0, 6.0, 0.0),
                     child: StreamBuilder<List<UserWordsRecord>>(
-                      stream: queryUserWordsRecord(
-                        parent: currentUserReference,
-                      ),
+                      stream: _model.wordsStream,
                       builder: (context, snapshot) {
-                        // Customize what your widget looks like when it's loading.
-                        if (!snapshot.hasData) {
-                          return Center(
-                            child: SizedBox(
-                              width: 50.0,
-                              height: 50.0,
-                              child: SpinKitCircle(
-                                color: FlutterFlowTheme.of(context).secondary,
-                                size: 50.0,
-                              ),
-                            ),
-                          );
-                        }
                         List<UserWordsRecord> containerUserWordsRecordList =
-                            snapshot.data!;
+                            snapshot.data ?? [];
 
                         return Container(
                           decoration: BoxDecoration(),

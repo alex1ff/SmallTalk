@@ -37,8 +37,8 @@ class TransactionsRecord extends FirestoreRecord {
   bool hasStatus() => _status != null;
 
   // "amount_ST" field.
-  int? _amountST;
-  int get amountST => _amountST ?? 0;
+  double? _amountST;
+  double get amountST => _amountST ?? 0.0;
   bool hasAmountST() => _amountST != null;
 
   // "packageDocRef" field.
@@ -57,8 +57,8 @@ class TransactionsRecord extends FirestoreRecord {
   bool hasSessionDocRef() => _sessionDocRef != null;
 
   // "callDuration" field.
-  int? _callDuration;
-  int get callDuration => _callDuration ?? 0;
+  String? _callDuration;
+  String get callDuration => _callDuration ?? '';
   bool hasCallDuration() => _callDuration != null;
 
   // "freeMinuteApplied" field.
@@ -90,11 +90,11 @@ class TransactionsRecord extends FirestoreRecord {
     _status = snapshotData['status'] is StatusTransactions
         ? snapshotData['status']
         : deserializeEnum<StatusTransactions>(snapshotData['status']);
-    _amountST = castToType<int>(snapshotData['amount_ST']);
+    _amountST = castToType<double>(snapshotData['amount_ST']);
     _packageDocRef = snapshotData['packageDocRef'] as DocumentReference?;
     _promoCodeDocRef = snapshotData['promoCodeDocRef'] as DocumentReference?;
     _sessionDocRef = snapshotData['sessionDocRef'] as DocumentReference?;
-    _callDuration = castToType<int>(snapshotData['callDuration']);
+    _callDuration = snapshotData['callDuration']?.toString();
     _freeMinuteApplied = snapshotData['freeMinuteApplied'] as bool?;
     _promoCode = snapshotData['promoCode'] as String?;
     _paymentId = snapshotData['paymentId'] as String?;
@@ -140,11 +140,11 @@ Map<String, dynamic> createTransactionsRecordData({
   DateTime? createdAt,
   TypeTransactions? type,
   StatusTransactions? status,
-  int? amountST,
+  double? amountST,
   DocumentReference? packageDocRef,
   DocumentReference? promoCodeDocRef,
   DocumentReference? sessionDocRef,
-  int? callDuration,
+  String? callDuration,
   bool? freeMinuteApplied,
   String? promoCode,
   String? paymentId,

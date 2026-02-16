@@ -581,7 +581,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                     createdAt: getCurrentTimestamp,
                                     type: TypeTransactions.bonus,
                                     status: StatusTransactions.completed,
-                                    amountST: 1,
+                                    amountST: 1.0,
                                   ));
                             }(),
                           );

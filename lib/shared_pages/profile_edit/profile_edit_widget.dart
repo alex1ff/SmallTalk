@@ -19,6 +19,7 @@ import '/shared_pages/edit_components/edit_target/edit_target_widget.dart';
 import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/shared_pages/profile_components/delete/delete_widget.dart';
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
@@ -333,11 +334,17 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                       builder: (context) => ClipRRect(
                                         borderRadius:
                                             BorderRadius.circular(100.0),
-                                        child: Image.network(
-                                          currentUserPhoto,
+                                        child: CachedNetworkImage(
+                                          imageUrl: currentUserPhoto,
                                           width: 130.0,
                                           height: 130.0,
                                           fit: BoxFit.cover,
+                                          placeholder: (context, url) =>
+                                              const SizedBox.shrink(),
+                                          errorWidget: (context, url, error) =>
+                                              Icon(Icons.person,
+                                                  size: 24,
+                                                  color: Colors.grey),
                                         ),
                                       ),
                                     ),

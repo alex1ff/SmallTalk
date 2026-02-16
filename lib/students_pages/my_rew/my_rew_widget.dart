@@ -5,7 +5,6 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'my_rew_model.dart';
 export 'my_rew_model.dart';
 
@@ -28,6 +27,14 @@ class _MyRewWidgetState extends State<MyRewWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => MyRewModel());
+    _model.reviewsFuture = queryReviewsRecordOnce(
+      queryBuilder: (reviewsRecord) => reviewsRecord
+          .where(
+            'fromUserId',
+            isEqualTo: currentUserReference,
+          )
+          .orderBy('createdAt', descending: true),
+    );
   }
 
   @override
@@ -40,32 +47,9 @@ class _MyRewWidgetState extends State<MyRewWidget> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<ReviewsRecord>>(
-      future: queryReviewsRecordOnce(
-        queryBuilder: (reviewsRecord) => reviewsRecord
-            .where(
-              'fromUserId',
-              isEqualTo: currentUserReference,
-            )
-            .orderBy('createdAt', descending: true),
-      ),
+      future: _model.reviewsFuture,
       builder: (context, snapshot) {
-        // Customize what your widget looks like when it's loading.
-        if (!snapshot.hasData) {
-          return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-            body: Center(
-              child: SizedBox(
-                width: 50.0,
-                height: 50.0,
-                child: SpinKitCircle(
-                  color: FlutterFlowTheme.of(context).secondary,
-                  size: 50.0,
-                ),
-              ),
-            ),
-          );
-        }
-        List<ReviewsRecord> myRewReviewsRecordList = snapshot.data!;
+        List<ReviewsRecord> myRewReviewsRecordList = snapshot.data ?? [];
 
         return GestureDetector(
           onTap: () {

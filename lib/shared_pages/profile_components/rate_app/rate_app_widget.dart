@@ -235,7 +235,7 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                                 controller:
                                                     _model.nameTextController,
                                                 focusNode: _model.nameFocusNode,
-                                                autofocus: true,
+                                                autofocus: false,
                                                 textCapitalization:
                                                     TextCapitalization
                                                         .sentences,

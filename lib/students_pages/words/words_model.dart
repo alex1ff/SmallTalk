@@ -1,3 +1,4 @@
+import '/backend/backend.dart';
 import '/components/word_pos_chip/word_pos_chip_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/nav_bar/nav_bar_widget.dart';
@@ -8,6 +9,9 @@ class WordsModel extends FlutterFlowModel<WordsWidget> {
   ///  Local state fields for this page.
 
   String? pos = '';
+
+  // Cached stream so it is not recreated on every build().
+  Stream<List<UserWordsRecord>>? wordsStream;
 
   ///  State fields for stateful widgets in this page.
 

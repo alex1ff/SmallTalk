@@ -101,7 +101,12 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     const tutorEarning = parseFloat((durationMinutes * TUTOR_RATE_PER_MINUTE).toFixed(2));
     const amountST = parseFloat((durationMinutes / 10).toFixed(2)); // в SmallTalks
 
-    console.log("⏱️ Session duration:", duration, "seconds /", durationMinutes, "minutes");
+    // Formatted duration as "M:SS" string for transaction records
+    const durMinPart = Math.floor(duration / 60);
+    const durSecPart = duration % 60;
+    const formattedDuration = `${durMinPart}:${durSecPart.toString().padStart(2, "0")}`;
+
+    console.log("⏱️ Session duration:", duration, "seconds /", durationMinutes, "minutes /", formattedDuration);
     console.log("👤 Ended by:", endedByRole, endedBy);
     console.log("💰 Tutor earning:", tutorEarning, "RUB | Student charge:", amountST, "ST");
 
@@ -196,8 +201,8 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         type: "call_charge",
         status: "completed",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        amount_ST: amountST,
-        callDuration: durationMinutes,
+        amount_ST: Number(amountST),
+        callDuration: formattedDuration,
         sessionId: sessionId,
       }).catch((e) => console.error("❌ Student transaction doc failed:", e))
     );
@@ -219,7 +224,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           status: "completed",
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           amount: tutorEarning,
-          callDuration: durationMinutes,
+          callDuration: formattedDuration,
           sessionId: sessionId,
         }).catch((e) => console.error("❌ Tutor transaction doc failed:", e))
       );

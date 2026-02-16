@@ -26,6 +26,9 @@ class VideoCallPageModel extends FlutterFlowModel<VideoCallPageWidget> {
   // Stores action output result for [Cloud Function - endSession] action in MinimalDailyWidget widget.
   EndSessionCloudFunctionCallResponse? cloudFunctiona1y;
 
+  // Cached session stream so it is not recreated on every build().
+  Stream<VideoSessionsRecord>? sessionStream;
+
   @override
   void initState(BuildContext context) {}
 

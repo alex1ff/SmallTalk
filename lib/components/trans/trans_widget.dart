@@ -217,9 +217,9 @@ class _TransWidgetState extends State<TransWidget> {
                                 TypeTransactions.call_charge) ||
                             (widget.trans?.type == TypeTransactions.earning)) {
                           return '${FFLocalizations.of(context).getVariableText(
-                            ruText: 'Разговор',
-                            enText: 'Call',
-                          )}${widget.trans?.callDuration.toString()}${FFLocalizations.of(context).getVariableText(
+                            ruText: 'Разговор ',
+                            enText: 'Call ',
+                          )}${widget.trans?.callDuration}${FFLocalizations.of(context).getVariableText(
                             ruText: ' мин',
                             enText: ' min',
                           )}';
