@@ -64,6 +64,7 @@ exports.cancelCall = functions
     console.log("🔄 Updating session status to cancelled...");
 
     const dailyRoomName = sessionData.dailyRoomName;
+    const cancelProcessedAtMs = Date.now();
 
     // Обновляем статус сессии на отменен
     await admin
@@ -73,13 +74,18 @@ exports.cancelCall = functions
       .update({
         status: "cancelled",
         endedAt: admin.firestore.FieldValue.serverTimestamp(),
+        cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+        cancelledBy: studentId,
+        cancelReason: "cancelled_by_student",
         tutorNavigationTriggered: false,
         studentNavigationTriggered: false,
         sessionMetadata: {
           ...sessionData.sessionMetadata,
           cancelledBy: studentId,
-          cancelledAt: Date.now(),
+          cancelledAt: cancelProcessedAtMs,
           cancelReason: "cancelled_by_student",
+          cancelRequestProcessedAt: cancelProcessedAtMs,
+          cancelSource: "cancel_call_callable",
         },
       });
 
