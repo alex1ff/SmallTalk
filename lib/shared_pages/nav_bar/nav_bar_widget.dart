@@ -49,8 +49,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   bool get _isTeacher =>
       currentUserDocument?.role == UserRole.native_speaker;
 
-  int get _tabCount => _isTeacher ? 2 : 3;
-
   /// Maps the page-level index (1 = Home, 2 = Profile, 3 = Dictionary)
   /// to the 0-based tab bar index.
   int get _selectedIndex {
@@ -81,14 +79,22 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     }
   }
 
+  static const _instantTransition = <String, dynamic>{
+    kTransitionInfoKey: TransitionInfo(
+      hasTransition: true,
+      transitionType: PageTransitionType.fade,
+      duration: Duration(milliseconds: 0),
+    ),
+  };
+
   void _handleTeacherTap(int index) {
     switch (index) {
       case 0:
         if (widget.indexCurrentPage == 1) return;
-        context.goNamed(DashboardNSWidget.routeName);
+        context.goNamed(DashboardNSWidget.routeName, extra: _instantTransition);
       case 1:
         if (widget.indexCurrentPage == 2) return;
-        context.goNamed(ProfileWidget.routeName);
+        context.goNamed(ProfileWidget.routeName, extra: _instantTransition);
     }
   }
 
@@ -101,13 +107,14 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           queryParameters: {
             'zn': serializeParam(false, ParamType.bool),
           }.withoutNulls,
+          extra: _instantTransition,
         );
       case 1:
         if (widget.indexCurrentPage == 3) return;
-        context.goNamed(WordsWidget.routeName);
+        context.goNamed(WordsWidget.routeName, extra: _instantTransition);
       case 2:
         if (widget.indexCurrentPage == 2) return;
-        context.goNamed(ProfileWidget.routeName);
+        context.goNamed(ProfileWidget.routeName, extra: _instantTransition);
     }
   }
 
@@ -159,32 +166,11 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottomPadding),
-      child: Stack(
-        children: [
-          // Native Liquid Glass tab bar (visual only for taps;
-          // drag gestures still pass through and work via onTap callback)
-          IOS26NativeTabBar(
-            destinations: destinations,
-            selectedIndex: _selectedIndex,
-            onTap: _onTap,
-            tint: const Color(0xFF008BFF),
-          ),
-
-          // Flutter tap overlay — catches taps that the native
-          // UiKitView gesture arena fails to forward on iOS 26.
-          Positioned.fill(
-            child: Row(
-              children: List.generate(_tabCount, (i) {
-                return Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: () => _onTap(i),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
+      child: IOS26NativeTabBar(
+        destinations: destinations,
+        selectedIndex: _selectedIndex,
+        onTap: _onTap,
+        tint: const Color(0xFF008BFF),
       ),
     );
   }
