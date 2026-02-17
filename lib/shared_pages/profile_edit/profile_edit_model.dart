@@ -1,5 +1,4 @@
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import 'profile_edit_widget.dart' show ProfileEditWidget;
 import 'package:flutter/material.dart';
 
@@ -55,13 +54,8 @@ class ProfileEditModel extends FlutterFlowModel<ProfileEditWidget> {
   FocusNode? countryNSFocusNode;
   TextEditingController? countryNSTextController;
   String? Function(BuildContext, String?)? countryNSTextControllerValidator;
-  // Model for NavBar component.
-  late NavBarModel navBarModel;
-
   @override
-  void initState(BuildContext context) {
-    navBarModel = createModel(context, () => NavBarModel());
-  }
+  void initState(BuildContext context) {}
 
   @override
   void dispose() {
@@ -98,6 +92,5 @@ class ProfileEditModel extends FlutterFlowModel<ProfileEditWidget> {
     countryNSFocusNode?.dispose();
     countryNSTextController?.dispose();
 
-    navBarModel.dispose();
   }
 }

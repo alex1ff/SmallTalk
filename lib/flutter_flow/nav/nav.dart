@@ -12,6 +12,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 
 import '/index.dart';
+import '/shared_pages/tab_shell/tab_shell_page.dart';
 
 export 'package:go_router/go_router.dart';
 export 'serialization_util.dart';
@@ -80,205 +81,216 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
       navigatorKey: appNavigatorKey,
       errorBuilder: (context, state) =>
           appStateNotifier.loggedIn ? LoadingWidget() : OnboardingWidget(),
-      routes: [
-        FFRoute(
-          name: '_initialize',
-          path: '/',
-          builder: (context, _) =>
-              appStateNotifier.loggedIn ? LoadingWidget() : OnboardingWidget(),
-        ),
-        FFRoute(
-          name: OnboardingWidget.routeName,
-          path: OnboardingWidget.routePath,
-          builder: (context, params) => OnboardingWidget(),
-        ),
-        FFRoute(
-          name: LoginWidget.routeName,
-          path: LoginWidget.routePath,
-          builder: (context, params) => LoginWidget(),
-        ),
-        FFRoute(
-          name: RegistrationWidget.routeName,
-          path: RegistrationWidget.routePath,
-          builder: (context, params) => RegistrationWidget(),
-        ),
-        FFRoute(
-          name: AcquaintanceSTUDENTWidget.routeName,
-          path: AcquaintanceSTUDENTWidget.routePath,
-          builder: (context, params) => AcquaintanceSTUDENTWidget(
-            index: params.getParam(
-              'index',
-              ParamType.int,
+      routes: <RouteBase>[
+        // ── Non-tab routes ──
+        ...[
+          FFRoute(
+            name: '_initialize',
+            path: '/',
+            builder: (context, _) =>
+                appStateNotifier.loggedIn ? LoadingWidget() : OnboardingWidget(),
+          ),
+          FFRoute(
+            name: OnboardingWidget.routeName,
+            path: OnboardingWidget.routePath,
+            builder: (context, params) => OnboardingWidget(),
+          ),
+          FFRoute(
+            name: LoginWidget.routeName,
+            path: LoginWidget.routePath,
+            builder: (context, params) => LoginWidget(),
+          ),
+          FFRoute(
+            name: RegistrationWidget.routeName,
+            path: RegistrationWidget.routePath,
+            builder: (context, params) => RegistrationWidget(),
+          ),
+          FFRoute(
+            name: AcquaintanceSTUDENTWidget.routeName,
+            path: AcquaintanceSTUDENTWidget.routePath,
+            builder: (context, params) => AcquaintanceSTUDENTWidget(
+              index: params.getParam(
+                'index',
+                ParamType.int,
+              ),
             ),
           ),
-        ),
-        FFRoute(
-          name: LoadingWidget.routeName,
-          path: LoadingWidget.routePath,
-          builder: (context, params) => LoadingWidget(),
-        ),
-        FFRoute(
-          name: DashboardNSWidget.routeName,
-          path: DashboardNSWidget.routePath,
-          builder: (context, params) => DashboardNSWidget(
-            zn: params.getParam(
-              'zn',
-              ParamType.bool,
+          FFRoute(
+            name: LoadingWidget.routeName,
+            path: LoadingWidget.routePath,
+            builder: (context, params) => LoadingWidget(),
+          ),
+          FFRoute(
+            name: CallSummaryWidget.routeName,
+            path: CallSummaryWidget.routePath,
+            builder: (context, params) => CallSummaryWidget(
+              userRef: params.getParam(
+                'userRef',
+                ParamType.DocumentReference,
+                isList: false,
+                collectionNamePath: ['users'],
+              ),
+              sessionID: params.getParam(
+                'sessionID',
+                ParamType.DocumentReference,
+                isList: false,
+                collectionNamePath: ['videoSessions'],
+              ),
+              lang: params.getParam(
+                'lang',
+                ParamType.String,
+              ),
+              dur: params.getParam(
+                'dur',
+                ParamType.int,
+              ),
             ),
           ),
-        ),
-        FFRoute(
-          name: StudentsDashboardWidget.routeName,
-          path: StudentsDashboardWidget.routePath,
-          builder: (context, params) => StudentsDashboardWidget(
-            zn: params.getParam(
-              'zn',
-              ParamType.bool,
-            ),
-            done: params.getParam(
-              'done',
-              ParamType.bool,
-            ),
-          ),
-        ),
-        FFRoute(
-          name: ProfileWidget.routeName,
-          path: ProfileWidget.routePath,
-          builder: (context, params) => ProfileWidget(),
-        ),
-        FFRoute(
-          name: WordsWidget.routeName,
-          path: WordsWidget.routePath,
-          builder: (context, params) => WordsWidget(),
-        ),
-        FFRoute(
-          name: CallSummaryWidget.routeName,
-          path: CallSummaryWidget.routePath,
-          builder: (context, params) => CallSummaryWidget(
-            userRef: params.getParam(
-              'userRef',
-              ParamType.DocumentReference,
-              isList: false,
-              collectionNamePath: ['users'],
-            ),
-            sessionID: params.getParam(
-              'sessionID',
-              ParamType.DocumentReference,
-              isList: false,
-              collectionNamePath: ['videoSessions'],
-            ),
-            lang: params.getParam(
-              'lang',
-              ParamType.String,
-            ),
-            dur: params.getParam(
-              'dur',
-              ParamType.int,
+          FFRoute(
+            name: VideoCallPageWidget.routeName,
+            path: VideoCallPageWidget.routePath,
+            builder: (context, params) => VideoCallPageWidget(
+              videoDocRef: params.getParam(
+                'videoDocRef',
+                ParamType.DocumentReference,
+                isList: false,
+                collectionNamePath: ['videoSessions'],
+              ),
+              initialRoomUrl: params.getParam(
+                'roomUrl',
+                ParamType.String,
+              ),
+              initialMeetingToken: params.getParam(
+                'meetingToken',
+                ParamType.String,
+              ),
+              initialRoomName: params.getParam(
+                'roomName',
+                ParamType.String,
+              ),
             ),
           ),
-        ),
-        FFRoute(
-          name: VideoCallPageWidget.routeName,
-          path: VideoCallPageWidget.routePath,
-          builder: (context, params) => VideoCallPageWidget(
-            videoDocRef: params.getParam(
-              'videoDocRef',
-              ParamType.DocumentReference,
-              isList: false,
-              collectionNamePath: ['videoSessions'],
-            ),
-            initialRoomUrl: params.getParam(
-              'roomUrl',
-              ParamType.String,
-            ),
-            initialMeetingToken: params.getParam(
-              'meetingToken',
-              ParamType.String,
-            ),
-            initialRoomName: params.getParam(
-              'roomName',
-              ParamType.String,
+          FFRoute(
+            name: WaitingForTeacherPageWidget.routeName,
+            path: WaitingForTeacherPageWidget.routePath,
+            builder: (context, params) => WaitingForTeacherPageWidget(),
+          ),
+          FFRoute(
+            name: NativeSpeakerPageWidget.routeName,
+            path: NativeSpeakerPageWidget.routePath,
+            builder: (context, params) => NativeSpeakerPageWidget(
+              nsUserDocRef: params.getParam(
+                'nsUserDocRef',
+                ParamType.DocumentReference,
+                isList: false,
+                collectionNamePath: ['users'],
+              ),
             ),
           ),
-        ),
-        FFRoute(
-          name: WaitingForTeacherPageWidget.routeName,
-          path: WaitingForTeacherPageWidget.routePath,
-          builder: (context, params) => WaitingForTeacherPageWidget(),
-        ),
-        FFRoute(
-          name: ProfileEditWidget.routeName,
-          path: ProfileEditWidget.routePath,
-          builder: (context, params) => ProfileEditWidget(),
-        ),
-        FFRoute(
-          name: NativeSpeakerPageWidget.routeName,
-          path: NativeSpeakerPageWidget.routePath,
-          builder: (context, params) => NativeSpeakerPageWidget(
-            nsUserDocRef: params.getParam(
-              'nsUserDocRef',
-              ParamType.DocumentReference,
-              isList: false,
-              collectionNamePath: ['users'],
+          FFRoute(
+            name: MyRewWidget.routeName,
+            path: MyRewWidget.routePath,
+            builder: (context, params) => MyRewWidget(),
+          ),
+          FFRoute(
+            name: PayWidget.routeName,
+            path: PayWidget.routePath,
+            builder: (context, params) => PayWidget(),
+          ),
+          FFRoute(
+            name: AcquaintanceNSWidget.routeName,
+            path: AcquaintanceNSWidget.routePath,
+            builder: (context, params) => AcquaintanceNSWidget(
+              index: params.getParam(
+                'index',
+                ParamType.int,
+              ),
             ),
           ),
-        ),
-        FFRoute(
-          name: MyRewWidget.routeName,
-          path: MyRewWidget.routePath,
-          builder: (context, params) => MyRewWidget(),
-        ),
-        FFRoute(
-          name: PayWidget.routeName,
-          path: PayWidget.routePath,
-          builder: (context, params) => PayWidget(),
-        ),
-        FFRoute(
-          name: AcquaintanceNSWidget.routeName,
-          path: AcquaintanceNSWidget.routePath,
-          builder: (context, params) => AcquaintanceNSWidget(
-            index: params.getParam(
-              'index',
-              ParamType.int,
-            ),
+          FFRoute(
+            name: RecoverPassWidget.routeName,
+            path: RecoverPassWidget.routePath,
+            builder: (context, params) => RecoverPassWidget(),
           ),
+          FFRoute(
+            name: PolicyWidget.routeName,
+            path: PolicyWidget.routePath,
+            builder: (context, params) => PolicyWidget(),
+          ),
+          FFRoute(
+            name: PayCopyWidget.routeName,
+            path: PayCopyWidget.routePath,
+            builder: (context, params) => PayCopyWidget(),
+          ),
+          FFRoute(
+            name: PayWebWiewWidget.routeName,
+            path: PayWebWiewWidget.routePath,
+            builder: (context, params) => PayWebWiewWidget(),
+          ),
+          FFRoute(
+            name: BlackListWidget.routeName,
+            path: BlackListWidget.routePath,
+            builder: (context, params) => BlackListWidget(),
+          ),
+          FFRoute(
+            name: MyRewNSWidget.routeName,
+            path: MyRewNSWidget.routePath,
+            builder: (context, params) => MyRewNSWidget(),
+          ),
+          FFRoute(
+            name: FavoriteWidget.routeName,
+            path: FavoriteWidget.routePath,
+            builder: (context, params) => FavoriteWidget(),
+          ),
+        ].map((r) => r.toRoute(appStateNotifier)),
+
+        // ── Tab pages wrapped in ShellRoute (persistent NavBar) ──
+        ShellRoute(
+          builder: (context, state, child) =>
+              TabShellPage(state: state, child: child),
+          routes: [
+            FFRoute(
+              name: DashboardNSWidget.routeName,
+              path: DashboardNSWidget.routePath,
+              builder: (context, params) => DashboardNSWidget(
+                zn: params.getParam(
+                  'zn',
+                  ParamType.bool,
+                ),
+              ),
+            ),
+            FFRoute(
+              name: StudentsDashboardWidget.routeName,
+              path: StudentsDashboardWidget.routePath,
+              builder: (context, params) => StudentsDashboardWidget(
+                zn: params.getParam(
+                  'zn',
+                  ParamType.bool,
+                ),
+                done: params.getParam(
+                  'done',
+                  ParamType.bool,
+                ),
+              ),
+            ),
+            FFRoute(
+              name: ProfileWidget.routeName,
+              path: ProfileWidget.routePath,
+              builder: (context, params) => ProfileWidget(),
+            ),
+            FFRoute(
+              name: WordsWidget.routeName,
+              path: WordsWidget.routePath,
+              builder: (context, params) => WordsWidget(),
+            ),
+            FFRoute(
+              name: ProfileEditWidget.routeName,
+              path: ProfileEditWidget.routePath,
+              builder: (context, params) => ProfileEditWidget(),
+            ),
+          ].map((r) => r.toRoute(appStateNotifier)).toList(),
         ),
-        FFRoute(
-          name: RecoverPassWidget.routeName,
-          path: RecoverPassWidget.routePath,
-          builder: (context, params) => RecoverPassWidget(),
-        ),
-        FFRoute(
-          name: PolicyWidget.routeName,
-          path: PolicyWidget.routePath,
-          builder: (context, params) => PolicyWidget(),
-        ),
-        FFRoute(
-          name: PayCopyWidget.routeName,
-          path: PayCopyWidget.routePath,
-          builder: (context, params) => PayCopyWidget(),
-        ),
-        FFRoute(
-          name: PayWebWiewWidget.routeName,
-          path: PayWebWiewWidget.routePath,
-          builder: (context, params) => PayWebWiewWidget(),
-        ),
-        FFRoute(
-          name: BlackListWidget.routeName,
-          path: BlackListWidget.routePath,
-          builder: (context, params) => BlackListWidget(),
-        ),
-        FFRoute(
-          name: MyRewNSWidget.routeName,
-          path: MyRewNSWidget.routePath,
-          builder: (context, params) => MyRewNSWidget(),
-        ),
-        FFRoute(
-          name: FavoriteWidget.routeName,
-          path: FavoriteWidget.routePath,
-          builder: (context, params) => FavoriteWidget(),
-        )
-      ].map((r) => r.toRoute(appStateNotifier)).toList(),
+      ],
     );
 
 extension NavParamExtensions on Map<String, String?> {

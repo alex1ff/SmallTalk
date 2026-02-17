@@ -3,7 +3,6 @@ import '/backend/backend.dart';
 import '/components/word_pos_chip/word_pos_chip_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/students_pages/components/new_word/new_word_widget.dart';
 import '/students_pages/components/word_card/word_card_widget.dart';
 import 'package:flutter/material.dart';
@@ -584,16 +583,6 @@ class _WordsWidgetState extends State<WordsWidget> {
                 ]
                     .addToStart(SizedBox(height: 55.0))
                     .addToEnd(SizedBox(height: 120.0)),
-              ),
-            ),
-            Align(
-              alignment: AlignmentDirectional(0.0, 1.0),
-              child: wrapWithModel(
-                model: _model.navBarModel,
-                updateCallback: () => safeSetState(() {}),
-                child: NavBarWidget(
-                  indexCurrentPage: 3,
-                ),
               ),
             ),
             Container(

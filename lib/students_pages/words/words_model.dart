@@ -1,7 +1,6 @@
 import '/backend/backend.dart';
 import '/components/word_pos_chip/word_pos_chip_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import 'words_widget.dart' show WordsWidget;
 import 'package:flutter/material.dart';
 
@@ -39,9 +38,6 @@ class WordsModel extends FlutterFlowModel<WordsWidget> {
   late WordPosChipModel wordPosChipModel11;
   // Model for wordPosChip component.
   late WordPosChipModel wordPosChipModel12;
-  // Model for NavBar component.
-  late NavBarModel navBarModel;
-
   @override
   void initState(BuildContext context) {
     wordPosChipModel1 = createModel(context, () => WordPosChipModel());
@@ -56,7 +52,6 @@ class WordsModel extends FlutterFlowModel<WordsWidget> {
     wordPosChipModel10 = createModel(context, () => WordPosChipModel());
     wordPosChipModel11 = createModel(context, () => WordPosChipModel());
     wordPosChipModel12 = createModel(context, () => WordPosChipModel());
-    navBarModel = createModel(context, () => NavBarModel());
   }
 
   @override
@@ -73,6 +68,5 @@ class WordsModel extends FlutterFlowModel<WordsWidget> {
     wordPosChipModel10.dispose();
     wordPosChipModel11.dispose();
     wordPosChipModel12.dispose();
-    navBarModel.dispose();
   }
 }

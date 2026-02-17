@@ -5,7 +5,6 @@ import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/shared_pages/profile_components/lang_app/lang_app_widget.dart';
 import '/shared_pages/profile_components/logout/logout_widget.dart';
 import '/shared_pages/profile_components/rate_app/rate_app_widget.dart';
@@ -1033,16 +1032,6 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                       .divide(SizedBox(height: 6.0))
                       .addToStart(SizedBox(height: 55.0))
                       .addToEnd(SizedBox(height: 100.0)),
-                ),
-              ),
-            ),
-            Align(
-              alignment: AlignmentDirectional(0.0, 1.0),
-              child: wrapWithModel(
-                model: _model.navBarModel,
-                updateCallback: () => safeSetState(() {}),
-                child: NavBarWidget(
-                  indexCurrentPage: 2,
                 ),
               ),
             ),

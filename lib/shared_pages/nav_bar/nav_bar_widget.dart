@@ -25,6 +25,9 @@ class NavBarWidget extends StatefulWidget {
 class _NavBarWidgetState extends State<NavBarWidget> {
   late NavBarModel _model;
 
+  /// Debounce: ignore taps within 400ms of the last navigation.
+  DateTime _lastNavTime = DateTime(2000);
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -46,6 +49,8 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   bool get _isTeacher =>
       currentUserDocument?.role == UserRole.native_speaker;
 
+  int get _tabCount => _isTeacher ? 2 : 3;
+
   /// Maps the page-level index (1 = Home, 2 = Profile, 3 = Dictionary)
   /// to the 0-based tab bar index.
   int get _selectedIndex {
@@ -63,22 +68,12 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     }
   }
 
-  /// Called by the native UITabBar via MethodChannel (drag gestures).
-  /// Defers navigation to a microtask so it runs after the platform
-  /// callback completes — GoRouter ignores pushNamed inside MethodChannel.
   void _onTap(int index) {
-    Future.microtask(() {
-      if (!mounted) return;
-      _navigate(index);
-    });
-  }
+    final now = DateTime.now();
+    if (now.difference(_lastNavTime).inMilliseconds < 400) return;
+    _lastNavTime = now;
 
-  /// Called by the Flutter tap overlay directly (no MethodChannel involved).
-  void _onTapDirect(int index) {
-    _navigate(index);
-  }
-
-  void _navigate(int index) {
+    if (!mounted) return;
     if (_isTeacher) {
       _handleTeacherTap(index);
     } else {
@@ -90,28 +85,10 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     switch (index) {
       case 0:
         if (widget.indexCurrentPage == 1) return;
-        context.pushNamed(
-          DashboardNSWidget.routeName,
-          extra: <String, dynamic>{
-            kTransitionInfoKey: TransitionInfo(
-              hasTransition: true,
-              transitionType: PageTransitionType.fade,
-              duration: Duration(milliseconds: 0),
-            ),
-          },
-        );
+        context.goNamed(DashboardNSWidget.routeName);
       case 1:
         if (widget.indexCurrentPage == 2) return;
-        context.pushNamed(
-          ProfileWidget.routeName,
-          extra: <String, dynamic>{
-            kTransitionInfoKey: TransitionInfo(
-              hasTransition: true,
-              transitionType: PageTransitionType.fade,
-              duration: Duration(milliseconds: 0),
-            ),
-          },
-        );
+        context.goNamed(ProfileWidget.routeName);
     }
   }
 
@@ -119,43 +96,18 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     switch (index) {
       case 0:
         if (widget.indexCurrentPage == 1) return;
-        context.pushNamed(
+        context.goNamed(
           StudentsDashboardWidget.routeName,
           queryParameters: {
             'zn': serializeParam(false, ParamType.bool),
           }.withoutNulls,
-          extra: <String, dynamic>{
-            kTransitionInfoKey: TransitionInfo(
-              hasTransition: true,
-              transitionType: PageTransitionType.fade,
-              duration: Duration(milliseconds: 0),
-            ),
-          },
         );
       case 1:
         if (widget.indexCurrentPage == 3) return;
-        context.pushNamed(
-          WordsWidget.routeName,
-          extra: <String, dynamic>{
-            kTransitionInfoKey: TransitionInfo(
-              hasTransition: true,
-              transitionType: PageTransitionType.fade,
-              duration: Duration(milliseconds: 0),
-            ),
-          },
-        );
+        context.goNamed(WordsWidget.routeName);
       case 2:
         if (widget.indexCurrentPage == 2) return;
-        context.pushNamed(
-          ProfileWidget.routeName,
-          extra: <String, dynamic>{
-            kTransitionInfoKey: TransitionInfo(
-              hasTransition: true,
-              transitionType: PageTransitionType.fade,
-              duration: Duration(milliseconds: 0),
-            ),
-          },
-        );
+        context.goNamed(ProfileWidget.routeName);
     }
   }
 
@@ -167,14 +119,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       return _buildMaterialNavBar(context);
     }
 
-    // iOS — native Liquid Glass tab bar (iOS 26+) with CupertinoTabBar fallback
     if (PlatformInfo.isIOS26OrHigher()) {
       return _buildNativeIOS26TabBar();
     }
     return _buildCupertinoTabBar(context);
   }
 
-  // ─────── iOS 26+ — native Liquid Glass tab bar ───────
+  // ─────── iOS 26+ — native Liquid Glass tab bar + Flutter tap overlay ───────
 
   Widget _buildNativeIOS26TabBar() {
     final destinations = _isTeacher
@@ -203,14 +154,15 @@ class _NavBarWidgetState extends State<NavBarWidget> {
             ),
           ];
 
-    final tabCount = _isTeacher ? 2 : 3;
-    final bottomPad = MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
+    final bottomPadding =
+        MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: bottomPad),
+      padding: EdgeInsets.only(bottom: bottomPadding),
       child: Stack(
         children: [
-          // Native Liquid Glass tab bar (visual + drag handling).
+          // Native Liquid Glass tab bar (visual only for taps;
+          // drag gestures still pass through and work via onTap callback)
           IOS26NativeTabBar(
             destinations: destinations,
             selectedIndex: _selectedIndex,
@@ -218,22 +170,18 @@ class _NavBarWidgetState extends State<NavBarWidget> {
             tint: const Color(0xFF008BFF),
           ),
 
-          // Transparent Flutter tap overlay.
-          // iOS 26 standalone UITabBar doesn't fire didSelect for taps,
-          // only for drags. This overlay catches taps in Flutter's gesture
-          // system and navigates directly. Drags fall through to the
-          // native view because GestureDetector has no drag handler.
+          // Flutter tap overlay — catches taps that the native
+          // UiKitView gesture arena fails to forward on iOS 26.
           Positioned.fill(
             child: Row(
-              children: List.generate(
-                tabCount,
-                (i) => Expanded(
+              children: List.generate(_tabCount, (i) {
+                return Expanded(
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
-                    onTap: () => _onTapDirect(i),
+                    onTap: () => _onTap(i),
                   ),
-                ),
-              ),
+                );
+              }),
             ),
           ),
         ],

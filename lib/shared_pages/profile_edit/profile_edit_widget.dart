@@ -16,7 +16,6 @@ import '/shared_pages/edit_components/edit_lang/edit_lang_widget.dart';
 import '/shared_pages/edit_components/edit_level/edit_level_widget.dart';
 import '/shared_pages/edit_components/edit_name/edit_name_widget.dart';
 import '/shared_pages/edit_components/edit_target/edit_target_widget.dart';
-import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/shared_pages/profile_components/delete/delete_widget.dart';
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -2680,16 +2679,6 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                   ),
                 ),
               ],
-            ),
-            Align(
-              alignment: AlignmentDirectional(0.0, 1.0),
-              child: wrapWithModel(
-                model: _model.navBarModel,
-                updateCallback: () => safeSetState(() {}),
-                child: NavBarWidget(
-                  indexCurrentPage: 2,
-                ),
-              ),
             ),
           ],
         ),

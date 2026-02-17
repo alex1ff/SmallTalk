@@ -3,7 +3,6 @@ import '/authorization/components/celebration_s_t/celebration_s_t_widget.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/students_pages/components/fav/fav_widget.dart';
 import '/students_pages/components/filters/filters_widget.dart';
 import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
@@ -965,16 +964,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                 ]
                     .addToStart(SizedBox(height: 55.0))
                     .addToEnd(SizedBox(height: 116.0)),
-              ),
-            ),
-            Align(
-              alignment: AlignmentDirectional(0.0, 1.0),
-              child: wrapWithModel(
-                model: _model.navBarModel,
-                updateCallback: () => safeSetState(() {}),
-                child: NavBarWidget(
-                  indexCurrentPage: 1,
-                ),
               ),
             ),
             Container(
