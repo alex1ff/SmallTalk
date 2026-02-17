@@ -7,7 +7,6 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'nav_bar_model.dart';
 export 'nav_bar_model.dart';
 
@@ -64,13 +63,12 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     }
   }
 
-  /// Schedules navigation for the next frame.
-  /// This is critical for IOS26NativeTabBar — the onTap callback arrives
-  /// via a MethodChannel from the native UITabBar. Calling
-  /// context.pushNamed directly inside that callback can be silently
-  /// ignored by GoRouter. Deferring to the next frame fixes it.
+  /// Defers navigation to a microtask so it runs after the
+  /// MethodChannel handler from the native UITabBar completes.
+  /// Calling context.pushNamed directly inside the platform callback
+  /// can be silently ignored by GoRouter.
   void _onTap(int index) {
-    SchedulerBinding.instance.addPostFrameCallback((_) {
+    Future.microtask(() {
       if (!mounted) return;
       if (_isTeacher) {
         _handleTeacherTap(index);
