@@ -8,34 +8,34 @@ import '/flutter_flow/flutter_flow_util.dart';
 
 class BalanceStruct extends FFFirebaseStruct {
   BalanceStruct({
-    int? smallTalks,
-    int? minutes,
+    double? smallTalks,
+    double? minutes,
     FirestoreUtilData firestoreUtilData = const FirestoreUtilData(),
   })  : _smallTalks = smallTalks,
         _minutes = minutes,
         super(firestoreUtilData);
 
   // "smallTalks" field.
-  int? _smallTalks;
-  int get smallTalks => _smallTalks ?? 0;
-  set smallTalks(int? val) => _smallTalks = val;
+  double? _smallTalks;
+  double get smallTalks => _smallTalks ?? 0.0;
+  set smallTalks(double? val) => _smallTalks = val;
 
-  void incrementSmallTalks(int amount) => smallTalks = smallTalks + amount;
+  void incrementSmallTalks(double amount) => smallTalks = smallTalks + amount;
 
   bool hasSmallTalks() => _smallTalks != null;
 
   // "minutes" field.
-  int? _minutes;
-  int get minutes => _minutes ?? 0;
-  set minutes(int? val) => _minutes = val;
+  double? _minutes;
+  double get minutes => _minutes ?? 0.0;
+  set minutes(double? val) => _minutes = val;
 
-  void incrementMinutes(int amount) => minutes = minutes + amount;
+  void incrementMinutes(double amount) => minutes = minutes + amount;
 
   bool hasMinutes() => _minutes != null;
 
   static BalanceStruct fromMap(Map<String, dynamic> data) => BalanceStruct(
-        smallTalks: castToType<int>(data['smallTalks']),
-        minutes: castToType<int>(data['minutes']),
+        smallTalks: castToType<double>(data['smallTalks']),
+        minutes: castToType<double>(data['minutes']),
       );
 
   static BalanceStruct? maybeFromMap(dynamic data) =>
@@ -50,11 +50,11 @@ class BalanceStruct extends FFFirebaseStruct {
   Map<String, dynamic> toSerializableMap() => {
         'smallTalks': serializeParam(
           _smallTalks,
-          ParamType.int,
+          ParamType.double,
         ),
         'minutes': serializeParam(
           _minutes,
-          ParamType.int,
+          ParamType.double,
         ),
       }.withoutNulls;
 
@@ -62,12 +62,12 @@ class BalanceStruct extends FFFirebaseStruct {
       BalanceStruct(
         smallTalks: deserializeParam(
           data['smallTalks'],
-          ParamType.int,
+          ParamType.double,
           false,
         ),
         minutes: deserializeParam(
           data['minutes'],
-          ParamType.int,
+          ParamType.double,
           false,
         ),
       );
@@ -87,8 +87,8 @@ class BalanceStruct extends FFFirebaseStruct {
 }
 
 BalanceStruct createBalanceStruct({
-  int? smallTalks,
-  int? minutes,
+  double? smallTalks,
+  double? minutes,
   Map<String, dynamic> fieldValues = const {},
   bool clearUnsetFields = true,
   bool create = false,

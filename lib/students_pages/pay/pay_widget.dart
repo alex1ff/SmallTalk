@@ -139,7 +139,7 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                   ),
                                   AuthUserStreamWidget(
                                     builder: (context) => Text(
-                                      '~ ${currentUserDocument?.balanceST.minutes.toString()} минут',
+                                      '~ ${currentUserDocument?.balanceST.minutes.toInt()} минут',
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium
                                           .override(
@@ -165,6 +165,7 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                         text: valueOrDefault<String>(
                                           currentUserDocument
                                               ?.balanceST.smallTalks
+                                              .toInt()
                                               .toString(),
                                           '0',
                                         ),

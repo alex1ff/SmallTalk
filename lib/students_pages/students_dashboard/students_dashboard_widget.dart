@@ -6,6 +6,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/students_pages/components/fav/fav_widget.dart';
 import '/students_pages/components/filters/filters_widget.dart';
+import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/index.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -289,7 +290,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   ),
                                   AuthUserStreamWidget(
                                     builder: (context) => Text(
-                                      '~ ${currentUserDocument?.balanceST.minutes.toString()} минут',
+                                      '~ ${currentUserDocument?.balanceST.minutes.toInt()} минут',
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium
                                           .override(
@@ -312,6 +313,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                       text: valueOrDefault<String>(
                                         currentUserDocument
                                             ?.balanceST.smallTalks
+                                            .toInt()
                                             .toString(),
                                         '0',
                                       ),
@@ -482,6 +484,31 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   hoverColor: Colors.transparent,
                                   highlightColor: Colors.transparent,
                                   onTap: () async {
+                                    // Check balance before starting
+                                    final balance =
+                                        currentUserDocument?.balanceST;
+                                    if (balance == null ||
+                                        balance.smallTalks <= 0) {
+                                      await showModalBottomSheet(
+                                        isScrollControlled: true,
+                                        backgroundColor: Colors.transparent,
+                                        enableDrag: false,
+                                        context: context,
+                                        builder: (context) {
+                                          return GestureDetector(
+                                            onTap: () => FocusScope.of(context)
+                                                .unfocus(),
+                                            child: Padding(
+                                              padding: MediaQuery.viewInsetsOf(
+                                                  context),
+                                              child: NoBalanceWidget(),
+                                            ),
+                                          );
+                                        },
+                                      );
+                                      return;
+                                    }
+
                                     if (!(await getPermissionStatus(
                                         cameraPermission))) {
                                       await requestPermission(cameraPermission);
