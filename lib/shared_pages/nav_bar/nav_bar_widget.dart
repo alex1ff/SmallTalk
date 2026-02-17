@@ -3,6 +3,8 @@ import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'nav_bar_model.dart';
 export 'nav_bar_model.dart';
@@ -37,487 +39,249 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   @override
   void dispose() {
     _model.maybeDispose();
-
     super.dispose();
   }
 
+  bool get _isTeacher =>
+      currentUserDocument?.role == UserRole.native_speaker;
+
+  /// Maps the page-level index (1 = Home, 2 = Profile, 3 = Dictionary)
+  /// to the 0-based tab bar index.
+  int get _selectedIndex {
+    if (_isTeacher) {
+      // Teacher: 2 tabs — Home (0), Profile (1)
+      return widget.indexCurrentPage == 2 ? 1 : 0;
+    } else {
+      // Student: 3 tabs — Home (0), Dictionary (1), Profile (2)
+      switch (widget.indexCurrentPage) {
+        case 3:
+          return 1;
+        case 2:
+          return 2;
+        default:
+          return 0;
+      }
+    }
+  }
+
+  void _onTap(int index) {
+    if (_isTeacher) {
+      _handleTeacherTap(index);
+    } else {
+      _handleStudentTap(index);
+    }
+  }
+
+  void _handleTeacherTap(int index) {
+    switch (index) {
+      case 0:
+        if (widget.indexCurrentPage == 1) return;
+        context.pushNamed(
+          DashboardNSWidget.routeName,
+          extra: <String, dynamic>{
+            kTransitionInfoKey: TransitionInfo(
+              hasTransition: true,
+              transitionType: PageTransitionType.fade,
+              duration: Duration(milliseconds: 0),
+            ),
+          },
+        );
+      case 1:
+        if (widget.indexCurrentPage == 2) return;
+        context.pushNamed(
+          ProfileWidget.routeName,
+          extra: <String, dynamic>{
+            kTransitionInfoKey: TransitionInfo(
+              hasTransition: true,
+              transitionType: PageTransitionType.fade,
+              duration: Duration(milliseconds: 0),
+            ),
+          },
+        );
+    }
+  }
+
+  void _handleStudentTap(int index) {
+    switch (index) {
+      case 0:
+        if (widget.indexCurrentPage == 1) return;
+        context.pushNamed(
+          StudentsDashboardWidget.routeName,
+          queryParameters: {
+            'zn': serializeParam(false, ParamType.bool),
+          }.withoutNulls,
+          extra: <String, dynamic>{
+            kTransitionInfoKey: TransitionInfo(
+              hasTransition: true,
+              transitionType: PageTransitionType.fade,
+              duration: Duration(milliseconds: 0),
+            ),
+          },
+        );
+      case 1:
+        if (widget.indexCurrentPage == 3) return;
+        context.pushNamed(
+          WordsWidget.routeName,
+          extra: <String, dynamic>{
+            kTransitionInfoKey: TransitionInfo(
+              hasTransition: true,
+              transitionType: PageTransitionType.fade,
+              duration: Duration(milliseconds: 0),
+            ),
+          },
+        );
+      case 2:
+        if (widget.indexCurrentPage == 2) return;
+        context.pushNamed(
+          ProfileWidget.routeName,
+          extra: <String, dynamic>{
+            kTransitionInfoKey: TransitionInfo(
+              hasTransition: true,
+              transitionType: PageTransitionType.fade,
+              duration: Duration(milliseconds: 0),
+            ),
+          },
+        );
+    }
+  }
+
+  // ──────────────────── Build ────────────────────
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 90.0,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0x00BDBDBD), Color(0xBDF2F2F7)],
-          stops: [0.0, 1.0],
-          begin: AlignmentDirectional(0.0, -1.0),
-          end: AlignmentDirectional(0, 1.0),
-        ),
-      ),
-      child: Align(
-        alignment: AlignmentDirectional(0.0, 1.0),
-        child: Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 20.0),
-          child: Container(
-            height: 65.0,
-            decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryBackground,
-              boxShadow: [
-                BoxShadow(
-                  blurRadius: 10.0,
-                  color: Color(0x0D2C2C2C),
-                  offset: Offset(
-                    0.0,
-                    2.0,
-                  ),
-                )
-              ],
-              borderRadius: BorderRadius.circular(50.0),
-              border: Border.all(
-                color: FlutterFlowTheme.of(context).primaryBackground,
-                width: 1.0,
-              ),
+    // iOS 26+ — native UITabBar with Liquid Glass
+    if (PlatformInfo.isIOS26OrHigher()) {
+      return _buildNativeIOS26TabBar();
+    }
+
+    // iOS < 26 — CupertinoTabBar
+    if (PlatformInfo.isIOS) {
+      return _buildCupertinoTabBar(context);
+    }
+
+    // Android / other — Material NavigationBar
+    return _buildMaterialNavBar(context);
+  }
+
+  // ─────── iOS 26+ native Liquid Glass tab bar ───────
+
+  Widget _buildNativeIOS26TabBar() {
+    final destinations = _isTeacher
+        ? const [
+            AdaptiveNavigationDestination(
+              icon: 'house.fill',
+              label: 'Главная',
             ),
-            child: Builder(
-              builder: (context) {
-                if (currentUserDocument?.role == UserRole.native_speaker) {
-                  return Padding(
-                    padding: EdgeInsets.all(4.0),
-                    child: Container(
-                      width: 180.0,
-                      height: 65.0,
-                      child: Stack(
-                        children: [
-                          Align(
-                            alignment: AlignmentDirectional(
-                                valueOrDefault<double>(
-                                  widget.indexCurrentPage == 1 ? -1.0 : 1.0,
-                                  0.0,
-                                ),
-                                0.0),
-                            child: AnimatedContainer(
-                              duration: Duration(milliseconds: 100),
-                              curve: Curves.easeIn,
-                              width: 90.0,
-                              height: 61.0,
-                              decoration: BoxDecoration(
-                                color: FlutterFlowTheme.of(context)
-                                    .secondaryBackground,
-                                borderRadius: BorderRadius.circular(50.0),
-                              ),
-                            ),
-                          ),
-                          Row(
-                            mainAxisSize: MainAxisSize.max,
-                            mainAxisAlignment: MainAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: InkWell(
-                                  splashColor: Colors.transparent,
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  onTap: () async {
-                                    if (widget.indexCurrentPage == 1) {
-                                      return;
-                                    }
-
-                                    context.pushNamed(
-                                      DashboardNSWidget.routeName,
-                                      extra: <String, dynamic>{
-                                        kTransitionInfoKey: TransitionInfo(
-                                          hasTransition: true,
-                                          transitionType:
-                                              PageTransitionType.fade,
-                                          duration: Duration(milliseconds: 0),
-                                        ),
-                                      },
-                                    );
-                                  },
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        width: 20.0,
-                                        height: 20.0,
-                                        decoration: BoxDecoration(),
-                                        child: Align(
-                                          alignment:
-                                              AlignmentDirectional(0.0, 0.0),
-                                          child: Icon(
-                                            FFIcons.khome01,
-                                            color: widget.indexCurrentPage == 1
-                                                ? Color(0xFF008BFF)
-                                                : Color(0xFF303030),
-                                            size: 20.0,
-                                          ),
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            0.0, 4.0, 0.0, 0.0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            '2hh3j18i' /* Главная */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    widget.indexCurrentPage ==
-                                                            1
-                                                        ? Color(0xFF008BFF)
-                                                        : Color(0xFF303030),
-                                                fontSize: 12.0,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: InkWell(
-                                  splashColor: Colors.transparent,
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  onTap: () async {
-                                    if (widget.indexCurrentPage == 2) {
-                                      return;
-                                    }
-
-                                    context.pushNamed(
-                                      ProfileWidget.routeName,
-                                      extra: <String, dynamic>{
-                                        kTransitionInfoKey: TransitionInfo(
-                                          hasTransition: true,
-                                          transitionType:
-                                              PageTransitionType.fade,
-                                          duration: Duration(milliseconds: 0),
-                                        ),
-                                      },
-                                    );
-                                  },
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        width: 20.0,
-                                        height: 20.0,
-                                        decoration: BoxDecoration(),
-                                        child: Align(
-                                          alignment:
-                                              AlignmentDirectional(0.0, 0.0),
-                                          child: Icon(
-                                            FFIcons.kuser03,
-                                            color: widget.indexCurrentPage == 2
-                                                ? Color(0xFF008BFF)
-                                                : Color(0xFF303030),
-                                            size: 20.0,
-                                          ),
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            0.0, 4.0, 0.0, 0.0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'j96epnpj' /* Профиль */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    widget.indexCurrentPage ==
-                                                            2
-                                                        ? Color(0xFF008BFF)
-                                                        : Color(0xFF303030),
-                                                fontSize: 12.0,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                } else {
-                  return Padding(
-                    padding: EdgeInsets.all(4.0),
-                    child: Container(
-                      width: 270.0,
-                      height: 65.0,
-                      child: Stack(
-                        children: [
-                          Align(
-                            alignment: AlignmentDirectional(
-                                valueOrDefault<double>(
-                                  () {
-                                    if (widget.indexCurrentPage == 1) {
-                                      return -1.0;
-                                    } else if (widget.indexCurrentPage == 3) {
-                                      return 0.0;
-                                    } else {
-                                      return 1.0;
-                                    }
-                                  }(),
-                                  0.0,
-                                ),
-                                0.0),
-                            child: AnimatedContainer(
-                              duration: Duration(milliseconds: 100),
-                              curve: Curves.easeIn,
-                              width: 90.0,
-                              height: 61.0,
-                              decoration: BoxDecoration(
-                                color: FlutterFlowTheme.of(context)
-                                    .secondaryBackground,
-                                borderRadius: BorderRadius.circular(50.0),
-                              ),
-                            ),
-                          ),
-                          Row(
-                            mainAxisSize: MainAxisSize.max,
-                            children: [
-                              Expanded(
-                                child: InkWell(
-                                  splashColor: Colors.transparent,
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  onTap: () async {
-                                    if (widget.indexCurrentPage == 1) {
-                                      return;
-                                    }
-
-                                    context.pushNamed(
-                                      StudentsDashboardWidget.routeName,
-                                      queryParameters: {
-                                        'zn': serializeParam(
-                                          false,
-                                          ParamType.bool,
-                                        ),
-                                      }.withoutNulls,
-                                      extra: <String, dynamic>{
-                                        kTransitionInfoKey: TransitionInfo(
-                                          hasTransition: true,
-                                          transitionType:
-                                              PageTransitionType.fade,
-                                          duration: Duration(milliseconds: 0),
-                                        ),
-                                      },
-                                    );
-                                  },
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        width: 20.0,
-                                        height: 20.0,
-                                        decoration: BoxDecoration(),
-                                        child: Align(
-                                          alignment:
-                                              AlignmentDirectional(0.0, 0.0),
-                                          child: Icon(
-                                            FFIcons.khome01,
-                                            color: widget.indexCurrentPage == 1
-                                                ? Color(0xFF008BFF)
-                                                : Color(0xFF303030),
-                                            size: 20.0,
-                                          ),
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            0.0, 4.0, 0.0, 0.0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            '3ste14ts' /* Главная */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    widget.indexCurrentPage ==
-                                                            1
-                                                        ? Color(0xFF008BFF)
-                                                        : Color(0xFF303030),
-                                                fontSize: 12.0,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: InkWell(
-                                  splashColor: Colors.transparent,
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  onTap: () async {
-                                    if (widget.indexCurrentPage == 3) {
-                                      return;
-                                    }
-
-                                    context.pushNamed(
-                                      WordsWidget.routeName,
-                                      extra: <String, dynamic>{
-                                        kTransitionInfoKey: TransitionInfo(
-                                          hasTransition: true,
-                                          transitionType:
-                                              PageTransitionType.fade,
-                                          duration: Duration(milliseconds: 0),
-                                        ),
-                                      },
-                                    );
-                                  },
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        width: 20.0,
-                                        height: 20.0,
-                                        decoration: BoxDecoration(),
-                                        child: Align(
-                                          alignment:
-                                              AlignmentDirectional(0.0, 0.0),
-                                          child: Icon(
-                                            FFIcons.kbookOpen01,
-                                            color: widget.indexCurrentPage == 3
-                                                ? Color(0xFF008BFF)
-                                                : Color(0xFF303030),
-                                            size: 20.0,
-                                          ),
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            0.0, 4.0, 0.0, 0.0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'bhpm1ddo' /* Словарь */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    widget.indexCurrentPage ==
-                                                            3
-                                                        ? Color(0xFF008BFF)
-                                                        : Color(0xFF303030),
-                                                fontSize: 12.0,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: InkWell(
-                                  splashColor: Colors.transparent,
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  onTap: () async {
-                                    if (widget.indexCurrentPage == 2) {
-                                      return;
-                                    }
-
-                                    context.pushNamed(
-                                      ProfileWidget.routeName,
-                                      extra: <String, dynamic>{
-                                        kTransitionInfoKey: TransitionInfo(
-                                          hasTransition: true,
-                                          transitionType:
-                                              PageTransitionType.fade,
-                                          duration: Duration(milliseconds: 0),
-                                        ),
-                                      },
-                                    );
-                                  },
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        width: 20.0,
-                                        height: 20.0,
-                                        decoration: BoxDecoration(),
-                                        child: Align(
-                                          alignment:
-                                              AlignmentDirectional(0.0, 0.0),
-                                          child: Icon(
-                                            FFIcons.kuser03,
-                                            color: widget.indexCurrentPage == 2
-                                                ? Color(0xFF008BFF)
-                                                : Color(0xFF303030),
-                                            size: 20.0,
-                                          ),
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            0.0, 4.0, 0.0, 0.0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            '04sylp8f' /* Профиль */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    widget.indexCurrentPage ==
-                                                            2
-                                                        ? Color(0xFF008BFF)
-                                                        : Color(0xFF303030),
-                                                fontSize: 12.0,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-              },
+            AdaptiveNavigationDestination(
+              icon: 'person.fill',
+              label: 'Профиль',
             ),
-          ),
-        ),
+          ]
+        : const [
+            AdaptiveNavigationDestination(
+              icon: 'house.fill',
+              label: 'Главная',
+            ),
+            AdaptiveNavigationDestination(
+              icon: 'book.fill',
+              label: 'Словарь',
+            ),
+            AdaptiveNavigationDestination(
+              icon: 'person.fill',
+              label: 'Профиль',
+            ),
+          ];
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).padding.bottom > 0 ? 0 : 8,
       ),
+      child: IOS26NativeTabBar(
+        destinations: destinations,
+        selectedIndex: _selectedIndex,
+        onTap: _onTap,
+        tint: const Color(0xFF008BFF),
+      ),
+    );
+  }
+
+  // ─────── iOS < 26 — CupertinoTabBar ───────
+
+  Widget _buildCupertinoTabBar(BuildContext context) {
+    final items = _isTeacher
+        ? [
+            BottomNavigationBarItem(
+              icon: Icon(FFIcons.khome01),
+              label: FFLocalizations.of(context).getText('2hh3j18i'),
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(FFIcons.kuser03),
+              label: FFLocalizations.of(context).getText('j96epnpj'),
+            ),
+          ]
+        : [
+            BottomNavigationBarItem(
+              icon: Icon(FFIcons.khome01),
+              label: FFLocalizations.of(context).getText('3ste14ts'),
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(FFIcons.kbookOpen01),
+              label: FFLocalizations.of(context).getText('bhpm1ddo'),
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(FFIcons.kuser03),
+              label: FFLocalizations.of(context).getText('04sylp8f'),
+            ),
+          ];
+
+    return CupertinoTabBar(
+      currentIndex: _selectedIndex,
+      onTap: _onTap,
+      activeColor: const Color(0xFF008BFF),
+      items: items,
+    );
+  }
+
+  // ─────── Android / other — Material NavigationBar ───────
+
+  Widget _buildMaterialNavBar(BuildContext context) {
+    final destinations = _isTeacher
+        ? [
+            NavigationDestination(
+              icon: Icon(FFIcons.khome01),
+              selectedIcon: Icon(FFIcons.khome01, color: const Color(0xFF008BFF)),
+              label: FFLocalizations.of(context).getText('2hh3j18i'),
+            ),
+            NavigationDestination(
+              icon: Icon(FFIcons.kuser03),
+              selectedIcon: Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
+              label: FFLocalizations.of(context).getText('j96epnpj'),
+            ),
+          ]
+        : [
+            NavigationDestination(
+              icon: Icon(FFIcons.khome01),
+              selectedIcon: Icon(FFIcons.khome01, color: const Color(0xFF008BFF)),
+              label: FFLocalizations.of(context).getText('3ste14ts'),
+            ),
+            NavigationDestination(
+              icon: Icon(FFIcons.kbookOpen01),
+              selectedIcon: Icon(FFIcons.kbookOpen01, color: const Color(0xFF008BFF)),
+              label: FFLocalizations.of(context).getText('bhpm1ddo'),
+            ),
+            NavigationDestination(
+              icon: Icon(FFIcons.kuser03),
+              selectedIcon: Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
+              label: FFLocalizations.of(context).getText('04sylp8f'),
+            ),
+          ];
+
+    return NavigationBar(
+      selectedIndex: _selectedIndex,
+      onDestinationSelected: _onTap,
+      backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
+      indicatorColor: const Color(0xFF008BFF).withValues(alpha: 0.12),
+      destinations: destinations,
     );
   }
 }
