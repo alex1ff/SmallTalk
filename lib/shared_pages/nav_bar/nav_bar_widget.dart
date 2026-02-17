@@ -210,13 +210,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       padding: EdgeInsets.only(bottom: bottomPad),
       child: Stack(
         children: [
-          // Background placeholder — prevents dark flash while
-          // the native UiKitView initializes on page transition.
-          Container(
-            height: 50,
-            color: FlutterFlowTheme.of(context).secondaryBackground,
-          ),
-
           // Native Liquid Glass tab bar (visual + drag handling).
           IOS26NativeTabBar(
             destinations: destinations,
