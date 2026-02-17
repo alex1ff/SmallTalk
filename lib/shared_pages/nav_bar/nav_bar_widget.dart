@@ -3,9 +3,11 @@ import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'nav_bar_model.dart';
 export 'nav_bar_model.dart';
 
@@ -49,10 +51,8 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   /// to the 0-based tab bar index.
   int get _selectedIndex {
     if (_isTeacher) {
-      // Teacher: 2 tabs — Home (0), Profile (1)
       return widget.indexCurrentPage == 2 ? 1 : 0;
     } else {
-      // Student: 3 tabs — Home (0), Dictionary (1), Profile (2)
       switch (widget.indexCurrentPage) {
         case 3:
           return 1;
@@ -64,12 +64,20 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     }
   }
 
+  /// Schedules navigation for the next frame.
+  /// This is critical for IOS26NativeTabBar — the onTap callback arrives
+  /// via a MethodChannel from the native UITabBar. Calling
+  /// context.pushNamed directly inside that callback can be silently
+  /// ignored by GoRouter. Deferring to the next frame fixes it.
   void _onTap(int index) {
-    if (_isTeacher) {
-      _handleTeacherTap(index);
-    } else {
-      _handleStudentTap(index);
-    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_isTeacher) {
+        _handleTeacherTap(index);
+      } else {
+        _handleStudentTap(index);
+      }
+    });
   }
 
   void _handleTeacherTap(int index) {
@@ -149,13 +157,60 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return _buildCupertinoTabBar(context);
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return _buildMaterialNavBar(context);
     }
-    return _buildMaterialNavBar(context);
+
+    // iOS — native Liquid Glass tab bar (iOS 26+) with CupertinoTabBar fallback
+    if (PlatformInfo.isIOS26OrHigher()) {
+      return _buildNativeIOS26TabBar();
+    }
+    return _buildCupertinoTabBar(context);
   }
 
-  // ─────── iOS — CupertinoTabBar ───────
+  // ─────── iOS 26+ — native Liquid Glass tab bar ───────
+
+  Widget _buildNativeIOS26TabBar() {
+    final destinations = _isTeacher
+        ? const [
+            AdaptiveNavigationDestination(
+              icon: 'house.fill',
+              label: 'Главная',
+            ),
+            AdaptiveNavigationDestination(
+              icon: 'person.fill',
+              label: 'Профиль',
+            ),
+          ]
+        : const [
+            AdaptiveNavigationDestination(
+              icon: 'house.fill',
+              label: 'Главная',
+            ),
+            AdaptiveNavigationDestination(
+              icon: 'book.fill',
+              label: 'Словарь',
+            ),
+            AdaptiveNavigationDestination(
+              icon: 'person.fill',
+              label: 'Профиль',
+            ),
+          ];
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).padding.bottom > 0 ? 0 : 8,
+      ),
+      child: IOS26NativeTabBar(
+        destinations: destinations,
+        selectedIndex: _selectedIndex,
+        onTap: _onTap,
+        tint: const Color(0xFF008BFF),
+      ),
+    );
+  }
+
+  // ─────── iOS < 26 — CupertinoTabBar ───────
 
   Widget _buildCupertinoTabBar(BuildContext context) {
     final items = _isTeacher
