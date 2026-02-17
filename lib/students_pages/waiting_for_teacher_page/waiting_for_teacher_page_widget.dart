@@ -187,6 +187,17 @@ class _WaitingForTeacherPageWidgetState
       final sessionId = _nonEmpty(_model.newSession?.data?.sessionId);
       _model.sessionId = sessionId;
 
+      // If cancel was requested while createVideoSession was in-flight,
+      // immediately cancel the newly created session on the server.
+      if (_cancelRequested && sessionId != null) {
+        debugPrint(
+          'WaitingForTeacher: cancel was requested while creating session. '
+          'Cancelling session $sessionId now.',
+        );
+        unawaited(_cancelSession(sessionId));
+        return;
+      }
+
       if (sessionId == null) {
         final status = _nonEmpty(resultMap['status']?.toString());
         final backendMessage = _nonEmpty(resultMap['message']?.toString());
