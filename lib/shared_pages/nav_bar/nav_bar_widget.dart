@@ -63,19 +63,27 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     }
   }
 
-  /// Defers navigation to a microtask so it runs after the
-  /// MethodChannel handler from the native UITabBar completes.
-  /// Calling context.pushNamed directly inside the platform callback
-  /// can be silently ignored by GoRouter.
+  /// Called by the native UITabBar via MethodChannel (drag gestures).
+  /// Defers navigation to a microtask so it runs after the platform
+  /// callback completes — GoRouter ignores pushNamed inside MethodChannel.
   void _onTap(int index) {
     Future.microtask(() {
       if (!mounted) return;
-      if (_isTeacher) {
-        _handleTeacherTap(index);
-      } else {
-        _handleStudentTap(index);
-      }
+      _navigate(index);
     });
+  }
+
+  /// Called by the Flutter tap overlay directly (no MethodChannel involved).
+  void _onTapDirect(int index) {
+    _navigate(index);
+  }
+
+  void _navigate(int index) {
+    if (_isTeacher) {
+      _handleTeacherTap(index);
+    } else {
+      _handleStudentTap(index);
+    }
   }
 
   void _handleTeacherTap(int index) {
@@ -195,15 +203,47 @@ class _NavBarWidgetState extends State<NavBarWidget> {
             ),
           ];
 
+    final tabCount = _isTeacher ? 2 : 3;
+    final bottomPad = MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
+
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).padding.bottom > 0 ? 0 : 8,
-      ),
-      child: IOS26NativeTabBar(
-        destinations: destinations,
-        selectedIndex: _selectedIndex,
-        onTap: _onTap,
-        tint: const Color(0xFF008BFF),
+      padding: EdgeInsets.only(bottom: bottomPad),
+      child: Stack(
+        children: [
+          // Background placeholder — prevents dark flash while
+          // the native UiKitView initializes on page transition.
+          Container(
+            height: 50,
+            color: FlutterFlowTheme.of(context).secondaryBackground,
+          ),
+
+          // Native Liquid Glass tab bar (visual + drag handling).
+          IOS26NativeTabBar(
+            destinations: destinations,
+            selectedIndex: _selectedIndex,
+            onTap: _onTap,
+            tint: const Color(0xFF008BFF),
+          ),
+
+          // Transparent Flutter tap overlay.
+          // iOS 26 standalone UITabBar doesn't fire didSelect for taps,
+          // only for drags. This overlay catches taps in Flutter's gesture
+          // system and navigates directly. Drags fall through to the
+          // native view because GestureDetector has no drag handler.
+          Positioned.fill(
+            child: Row(
+              children: List.generate(
+                tabCount,
+                (i) => Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () => _onTapDirect(i),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
