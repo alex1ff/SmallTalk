@@ -3,7 +3,6 @@ import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'nav_bar_model.dart';
@@ -149,63 +148,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // iOS 26+ — native UITabBar with Liquid Glass
-    if (PlatformInfo.isIOS26OrHigher()) {
-      return _buildNativeIOS26TabBar();
-    }
-
-    // iOS < 26 — CupertinoTabBar
-    if (PlatformInfo.isIOS) {
+    if (isiOS) {
       return _buildCupertinoTabBar(context);
     }
-
-    // Android / other — Material NavigationBar
     return _buildMaterialNavBar(context);
   }
 
-  // ─────── iOS 26+ native Liquid Glass tab bar ───────
-
-  Widget _buildNativeIOS26TabBar() {
-    final destinations = _isTeacher
-        ? const [
-            AdaptiveNavigationDestination(
-              icon: 'house.fill',
-              label: 'Главная',
-            ),
-            AdaptiveNavigationDestination(
-              icon: 'person.fill',
-              label: 'Профиль',
-            ),
-          ]
-        : const [
-            AdaptiveNavigationDestination(
-              icon: 'house.fill',
-              label: 'Главная',
-            ),
-            AdaptiveNavigationDestination(
-              icon: 'book.fill',
-              label: 'Словарь',
-            ),
-            AdaptiveNavigationDestination(
-              icon: 'person.fill',
-              label: 'Профиль',
-            ),
-          ];
-
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).padding.bottom > 0 ? 0 : 8,
-      ),
-      child: IOS26NativeTabBar(
-        destinations: destinations,
-        selectedIndex: _selectedIndex,
-        onTap: _onTap,
-        tint: const Color(0xFF008BFF),
-      ),
-    );
-  }
-
-  // ─────── iOS < 26 — CupertinoTabBar ───────
+  // ─────── iOS — CupertinoTabBar ───────
 
   Widget _buildCupertinoTabBar(BuildContext context) {
     final items = _isTeacher
@@ -238,6 +187,8 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       currentIndex: _selectedIndex,
       onTap: _onTap,
       activeColor: const Color(0xFF008BFF),
+      backgroundColor:
+          FlutterFlowTheme.of(context).secondaryBackground.withValues(alpha: 0.95),
       items: items,
     );
   }
