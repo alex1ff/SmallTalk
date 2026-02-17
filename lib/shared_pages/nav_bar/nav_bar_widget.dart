@@ -4,6 +4,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'nav_bar_model.dart';
 export 'nav_bar_model.dart';
@@ -148,7 +149,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (isiOS) {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
       return _buildCupertinoTabBar(context);
     }
     return _buildMaterialNavBar(context);
@@ -187,8 +188,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       currentIndex: _selectedIndex,
       onTap: _onTap,
       activeColor: const Color(0xFF008BFF),
-      backgroundColor:
-          FlutterFlowTheme.of(context).secondaryBackground.withValues(alpha: 0.95),
       items: items,
     );
   }
