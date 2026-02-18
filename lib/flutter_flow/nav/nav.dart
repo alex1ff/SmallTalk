@@ -247,7 +247,8 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
 
         // ── Tab pages wrapped in ShellRoute ──
         ShellRoute(
-          builder: (context, state, child) => TabShellPage(child: child),
+          builder: (context, state, child) =>
+              TabShellPage(state: state, child: child),
           routes: [
             FFRoute(
               name: DashboardNSWidget.routeName,
