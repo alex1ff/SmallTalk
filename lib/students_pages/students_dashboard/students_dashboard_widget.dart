@@ -48,6 +48,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     SchedulerBinding.instance.addPostFrameCallback((_) async {
       if (widget.zn) {
         await showModalBottomSheet(
+          useRootNavigator: true,
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
           context: context,
@@ -184,6 +185,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               highlightColor: Colors.transparent,
                               onTap: () async {
                                 await showModalBottomSheet(
+                                  useRootNavigator: true,
                                   isScrollControlled: true,
                                   backgroundColor: Colors.transparent,
                                   context: context,

@@ -321,6 +321,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         highlightColor: Colors.transparent,
                         onTap: () async {
                           await showModalBottomSheet(
+                            useRootNavigator: true,
                             isScrollControlled: true,
                             backgroundColor: Colors.transparent,
                             context: context,
@@ -397,6 +398,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         highlightColor: Colors.transparent,
                         onTap: () async {
                           await showModalBottomSheet(
+                            useRootNavigator: true,
                             isScrollControlled: true,
                             backgroundColor: Colors.transparent,
                             context: context,
@@ -502,6 +504,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     safeSetState(() {});
                                   } else {
                                     await showModalBottomSheet(
+                                      useRootNavigator: true,
                                       isScrollControlled: true,
                                       backgroundColor: Colors.transparent,
                                       context: context,
@@ -624,6 +627,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                           highlightColor: Colors.transparent,
                           onTap: () async {
                             await showModalBottomSheet(
+                              useRootNavigator: true,
                               isScrollControlled: true,
                               backgroundColor: Colors.transparent,
                               context: context,
@@ -741,6 +745,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                           highlightColor: Colors.transparent,
                           onTap: () async {
                             await showModalBottomSheet(
+                              useRootNavigator: true,
                               isScrollControlled: true,
                               backgroundColor: Colors.transparent,
                               context: context,
@@ -809,6 +814,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                           highlightColor: Colors.transparent,
                           onTap: () async {
                             await showModalBottomSheet(
+                              useRootNavigator: true,
                               isScrollControlled: true,
                               backgroundColor: Colors.transparent,
                               context: context,

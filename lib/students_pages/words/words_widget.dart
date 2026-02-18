@@ -119,6 +119,7 @@ class _WordsWidgetState extends State<WordsWidget> {
                                         highlightColor: Colors.transparent,
                                         onTap: () async {
                                           await showModalBottomSheet(
+                                            useRootNavigator: true,
                                             isScrollControlled: true,
                                             backgroundColor: Colors.transparent,
                                             enableDrag: false,
