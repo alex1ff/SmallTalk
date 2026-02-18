@@ -5,7 +5,8 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'nav_bar_model.dart';
 export 'nav_bar_model.dart';
@@ -46,8 +47,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     super.dispose();
   }
 
-  bool get _isTeacher =>
-      currentUserDocument?.role == UserRole.native_speaker;
+  bool get _isTeacher => currentUserDocument?.role == UserRole.native_speaker;
 
   /// Maps the page-level index (1 = Home, 2 = Profile, 3 = Dictionary)
   /// to the 0-based tab bar index.
@@ -122,14 +122,18 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return _buildMaterialNavBar(context);
-    }
+    return AuthUserStreamWidget(
+      builder: (context) {
+        if (defaultTargetPlatform == TargetPlatform.android) {
+          return _buildMaterialNavBar(context);
+        }
 
-    if (PlatformInfo.isIOS26OrHigher()) {
-      return _buildNativeIOS26TabBar();
-    }
-    return _buildCupertinoTabBar(context);
+        if (PlatformInfo.isIOS26OrHigher()) {
+          return _buildNativeIOS26TabBar();
+        }
+        return _buildCupertinoTabBar(context);
+      },
+    );
   }
 
   // ─────── iOS 26+ — native Liquid Glass tab bar + Flutter tap overlay ───────
@@ -161,8 +165,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
             ),
           ];
 
-    final bottomPadding =
-        MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
+    final bottomPadding = MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottomPadding),
@@ -219,29 +222,34 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         ? [
             NavigationDestination(
               icon: Icon(FFIcons.khome01),
-              selectedIcon: Icon(FFIcons.khome01, color: const Color(0xFF008BFF)),
+              selectedIcon:
+                  Icon(FFIcons.khome01, color: const Color(0xFF008BFF)),
               label: FFLocalizations.of(context).getText('2hh3j18i'),
             ),
             NavigationDestination(
               icon: Icon(FFIcons.kuser03),
-              selectedIcon: Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
+              selectedIcon:
+                  Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
               label: FFLocalizations.of(context).getText('j96epnpj'),
             ),
           ]
         : [
             NavigationDestination(
               icon: Icon(FFIcons.khome01),
-              selectedIcon: Icon(FFIcons.khome01, color: const Color(0xFF008BFF)),
+              selectedIcon:
+                  Icon(FFIcons.khome01, color: const Color(0xFF008BFF)),
               label: FFLocalizations.of(context).getText('3ste14ts'),
             ),
             NavigationDestination(
               icon: Icon(FFIcons.kbookOpen01),
-              selectedIcon: Icon(FFIcons.kbookOpen01, color: const Color(0xFF008BFF)),
+              selectedIcon:
+                  Icon(FFIcons.kbookOpen01, color: const Color(0xFF008BFF)),
               label: FFLocalizations.of(context).getText('bhpm1ddo'),
             ),
             NavigationDestination(
               icon: Icon(FFIcons.kuser03),
-              selectedIcon: Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
+              selectedIcon:
+                  Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
               label: FFLocalizations.of(context).getText('04sylp8f'),
             ),
           ];
