@@ -104,7 +104,7 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                           decoration: BoxDecoration(
                             color:
                                 FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(16.0),
+                            borderRadius: BorderRadius.circular(26.0),
                           ),
                           child: Padding(
                             padding: EdgeInsets.all(4.0),
@@ -117,7 +117,7 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .secondaryBackground,
-                                    borderRadius: BorderRadius.circular(12.0),
+                                    borderRadius: BorderRadius.circular(22.0),
                                   ),
                                   child: Align(
                                     alignment: AlignmentDirectional(0.0, 0.0),
@@ -134,9 +134,7 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                     padding: EdgeInsetsDirectional.fromSTEB(
                                         12.0, 0.0, 8.0, 0.0),
                                     child: Text(
-                                      FFLocalizations.of(context).getText(
-                                        'am3nucgj' /* *** 4334 */,
-                                      ),
+                                      listViewCardsRecord.pan,
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium
                                           .override(
@@ -148,7 +146,7 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                   ),
                                 ),
                                 FlutterFlowIconButton(
-                                  borderRadius: 12.0,
+                                  borderRadius: 22.0,
                                   buttonSize: 52.0,
                                   icon: Icon(
                                     FFIcons.ktrash03,

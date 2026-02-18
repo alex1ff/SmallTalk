@@ -43,7 +43,7 @@ class _TarifLoaderWidgetState extends State<TarifLoaderWidget> {
           height: 90.0,
           decoration: BoxDecoration(
             color: FlutterFlowTheme.of(context).primaryBackground,
-            borderRadius: BorderRadius.circular(24.0),
+            borderRadius: BorderRadius.circular(26.0),
           ),
         ),
         Padding(
@@ -53,7 +53,7 @@ class _TarifLoaderWidgetState extends State<TarifLoaderWidget> {
             height: 90.0,
             decoration: BoxDecoration(
               color: FlutterFlowTheme.of(context).primaryBackground,
-              borderRadius: BorderRadius.circular(24.0),
+              borderRadius: BorderRadius.circular(26.0),
             ),
           ),
         ),

@@ -170,7 +170,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             decoration: BoxDecoration(
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: BorderRadius.circular(26),
                             ),
                             alignment: AlignmentDirectional(0, 0),
                             child: Padding(
@@ -386,28 +386,28 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                     color: Color(0x00000000),
                                     width: 1,
                                   ),
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(26),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderSide: BorderSide(
                                     color: Color(0x00000000),
                                     width: 1,
                                   ),
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(26),
                                 ),
                                 errorBorder: OutlineInputBorder(
                                   borderSide: BorderSide(
                                     color: FlutterFlowTheme.of(context).error,
                                     width: 1,
                                   ),
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(26),
                                 ),
                                 focusedErrorBorder: OutlineInputBorder(
                                   borderSide: BorderSide(
                                     color: FlutterFlowTheme.of(context).error,
                                     width: 1,
                                   ),
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(26),
                                 ),
                                 filled: true,
                                 fillColor: FlutterFlowTheme.of(context)

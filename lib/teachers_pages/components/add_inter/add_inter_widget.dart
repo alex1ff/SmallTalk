@@ -118,7 +118,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                   height: 60.0,
                   decoration: BoxDecoration(
                     color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(16.0),
+                    borderRadius: BorderRadius.circular(26.0),
                   ),
                   child: Padding(
                     padding: EdgeInsets.all(4.0),
@@ -130,7 +130,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                           height: 52.0,
                           decoration: BoxDecoration(
                             color: Color(0xFFF2F2F7),
-                            borderRadius: BorderRadius.circular(12.0),
+                            borderRadius: BorderRadius.circular(22.0),
                           ),
                           child: Align(
                             alignment: AlignmentDirectional(0.0, 0.0),
@@ -183,7 +183,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                   height: 165.0,
                   decoration: BoxDecoration(
                     color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(20.0),
+                    borderRadius: BorderRadius.circular(26.0),
                   ),
                   child: Stack(
                     alignment: AlignmentDirectional(0.0, 0.0),
@@ -240,7 +240,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                   height: 165.0,
                   decoration: BoxDecoration(
                     color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(20.0),
+                    borderRadius: BorderRadius.circular(26.0),
                   ),
                   child: Stack(
                     alignment: AlignmentDirectional(0.0, 0.0),

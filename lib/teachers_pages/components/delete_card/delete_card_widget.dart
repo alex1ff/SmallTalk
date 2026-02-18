@@ -97,7 +97,7 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                           decoration: BoxDecoration(
                             color:
                                 FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(16.0),
+                            borderRadius: BorderRadius.circular(26.0),
                           ),
                           child: Padding(
                             padding: EdgeInsets.all(4.0),
@@ -110,7 +110,7 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .secondaryBackground,
-                                    borderRadius: BorderRadius.circular(12.0),
+                                    borderRadius: BorderRadius.circular(22.0),
                                   ),
                                   child: Align(
                                     alignment: AlignmentDirectional(0.0, 0.0),
@@ -127,8 +127,11 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                                     padding: EdgeInsetsDirectional.fromSTEB(
                                         12.0, 0.0, 8.0, 0.0),
                                     child: Text(
-                                      FFLocalizations.of(context).getText(
-                                        'j3b1pdz7' /* *** 4334 */,
+                                      valueOrDefault<String>(
+                                        widget.doc?.pan,
+                                        FFLocalizations.of(context).getText(
+                                          'j3b1pdz7' /* *** 4334 */,
+                                        ),
                                       ),
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium

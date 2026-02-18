@@ -50,7 +50,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
       height: 169.0,
       decoration: BoxDecoration(
         color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(20.0),
+        borderRadius: BorderRadius.circular(26.0),
       ),
       child: Padding(
         padding: EdgeInsets.all(16.0),
