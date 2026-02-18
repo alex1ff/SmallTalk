@@ -87,8 +87,9 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
           FFRoute(
             name: '_initialize',
             path: '/',
-            builder: (context, _) =>
-                appStateNotifier.loggedIn ? LoadingWidget() : OnboardingWidget(),
+            builder: (context, _) => appStateNotifier.loggedIn
+                ? LoadingWidget()
+                : OnboardingWidget(),
           ),
           FFRoute(
             name: OnboardingWidget.routeName,
@@ -244,10 +245,9 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
           ),
         ].map((r) => r.toRoute(appStateNotifier)),
 
-        // ── Tab pages wrapped in ShellRoute (persistent NavBar) ──
+        // ── Tab pages wrapped in ShellRoute ──
         ShellRoute(
-          builder: (context, state, child) =>
-              TabShellPage(state: state, child: child),
+          builder: (context, state, child) => TabShellPage(child: child),
           routes: [
             FFRoute(
               name: DashboardNSWidget.routeName,

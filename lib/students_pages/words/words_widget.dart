@@ -3,6 +3,7 @@ import '/backend/backend.dart';
 import '/components/word_pos_chip/word_pos_chip_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/students_pages/components/new_word/new_word_widget.dart';
 import '/students_pages/components/word_card/word_card_widget.dart';
 import 'package:flutter/material.dart';
@@ -52,6 +53,9 @@ class _WordsWidgetState extends State<WordsWidget> {
       child: Scaffold(
         key: scaffoldKey,
         backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        bottomNavigationBar: NavBarWidget(
+          indexCurrentPage: 3,
+        ),
         body: Stack(
           children: [
             SingleChildScrollView(

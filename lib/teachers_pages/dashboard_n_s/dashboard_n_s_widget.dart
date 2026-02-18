@@ -4,6 +4,7 @@ import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/teachers_pages/components/add_inter/add_inter_widget.dart';
 import '/index.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -95,6 +96,9 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
       child: Scaffold(
         key: scaffoldKey,
         backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        bottomNavigationBar: NavBarWidget(
+          indexCurrentPage: 1,
+        ),
         body: Padding(
           padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
           child: SingleChildScrollView(
