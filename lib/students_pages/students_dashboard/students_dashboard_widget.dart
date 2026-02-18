@@ -3,7 +3,6 @@ import '/authorization/components/celebration_s_t/celebration_s_t_widget.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/students_pages/components/fav/fav_widget.dart';
 import '/students_pages/components/filters/filters_widget.dart';
 import '/flutter_flow/permissions_util.dart';
@@ -90,9 +89,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       child: Scaffold(
         key: scaffoldKey,
         backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        bottomNavigationBar: NavBarWidget(
-          indexCurrentPage: 1,
-        ),
         body: Stack(
           children: [
             SingleChildScrollView(

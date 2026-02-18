@@ -4,7 +4,6 @@ import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import '/shared_pages/profile_components/lang_app/lang_app_widget.dart';
 import '/shared_pages/profile_components/logout/logout_widget.dart';
 import '/shared_pages/profile_components/rate_app/rate_app_widget.dart';
@@ -59,9 +58,6 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       child: Scaffold(
         key: scaffoldKey,
         backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        bottomNavigationBar: NavBarWidget(
-          indexCurrentPage: 2,
-        ),
         body: Padding(
           padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
           child: SingleChildScrollView(

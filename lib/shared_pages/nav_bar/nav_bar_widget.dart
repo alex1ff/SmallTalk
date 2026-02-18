@@ -26,9 +26,6 @@ class NavBarWidget extends StatefulWidget {
 class _NavBarWidgetState extends State<NavBarWidget> {
   late NavBarModel _model;
 
-  /// Debounce: ignore taps within 400ms of the last navigation.
-  DateTime _lastNavTime = DateTime(2000);
-
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -67,10 +64,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   }
 
   void _onTap(int index) {
-    final now = DateTime.now();
-    if (now.difference(_lastNavTime).inMilliseconds < 400) return;
-    _lastNavTime = now;
-
     if (!mounted) return;
     if (_isTeacher) {
       _handleTeacherTap(index);
@@ -79,22 +72,14 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     }
   }
 
-  static const _instantTransition = <String, dynamic>{
-    kTransitionInfoKey: TransitionInfo(
-      hasTransition: true,
-      transitionType: PageTransitionType.fade,
-      duration: Duration(milliseconds: 0),
-    ),
-  };
-
   void _handleTeacherTap(int index) {
     switch (index) {
       case 0:
         if (widget.indexCurrentPage == 1) return;
-        context.goNamed(DashboardNSWidget.routeName, extra: _instantTransition);
+        context.goNamed(DashboardNSWidget.routeName);
       case 1:
         if (widget.indexCurrentPage == 2) return;
-        context.goNamed(ProfileWidget.routeName, extra: _instantTransition);
+        context.goNamed(ProfileWidget.routeName);
     }
   }
 
@@ -107,14 +92,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           queryParameters: {
             'zn': serializeParam(false, ParamType.bool),
           }.withoutNulls,
-          extra: _instantTransition,
         );
       case 1:
         if (widget.indexCurrentPage == 3) return;
-        context.goNamed(WordsWidget.routeName, extra: _instantTransition);
+        context.goNamed(WordsWidget.routeName);
       case 2:
         if (widget.indexCurrentPage == 2) return;
-        context.goNamed(ProfileWidget.routeName, extra: _instantTransition);
+        context.goNamed(ProfileWidget.routeName);
     }
   }
 
