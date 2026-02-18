@@ -112,7 +112,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                 decoration: BoxDecoration(
                                   color: FlutterFlowTheme.of(context)
                                       .primaryBackground,
-                                  borderRadius: BorderRadius.circular(16.0),
+                                  borderRadius: BorderRadius.circular(26.0),
                                 ),
                                 child: Padding(
                                   padding: EdgeInsets.all(4.0),
@@ -131,7 +131,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                             ),
                                           ),
                                           borderRadius:
-                                              BorderRadius.circular(12.0),
+                                              BorderRadius.circular(22.0),
                                         ),
                                       ),
                                       Expanded(

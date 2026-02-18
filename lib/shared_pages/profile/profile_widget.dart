@@ -2,7 +2,6 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/acquaintance_n_s_s_t_a_r_t/acquaintance_n_s_s_t_a_r_t_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/profile_components/lang_app/lang_app_widget.dart';
@@ -67,24 +66,26 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: double.infinity,
+                  height: 70,
                   decoration: BoxDecoration(
                     color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(26),
+                    borderRadius: BorderRadius.circular(50),
+                    border: Border.all(
+                      color: FlutterFlowTheme.of(context).secondaryBackground,
+                    ),
                   ),
                   child: Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(16, 16, 8, 16),
+                    padding: EdgeInsets.all(2),
                     child: Row(
                       mainAxisSize: MainAxisSize.max,
-                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         AuthUserStreamWidget(
                           builder: (context) => Container(
-                            width: 60,
-                            height: 60,
+                            width: 66,
+                            height: 66,
                             decoration: BoxDecoration(
                               color: FlutterFlowTheme.of(context)
-                                  .primaryBackground,
+                                  .secondaryBackground,
                               image: DecorationImage(
                                 fit: BoxFit.cover,
                                 image: CachedNetworkImageProvider(
@@ -102,11 +103,32 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         ),
                         Expanded(
                           child: Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(9, 0, 0, 0),
+                            padding:
+                                EdgeInsetsDirectional.fromSTEB(12, 0, 0, 0),
                             child: Column(
                               mainAxisSize: MainAxisSize.max,
+                              mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                AuthUserStreamWidget(
+                                  builder: (context) => Text(
+                                    '${currentUserEmail}${currentUserDocument?.role == UserRole.native_speaker ? ' | ${FFLocalizations.of(context).getVariableText(
+                                        ruText: currentUserDocument
+                                            ?.countryNS.nameRu,
+                                        enText: currentUserDocument
+                                            ?.countryNS.nameEn,
+                                      )}' : ''}',
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'sf pro display',
+                                          color: FlutterFlowTheme.of(context)
+                                              .secondaryText,
+                                          fontSize: 15,
+                                          letterSpacing: 0.0,
+                                        ),
+                                  ),
+                                ),
                                 AuthUserStreamWidget(
                                   builder: (context) => Text(
                                     currentUserDisplayName,
@@ -116,32 +138,102 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                           fontFamily: 'sf pro display',
                                           color: FlutterFlowTheme.of(context)
                                               .primaryText,
-                                          fontSize: 17,
+                                          fontSize: 16,
                                           letterSpacing: 0.0,
                                           fontWeight: FontWeight.w600,
                                         ),
                                   ),
                                 ),
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      0, 2, 0, 0),
-                                  child: AuthUserStreamWidget(
-                                    builder: (context) => Text(
-                                      '${currentUserEmail}${currentUserDocument?.role == UserRole.native_speaker ? ' | ${FFLocalizations.of(context).getVariableText(
-                                          ruText: currentUserDocument
-                                              ?.countryNS.nameRu,
-                                          enText: currentUserDocument
-                                              ?.countryNS.nameEn,
-                                        )}' : ''}',
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'sf pro display',
-                                            color: FlutterFlowTheme.of(context)
-                                                .secondaryText,
-                                            fontSize: 15,
-                                            letterSpacing: 0.0,
-                                          ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          splashColor: Colors.transparent,
+                          focusColor: Colors.transparent,
+                          hoverColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                          onTap: () async {
+                            context.pushNamed(ProfileEditWidget.routeName);
+                          },
+                          child: Container(
+                            width: 66,
+                            height: 66,
+                            decoration: BoxDecoration(
+                              color: FlutterFlowTheme.of(context)
+                                  .secondaryBackground,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              FFIcons.kedit05,
+                              color: FlutterFlowTheme.of(context).primaryText,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        splashColor: Colors.transparent,
+                        focusColor: Colors.transparent,
+                        hoverColor: Colors.transparent,
+                        highlightColor: Colors.transparent,
+                        onTap: () async {
+                          if (currentUserDocument?.role == UserRole.student) {
+                            context.pushNamed(MyRewWidget.routeName);
+                          } else {
+                            context.pushNamed(MyRewNSWidget.routeName);
+                          }
+                        },
+                        child: Container(
+                          width: 100,
+                          height: 115,
+                          decoration: BoxDecoration(
+                            color:
+                                FlutterFlowTheme.of(context).primaryBackground,
+                            borderRadius: BorderRadius.circular(26),
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.max,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  FFLocalizations.of(context).getText(
+                                    'w5x0ak9h' /* Мои отзывы */,
+                                  ),
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        fontSize: 15,
+                                        letterSpacing: 0.0,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                ),
+                                Align(
+                                  alignment: AlignmentDirectional(1, 0),
+                                  child: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: FlutterFlowTheme.of(context)
+                                          .secondaryBackground,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      FFIcons.kstar01,
+                                      color: FlutterFlowTheme.of(context)
+                                          .primaryText,
+                                      size: 18,
                                     ),
                                   ),
                                 ),
@@ -149,163 +241,74 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                             ),
                           ),
                         ),
-                        FlutterFlowIconButton(
-                          borderRadius: 60,
-                          buttonSize: 40,
-                          fillColor:
-                              FlutterFlowTheme.of(context).primaryBackground,
-                          icon: Icon(
-                            FFIcons.kedit05,
-                            color: Color(0xFFC5C5C6),
-                            size: 18,
-                          ),
-                          onPressed: () async {
-                            context.pushNamed(ProfileEditWidget.routeName);
-                          },
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(0, 18, 0, 0),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.max,
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          splashColor: Colors.transparent,
-                          focusColor: Colors.transparent,
-                          hoverColor: Colors.transparent,
-                          highlightColor: Colors.transparent,
-                          onTap: () async {
-                            if (currentUserDocument?.role == UserRole.student) {
-                              context.pushNamed(MyRewWidget.routeName);
-                            } else {
-                              context.pushNamed(MyRewNSWidget.routeName);
-                            }
-                          },
-                          child: Container(
-                            width: 100,
-                            height: 115,
-                            decoration: BoxDecoration(
-                              color: FlutterFlowTheme.of(context)
-                                  .primaryBackground,
-                              borderRadius: BorderRadius.circular(26),
-                            ),
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    FFLocalizations.of(context).getText(
-                                      'w5x0ak9h' /* Мои отзывы */,
-                                    ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          fontSize: 15,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                    Expanded(
+                      child: InkWell(
+                        splashColor: Colors.transparent,
+                        focusColor: Colors.transparent,
+                        hoverColor: Colors.transparent,
+                        highlightColor: Colors.transparent,
+                        onTap: () async {
+                          if (currentUserDocument?.role == UserRole.student) {
+                            context.pushNamed(PayWidget.routeName);
+                          } else {
+                            context.pushNamed(PayCopyWidget.routeName);
+                          }
+                        },
+                        child: Container(
+                          width: 100,
+                          height: 115,
+                          decoration: BoxDecoration(
+                            color:
+                                FlutterFlowTheme.of(context).primaryBackground,
+                            borderRadius: BorderRadius.circular(26),
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.max,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  FFLocalizations.of(context).getText(
+                                    'xxkubsii' /* Финансы */,
                                   ),
-                                  Align(
-                                    alignment: AlignmentDirectional(1, 0),
-                                    child: Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryBackground,
-                                        shape: BoxShape.circle,
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        fontSize: 15,
+                                        letterSpacing: 0.0,
+                                        fontWeight: FontWeight.w500,
                                       ),
-                                      child: Icon(
-                                        FFIcons.kstar01,
-                                        color: FlutterFlowTheme.of(context)
-                                            .primaryText,
-                                        size: 18,
-                                      ),
+                                ),
+                                Align(
+                                  alignment: AlignmentDirectional(1, 0),
+                                  child: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: FlutterFlowTheme.of(context)
+                                          .secondaryBackground,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      FFIcons.kwallet02,
+                                      color: FlutterFlowTheme.of(context)
+                                          .primaryText,
+                                      size: 18,
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ),
-                      Expanded(
-                        child: InkWell(
-                          splashColor: Colors.transparent,
-                          focusColor: Colors.transparent,
-                          hoverColor: Colors.transparent,
-                          highlightColor: Colors.transparent,
-                          onTap: () async {
-                            if (currentUserDocument?.role == UserRole.student) {
-                              context.pushNamed(PayWidget.routeName);
-                            } else {
-                              context.pushNamed(PayCopyWidget.routeName);
-                            }
-                          },
-                          child: Container(
-                            width: 100,
-                            height: 115,
-                            decoration: BoxDecoration(
-                              color: FlutterFlowTheme.of(context)
-                                  .primaryBackground,
-                              borderRadius: BorderRadius.circular(26),
-                            ),
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    FFLocalizations.of(context).getText(
-                                      'xxkubsii' /* Финансы */,
-                                    ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          fontSize: 15,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                  ),
-                                  Align(
-                                    alignment: AlignmentDirectional(1, 0),
-                                    child: Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryBackground,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        FFIcons.kwallet02,
-                                        color: FlutterFlowTheme.of(context)
-                                            .primaryText,
-                                        size: 18,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ].divide(SizedBox(width: 6)),
-                  ),
+                    ),
+                  ].divide(SizedBox(width: 6)),
                 ),
                 Row(
                   mainAxisSize: MainAxisSize.max,

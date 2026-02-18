@@ -270,7 +270,7 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                                     ),
                                                     borderRadius:
                                                         BorderRadius.circular(
-                                                            16.0),
+                                                            26.0),
                                                   ),
                                                   focusedBorder:
                                                       OutlineInputBorder(
@@ -280,7 +280,7 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                                     ),
                                                     borderRadius:
                                                         BorderRadius.circular(
-                                                            16.0),
+                                                            26.0),
                                                   ),
                                                   errorBorder:
                                                       OutlineInputBorder(
@@ -293,7 +293,7 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                                     ),
                                                     borderRadius:
                                                         BorderRadius.circular(
-                                                            16.0),
+                                                            26.0),
                                                   ),
                                                   focusedErrorBorder:
                                                       OutlineInputBorder(
@@ -306,7 +306,7 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                                     ),
                                                     borderRadius:
                                                         BorderRadius.circular(
-                                                            16.0),
+                                                            26.0),
                                                   ),
                                                   filled: true,
                                                   fillColor:

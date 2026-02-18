@@ -13,7 +13,9 @@ import '/custom_code/actions/index.dart' as actions;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
+
 import 'pay_copy_model.dart';
 export 'pay_copy_model.dart';
 
@@ -39,12 +41,6 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
   void initState() {
     super.initState();
     _model = createModel(context, () => PayCopyModel());
-    _model.cardsStream = queryCardsRecord(parent: currentUserReference);
-    _model.transactionsStream = queryTransactionsRecord(
-      queryBuilder: (transactionsRecord) => transactionsRecord
-          .where('userId', isEqualTo: currentUserReference)
-          .orderBy('createdAt', descending: true),
-    );
 
     animationsMap.addAll({
       'containerOnActionTriggerAnimation': AnimationInfo(
@@ -90,330 +86,247 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
         body: Stack(
           children: [
             Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+              padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.max,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).primaryBackground,
-                        borderRadius: BorderRadius.circular(24.0),
+                    StreamBuilder<List<CardsRecord>>(
+                      stream: queryCardsRecord(
+                        parent: currentUserReference,
                       ),
-                      child: Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.max,
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.max,
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  FFLocalizations.of(context).getText(
-                                    '136foxwx' /* Текущий баланс */,
-                                  ),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryText,
-                                        fontSize: 15.0,
-                                        letterSpacing: 0.0,
-                                        fontWeight: FontWeight.normal,
-                                      ),
-                                ),
-                              ],
-                            ),
-                            RichText(
-                              textScaler: MediaQuery.of(context).textScaler,
-                              text: TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: formatNumber(
-                                      valueOrDefault(
-                                          currentUserDocument?.balanceNS, 0.0),
-                                      formatType: FormatType.decimal,
-                                      decimalType: DecimalType.automatic,
-                                    ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: FlutterFlowTheme.of(context)
-                                              .primaryText,
-                                          fontSize: 40.0,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
-                                        ),
-                                  ),
-                                  TextSpan(
-                                    text: FFLocalizations.of(context).getText(
-                                      'lv5jpiff' /* Р */,
-                                    ),
-                                    style: TextStyle(
-                                      fontFamily: 'Cool',
-                                      color: FlutterFlowTheme.of(context)
-                                          .secondaryText,
-                                      fontSize: 24.0,
-                                    ),
-                                  )
-                                ],
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'Cool',
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryText,
-                                      fontSize: 40.0,
-                                      letterSpacing: 0.0,
-                                      fontWeight: FontWeight.normal,
-                                    ),
+                      builder: (context, snapshot) {
+                        // Customize what your widget looks like when it's loading.
+                        if (!snapshot.hasData) {
+                          return Center(
+                            child: SizedBox(
+                              width: 50,
+                              height: 50,
+                              child: SpinKitCircle(
+                                color: FlutterFlowTheme.of(context).secondary,
+                                size: 50,
                               ),
                             ),
-                          ].divide(SizedBox(height: 24.0)),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 40.0, 0.0, 0.0),
-                      child: StreamBuilder<List<CardsRecord>>(
-                        stream: _model.cardsStream,
-                        builder: (context, snapshot) {
-                          List<CardsRecord> containerCardsRecordList =
-                              snapshot.data ?? [];
+                          );
+                        }
+                        List<CardsRecord> containerCardsRecordList =
+                            snapshot.data!;
 
-                          return Container(
-                            decoration: BoxDecoration(),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.max,
-                              children: [
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      10.0, 0.0, 8.0, 0.0),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        FFLocalizations.of(context).getText(
-                                          'j9s3fbnb' /* Выберите способ вывода */,
-                                        ),
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'Cool',
-                                              fontSize: 20.0,
-                                              letterSpacing: 0.0,
-                                            ),
+                        return Container(
+                          decoration: BoxDecoration(),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.max,
+                            children: [
+                              Padding(
+                                padding:
+                                    EdgeInsetsDirectional.fromSTEB(10, 0, 8, 0),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.max,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      FFLocalizations.of(context).getText(
+                                        'j9s3fbnb' /* Выберите способ вывода */,
                                       ),
-                                      if (containerCardsRecordList.isNotEmpty)
-                                        FlutterFlowIconButton(
-                                          borderRadius: 12.0,
-                                          buttonSize: 40.0,
-                                          fillColor:
-                                              FlutterFlowTheme.of(context)
-                                                  .secondaryBackground,
-                                          icon: Icon(
-                                            FFIcons.kedit05,
-                                            color: FlutterFlowTheme.of(context)
-                                                .primaryText,
-                                            size: 20.0,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'Cool',
+                                            fontSize: 20,
+                                            letterSpacing: 0.0,
                                           ),
-                                          onPressed: () async {
-                                            await showModalBottomSheet(
-                                              isScrollControlled: true,
-                                              backgroundColor:
-                                                  Colors.transparent,
-                                              context: context,
-                                              builder: (context) {
-                                                return WebViewAware(
-                                                  child: GestureDetector(
-                                                    onTap: () {
-                                                      FocusScope.of(context)
-                                                          .unfocus();
-                                                      FocusManager
-                                                          .instance.primaryFocus
-                                                          ?.unfocus();
-                                                    },
-                                                    child: Padding(
-                                                      padding: MediaQuery
-                                                          .viewInsetsOf(
-                                                              context),
-                                                      child: EditCardWidget(),
+                                    ),
+                                    if (containerCardsRecordList.isNotEmpty)
+                                      FlutterFlowIconButton(
+                                        borderRadius: 12,
+                                        buttonSize: 40,
+                                        fillColor: FlutterFlowTheme.of(context)
+                                            .secondaryBackground,
+                                        icon: Icon(
+                                          FFIcons.kedit05,
+                                          color: FlutterFlowTheme.of(context)
+                                              .primaryText,
+                                          size: 18,
+                                        ),
+                                        onPressed: () async {
+                                          await showModalBottomSheet(
+                                            isScrollControlled: true,
+                                            backgroundColor: Colors.transparent,
+                                            context: context,
+                                            builder: (context) {
+                                              return WebViewAware(
+                                                child: GestureDetector(
+                                                  onTap: () {
+                                                    FocusScope.of(context)
+                                                        .unfocus();
+                                                    FocusManager
+                                                        .instance.primaryFocus
+                                                        ?.unfocus();
+                                                  },
+                                                  child: Padding(
+                                                    padding:
+                                                        MediaQuery.viewInsetsOf(
+                                                            context),
+                                                    child: EditCardWidget(),
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ).then(
+                                              (value) => safeSetState(() {}));
+                                        },
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding:
+                                    EdgeInsetsDirectional.fromSTEB(0, 6, 0, 0),
+                                child: Builder(
+                                  builder: (context) {
+                                    final containerVar =
+                                        containerCardsRecordList.toList();
+
+                                    return ListView.separated(
+                                      padding: EdgeInsets.zero,
+                                      primary: false,
+                                      shrinkWrap: true,
+                                      scrollDirection: Axis.vertical,
+                                      itemCount: containerVar.length,
+                                      separatorBuilder: (_, __) =>
+                                          SizedBox(height: 6),
+                                      itemBuilder:
+                                          (context, containerVarIndex) {
+                                        final containerVarItem =
+                                            containerVar[containerVarIndex];
+                                        return InkWell(
+                                          splashColor: Colors.transparent,
+                                          focusColor: Colors.transparent,
+                                          hoverColor: Colors.transparent,
+                                          highlightColor: Colors.transparent,
+                                          onTap: () async {
+                                            if (_model.selectedCard ==
+                                                containerVarItem.reference) {
+                                              _model.selectedCard = null;
+                                              safeSetState(() {});
+                                            } else {
+                                              _model.selectedCard =
+                                                  containerVarItem.reference;
+                                              safeSetState(() {});
+                                            }
+                                          },
+                                          child: Container(
+                                            width: double.infinity,
+                                            height: 60,
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  FlutterFlowTheme.of(context)
+                                                      .primaryBackground,
+                                              borderRadius:
+                                                  BorderRadius.circular(26),
+                                            ),
+                                            child: Padding(
+                                              padding: EdgeInsets.all(4),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.max,
+                                                children: [
+                                                  Container(
+                                                    width: 52,
+                                                    height: 52,
+                                                    decoration: BoxDecoration(
+                                                      color: Color(0xFFF2F2F7),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              22),
+                                                    ),
+                                                    child: Align(
+                                                      alignment:
+                                                          AlignmentDirectional(
+                                                              0, 0),
+                                                      child: Icon(
+                                                        FFIcons.kcreditCard02,
+                                                        color:
+                                                            FlutterFlowTheme.of(
+                                                                    context)
+                                                                .primaryText,
+                                                        size: 20,
+                                                      ),
                                                     ),
                                                   ),
-                                                );
-                                              },
-                                            ).then(
-                                                (value) => safeSetState(() {}));
-                                          },
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      0.0, 6.0, 0.0, 0.0),
-                                  child: Builder(
-                                    builder: (context) {
-                                      final containerVar =
-                                          containerCardsRecordList.toList();
-
-                                      return ListView.separated(
-                                        padding: EdgeInsets.zero,
-                                        primary: false,
-                                        shrinkWrap: true,
-                                        scrollDirection: Axis.vertical,
-                                        itemCount: containerVar.length,
-                                        separatorBuilder: (_, __) =>
-                                            SizedBox(height: 6.0),
-                                        itemBuilder:
-                                            (context, containerVarIndex) {
-                                          final containerVarItem =
-                                              containerVar[containerVarIndex];
-                                          return InkWell(
-                                            splashColor: Colors.transparent,
-                                            focusColor: Colors.transparent,
-                                            hoverColor: Colors.transparent,
-                                            highlightColor: Colors.transparent,
-                                            onTap: () async {
-                                              if (_model.selectedCard ==
-                                                  containerVarItem.reference) {
-                                                _model.selectedCard = null;
-                                                safeSetState(() {});
-                                              } else {
-                                                _model.selectedCard =
-                                                    containerVarItem.reference;
-                                                safeSetState(() {});
-                                              }
-                                            },
-                                            child: Container(
-                                              width: double.infinity,
-                                              height: 60.0,
-                                              decoration: BoxDecoration(
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryBackground,
-                                                borderRadius:
-                                                    BorderRadius.circular(16.0),
-                                              ),
-                                              child: Padding(
-                                                padding: EdgeInsets.all(4.0),
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.max,
-                                                  children: [
-                                                    Container(
-                                                      width: 52.0,
-                                                      height: 52.0,
-                                                      decoration: BoxDecoration(
-                                                        color:
-                                                            Color(0xFFF2F2F7),
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(12.0),
+                                                  Expanded(
+                                                    child: Padding(
+                                                      padding:
+                                                          EdgeInsetsDirectional
+                                                              .fromSTEB(
+                                                                  12, 0, 8, 0),
+                                                      child: Text(
+                                                        containerVarItem.pan,
+                                                        style:
+                                                            FlutterFlowTheme.of(
+                                                                    context)
+                                                                .bodyMedium
+                                                                .override(
+                                                                  fontFamily:
+                                                                      'sf pro display',
+                                                                  fontSize: 16,
+                                                                  letterSpacing:
+                                                                      0.0,
+                                                                ),
                                                       ),
-                                                      child: Align(
-                                                        alignment:
-                                                            AlignmentDirectional(
-                                                                0.0, 0.0),
-                                                        child: Icon(
-                                                          FFIcons.kcreditCard02,
+                                                    ),
+                                                  ),
+                                                  if (containerVarItem
+                                                          .reference ==
+                                                      _model.selectedCard)
+                                                    Padding(
+                                                      padding:
+                                                          EdgeInsetsDirectional
+                                                              .fromSTEB(
+                                                                  0, 0, 8, 0),
+                                                      child: Container(
+                                                        width: 30,
+                                                        height: 30,
+                                                        decoration:
+                                                            BoxDecoration(
                                                           color: FlutterFlowTheme
                                                                   .of(context)
-                                                              .primaryText,
-                                                          size: 20.0,
+                                                              .success,
+                                                          shape:
+                                                              BoxShape.circle,
                                                         ),
-                                                      ),
-                                                    ),
-                                                    Expanded(
-                                                      child: Padding(
-                                                        padding:
-                                                            EdgeInsetsDirectional
-                                                                .fromSTEB(
-                                                                    12.0,
-                                                                    0.0,
-                                                                    8.0,
-                                                                    0.0),
-                                                        child: Text(
-                                                          containerVarItem.pan,
-                                                          style: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .bodyMedium
-                                                              .override(
-                                                                fontFamily:
-                                                                    'sf pro display',
-                                                                fontSize: 16.0,
-                                                                letterSpacing:
-                                                                    0.0,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    if (containerVarItem
-                                                            .reference ==
-                                                        _model.selectedCard)
-                                                      Padding(
-                                                        padding:
-                                                            EdgeInsetsDirectional
-                                                                .fromSTEB(
-                                                                    0.0,
-                                                                    0.0,
-                                                                    8.0,
-                                                                    0.0),
-                                                        child: Container(
-                                                          width: 30.0,
-                                                          height: 30.0,
-                                                          decoration:
-                                                              BoxDecoration(
-                                                            color: FlutterFlowTheme
-                                                                    .of(context)
-                                                                .success,
-                                                            shape:
-                                                                BoxShape.circle,
-                                                          ),
-                                                          child: Align(
-                                                            alignment:
-                                                                AlignmentDirectional(
-                                                                    0.0, 0.0),
-                                                            child: Icon(
-                                                              FFIcons.kcheck,
-                                                              color:
-                                                                  Colors.black,
-                                                              size: 15.0,
-                                                            ),
+                                                        child: Align(
+                                                          alignment:
+                                                              AlignmentDirectional(
+                                                                  0, 0),
+                                                          child: Icon(
+                                                            FFIcons.kcheck,
+                                                            color: Colors.black,
+                                                            size: 15,
                                                           ),
                                                         ),
                                                       ),
-                                                  ],
-                                                ),
+                                                    ),
+                                                ],
                                               ),
                                             ),
-                                          );
-                                        },
-                                      );
-                                    },
-                                  ),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
                                 ),
-                              ],
-                            ),
-                          ).animateOnActionTrigger(
-                            animationsMap['containerOnActionTriggerAnimation']!,
-                          );
-                        },
-                      ),
+                              ),
+                            ],
+                          ),
+                        ).animateOnActionTrigger(
+                          animationsMap['containerOnActionTriggerAnimation']!,
+                        );
+                      },
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
                       child: InkWell(
                         splashColor: Colors.transparent,
                         focusColor: Colors.transparent,
@@ -443,32 +356,32 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                         },
                         child: Container(
                           width: double.infinity,
-                          height: 60.0,
+                          height: 60,
                           decoration: BoxDecoration(
                             color:
                                 FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(12.0),
+                            borderRadius: BorderRadius.circular(26),
                             border: Border.all(
                               color: FlutterFlowTheme.of(context)
                                   .secondaryBackground,
                             ),
                           ),
                           child: Padding(
-                            padding: EdgeInsets.all(2.0),
+                            padding: EdgeInsets.all(2),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 FlutterFlowIconButton(
-                                  borderRadius: 12.0,
-                                  buttonSize: 35.0,
+                                  borderRadius: 12,
+                                  buttonSize: 35,
                                   fillColor: FlutterFlowTheme.of(context)
                                       .secondaryBackground,
                                   icon: Icon(
                                     Icons.add_sharp,
                                     color: FlutterFlowTheme.of(context)
                                         .primaryText,
-                                    size: 18.0,
+                                    size: 18,
                                   ),
                                   onPressed: () {
                                     print('IconButton pressed ...');
@@ -484,47 +397,45 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                         fontFamily: 'sf pro display',
                                         color: FlutterFlowTheme.of(context)
                                             .primaryText,
-                                        fontSize: 15.0,
+                                        fontSize: 16,
                                         letterSpacing: 0.0,
                                         fontWeight: FontWeight.w500,
                                       ),
                                 ),
-                              ].divide(SizedBox(width: 8.0)),
+                              ].divide(SizedBox(width: 8)),
                             ),
                           ),
                         ),
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(10.0, 40.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(10, 40, 0, 0),
                       child: Text(
                         FFLocalizations.of(context).getText(
                           'qpndbc1w' /* История операций */,
                         ),
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
                               fontFamily: 'Cool',
-                              fontSize: 20.0,
+                              fontSize: 20,
                               letterSpacing: 0.0,
                             ),
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
                       child: Container(
                         width: double.infinity,
-                        height: 40.0,
+                        height: 40,
                         decoration: BoxDecoration(
                           color: FlutterFlowTheme.of(context).primaryBackground,
-                          borderRadius: BorderRadius.circular(100.0),
+                          borderRadius: BorderRadius.circular(100),
                           border: Border.all(
                             color: FlutterFlowTheme.of(context)
                                 .secondaryBackground,
                           ),
                         ),
                         child: Padding(
-                          padding: EdgeInsets.all(2.0),
+                          padding: EdgeInsets.all(2),
                           child: Row(
                             mainAxisSize: MainAxisSize.max,
                             children: [
@@ -540,7 +451,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                   },
                                   child: Container(
                                     width: double.infinity,
-                                    height: 100.0,
+                                    height: 100,
                                     decoration: BoxDecoration(
                                       color: valueOrDefault<Color>(
                                         _model.replenishment == 0
@@ -550,11 +461,11 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                         FlutterFlowTheme.of(context)
                                             .secondaryBackground,
                                       ),
-                                      borderRadius: BorderRadius.circular(24.0),
+                                      borderRadius: BorderRadius.circular(24),
                                       shape: BoxShape.rectangle,
                                     ),
                                     child: Align(
-                                      alignment: AlignmentDirectional(0.0, 0.0),
+                                      alignment: AlignmentDirectional(0, 0),
                                       child: Text(
                                         FFLocalizations.of(context).getText(
                                           'njy9zp1m' /* Все */,
@@ -574,7 +485,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                                 FlutterFlowTheme.of(context)
                                                     .primaryText,
                                               ),
-                                              fontSize: 15.0,
+                                              fontSize: 15,
                                               letterSpacing: 0.0,
                                             ),
                                       ),
@@ -594,7 +505,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                   },
                                   child: Container(
                                     width: double.infinity,
-                                    height: 100.0,
+                                    height: 100,
                                     decoration: BoxDecoration(
                                       color: valueOrDefault<Color>(
                                         _model.replenishment == 1
@@ -603,11 +514,11 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                             : Colors.transparent,
                                         Colors.transparent,
                                       ),
-                                      borderRadius: BorderRadius.circular(24.0),
+                                      borderRadius: BorderRadius.circular(24),
                                       shape: BoxShape.rectangle,
                                     ),
                                     child: Align(
-                                      alignment: AlignmentDirectional(0.0, 0.0),
+                                      alignment: AlignmentDirectional(0, 0),
                                       child: Text(
                                         FFLocalizations.of(context).getText(
                                           'hc7flvjs' /* Пополнения */,
@@ -627,7 +538,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                                 FlutterFlowTheme.of(context)
                                                     .secondaryText,
                                               ),
-                                              fontSize: 15.0,
+                                              fontSize: 15,
                                               letterSpacing: 0.0,
                                             ),
                                       ),
@@ -647,7 +558,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                   },
                                   child: Container(
                                     width: double.infinity,
-                                    height: 100.0,
+                                    height: 100,
                                     decoration: BoxDecoration(
                                       color: valueOrDefault<Color>(
                                         _model.replenishment == 2
@@ -656,11 +567,11 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                             : Colors.transparent,
                                         Colors.transparent,
                                       ),
-                                      borderRadius: BorderRadius.circular(24.0),
+                                      borderRadius: BorderRadius.circular(24),
                                       shape: BoxShape.rectangle,
                                     ),
                                     child: Align(
-                                      alignment: AlignmentDirectional(0.0, 0.0),
+                                      alignment: AlignmentDirectional(0, 0),
                                       child: Text(
                                         FFLocalizations.of(context).getText(
                                           'f5efiq3t' /* Списания */,
@@ -680,7 +591,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                                 FlutterFlowTheme.of(context)
                                                     .secondaryText,
                                               ),
-                                              fontSize: 15.0,
+                                              fontSize: 15,
                                               letterSpacing: 0.0,
                                             ),
                                       ),
@@ -694,14 +605,33 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
                       child: StreamBuilder<List<TransactionsRecord>>(
-                        stream: _model.transactionsStream,
+                        stream: queryTransactionsRecord(
+                          queryBuilder: (transactionsRecord) =>
+                              transactionsRecord
+                                  .where(
+                                    'userId',
+                                    isEqualTo: currentUserReference,
+                                  )
+                                  .orderBy('createdAt', descending: true),
+                        ),
                         builder: (context, snapshot) {
+                          // Customize what your widget looks like when it's loading.
+                          if (!snapshot.hasData) {
+                            return Center(
+                              child: SizedBox(
+                                width: 50,
+                                height: 50,
+                                child: SpinKitCircle(
+                                  color: FlutterFlowTheme.of(context).secondary,
+                                  size: 50,
+                                ),
+                              ),
+                            );
+                          }
                           List<TransactionsRecord>
-                              containerTransactionsRecordList =
-                              snapshot.data ?? [];
+                              containerTransactionsRecordList = snapshot.data!;
 
                           return Container(
                             decoration: BoxDecoration(),
@@ -732,7 +662,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                   scrollDirection: Axis.vertical,
                                   itemCount: list.length,
                                   separatorBuilder: (_, __) =>
-                                      SizedBox(height: 6.0),
+                                      SizedBox(height: 6),
                                   itemBuilder: (context, listIndex) {
                                     final listItem = list[listIndex];
                                     return TransWidget(
@@ -749,8 +679,8 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                       ),
                     ),
                   ]
-                      .addToStart(SizedBox(height: 115.0))
-                      .addToEnd(SizedBox(height: 120.0)),
+                      .addToStart(SizedBox(height: 115))
+                      .addToEnd(SizedBox(height: 120)),
                 ),
               ),
             ),
@@ -762,41 +692,41 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                     Color(0xEFF2F2F7),
                     Color(0x00F2F2F7)
                   ],
-                  stops: [0.0, 0.8, 1.0],
-                  begin: AlignmentDirectional(0.0, -1.0),
-                  end: AlignmentDirectional(0, 1.0),
+                  stops: [0, 0.8, 1],
+                  begin: AlignmentDirectional(0, -1),
+                  end: AlignmentDirectional(0, 1),
                 ),
               ),
               child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(12.0, 55.0, 12.0, 12.0),
+                padding: EdgeInsetsDirectional.fromSTEB(12, 55, 12, 12),
                 child: Row(
                   mainAxisSize: MainAxisSize.max,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      width: 45.0,
-                      height: 45.0,
+                      width: 45,
+                      height: 45,
                       decoration: BoxDecoration(
                         boxShadow: [
                           BoxShadow(
-                            blurRadius: 7.0,
+                            blurRadius: 7,
                             color: Color(0x0D2C2C2C),
                             offset: Offset(
-                              0.0,
-                              2.0,
+                              0,
+                              2,
                             ),
                           )
                         ],
                         shape: BoxShape.circle,
                       ),
                       child: FlutterFlowIconButton(
-                        borderRadius: 70.0,
-                        buttonSize: 45.0,
+                        borderRadius: 70,
+                        buttonSize: 45,
                         fillColor: Colors.white,
                         icon: Icon(
                           FFIcons.kchevronLeft,
                           color: FlutterFlowTheme.of(context).primaryText,
-                          size: 20.0,
+                          size: 20,
                         ),
                         onPressed: () async {
                           context.safePop();
@@ -809,14 +739,14 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                       ),
                       style: FlutterFlowTheme.of(context).bodyMedium.override(
                             fontFamily: 'Cool',
-                            fontSize: 18.0,
+                            fontSize: 18,
                             letterSpacing: 0.0,
                             fontWeight: FontWeight.normal,
                           ),
                     ),
                     Container(
-                      width: 45.0,
-                      height: 45.0,
+                      width: 45,
+                      height: 45,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                       ),
@@ -826,7 +756,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
               ),
             ),
             Align(
-              alignment: AlignmentDirectional(0.0, 1.0),
+              alignment: AlignmentDirectional(0, 1),
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -835,31 +765,31 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                       Color(0xACF2F2F7),
                       FlutterFlowTheme.of(context).secondaryBackground
                     ],
-                    stops: [0.0, 0.2, 1.0],
-                    begin: AlignmentDirectional(0.0, -1.0),
-                    end: AlignmentDirectional(0, 1.0),
+                    stops: [0, 0.2, 1],
+                    begin: AlignmentDirectional(0, -1),
+                    end: AlignmentDirectional(0, 1),
                   ),
                 ),
                 child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(6.0, 12.0, 6.0, 35.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(6, 12, 6, 35),
                   child: Stack(
                     children: [
                       Container(
                         width: double.infinity,
-                        height: 60.0,
+                        height: 60,
                         decoration: BoxDecoration(
                           color: FlutterFlowTheme.of(context).primaryText,
-                          borderRadius: BorderRadius.circular(50.0),
+                          borderRadius: BorderRadius.circular(50),
                         ),
                         child: Padding(
-                          padding: EdgeInsets.all(2.0),
+                          padding: EdgeInsets.all(2),
                           child: Row(
                             mainAxisSize: MainAxisSize.max,
                             children: [
                               Expanded(
                                 child: Padding(
                                   padding: EdgeInsetsDirectional.fromSTEB(
-                                      16.0, 0.0, 0.0, 0.0),
+                                      16, 0, 0, 0),
                                   child: Text(
                                     FFLocalizations.of(context).getText(
                                       'djp5cokc' /* Вывести */,
@@ -870,7 +800,60 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                           fontFamily: 'Cool',
                                           color: FlutterFlowTheme.of(context)
                                               .primaryBackground,
-                                          fontSize: 20.0,
+                                          fontSize: 20,
+                                          letterSpacing: 0.0,
+                                          fontWeight: FontWeight.normal,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding:
+                                    EdgeInsetsDirectional.fromSTEB(0, 0, 12, 0),
+                                child: RichText(
+                                  textScaler: MediaQuery.of(context).textScaler,
+                                  text: TextSpan(
+                                    children: [
+                                      TextSpan(
+                                        text: formatNumber(
+                                          valueOrDefault(
+                                              currentUserDocument?.balanceNS,
+                                              0.0),
+                                          formatType: FormatType.decimal,
+                                          decimalType: DecimalType.automatic,
+                                        ),
+                                        style: FlutterFlowTheme.of(context)
+                                            .bodyMedium
+                                            .override(
+                                              fontFamily: 'sf pro display',
+                                              color:
+                                                  FlutterFlowTheme.of(context)
+                                                      .primaryBackground,
+                                              fontSize: 18,
+                                              letterSpacing: 0.0,
+                                              fontWeight: FontWeight.normal,
+                                            ),
+                                      ),
+                                      TextSpan(
+                                        text:
+                                            FFLocalizations.of(context).getText(
+                                          'lv5jpiff' /* ₽ */,
+                                        ),
+                                        style: TextStyle(
+                                          fontFamily: 'Cool',
+                                          color: FlutterFlowTheme.of(context)
+                                              .primaryBackground,
+                                          fontSize: 16,
+                                        ),
+                                      )
+                                    ],
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'Cool',
+                                          color: FlutterFlowTheme.of(context)
+                                              .primaryText,
+                                          fontSize: 18,
                                           letterSpacing: 0.0,
                                           fontWeight: FontWeight.normal,
                                         ),
@@ -878,19 +861,19 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                 ),
                               ),
                               Container(
-                                width: 56.0,
-                                height: 56.0,
+                                width: 56,
+                                height: 56,
                                 decoration: BoxDecoration(
                                   color: FlutterFlowTheme.of(context)
                                       .primaryBackground,
                                   shape: BoxShape.circle,
                                 ),
                                 child: Align(
-                                  alignment: AlignmentDirectional(0.0, 0.0),
+                                  alignment: AlignmentDirectional(0, 0),
                                   child: Icon(
                                     FFIcons.karrowRight,
                                     color: Colors.black,
-                                    size: 20.0,
+                                    size: 20,
                                   ),
                                 ),
                               ),
@@ -953,11 +936,10 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                         ),
                         options: FFButtonOptions(
                           width: double.infinity,
-                          height: 60.0,
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              16.0, 0.0, 16.0, 0.0),
-                          iconPadding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 0.0, 0.0, 0.0),
+                          height: 60,
+                          padding: EdgeInsetsDirectional.fromSTEB(16, 0, 16, 0),
+                          iconPadding:
+                              EdgeInsetsDirectional.fromSTEB(0, 0, 0, 0),
                           color: Color(0x00E88CD4),
                           textStyle:
                               FlutterFlowTheme.of(context).titleSmall.override(
@@ -965,8 +947,8 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                     color: Colors.white,
                                     letterSpacing: 0.0,
                                   ),
-                          elevation: 0.0,
-                          borderRadius: BorderRadius.circular(60.0),
+                          elevation: 0,
+                          borderRadius: BorderRadius.circular(60),
                         ),
                       ),
                     ],
