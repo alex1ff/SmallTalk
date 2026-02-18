@@ -42,6 +42,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
     SchedulerBinding.instance.addPostFrameCallback((_) async {
       if (widget.zn == true) {
         await showModalBottomSheet(
+          useRootNavigator: true,
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
           context: context,
@@ -575,6 +576,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                             highlightColor: Colors.transparent,
                             onTap: () async {
                               await showModalBottomSheet(
+                                useRootNavigator: true,
                                 isScrollControlled: true,
                                 backgroundColor: Colors.transparent,
                                 context: context,

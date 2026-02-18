@@ -90,6 +90,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                   ),
                   onPressed: () async {
                     await showModalBottomSheet(
+                      useRootNavigator: true,
                       isScrollControlled: true,
                       backgroundColor: Colors.transparent,
                       context: context,

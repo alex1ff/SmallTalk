@@ -25,6 +25,9 @@ class NavBarWidget extends StatefulWidget {
 
 class _NavBarWidgetState extends State<NavBarWidget> {
   late NavBarModel _model;
+  static const _instantTransition = <String, dynamic>{
+    kTransitionInfoKey: TransitionInfo(hasTransition: false),
+  };
 
   @override
   void setState(VoidCallback callback) {
@@ -76,10 +79,18 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     switch (index) {
       case 0:
         if (widget.indexCurrentPage == 1) return;
-        context.goNamed(DashboardNSWidget.routeName);
+        context.goNamed(
+          DashboardNSWidget.routeName,
+          extra: _instantTransition,
+        );
+        return;
       case 1:
         if (widget.indexCurrentPage == 2) return;
-        context.goNamed(ProfileWidget.routeName);
+        context.goNamed(
+          ProfileWidget.routeName,
+          extra: _instantTransition,
+        );
+        return;
     }
   }
 
@@ -92,13 +103,23 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           queryParameters: {
             'zn': serializeParam(false, ParamType.bool),
           }.withoutNulls,
+          extra: _instantTransition,
         );
+        return;
       case 1:
         if (widget.indexCurrentPage == 3) return;
-        context.goNamed(WordsWidget.routeName);
+        context.goNamed(
+          WordsWidget.routeName,
+          extra: _instantTransition,
+        );
+        return;
       case 2:
         if (widget.indexCurrentPage == 2) return;
-        context.goNamed(ProfileWidget.routeName);
+        context.goNamed(
+          ProfileWidget.routeName,
+          extra: _instantTransition,
+        );
+        return;
     }
   }
 
@@ -241,6 +262,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     return NavigationBar(
       selectedIndex: _selectedIndex,
       onDestinationSelected: _onTap,
+      animationDuration: Duration.zero,
       backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
       indicatorColor: const Color(0xFF008BFF).withValues(alpha: 0.12),
       destinations: destinations,
