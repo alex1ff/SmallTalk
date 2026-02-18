@@ -26,7 +26,11 @@ class NavBarWidget extends StatefulWidget {
 class _NavBarWidgetState extends State<NavBarWidget> {
   late NavBarModel _model;
   static const _instantTransition = <String, dynamic>{
-    kTransitionInfoKey: TransitionInfo(hasTransition: false),
+    kTransitionInfoKey: TransitionInfo(
+      hasTransition: true,
+      transitionType: PageTransitionType.fade,
+      duration: Duration.zero,
+    ),
   };
 
   @override
