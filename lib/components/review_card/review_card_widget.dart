@@ -48,10 +48,10 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
       width: 325.0,
       decoration: BoxDecoration(
         color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(20.0),
+        borderRadius: BorderRadius.circular(26.0),
       ),
       child: Padding(
-        padding: EdgeInsets.all(12.0),
+        padding: EdgeInsets.all(16.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,8 +62,8 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
               children: [
                 Expanded(
                   child: FutureBuilder<UsersRecord>(
-                    future: UsersRecord.getDocumentOnce(
-                        widget.rewDoc!.fromUserId!),
+                    future:
+                        UsersRecord.getDocumentOnce(widget.rewDoc!.fromUserId!),
                     builder: (context, snapshot) {
                       // Customize what your widget looks like when it's loading.
                       if (!snapshot.hasData) {
@@ -165,10 +165,10 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
               ],
             ),
             if (valueOrDefault<String>(
-                      widget.rewDoc?.comment,
-                      '-',
-                    ) !=
-                    '')
+                  widget.rewDoc?.comment,
+                  '-',
+                ) !=
+                '')
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
                 child: Text(
