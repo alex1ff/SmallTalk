@@ -13,6 +13,7 @@ class TabShellPage extends StatelessWidget {
 
   final GoRouterState state;
   final Widget child;
+
   static final Set<String> _tabPaths = {
     DashboardNSWidget.routePath,
     StudentsDashboardWidget.routePath,
@@ -20,10 +21,13 @@ class TabShellPage extends StatelessWidget {
     WordsWidget.routePath,
   };
 
-  String get _currentPath => state.uri.path;
-<<<<<<< ours
+  String _normalizePath(String path) {
+    if (path.endsWith('/') && path.length > 1) {
+      return path.substring(0, path.length - 1);
+    }
+    return path;
+  }
 
-<<<<<<< ours
   String _currentPath(BuildContext context) {
     try {
       final router = GoRouter.of(context);
@@ -40,58 +44,29 @@ class TabShellPage extends StatelessWidget {
 
   int _indexCurrentPage(String currentPath) {
     if (currentPath == ProfileWidget.routePath) {
-=======
-  int get _indexCurrentPage {
-    if (_currentPath == ProfileWidget.routePath) {
->>>>>>> theirs
-=======
-
-  int get _indexCurrentPage {
-    if (_currentPath == ProfileWidget.routePath) {
->>>>>>> theirs
       return 2;
     }
-    if (_currentPath == WordsWidget.routePath) {
+    if (currentPath == WordsWidget.routePath) {
       return 3;
     }
     return 1;
   }
 
-<<<<<<< ours
-<<<<<<< ours
   bool _showNavBar(String currentPath) {
     return _tabPaths.contains(currentPath);
-=======
-=======
->>>>>>> theirs
-  bool get _showNavBar {
-    return _currentPath == DashboardNSWidget.routePath ||
-        _currentPath == StudentsDashboardWidget.routePath ||
-        _currentPath == ProfileWidget.routePath ||
-        _currentPath == WordsWidget.routePath;
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
   }
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< ours
-<<<<<<< ours
     final currentPath = _currentPath(context);
 
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
     return Scaffold(
       extendBody: true,
       backgroundColor: Colors.transparent,
       body: child,
-      bottomNavigationBar: _showNavBar
+      bottomNavigationBar: _showNavBar(currentPath)
           ? NavBarWidget(
-              indexCurrentPage: _indexCurrentPage,
+              indexCurrentPage: _indexCurrentPage(currentPath),
             )
           : null,
     );
