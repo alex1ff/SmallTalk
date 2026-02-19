@@ -61,7 +61,7 @@ class TabShellPage extends StatelessWidget {
 
     return Scaffold(
       extendBody: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: child,
       bottomNavigationBar: _showNavBar(currentPath)
           ? NavBarWidget(
