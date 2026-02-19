@@ -59,16 +59,28 @@ class TabShellPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentPath = _currentPath(context);
+    final showNavBar = _showNavBar(currentPath);
 
     return Scaffold(
       extendBody: true,
       backgroundColor: Colors.transparent,
       body: child,
-      bottomNavigationBar: _showNavBar(currentPath)
-          ? NavBarWidget(
+      bottomNavigationBar: IgnorePointer(
+        ignoring: !showNavBar,
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          offset: showNavBar ? Offset.zero : const Offset(0.0, 1.0),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            opacity: showNavBar ? 1.0 : 0.0,
+            child: NavBarWidget(
               indexCurrentPage: _indexCurrentPage(currentPath),
-            )
-          : null,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
