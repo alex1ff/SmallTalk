@@ -14,23 +14,23 @@ class TabShellPage extends StatelessWidget {
   final GoRouterState state;
   final Widget child;
 
+  String get _currentPath => state.uri.path;
+
   int get _indexCurrentPage {
-    final location = state.uri.toString();
-    if (location.startsWith(ProfileWidget.routePath)) {
+    if (_currentPath == ProfileWidget.routePath) {
       return 2;
     }
-    if (location.startsWith(WordsWidget.routePath)) {
+    if (_currentPath == WordsWidget.routePath) {
       return 3;
     }
     return 1;
   }
 
   bool get _showNavBar {
-    final location = state.uri.toString();
-    return location.startsWith(DashboardNSWidget.routePath) ||
-        location.startsWith(StudentsDashboardWidget.routePath) ||
-        location.startsWith(ProfileWidget.routePath) ||
-        location.startsWith(WordsWidget.routePath);
+    return _currentPath == DashboardNSWidget.routePath ||
+        _currentPath == StudentsDashboardWidget.routePath ||
+        _currentPath == ProfileWidget.routePath ||
+        _currentPath == WordsWidget.routePath;
   }
 
   @override
