@@ -3,6 +3,7 @@ import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform;
@@ -135,10 +136,56 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         if (defaultTargetPlatform == TargetPlatform.android) {
           return _buildMaterialNavBar(context);
         }
-        // Use a single Cupertino implementation on iOS to avoid native
-        // platform-view color flicker when returning from non-tab pages.
+
+        if (PlatformInfo.isIOS26OrHigher()) {
+          return _buildNativeIOS26TabBar();
+        }
+
         return _buildCupertinoTabBar(context);
       },
+    );
+  }
+
+  // ─────── iOS 26+ — native Liquid Glass tab bar ───────
+
+  Widget _buildNativeIOS26TabBar() {
+    final destinations = _isTeacher
+        ? const [
+            AdaptiveNavigationDestination(
+              icon: 'house.fill',
+              label: 'Главная',
+            ),
+            AdaptiveNavigationDestination(
+              icon: 'person.fill',
+              label: 'Профиль',
+            ),
+          ]
+        : const [
+            AdaptiveNavigationDestination(
+              icon: 'house.fill',
+              label: 'Главная',
+            ),
+            AdaptiveNavigationDestination(
+              icon: 'book.fill',
+              label: 'Словарь',
+            ),
+            AdaptiveNavigationDestination(
+              icon: 'person.fill',
+              label: 'Профиль',
+            ),
+          ];
+
+    final bottomPadding = MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomPadding),
+      child: IOS26NativeTabBar(
+        destinations: destinations,
+        selectedIndex: _selectedIndex,
+        onTap: _onTap,
+        tint: const Color(0xFF008BFF),
+        backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
+      ),
     );
   }
 
