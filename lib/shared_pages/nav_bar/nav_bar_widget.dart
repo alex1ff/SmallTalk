@@ -176,18 +176,14 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
     final bottomPadding = MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-      ),
-      child: Padding(
-        padding: EdgeInsets.only(bottom: bottomPadding),
-        child: IOS26NativeTabBar(
-          destinations: destinations,
-          selectedIndex: _selectedIndex,
-          onTap: _onTap,
-          tint: const Color(0xFF008BFF),
-        ),
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomPadding),
+      child: IOS26NativeTabBar(
+        destinations: destinations,
+        selectedIndex: _selectedIndex,
+        onTap: _onTap,
+        tint: const Color(0xFF008BFF),
+        backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
       ),
     );
   }
