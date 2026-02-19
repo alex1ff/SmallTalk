@@ -55,7 +55,7 @@ class _EmptyWidgetState extends State<EmptyWidget> {
             Padding(
               padding: EdgeInsetsDirectional.fromSTEB(0.0, 16.0, 0.0, 0.0),
               child: Text(
-                FFLocalizations.of(context).getVariableText(
+                  FFLocalizations.of(context).getVariableText(
                   ruText: 'Здесь пока пусто',
                   enText: 'Nothing here yet',
                 ),
