@@ -55,8 +55,9 @@ class _EmptyWidgetState extends State<EmptyWidget> {
             Padding(
               padding: EdgeInsetsDirectional.fromSTEB(0.0, 16.0, 0.0, 0.0),
               child: Text(
-                FFLocalizations.of(context).getText(
-                  '7ul5mgwc' /* Здесь пока пусто */,
+                FFLocalizations.of(context).getVariableText(
+                  ruText: 'Здесь пока пусто',
+                  enText: 'Nothing here yet',
                 ),
                 textAlign: TextAlign.center,
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
