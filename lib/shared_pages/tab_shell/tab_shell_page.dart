@@ -13,12 +13,32 @@ class TabShellPage extends StatelessWidget {
 
   final GoRouterState state;
   final Widget child;
+  static final Set<String> _tabPaths = {
+    DashboardNSWidget.routePath,
+    StudentsDashboardWidget.routePath,
+    ProfileWidget.routePath,
+    WordsWidget.routePath,
+  };
 
   String _normalizePath(String path) {
     if (path.endsWith('/') && path.length > 1) {
       return path.substring(0, path.length - 1);
     }
     return path;
+  }
+
+  String _currentPath(BuildContext context) {
+    try {
+      final router = GoRouter.of(context);
+      final RouteMatch lastMatch =
+          router.routerDelegate.currentConfiguration.last;
+      final RouteMatchList matchList = lastMatch is ImperativeRouteMatch
+          ? lastMatch.matches
+          : router.routerDelegate.currentConfiguration;
+      return _normalizePath(matchList.uri.path);
+    } catch (_) {
+      return _normalizePath(state.uri.path);
+    }
   }
 
   int _indexCurrentPage(String currentPath) {
@@ -32,15 +52,12 @@ class TabShellPage extends StatelessWidget {
   }
 
   bool _showNavBar(String currentPath) {
-    return currentPath == DashboardNSWidget.routePath ||
-        currentPath == StudentsDashboardWidget.routePath ||
-        currentPath == ProfileWidget.routePath ||
-        currentPath == WordsWidget.routePath;
+    return _tabPaths.contains(currentPath);
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentPath = _normalizePath(state.uri.path);
+    final currentPath = _currentPath(context);
 
     return Scaffold(
       extendBody: true,
