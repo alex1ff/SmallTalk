@@ -1,10 +1,12 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/empty/empty_widget.dart';
 import '/components/review_card/review_card_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'my_rew_model.dart';
 export 'my_rew_model.dart';
 
@@ -49,6 +51,21 @@ class _MyRewWidgetState extends State<MyRewWidget> {
     return FutureBuilder<List<ReviewsRecord>>(
       future: _model.reviewsFuture,
       builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return Scaffold(
+            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            body: Center(
+              child: SizedBox(
+                width: 50.0,
+                height: 50.0,
+                child: SpinKitCircle(
+                  color: FlutterFlowTheme.of(context).secondary,
+                  size: 50.0,
+                ),
+              ),
+            ),
+          );
+        }
         List<ReviewsRecord> myRewReviewsRecordList = snapshot.data ?? [];
 
         return GestureDetector(
@@ -454,6 +471,14 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                     ? true
                                     : (_model.rate == e.rating))
                                 .toList();
+                            if (rew.isEmpty) {
+                              return Center(
+                                child: EmptyWidget(
+                                  txt:
+                                      'В этом разделе будут появляться отзывы, которые вы оставляете после занятий. Напишите первый отзыв после звонка, и он отобразится здесь.',
+                                ),
+                              );
+                            }
 
                             return ListView.separated(
                               padding: EdgeInsets.zero,

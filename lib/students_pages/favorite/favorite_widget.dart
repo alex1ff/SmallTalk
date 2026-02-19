@@ -1,5 +1,6 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -58,6 +59,17 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     final list =
                         (currentUserDocument?.blockedUsers.toList() ?? [])
                             .toList();
+                    if (list.isEmpty) {
+                      return Center(
+                        child: Container(
+                          height: 500.0,
+                          child: EmptyWidget(
+                            txt:
+                                'В этом разделе будут появляться ваши избранные преподаватели и носители языка. Добавьте первого собеседника в избранное после звонка, чтобы быстро находить его снова.',
+                          ),
+                        ),
+                      );
+                    }
 
                     return ListView.separated(
                       padding: EdgeInsets.fromLTRB(

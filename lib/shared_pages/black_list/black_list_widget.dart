@@ -1,5 +1,6 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -58,6 +59,17 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                     final list =
                         (currentUserDocument?.blockedUsers.toList() ?? [])
                             .toList();
+                    if (list.isEmpty) {
+                      return Center(
+                        child: Container(
+                          height: 500.0,
+                          child: EmptyWidget(
+                            txt:
+                                'В этом разделе будут отображаться собеседники, которых вы добавили в чёрный список. Если список пуст, все пользователи доступны для подбора звонков.',
+                          ),
+                        ),
+                      );
+                    }
 
                     return ListView.separated(
                       padding: EdgeInsets.fromLTRB(
