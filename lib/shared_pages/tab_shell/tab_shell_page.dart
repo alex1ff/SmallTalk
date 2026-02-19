@@ -20,13 +20,10 @@ class TabShellPage extends StatelessWidget {
     WordsWidget.routePath,
   };
 
-  String _normalizePath(String path) {
-    if (path.endsWith('/') && path.length > 1) {
-      return path.substring(0, path.length - 1);
-    }
-    return path;
-  }
+  String get _currentPath => state.uri.path;
+<<<<<<< ours
 
+<<<<<<< ours
   String _currentPath(BuildContext context) {
     try {
       final router = GoRouter.of(context);
@@ -43,29 +40,58 @@ class TabShellPage extends StatelessWidget {
 
   int _indexCurrentPage(String currentPath) {
     if (currentPath == ProfileWidget.routePath) {
+=======
+  int get _indexCurrentPage {
+    if (_currentPath == ProfileWidget.routePath) {
+>>>>>>> theirs
+=======
+
+  int get _indexCurrentPage {
+    if (_currentPath == ProfileWidget.routePath) {
+>>>>>>> theirs
       return 2;
     }
-    if (currentPath == WordsWidget.routePath) {
+    if (_currentPath == WordsWidget.routePath) {
       return 3;
     }
     return 1;
   }
 
+<<<<<<< ours
+<<<<<<< ours
   bool _showNavBar(String currentPath) {
     return _tabPaths.contains(currentPath);
+=======
+=======
+>>>>>>> theirs
+  bool get _showNavBar {
+    return _currentPath == DashboardNSWidget.routePath ||
+        _currentPath == StudentsDashboardWidget.routePath ||
+        _currentPath == ProfileWidget.routePath ||
+        _currentPath == WordsWidget.routePath;
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
   }
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< ours
+<<<<<<< ours
     final currentPath = _currentPath(context);
 
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
     return Scaffold(
       extendBody: true,
       backgroundColor: Colors.transparent,
       body: child,
-      bottomNavigationBar: _showNavBar(currentPath)
+      bottomNavigationBar: _showNavBar
           ? NavBarWidget(
-              indexCurrentPage: _indexCurrentPage(currentPath),
+              indexCurrentPage: _indexCurrentPage,
             )
           : null,
     );
