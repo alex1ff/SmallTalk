@@ -14,34 +14,45 @@ class TabShellPage extends StatelessWidget {
   final GoRouterState state;
   final Widget child;
 
-  String get _currentPath => state.uri.path;
+  String _normalizePath(String path) {
+    if (path.endsWith('/') && path.length > 1) {
+      return path.substring(0, path.length - 1);
+    }
+    return path;
+  }
 
-  int get _indexCurrentPage {
-    if (_currentPath == ProfileWidget.routePath) {
+  int _indexCurrentPage(String currentPath) {
+    if (currentPath == ProfileWidget.routePath) {
       return 2;
     }
-    if (_currentPath == WordsWidget.routePath) {
+    if (currentPath == WordsWidget.routePath) {
       return 3;
     }
     return 1;
   }
 
-  bool get _showNavBar {
-    return _currentPath == DashboardNSWidget.routePath ||
-        _currentPath == StudentsDashboardWidget.routePath ||
-        _currentPath == ProfileWidget.routePath ||
-        _currentPath == WordsWidget.routePath;
+  bool _showNavBar(String currentPath) {
+    return currentPath == DashboardNSWidget.routePath ||
+        currentPath == StudentsDashboardWidget.routePath ||
+        currentPath == ProfileWidget.routePath ||
+        currentPath == WordsWidget.routePath;
   }
 
   @override
   Widget build(BuildContext context) {
+    final routerPath =
+        GoRouter.of(context).routeInformationProvider.value.uri.path;
+    final currentPath = _normalizePath(
+      routerPath.isNotEmpty ? routerPath : state.uri.path,
+    );
+
     return Scaffold(
       extendBody: true,
       backgroundColor: Colors.transparent,
       body: child,
-      bottomNavigationBar: _showNavBar
+      bottomNavigationBar: _showNavBar(currentPath)
           ? NavBarWidget(
-              indexCurrentPage: _indexCurrentPage,
+              indexCurrentPage: _indexCurrentPage(currentPath),
             )
           : null,
     );
