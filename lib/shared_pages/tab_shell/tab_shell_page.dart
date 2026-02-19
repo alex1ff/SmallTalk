@@ -40,11 +40,7 @@ class TabShellPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final routerPath =
-        GoRouter.of(context).routeInformationProvider.value.uri.path;
-    final currentPath = _normalizePath(
-      routerPath.isNotEmpty ? routerPath : state.uri.path,
-    );
+    final currentPath = _normalizePath(state.uri.path);
 
     return Scaffold(
       extendBody: true,
