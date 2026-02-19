@@ -243,6 +243,11 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             path: FavoriteWidget.routePath,
             builder: (context, params) => FavoriteWidget(),
           ),
+          FFRoute(
+            name: ProfileEditWidget.routeName,
+            path: ProfileEditWidget.routePath,
+            builder: (context, params) => ProfileEditWidget(),
+          ),
         ].map((r) => r.toRoute(appStateNotifier)),
 
         // ── Tab pages wrapped in ShellRoute ──
@@ -283,11 +288,6 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
               name: WordsWidget.routeName,
               path: WordsWidget.routePath,
               builder: (context, params) => WordsWidget(),
-            ),
-            FFRoute(
-              name: ProfileEditWidget.routeName,
-              path: ProfileEditWidget.routePath,
-              builder: (context, params) => ProfileEditWidget(),
             ),
           ].map((r) => r.toRoute(appStateNotifier)).toList(),
         ),
