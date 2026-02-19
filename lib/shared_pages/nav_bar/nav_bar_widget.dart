@@ -176,13 +176,18 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
     final bottomPadding = MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomPadding),
-      child: IOS26NativeTabBar(
-        destinations: destinations,
-        selectedIndex: _selectedIndex,
-        onTap: _onTap,
-        tint: const Color(0xFF008BFF),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).primaryBackground,
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomPadding),
+        child: IOS26NativeTabBar(
+          destinations: destinations,
+          selectedIndex: _selectedIndex,
+          onTap: _onTap,
+          tint: const Color(0xFF008BFF),
+        ),
       ),
     );
   }
@@ -219,6 +224,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     return CupertinoTabBar(
       currentIndex: _selectedIndex,
       onTap: _onTap,
+      backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
       activeColor: const Color(0xFF008BFF),
       items: items,
     );
