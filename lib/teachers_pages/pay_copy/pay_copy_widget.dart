@@ -1,6 +1,7 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/empty/empty_widget.dart';
 import '/components/trans/trans_widget.dart';
 import '/flutter_flow/flutter_flow_animations.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
@@ -654,6 +655,14 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                           }
                                         }())
                                     .toList();
+                                if (list.isEmpty) {
+                                  return Center(
+                                    child: EmptyWidget(
+                                      txt:
+                                          'Здесь появится история ваших операций: пополнения, списания и другие платежи. После первой операции она отобразится в этом разделе.',
+                                    ),
+                                  );
+                                }
 
                                 return ListView.separated(
                                   padding: EdgeInsets.zero,
