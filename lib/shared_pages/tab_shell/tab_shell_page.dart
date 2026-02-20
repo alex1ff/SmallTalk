@@ -62,7 +62,7 @@ class TabShellPage extends StatelessWidget {
     final showNavBar = _showNavBar(currentPath);
 
     return Scaffold(
-      extendBody: true,
+      extendBody: false,
       backgroundColor: Colors.transparent,
       body: child,
       bottomNavigationBar: Offstage(
