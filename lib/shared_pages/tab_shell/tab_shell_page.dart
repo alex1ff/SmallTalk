@@ -65,20 +65,10 @@ class TabShellPage extends StatelessWidget {
       extendBody: true,
       backgroundColor: Colors.transparent,
       body: child,
-      bottomNavigationBar: IgnorePointer(
-        ignoring: !showNavBar,
-        child: AnimatedSlide(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          offset: showNavBar ? Offset.zero : const Offset(0.0, 1.0),
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            opacity: showNavBar ? 1.0 : 0.0,
-            child: NavBarWidget(
-              indexCurrentPage: _indexCurrentPage(currentPath),
-            ),
-          ),
+      bottomNavigationBar: Offstage(
+        offstage: !showNavBar,
+        child: NavBarWidget(
+          indexCurrentPage: _indexCurrentPage(currentPath),
         ),
       ),
     );
