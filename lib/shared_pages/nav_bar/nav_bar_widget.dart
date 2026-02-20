@@ -131,19 +131,15 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return AuthUserStreamWidget(
-      builder: (context) {
-        if (defaultTargetPlatform == TargetPlatform.android) {
-          return _buildMaterialNavBar(context);
-        }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return _buildMaterialNavBar(context);
+    }
 
-        if (PlatformInfo.isIOS26OrHigher()) {
-          return _buildNativeIOS26TabBar();
-        }
+    if (PlatformInfo.isIOS26OrHigher()) {
+      return _buildNativeIOS26TabBar();
+    }
 
-        return _buildCupertinoTabBar(context);
-      },
-    );
+    return _buildCupertinoTabBar(context);
   }
 
   // ─────── iOS 26+ — native Liquid Glass tab bar ───────
@@ -185,6 +181,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         onTap: _onTap,
         tint: const Color(0xFF008BFF),
         backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
+        minimizeBehavior: TabBarMinimizeBehavior.never,
       ),
     );
   }
