@@ -47,13 +47,6 @@ class _LoadingWidgetState extends State<LoadingWidget> {
         if (valueOrDefault<bool>(currentUserDocument?.acquaintance, false)) {
           context.goNamed(
             DashboardNSWidget.routeName,
-            extra: <String, dynamic>{
-              kTransitionInfoKey: TransitionInfo(
-                hasTransition: true,
-                transitionType: PageTransitionType.fade,
-                duration: Duration(milliseconds: 0),
-              ),
-            },
           );
         } else {
           context.goNamed(
@@ -79,13 +72,6 @@ class _LoadingWidgetState extends State<LoadingWidget> {
               currentUserDocument?.isProfileComplete, false)) {
             context.goNamed(
               StudentsDashboardWidget.routeName,
-              extra: <String, dynamic>{
-                kTransitionInfoKey: TransitionInfo(
-                  hasTransition: true,
-                  transitionType: PageTransitionType.fade,
-                  duration: Duration(milliseconds: 0),
-                ),
-              },
             );
           } else {
             context.pushNamed(

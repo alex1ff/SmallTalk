@@ -25,13 +25,6 @@ class NavBarWidget extends StatefulWidget {
 
 class _NavBarWidgetState extends State<NavBarWidget> {
   late NavBarModel _model;
-  static const _instantTransition = <String, dynamic>{
-    kTransitionInfoKey: TransitionInfo(
-      hasTransition: true,
-      transitionType: PageTransitionType.fade,
-      duration: Duration.zero,
-    ),
-  };
 
   @override
   void setState(VoidCallback callback) {
@@ -85,14 +78,12 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         if (widget.indexCurrentPage == 1) return;
         context.goNamed(
           DashboardNSWidget.routeName,
-          extra: _instantTransition,
         );
         return;
       case 1:
         if (widget.indexCurrentPage == 2) return;
         context.goNamed(
           ProfileWidget.routeName,
-          extra: _instantTransition,
         );
         return;
     }
@@ -107,21 +98,18 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           queryParameters: {
             'zn': serializeParam(false, ParamType.bool),
           }.withoutNulls,
-          extra: _instantTransition,
         );
         return;
       case 1:
         if (widget.indexCurrentPage == 3) return;
         context.goNamed(
           WordsWidget.routeName,
-          extra: _instantTransition,
         );
         return;
       case 2:
         if (widget.indexCurrentPage == 2) return;
         context.goNamed(
           ProfileWidget.routeName,
-          extra: _instantTransition,
         );
         return;
     }

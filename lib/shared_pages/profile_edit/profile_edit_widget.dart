@@ -1,5 +1,4 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/components/uploud_photo/uploud_photo_widget.dart';
 import '/backend/backend.dart';
 import '/backend/firebase_storage/storage.dart';
 import '/backend/schema/enums/enums.dart';
@@ -9,7 +8,6 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import '/flutter_flow/upload_data.dart';
 import '/shared_pages/edit_components/edit_about/edit_about_widget.dart';
-import '/shared_pages/edit_components/edit_avatar/edit_avatar_widget.dart';
 import '/shared_pages/edit_components/edit_country/edit_country_widget.dart';
 import '/shared_pages/edit_components/edit_gendeer/edit_gendeer_widget.dart';
 import '/shared_pages/edit_components/edit_lang/edit_lang_widget.dart';
@@ -210,121 +208,76 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                 hoverColor: Colors.transparent,
                                 highlightColor: Colors.transparent,
                                 onTap: () async {
-                                  if (currentUserDocument?.role ==
-                                      UserRole.student) {
-                                    await showModalBottomSheet(
-                                      isScrollControlled: true,
-                                      backgroundColor: Colors.transparent,
-                                      context: context,
-                                      builder: (context) {
-                                        return WebViewAware(
-                                          child: GestureDetector(
-                                            onTap: () {
-                                              FocusScope.of(context).unfocus();
-                                              FocusManager.instance.primaryFocus
-                                                  ?.unfocus();
-                                            },
-                                            child: Padding(
-                                              padding: MediaQuery.viewInsetsOf(
-                                                  context),
-                                              child: EditAvatarWidget(
-                                                action: () async {
-                                                  safeSetState(() {});
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ).then((value) => safeSetState(() {}));
-                                  } else {
-                                    await showModalBottomSheet(
-                                      isScrollControlled: true,
-                                      backgroundColor: Colors.transparent,
-                                      context: context,
-                                      builder: (context) {
-                                        return WebViewAware(
-                                          child: GestureDetector(
-                                            onTap: () {
-                                              FocusScope.of(context).unfocus();
-                                              FocusManager.instance.primaryFocus
-                                                  ?.unfocus();
-                                            },
-                                            child: Padding(
-                                              padding: MediaQuery.viewInsetsOf(
-                                                  context),
-                                              child: UploudPhotoWidget(
-                                                action: (upl) async {
-                                                  {
-                                                    safeSetState(() => _model
-                                                            .isDataUploading_uploadData4bs =
-                                                        true);
-                                                    var selectedUploadedFiles =
-                                                        <FFUploadedFile>[];
-                                                    var selectedMedia =
-                                                        <SelectedFile>[];
-                                                    var downloadUrls =
-                                                        <String>[];
-                                                    try {
-                                                      selectedUploadedFiles = upl
-                                                              .bytes!.isNotEmpty
-                                                          ? [upl]
-                                                          : <FFUploadedFile>[];
-                                                      selectedMedia =
-                                                          selectedFilesFromUploadedFiles(
-                                                        selectedUploadedFiles,
-                                                      );
-                                                      downloadUrls =
-                                                          (await Future.wait(
-                                                        selectedMedia.map(
-                                                          (m) async =>
-                                                              await uploadData(
-                                                                  m.storagePath,
-                                                                  m.bytes),
-                                                        ),
-                                                      ))
-                                                              .where((u) =>
-                                                                  u != null)
-                                                              .map((u) => u!)
-                                                              .toList();
-                                                    } finally {
-                                                      _model.isDataUploading_uploadData4bs =
-                                                          false;
-                                                    }
-                                                    if (selectedUploadedFiles
-                                                                .length ==
-                                                            selectedMedia
-                                                                .length &&
-                                                        downloadUrls.length ==
-                                                            selectedMedia
-                                                                .length) {
-                                                      safeSetState(() {
-                                                        _model.uploadedLocalFile_uploadData4bs =
-                                                            selectedUploadedFiles
-                                                                .first;
-                                                        _model.uploadedFileUrl_uploadData4bs =
-                                                            downloadUrls.first;
-                                                      });
-                                                    } else {
-                                                      safeSetState(() {});
-                                                      return;
-                                                    }
-                                                  }
+                                  final selectedMedia = await selectMedia(
+                                    maxWidth: 500.00,
+                                    maxHeight: 500.00,
+                                    imageQuality: 95,
+                                    mediaSource: MediaSource.photoGallery,
+                                    multiImage: false,
+                                  );
+                                  if (selectedMedia != null &&
+                                      selectedMedia.every((m) =>
+                                          validateFileFormat(
+                                              m.storagePath, context))) {
+                                    safeSetState(() => _model
+                                        .isDataUploading_uploadData4bs = true);
+                                    var selectedUploadedFiles =
+                                        <FFUploadedFile>[];
+                                    var downloadUrls = <String>[];
+                                    try {
+                                      selectedUploadedFiles = selectedMedia
+                                          .map((m) => FFUploadedFile(
+                                                name: m.storagePath
+                                                    .split('/')
+                                                    .last,
+                                                bytes: m.bytes,
+                                                height: m.dimensions?.height,
+                                                width: m.dimensions?.width,
+                                                blurHash: m.blurHash,
+                                                originalFilename:
+                                                    m.originalFilename,
+                                              ))
+                                          .toList();
 
-                                                  await currentUserReference!
-                                                      .update(
-                                                          createUsersRecordData(
-                                                    photoUrl: _model
-                                                        .uploadedFileUrl_uploadData4bs,
-                                                  ));
-                                                  safeSetState(() {});
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ).then((value) => safeSetState(() {}));
+                                      downloadUrls = (await Future.wait(
+                                        selectedMedia.map(
+                                          (m) async => await uploadData(
+                                              m.storagePath, m.bytes),
+                                        ),
+                                      ))
+                                          .where((u) => u != null)
+                                          .map((u) => u!)
+                                          .toList();
+                                    } finally {
+                                      safeSetState(() =>
+                                          _model.isDataUploading_uploadData4bs =
+                                              false);
+                                    }
+                                    if (selectedUploadedFiles.length ==
+                                            selectedMedia.length &&
+                                        downloadUrls.length ==
+                                            selectedMedia.length) {
+                                      safeSetState(() {
+                                        _model.uploadedLocalFile_uploadData4bs =
+                                            selectedUploadedFiles.first;
+                                        _model.uploadedFileUrl_uploadData4bs =
+                                            downloadUrls.first;
+                                      });
+                                    } else {
+                                      safeSetState(() {});
+                                      return;
+                                    }
+
+                                    if (_model.uploadedFileUrl_uploadData4bs !=
+                                            '' &&
+                                        _model.uploadedFileUrl_uploadData4bs
+                                            .isNotEmpty) {
+                                      await currentUserReference!
+                                          .update(createUsersRecordData(
+                                        photoUrl: _model
+                                            .uploadedFileUrl_uploadData4bs,
+                                      ));
+                                    }
                                   }
                                 },
                                 child: Stack(
@@ -342,8 +295,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                               const SizedBox.shrink(),
                                           errorWidget: (context, url, error) =>
                                               Icon(Icons.person,
-                                                  size: 24,
-                                                  color: Colors.grey),
+                                                  size: 24, color: Colors.grey),
                                         ),
                                       ),
                                     ),

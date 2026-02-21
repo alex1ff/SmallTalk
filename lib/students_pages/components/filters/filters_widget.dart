@@ -260,8 +260,17 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                               model: _model.countryCardModel,
                               updateCallback: () => safeSetState(() {}),
                               child: CountryCardWidget(
-                                lang: currentUserDocument!
-                                    .preferences.preferredLocation,
+                                lang: currentUserDocument
+                                            ?.preferences.preferredLocation !=
+                                        null
+                                    ? currentUserDocument!
+                                        .preferences.preferredLocation
+                                    : CountryStruct(
+                                        nameRu:
+                                            'Страна собеседника не выбрана.',
+                                        nameEn:
+                                            'Interlocutor country is not selected.',
+                                      ),
                                 callbackAction: (selectedLangData) async {
                                   await showModalBottomSheet(
                                     isScrollControlled: true,

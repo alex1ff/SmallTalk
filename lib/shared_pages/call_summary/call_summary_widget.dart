@@ -772,9 +772,9 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                         }
 
                         if (currentUserDocument?.role == UserRole.student) {
-                          context.pushNamed(StudentsDashboardWidget.routeName);
+                          context.goNamed(StudentsDashboardWidget.routeName);
                         } else {
-                          context.pushNamed(DashboardNSWidget.routeName);
+                          context.goNamed(DashboardNSWidget.routeName);
                         }
                       },
                     ),
@@ -850,7 +850,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
                               onTap: () async {
-                                context.pushNamed(
+                                context.goNamed(
                                   StudentsDashboardWidget.routeName,
                                   queryParameters: {
                                     'zn': serializeParam(
