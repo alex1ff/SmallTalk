@@ -117,25 +117,58 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                     child: Row(
                       mainAxisSize: MainAxisSize.max,
                       children: [
-                        AuthUserStreamWidget(
-                          builder: (context) => Container(
-                            width: 66.0,
-                            height: 66.0,
-                            decoration: BoxDecoration(
+                        Container(
+                          width: 66.0,
+                          height: 66.0,
+                          decoration: BoxDecoration(
+                            color: FlutterFlowTheme.of(context)
+                                .secondaryBackground,
+                            shape: BoxShape.circle,
+                            border: Border.all(
                               color: FlutterFlowTheme.of(context)
                                   .secondaryBackground,
-                              image: DecorationImage(
-                                fit: BoxFit.cover,
-                                image: CachedNetworkImageProvider(
-                                  currentUserPhoto,
-                                ),
-                              ),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: FlutterFlowTheme.of(context)
-                                    .secondaryBackground,
-                              ),
                             ),
+                          ),
+                          child: Builder(
+                            builder: (context) {
+                              if (currentUserPhoto != '') {
+                                return ClipRRect(
+                                  borderRadius: BorderRadius.circular(100.0),
+                                  child: CachedNetworkImage(
+                                    fadeInDuration: Duration(milliseconds: 0),
+                                    fadeOutDuration: Duration(milliseconds: 0),
+                                    imageUrl: currentUserPhoto,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    fit: BoxFit.cover,
+                                  ),
+                                );
+                              } else {
+                                return Align(
+                                  alignment: AlignmentDirectional(0.0, 0.0),
+                                  child: AuthUserStreamWidget(
+                                    builder: (context) {
+                                      final displayName =
+                                          currentUserDisplayName.trim();
+                                      final firstLetter = displayName.isNotEmpty
+                                          ? displayName[0].toUpperCase()
+                                          : '?';
+                                      return Text(
+                                        firstLetter,
+                                        textAlign: TextAlign.center,
+                                        style: FlutterFlowTheme.of(context)
+                                            .bodyMedium
+                                            .override(
+                                              fontFamily: 'Cool',
+                                              fontSize: 24.0,
+                                              letterSpacing: 0.0,
+                                            ),
+                                      );
+                                    },
+                                  ),
+                                );
+                              }
+                            },
                           ),
                         ),
                         Expanded(

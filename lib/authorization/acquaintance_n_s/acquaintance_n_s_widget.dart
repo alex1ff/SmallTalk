@@ -1,7 +1,6 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/country/country_widget.dart';
 import '/authorization/components/lang/lang_widget.dart';
-import '/authorization/components/uploud_photo/uploud_photo_widget.dart';
 import '/backend/backend.dart';
 import '/backend/firebase_storage/storage.dart';
 import '/backend/schema/enums/enums.dart';
@@ -22,7 +21,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'acquaintance_n_s_model.dart';
 export 'acquaintance_n_s_model.dart';
 
@@ -263,9 +261,10 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                                         _model.nameFocusNode,
                                                     onFieldSubmitted:
                                                         (_) async {
-                                                      if (_model.nameTextController
-                                                                  .text !=
-                                                              '') {
+                                                      if (_model
+                                                              .nameTextController
+                                                              .text !=
+                                                          '') {
                                                         if (functions
                                                             .isValidName(_model
                                                                 .nameTextController
@@ -750,7 +749,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                       focusNode: _model.aboutMeFocusNode,
                                       onFieldSubmitted: (_) async {
                                         if (_model.aboutMeTextController.text !=
-                                                '') {
+                                            '') {
                                           await _model.pageViewController
                                               ?.nextPage(
                                             duration:
@@ -898,35 +897,39 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                     hoverColor: Colors.transparent,
                                     highlightColor: Colors.transparent,
                                     onTap: () async {
-                                      await showModalBottomSheet(
-                                        isScrollControlled: true,
-                                        backgroundColor: Colors.transparent,
-                                        context: context,
-                                        builder: (context) {
-                                          return WebViewAware(
-                                            child: GestureDetector(
-                                              onTap: () {
-                                                FocusScope.of(context)
-                                                    .unfocus();
-                                                FocusManager
-                                                    .instance.primaryFocus
-                                                    ?.unfocus();
-                                              },
-                                              child: Padding(
-                                                padding:
-                                                    MediaQuery.viewInsetsOf(
-                                                        context),
-                                                child: UploudPhotoWidget(
-                                                  action: (upl) async {
-                                                    _model.avatar = upl;
-                                                    safeSetState(() {});
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ).then((value) => safeSetState(() {}));
+                                      final selectedMedia = await selectMedia(
+                                        maxWidth: 500.00,
+                                        maxHeight: 500.00,
+                                        imageQuality: 95,
+                                        mediaSource: MediaSource.photoGallery,
+                                        multiImage: false,
+                                      );
+                                      if (selectedMedia != null &&
+                                          selectedMedia.every((m) =>
+                                              validateFileFormat(
+                                                  m.storagePath, context))) {
+                                        var selectedUploadedFiles =
+                                            <FFUploadedFile>[];
+                                        selectedUploadedFiles = selectedMedia
+                                            .map((m) => FFUploadedFile(
+                                                  name: m.storagePath
+                                                      .split('/')
+                                                      .last,
+                                                  bytes: m.bytes,
+                                                  height: m.dimensions?.height,
+                                                  width: m.dimensions?.width,
+                                                  blurHash: m.blurHash,
+                                                  originalFilename:
+                                                      m.originalFilename,
+                                                ))
+                                            .toList();
+                                        if (selectedUploadedFiles.length ==
+                                            selectedMedia.length) {
+                                          _model.avatar =
+                                              selectedUploadedFiles.first;
+                                          safeSetState(() {});
+                                        }
+                                      }
                                     },
                                     child: Container(
                                       width: double.infinity,
@@ -1216,7 +1219,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                       );
                                       if (_model.pageViewCurrentIndex == 0) {
                                         if (_model.nameTextController.text !=
-                                                '') {
+                                            '') {
                                           if (!functions.isValidName(
                                               _model.nameTextController.text)) {
                                             await actions.showTopNotification(
@@ -1273,8 +1276,9 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                         }
                                       } else if (_model.pageViewCurrentIndex ==
                                           5) {
-                                        if (!(_model.aboutMeTextController.text !=
-                                                '')) {
+                                        if (!(_model
+                                                .aboutMeTextController.text !=
+                                            '')) {
                                           await actions.showTopNotification(
                                             context,
                                             'Напишите хотя бы пару слов',

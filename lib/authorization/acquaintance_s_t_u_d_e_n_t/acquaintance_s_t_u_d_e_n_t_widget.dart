@@ -4,7 +4,6 @@ import '/authorization/components/avatar_card/avatar_card_widget.dart';
 import '/authorization/components/chips/chips_widget.dart';
 import '/authorization/components/country/country_widget.dart';
 import '/authorization/components/lang/lang_widget.dart';
-import '/authorization/components/uploud_photo/uploud_photo_widget.dart';
 import '/backend/backend.dart';
 import '/backend/firebase_storage/storage.dart';
 import '/backend/schema/enums/enums.dart';
@@ -270,8 +269,8 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                               level: _model.level,
                                               balanceST: updateBalanceStruct(
                                                 BalanceStruct(
-                                                  smallTalks: 1,
-                                                  minutes: 10,
+                                                  smallTalks: 1.0,
+                                                  minutes: 10.0,
                                                 ),
                                                 clearUnsetFields: false,
                                               ),
@@ -312,12 +311,10 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                                   ? Gender.male
                                                   : Gender.female,
                                               level: _model.level,
-                                              selectedAvatarDocRef:
-                                                  _model.selectedAvatar,
                                               balanceST: updateBalanceStruct(
                                                 BalanceStruct(
-                                                  smallTalks: 1,
-                                                  minutes: 10,
+                                                  smallTalks: 1.0,
+                                                  minutes: 10.0,
                                                 ),
                                                 clearUnsetFields: false,
                                               ),
@@ -337,7 +334,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                       );
                                     }
 
-                                    context.pushNamed(
+                                    context.goNamed(
                                       StudentsDashboardWidget.routeName,
                                       queryParameters: {
                                         'zn': serializeParam(
@@ -518,9 +515,10 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                                   focusNode:
                                                       _model.nameFocusNode,
                                                   onFieldSubmitted: (_) async {
-                                                    if (_model.nameTextController
-                                                                .text !=
-                                                            '') {
+                                                    if (_model
+                                                            .nameTextController
+                                                            .text !=
+                                                        '') {
                                                       if (functions.isValidName(
                                                           _model
                                                               .nameTextController
@@ -2176,7 +2174,7 @@ Native */
                                     child: FFButtonWidget(
                                       onPressed: () async {
                                         if (widget.index == 4) {
-                                          context.pushNamed(
+                                          context.goNamed(
                                               StudentsDashboardWidget
                                                   .routeName);
                                         } else {
@@ -2200,7 +2198,7 @@ Native */
                                             }(),
                                           );
 
-                                          context.pushNamed(
+                                          context.goNamed(
                                             StudentsDashboardWidget.routeName,
                                             queryParameters: {
                                               'zn': serializeParam(
@@ -2630,38 +2628,42 @@ Native */
                                       hoverColor: Colors.transparent,
                                       highlightColor: Colors.transparent,
                                       onTap: () async {
-                                        await showModalBottomSheet(
-                                          isScrollControlled: true,
-                                          backgroundColor: Colors.transparent,
-                                          context: context,
-                                          builder: (context) {
-                                            return WebViewAware(
-                                              child: GestureDetector(
-                                                onTap: () {
-                                                  FocusScope.of(context)
-                                                      .unfocus();
-                                                  FocusManager
-                                                      .instance.primaryFocus
-                                                      ?.unfocus();
-                                                },
-                                                child: Padding(
-                                                  padding:
-                                                      MediaQuery.viewInsetsOf(
-                                                          context),
-                                                  child: UploudPhotoWidget(
-                                                    action: (upl) async {
-                                                      _model.avatarPhooto = upl;
-                                                      _model.avatar = null;
-                                                      _model.selectedAvatar =
-                                                          null;
-                                                      safeSetState(() {});
-                                                    },
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        ).then((value) => safeSetState(() {}));
+                                        final selectedMedia = await selectMedia(
+                                          maxWidth: 500.00,
+                                          maxHeight: 500.00,
+                                          imageQuality: 95,
+                                          mediaSource: MediaSource.photoGallery,
+                                          multiImage: false,
+                                        );
+                                        if (selectedMedia != null &&
+                                            selectedMedia.every((m) =>
+                                                validateFileFormat(
+                                                    m.storagePath, context))) {
+                                          var selectedUploadedFiles =
+                                              <FFUploadedFile>[];
+                                          selectedUploadedFiles = selectedMedia
+                                              .map((m) => FFUploadedFile(
+                                                    name: m.storagePath
+                                                        .split('/')
+                                                        .last,
+                                                    bytes: m.bytes,
+                                                    height:
+                                                        m.dimensions?.height,
+                                                    width: m.dimensions?.width,
+                                                    blurHash: m.blurHash,
+                                                    originalFilename:
+                                                        m.originalFilename,
+                                                  ))
+                                              .toList();
+                                          if (selectedUploadedFiles.length ==
+                                              selectedMedia.length) {
+                                            _model.avatarPhooto =
+                                                selectedUploadedFiles.first;
+                                            _model.avatar = null;
+                                            _model.selectedAvatar = null;
+                                            safeSetState(() {});
+                                          }
+                                        }
                                       },
                                       child: Container(
                                         width: double.infinity,
@@ -3128,9 +3130,6 @@ Native */
                                                                 ? Gender.male
                                                                 : Gender.female,
                                                         level: _model.level,
-                                                        selectedAvatarDocRef:
-                                                            _model
-                                                                .selectedAvatar,
                                                         acquaintance: true,
                                                         learningLanguage:
                                                             updateLanguageStruct(
@@ -3197,8 +3196,8 @@ Native */
                                             if (_model.pageViewCurrentIndex ==
                                                 0) {
                                               if (_model.nameTextController
-                                                          .text !=
-                                                      '') {
+                                                      .text !=
+                                                  '') {
                                                 if (!functions.isValidName(
                                                     _model.nameTextController
                                                         .text)) {
