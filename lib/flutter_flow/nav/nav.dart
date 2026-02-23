@@ -258,6 +258,7 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             FFRoute(
               name: DashboardNSWidget.routeName,
               path: DashboardNSWidget.routePath,
+              noTransition: true,
               builder: (context, params) => DashboardNSWidget(
                 zn: params.getParam(
                   'zn',
@@ -268,6 +269,7 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             FFRoute(
               name: StudentsDashboardWidget.routeName,
               path: StudentsDashboardWidget.routePath,
+              noTransition: true,
               builder: (context, params) => StudentsDashboardWidget(
                 zn: params.getParam(
                   'zn',
@@ -282,11 +284,13 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             FFRoute(
               name: ProfileWidget.routeName,
               path: ProfileWidget.routePath,
+              noTransition: true,
               builder: (context, params) => ProfileWidget(),
             ),
             FFRoute(
               name: WordsWidget.routeName,
               path: WordsWidget.routePath,
+              noTransition: true,
               builder: (context, params) => WordsWidget(),
             ),
           ].map((r) => r.toRoute(appStateNotifier)).toList(),
@@ -441,6 +445,7 @@ class FFRoute {
     this.requireAuth = false,
     this.asyncParams = const {},
     this.routes = const [],
+    this.noTransition = false,
   });
 
   final String name;
@@ -449,6 +454,7 @@ class FFRoute {
   final Map<String, Future<dynamic> Function(String)> asyncParams;
   final Widget Function(BuildContext, FFParameters) builder;
   final List<GoRoute> routes;
+  final bool noTransition;
 
   GoRoute toRoute(AppStateNotifier appStateNotifier) => GoRoute(
         name: name,
@@ -487,6 +493,10 @@ class FFRoute {
                   ),
                 )
               : page;
+
+          if (noTransition) {
+            return NoTransitionPage(key: state.pageKey, child: child);
+          }
 
           final transitionInfo = state.transitionInfo;
           return transitionInfo.hasTransition
