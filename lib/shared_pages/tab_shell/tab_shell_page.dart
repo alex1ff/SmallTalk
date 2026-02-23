@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 
 /// Persistent shell used as the builder for GoRouter's ShellRoute.
-class TabShellPage extends StatelessWidget {
+class TabShellPage extends StatefulWidget {
   const TabShellPage({
     super.key,
     required this.state,
@@ -19,15 +19,67 @@ class TabShellPage extends StatelessWidget {
   final GoRouterState state;
   final Widget child;
 
-  String _normalizePath(String path) {
+  @override
+  State<TabShellPage> createState() => _TabShellPageState();
+}
+
+class _TabShellPageState extends State<TabShellPage> {
+  static const _tabPaths = {
+    '/dashboardNS',
+    '/studentsDashboard',
+    '/profile',
+    '/words',
+  };
+
+  GoRouteInformationProvider? _provider;
+  GoRouterDelegate? _delegate;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final router = GoRouter.of(context);
+
+    final provider = router.routeInformationProvider;
+    if (_provider != provider) {
+      _provider?.removeListener(_onProviderChanged);
+      _provider = provider;
+      _provider!.addListener(_onProviderChanged);
+    }
+
+    final delegate = router.routerDelegate;
+    if (_delegate != delegate) {
+      _delegate?.removeListener(_onDelegateChanged);
+      _delegate = delegate;
+      _delegate!.addListener(_onDelegateChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    _provider?.removeListener(_onProviderChanged);
+    _delegate?.removeListener(_onDelegateChanged);
+    super.dispose();
+  }
+
+  /// Fires on push / go / replace — provider value is already correct.
+  void _onProviderChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Fires on pop — provider value is updated later in the frame by
+  /// routerReportsNewRouteInformation, so defer the read.
+  void _onDelegateChanged() {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  static String _normalizePath(String path) {
     if (path.endsWith('/') && path.length > 1) {
       return path.substring(0, path.length - 1);
     }
     return path;
-  }
-
-  String _currentPath() {
-    return _normalizePath(state.uri.path);
   }
 
   bool get _isTeacher => currentUserDocument?.role == UserRole.native_speaker;
@@ -54,12 +106,16 @@ class TabShellPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentPath = _currentPath();
+    final currentPath = _normalizePath(
+      _provider!.value.uri.path,
+    );
+    final showNavBar = _tabPaths.contains(currentPath);
     final indexCurrentPage = _indexCurrentPage(currentPath);
 
     if (kDebugMode) {
       debugPrint(
         '[TabShellPage] path=$currentPath '
+        'showNavBar=$showNavBar '
         'indexCurrentPage=$indexCurrentPage '
         'role=${_isTeacher ? 'teacher' : 'student'} '
         'platformBranch=${_platformBranch()}',
@@ -69,10 +125,10 @@ class TabShellPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
-      body: child,
-      bottomNavigationBar: NavBarWidget(
-        indexCurrentPage: indexCurrentPage,
-      ),
+      body: widget.child,
+      bottomNavigationBar: showNavBar
+          ? NavBarWidget(indexCurrentPage: indexCurrentPage)
+          : null,
     );
   }
 }

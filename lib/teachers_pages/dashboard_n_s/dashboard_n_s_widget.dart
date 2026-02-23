@@ -226,54 +226,74 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                   onTap: () async {
                     context.pushNamed(PayCopyWidget.routeName);
                   },
-                  child: Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      image: DecorationImage(
-                        fit: BoxFit.contain,
-                        image: Image.asset(
-                          'assets/images/Group_1171275315.png',
-                        ).image,
-                      ),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(
-                          16.0, 20.0, 16.0, 20.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.max,
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.max,
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                FFLocalizations.of(context).getText(
-                                  'znnn9lq2' /* Текущий баланс */,
-                                ),
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'sf pro display',
-                                      color: FlutterFlowTheme.of(context)
-                                          .secondaryText,
-                                      fontSize: 15.0,
-                                      letterSpacing: 0.0,
-                                      fontWeight: FontWeight.normal,
-                                    ),
-                              ),
-                              Icon(
-                                FFIcons.kchevronRight,
-                                color: Color(0xFFC5C5C6),
-                                size: 18.0,
-                              ),
-                            ],
+                  child: Stack(
+                    children: [
+                      Padding(
+                        padding:
+                            EdgeInsetsDirectional.fromSTEB(55.0, 0.0, 55.0, 0.0),
+                        child: Container(
+                          width: double.infinity,
+                          height: 165.0,
+                          decoration: BoxDecoration(
+                            color: FlutterFlowTheme.of(context).primaryBackground,
+                            borderRadius: BorderRadius.circular(12.0),
+                            border: Border.all(
+                              color: Color(0xFFE0E3E7),
+                              width: 1.0,
+                            ),
                           ),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 3.0, 0.0, 0.0),
-                            child: RichText(
+                        ),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.max,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Image.asset(
+                            'assets/images/Group_1171275327_2.png',
+                            width: 65.0,
+                            fit: BoxFit.contain,
+                          ),
+                          Image.asset(
+                            'assets/images/Group_1171275327_1.png',
+                            width: 65.0,
+                            fit: BoxFit.contain,
+                          ),
+                        ],
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.max,
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.max,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  FFLocalizations.of(context).getText(
+                                    'znnn9lq2' /* Текущий баланс */,
+                                  ),
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        color: FlutterFlowTheme.of(context)
+                                            .secondaryText,
+                                        fontSize: 15.0,
+                                        letterSpacing: 0.0,
+                                        fontWeight: FontWeight.normal,
+                                      ),
+                                ),
+                                Icon(
+                                  FFIcons.kchevronRight,
+                                  color: Color(0xFFC5C5C6),
+                                  size: 18.0,
+                                ),
+                              ],
+                            ),
+                            RichText(
                               textScaler: MediaQuery.of(context).textScaler,
                               text: TextSpan(
                                 children: [
@@ -290,7 +310,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                           fontFamily: 'sf pro display',
                                           color: FlutterFlowTheme.of(context)
                                               .primaryText,
-                                          fontSize: 35.0,
+                                          fontSize: 40.0,
                                           letterSpacing: 0.0,
                                           fontWeight: FontWeight.w300,
                                         ),
@@ -319,78 +339,80 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                     ),
                               ),
                             ),
-                          ),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 29.0, 0.0, 0.0),
-                            child: InkWell(
-                              splashColor: Colors.transparent,
-                              focusColor: Colors.transparent,
-                              hoverColor: Colors.transparent,
-                              highlightColor: Colors.transparent,
-                              onTap: () async {
-                                context.pushNamed(PayCopyWidget.routeName);
-                              },
-                              child: Container(
-                                height: 45.0,
-                                decoration: BoxDecoration(
-                                  color: FlutterFlowTheme.of(context)
-                                      .secondaryBackground,
-                                  borderRadius: BorderRadius.circular(100.0),
-                                ),
-                                child: Padding(
-                                  padding: EdgeInsets.all(2.0),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            16.0, 0.0, 12.0, 0.0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'm4d0g5ub' /* Вывести */,
+                            Padding(
+                              padding: EdgeInsetsDirectional.fromSTEB(
+                                  0.0, 22.0, 0.0, 0.0),
+                              child: InkWell(
+                                splashColor: Colors.transparent,
+                                focusColor: Colors.transparent,
+                                hoverColor: Colors.transparent,
+                                highlightColor: Colors.transparent,
+                                onTap: () async {
+                                  context.pushNamed(PayCopyWidget.routeName);
+                                },
+                                child: Container(
+                                  height: 45.0,
+                                  decoration: BoxDecoration(
+                                    color: FlutterFlowTheme.of(context)
+                                        .secondaryBackground,
+                                    borderRadius: BorderRadius.circular(100.0),
+                                  ),
+                                  child: Padding(
+                                    padding: EdgeInsets.all(2.0),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Padding(
+                                          padding:
+                                              EdgeInsetsDirectional.fromSTEB(
+                                                  16.0, 0.0, 12.0, 0.0),
+                                          child: Text(
+                                            FFLocalizations.of(context).getText(
+                                              'm4d0g5ub' /* Вывести */,
+                                            ),
+                                            style: FlutterFlowTheme.of(context)
+                                                .bodyMedium
+                                                .override(
+                                                  fontFamily: 'sf pro display',
+                                                  color: FlutterFlowTheme.of(
+                                                          context)
+                                                      .primaryText,
+                                                  fontSize: 16.0,
+                                                  letterSpacing: 0.0,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
                                           ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryText,
-                                                fontSize: 16.0,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.w500,
-                                              ),
                                         ),
-                                      ),
-                                      Container(
-                                        width: 41.0,
-                                        height: 41.0,
-                                        decoration: BoxDecoration(
-                                          color: FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Align(
-                                          alignment:
-                                              AlignmentDirectional(0.0, 0.0),
-                                          child: Icon(
-                                            FFIcons.kchevronRight,
+                                        Container(
+                                          width: 41.0,
+                                          height: 41.0,
+                                          decoration: BoxDecoration(
                                             color: FlutterFlowTheme.of(context)
-                                                .primaryText,
-                                            size: 18.0,
+                                                .primaryBackground,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Align(
+                                            alignment:
+                                                AlignmentDirectional(0.0, 0.0),
+                                            child: Icon(
+                                              FFIcons.kchevronRight,
+                                              color:
+                                                  FlutterFlowTheme.of(context)
+                                                      .primaryText,
+                                              size: 18.0,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
                 Padding(

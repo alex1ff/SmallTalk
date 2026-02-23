@@ -528,12 +528,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                                   borderRadius:
                                                       BorderRadius.circular(
                                                           20.0),
-                                                  child: Image.network(
+                                                  child: Image.asset(
                                                     FFLocalizations.of(context)
                                                                 .languageCode ==
                                                             'ru'
-                                                        ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/yhizey073y1b/%D0%B0%D1%8B%D0%B04.jpg'
-                                                        : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/isq53wlqy7ir/Group_1171275311.png',
+                                                        ? 'assets/images/group_11712753102.webp'
+                                                        : 'assets/images/group_1171275311.webp',
                                                     width: 280.0,
                                                     fit: BoxFit.contain,
                                                   ),
@@ -549,12 +549,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                               child: ClipRRect(
                                                 borderRadius:
                                                     BorderRadius.circular(20.0),
-                                                child: Image.network(
+                                                child: Image.asset(
                                                   FFLocalizations.of(context)
                                                               .languageCode ==
                                                           'ru'
-                                                      ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/k1enf0nhdqvc/33%D0%B0%D0%B0.jpg'
-                                                      : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/avw4u16n2yvl/33%D0%B0%D0%B02.jpg',
+                                                      ? 'assets/images/33_2.webp'
+                                                      : 'assets/images/33_.webp',
                                                   width: 280.0,
                                                   fit: BoxFit.contain,
                                                 ),
