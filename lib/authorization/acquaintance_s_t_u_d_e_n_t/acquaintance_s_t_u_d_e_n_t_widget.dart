@@ -253,20 +253,23 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                                   updatePreferencesStruct(
                                                 PreferencesStruct(
                                                   preferredNativeLanguage:
-                                                      _model.langNS,
+                                                      _model.langNS ??
+                                                          _model
+                                                              .selectedLangLearn,
                                                   preferredLocation:
                                                       _model.counntryNS,
                                                 ),
                                                 clearUnsetFields: false,
                                               ),
                                               photoUrl: _model
-                                                  .uploadedFileUrl_uploadDataY2w,
+                                                  .uploadedFileUrl_uploadDataY2w2,
                                               displayName: _model
                                                   .nameTextController.text,
                                               gender: _model.genderMALE
                                                   ? Gender.male
                                                   : Gender.female,
                                               level: _model.level,
+                                              acquaintance: true,
                                               balanceST: updateBalanceStruct(
                                                 BalanceStruct(
                                                   smallTalks: 1.0,
@@ -293,13 +296,14 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                         () async {
                                           await currentUserReference!.update({
                                             ...createUsersRecordData(
-                                              photoUrl: _model.avatar,
                                               isProfileComplete: true,
                                               preferences:
                                                   updatePreferencesStruct(
                                                 PreferencesStruct(
                                                   preferredNativeLanguage:
-                                                      _model.langNS,
+                                                      _model.langNS ??
+                                                          _model
+                                                              .selectedLangLearn,
                                                   preferredLocation:
                                                       _model.counntryNS,
                                                 ),
@@ -311,6 +315,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                                   ? Gender.male
                                                   : Gender.female,
                                               level: _model.level,
+                                              acquaintance: true,
                                               balanceST: updateBalanceStruct(
                                                 BalanceStruct(
                                                   smallTalks: 1.0,
@@ -663,12 +668,12 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                                   borderRadius:
                                                       BorderRadius.circular(
                                                           20.0),
-                                                  child: Image.network(
+                                                  child: Image.asset(
                                                     FFLocalizations.of(context)
                                                                 .languageCode ==
                                                             'ru'
-                                                        ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/yhizey073y1b/%D0%B0%D1%8B%D0%B04.jpg'
-                                                        : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/isq53wlqy7ir/Group_1171275311.png',
+                                                        ? 'assets/images/group_11712753102.webp'
+                                                        : 'assets/images/group_1171275311.webp',
                                                     width: 280.0,
                                                     fit: BoxFit.contain,
                                                   ),
@@ -684,12 +689,12 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                               child: ClipRRect(
                                                 borderRadius:
                                                     BorderRadius.circular(20.0),
-                                                child: Image.network(
+                                                child: Image.asset(
                                                   FFLocalizations.of(context)
                                                               .languageCode ==
                                                           'ru'
-                                                      ? 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/k1enf0nhdqvc/33%D0%B0%D0%B0.jpg'
-                                                      : 'https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/small-talk-p1aiwk/assets/avw4u16n2yvl/33%D0%B0%D0%B02.jpg',
+                                                      ? 'assets/images/33_2.webp'
+                                                      : 'assets/images/33_.webp',
                                                   width: 280.0,
                                                   fit: BoxFit.contain,
                                                 ),
@@ -2194,6 +2199,15 @@ Native */
                                                 gender: _model.genderMALE
                                                     ? Gender.male
                                                     : Gender.female,
+                                                preferences:
+                                                    createPreferencesStruct(
+                                                  preferredNativeLanguage:
+                                                      updateLanguageStruct(
+                                                    _model.selectedLangLearn,
+                                                    clearUnsetFields: false,
+                                                  ),
+                                                  clearUnsetFields: false,
+                                                ),
                                               ));
                                             }(),
                                           );
@@ -2509,7 +2523,7 @@ Native */
                                               avatarsRecord.where(
                                             'gender',
                                             isEqualTo: _model.genderMALE
-                                                ? Gender.male
+                                                ? Gender.male.serialize()
                                                 : Gender.female.serialize(),
                                           ),
                                         ),
@@ -3108,7 +3122,6 @@ Native */
                                                     await currentUserReference!
                                                         .update({
                                                       ...createUsersRecordData(
-                                                        photoUrl: _model.avatar,
                                                         isProfileComplete: true,
                                                         preferences:
                                                             updatePreferencesStruct(

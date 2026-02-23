@@ -324,13 +324,37 @@ class FirebaseAuthManager extends AuthManager
           ? null
           : SmallTalkFirebaseUser.fromUserCredential(userCredential);
     } on FirebaseAuthException catch (e) {
-      final errorMsg = switch (e.code) {
+      debugPrint(
+        'FirebaseAuthException ($authProvider): code=${e.code}, message=${e.message}',
+      );
+
+      final langCode = FFLocalizations.of(context).languageCode;
+      final isRu = langCode == 'ru';
+      final errorCode = e.code.toLowerCase();
+      final errorMsg = switch (errorCode) {
         'email-already-in-use' => FFLocalizations.of(context).getText(
             'qw84zdr4' /* Эта почта уже использовалась п... */,
           ),
-        'INVALID_LOGIN_CREDENTIALS' => FFLocalizations.of(context).getText(
+        'invalid_login_credentials' ||
+        'invalid-login-credentials' ||
+        'invalid-credential' ||
+        'wrong-password' ||
+        'user-not-found' =>
+          FFLocalizations.of(context).getText(
             'euaras4g' /* Предоставленные учетные данные... */,
           ),
+        'network-request-failed' => isRu
+            ? 'Проблема с интернетом. Проверьте подключение.'
+            : 'Network error. Check your internet connection.',
+        'too-many-requests' => isRu
+            ? 'Слишком много попыток. Попробуйте позже.'
+            : 'Too many attempts. Try again later.',
+        'user-disabled' => isRu
+            ? 'Этот аккаунт отключен.'
+            : 'This account has been disabled.',
+        'invalid-email' => isRu
+            ? 'Неверный формат e-mail.'
+            : 'Invalid e-mail format.',
         _ => FFLocalizations.of(context).getText(
             '60fb8f43' /* Ошибка */,
           ),

@@ -175,7 +175,7 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                               image: DecorationImage(
                                 fit: BoxFit.cover,
                                 image: Image.asset(
-                                  'assets/images/Frame_1321318904.jpg',
+                                  'assets/images/group_1171275328.webp',
                                 ).image,
                               ),
                               borderRadius: BorderRadius.circular(20),
@@ -188,7 +188,7 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                               image: DecorationImage(
                                 fit: BoxFit.cover,
                                 image: Image.asset(
-                                  'assets/images/Frame_1321318905.jpg',
+                                  'assets/images/frame_1321318905.webp',
                                 ).image,
                               ),
                               borderRadius: BorderRadius.circular(20),
@@ -201,7 +201,7 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                               image: DecorationImage(
                                 fit: BoxFit.cover,
                                 image: Image.asset(
-                                  'assets/images/Frame_1321318906.jpg',
+                                  'assets/images/frame_1321318906.webp',
                                 ).image,
                               ),
                               borderRadius: BorderRadius.circular(20),

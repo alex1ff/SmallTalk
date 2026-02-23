@@ -15,6 +15,8 @@ class RegistrationModel extends FlutterFlowModel<RegistrationWidget> {
   TextEditingController? passTextController;
   late bool passVisibility;
   String? Function(BuildContext, String?)? passTextControllerValidator;
+  // State field(s) for Switch widget.
+  bool? switchValue;
   // Stores action output result for [Firestore Query - Query a collection] action in pass widget.
   int? userCopy;
 

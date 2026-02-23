@@ -8,6 +8,8 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:lottie/lottie.dart';
 import '/index.dart' as app;
 import 'waiting_for_teacher_page_model.dart';
 export 'waiting_for_teacher_page_model.dart';
@@ -438,7 +440,8 @@ class _WaitingForTeacherPageWidgetState
         key: scaffoldKey,
         backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
         body: sessionId == null
-            ? _buildStatusBody(context, status: null, isLoading: isLoading)
+            ? _buildStatusBody(context,
+                status: null, isLoading: isLoading, data: null)
             : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                 stream: FirebaseFirestore.instance
                     .collection('videoSessions')
@@ -452,7 +455,8 @@ class _WaitingForTeacherPageWidgetState
                     _handleSnapshot(data);
                   });
 
-                  return _buildStatusBody(context, status: status);
+                  return _buildStatusBody(context,
+                      status: status, data: data);
                 },
               ),
       ),
@@ -463,7 +467,16 @@ class _WaitingForTeacherPageWidgetState
     BuildContext context, {
     String? status,
     bool isLoading = false,
+    Map<String, dynamic>? data,
   }) {
+    final tutorInfoRaw = data?['tutorInfo'];
+    final tutorInfoMap =
+        tutorInfoRaw is Map ? _asMap(tutorInfoRaw) : null;
+    final tutorName = _nonEmpty(tutorInfoMap?['name'] as String?);
+    final tutorPhoto = _nonEmpty(tutorInfoMap?['photo'] as String?);
+    final isDialingTutor = tutorName != null &&
+        (status == 'searching' || status == 'connecting');
+
     String title;
     String subtitle;
 
@@ -485,6 +498,12 @@ class _WaitingForTeacherPageWidgetState
       subtitle = FFLocalizations.of(context).getVariableText(
         ruText: 'Ищем идеального собеседника',
         enText: 'Looking for the perfect companion',
+      );
+    } else if (isDialingTutor) {
+      title = tutorName;
+      subtitle = _localizedText(
+        ruText: 'Дозваниваемся до собеседника…',
+        enText: 'Connecting to your partner…',
       );
     } else if (status == 'searching') {
       title = FFLocalizations.of(context).getVariableText(
@@ -533,87 +552,157 @@ class _WaitingForTeacherPageWidgetState
       );
     }
 
-    return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 35.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.max,
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Padding(
-            padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 12.0),
-            child: FFButtonWidget(
-              onPressed: (_isCancelling || _navigationHandled)
-                  ? null
-                  : () async {
-                      await _handleCancelPressed();
-                    },
-              text: FFLocalizations.of(context).getText(
-                'o2wt8jr9' /* Отменить */,
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  FlutterFlowTheme.of(context).secondaryBackground,
+                  Color(0xFFF4F4FA),
+                ],
+                begin: AlignmentDirectional(0.0, -1.0),
+                end: AlignmentDirectional(0.0, 1.0),
               ),
-              icon: Icon(
-                FFIcons.kchevronRight,
-                size: 15.0,
-              ),
-              options: FFButtonOptions(
-                height: 40.0,
-                padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
-                iconAlignment: IconAlignment.end,
-                iconPadding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
-                color: Colors.transparent,
-                textStyle: FlutterFlowTheme.of(context).titleSmall.override(
-                      fontFamily: 'sf pro display',
-                      color: FlutterFlowTheme.of(context).error,
-                      fontSize: 15.0,
-                      letterSpacing: 0.0,
-                      fontWeight: FontWeight.w500,
-                    ),
-                elevation: 0.0,
-                borderRadius: BorderRadius.circular(8.0),
-              ),
-              showLoadingIndicator: _isCancelling,
             ),
           ),
-          Container(
-            width: double.infinity,
+        ),
+        if (!isDialingTutor && !_createFailed)
+          Positioned.fill(
+            child: Center(
+              child: Lottie.asset(
+                'assets/jsons/World_Map_Pinging_Animation.json',
+                fit: BoxFit.contain,
+                animate: true,
+              ),
+            ),
+          ),
+        if (isDialingTutor && tutorPhoto != null)
+          Positioned.fill(
+            child: CachedNetworkImage(
+              imageUrl: tutorPhoto,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => const SizedBox.shrink(),
+              errorWidget: (context, url, error) => const SizedBox.shrink(),
+            ),
+          ),
+        Align(
+          alignment: AlignmentDirectional(0.0, 1.0),
+          child: Container(
             decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryBackground,
-              borderRadius: BorderRadius.circular(20.0),
+              gradient: LinearGradient(
+                colors: [
+                  Color(0x00F2F2F7),
+                  Color(0xEFF2F2F7),
+                  FlutterFlowTheme.of(context).secondaryBackground,
+                ],
+                stops: [0.0, 0.8, 1.0],
+                begin: AlignmentDirectional(0.0, -1.0),
+                end: AlignmentDirectional(0.0, 1.0),
+              ),
             ),
             child: Padding(
-              padding: EdgeInsets.all(16.0),
+              padding: EdgeInsetsDirectional.fromSTEB(6.0, 35.0, 6.0, 35.0),
               child: Column(
-                mainAxisSize: MainAxisSize.max,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Text(
-                    title,
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'Cool',
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          fontSize: 21.0,
-                          letterSpacing: 0.0,
-                          fontWeight: FontWeight.normal,
-                        ),
-                  ),
                   Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(0.0, 8.0, 0.0, 0.0),
-                    child: Text(
-                      subtitle,
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
+                    padding:
+                        EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 6.0),
+                    child: Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: FlutterFlowTheme.of(context).primaryBackground,
+                        borderRadius: BorderRadius.circular(26.0),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.max,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              title,
+                              textAlign: TextAlign.center,
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
+                                    fontFamily: 'Cool',
+                                    color: FlutterFlowTheme.of(context)
+                                        .primaryText,
+                                    fontSize: 21.0,
+                                    letterSpacing: 0.0,
+                                    fontWeight: FontWeight.normal,
+                                  ),
+                            ),
+                            Padding(
+                              padding: EdgeInsetsDirectional.fromSTEB(
+                                  0.0, 8.0, 0.0, 0.0),
+                              child: Text(
+                                subtitle,
+                                textAlign: TextAlign.center,
+                                style: FlutterFlowTheme.of(context)
+                                    .bodyMedium
+                                    .override(
+                                      fontFamily: 'sf pro display',
+                                      color: FlutterFlowTheme.of(context)
+                                          .secondaryText,
+                                      fontSize: 16.0,
+                                      letterSpacing: 0.0,
+                                      fontWeight: FontWeight.normal,
+                                    ),
+                              ),
+                            ),
+                            Lottie.asset(
+                              'assets/jsons/waiting_for_teacher_loading.json',
+                              width: 50.0,
+                              height: 117.52,
+                              fit: BoxFit.contain,
+                              animate: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  FFButtonWidget(
+                    onPressed: (_isCancelling || _navigationHandled)
+                        ? null
+                        : () async {
+                            await _handleCancelPressed();
+                          },
+                    text: FFLocalizations.of(context).getText(
+                      'o2wt8jr9' /* Отменить */,
+                    ),
+                    options: FFButtonOptions(
+                      width: double.infinity,
+                      height: 50.0,
+                      padding:
+                          EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+                      iconAlignment: IconAlignment.end,
+                      iconPadding:
+                          EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
+                      color: Color(0xFF6E6CFA),
+                      textStyle: FlutterFlowTheme.of(context).titleSmall.override(
                             fontFamily: 'sf pro display',
-                            color: FlutterFlowTheme.of(context).secondaryText,
+                            color: FlutterFlowTheme.of(context).primaryBackground,
                             fontSize: 16.0,
                             letterSpacing: 0.0,
-                            fontWeight: FontWeight.normal,
+                            fontWeight: FontWeight.w500,
                           ),
+                      elevation: 0.0,
+                      borderRadius: BorderRadius.circular(50.0),
                     ),
+                    showLoadingIndicator: _isCancelling,
                   ),
                 ],
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
