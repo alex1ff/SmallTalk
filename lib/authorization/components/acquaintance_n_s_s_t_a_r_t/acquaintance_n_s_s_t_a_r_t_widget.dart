@@ -339,6 +339,8 @@ class _AcquaintanceNSSTARTWidgetState extends State<AcquaintanceNSSTARTWidget> {
                                   'fzpcok5b' /* Заполнить анкету */,
                                 ),
                                 action: () async {
+                                  Navigator.pop(context);
+
                                   context.pushNamed(
                                     AcquaintanceNSWidget.routeName,
                                     queryParameters: {

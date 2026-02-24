@@ -3,6 +3,7 @@ import '/authorization/components/celebration_s_t/celebration_s_t_widget.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
 import '/students_pages/components/fav/fav_widget.dart';
 import '/students_pages/components/filters/filters_widget.dart';
 import '/flutter_flow/permissions_util.dart';
@@ -541,6 +542,41 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   hoverColor: Colors.transparent,
                                   highlightColor: Colors.transparent,
                                   onTap: () async {
+                                    final balance =
+                                        currentUserDocument
+                                            ?.balanceST
+                                            .smallTalks ??
+                                        0.0;
+                                    if (balance <= 0) {
+                                      await showModalBottomSheet(
+                                        useRootNavigator: true,
+                                        isScrollControlled: true,
+                                        backgroundColor: Colors.transparent,
+                                        context: context,
+                                        builder: (context) {
+                                          return WebViewAware(
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                FocusScope.of(context)
+                                                    .unfocus();
+                                                FocusManager
+                                                    .instance.primaryFocus
+                                                    ?.unfocus();
+                                              },
+                                              child: Padding(
+                                                padding:
+                                                    MediaQuery.viewInsetsOf(
+                                                        context),
+                                                child: NoBalanceWidget(),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ).then(
+                                          (value) => safeSetState(() {}));
+                                      return;
+                                    }
+
                                     if (!(await getPermissionStatus(
                                         cameraPermission))) {
                                       await requestPermission(cameraPermission);
