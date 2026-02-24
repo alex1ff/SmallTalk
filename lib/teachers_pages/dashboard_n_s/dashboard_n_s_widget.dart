@@ -64,7 +64,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
       }
     });
 
-    _model.switchValue = true;
+    _model.switchValue =
+        valueOrDefault<bool>(currentUserDocument?.availabilityToday.enabled, false);
 
     // Create stats stream once, not on every build().
     final now = DateTime.now().toUtc();
@@ -473,14 +474,49 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                             onChanged: (newValue) async {
                               safeSetState(() => _model.switchValue = newValue);
                               if (newValue) {
-                                await currentUserReference!
-                                    .update(createUsersRecordData(
-                                  availabilityToday:
-                                      createAvailabilityTodayStruct(
-                                    enabled: true,
-                                    clearUnsetFields: false,
-                                  ),
-                                ));
+                                if (currentUserDocument!
+                                    .availabilityToday.intervals.isNotEmpty) {
+                                  await currentUserReference!
+                                      .update(createUsersRecordData(
+                                    availabilityToday:
+                                        createAvailabilityTodayStruct(
+                                      enabled: true,
+                                      clearUnsetFields: false,
+                                    ),
+                                    isInCall: false,
+                                  ));
+                                } else {
+                                  safeSetState(() {
+                                    _model.switchValue = false;
+                                  });
+                                  await showModalBottomSheet(
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    context: context,
+                                    builder: (context) {
+                                      return WebViewAware(
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            FocusScope.of(context).unfocus();
+                                            FocusManager.instance.primaryFocus
+                                                ?.unfocus();
+                                          },
+                                          child: Padding(
+                                            padding:
+                                                MediaQuery.viewInsetsOf(context),
+                                            child: AddInterWidget(
+                                              act: () async {
+                                                safeSetState(() {
+                                                  _model.switchValue = true;
+                                                });
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ).then((value) => safeSetState(() {}));
+                                }
                                 safeSetState(() {});
                               } else {
                                 await currentUserReference!
@@ -494,7 +530,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                 safeSetState(() {});
                               }
                             },
-                            activeColor: FlutterFlowTheme.of(context).success,
+                            activeThumbColor:
+                                FlutterFlowTheme.of(context).success,
                             activeTrackColor:
                                 FlutterFlowTheme.of(context).success,
                             inactiveTrackColor:

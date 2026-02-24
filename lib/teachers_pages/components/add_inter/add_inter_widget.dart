@@ -13,7 +13,12 @@ import 'add_inter_model.dart';
 export 'add_inter_model.dart';
 
 class AddInterWidget extends StatefulWidget {
-  const AddInterWidget({super.key});
+  const AddInterWidget({
+    super.key,
+    this.act,
+  });
+
+  final Future Function()? act;
 
   @override
   State<AddInterWidget> createState() => _AddInterWidgetState();
@@ -313,6 +318,11 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                                     clearUnsetFields: false,
                                   ),
                                 ));
+                              }(),
+                            );
+                            unawaited(
+                              () async {
+                                await widget.act?.call();
                               }(),
                             );
                             Navigator.pop(context);
