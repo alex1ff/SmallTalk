@@ -5,6 +5,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
@@ -133,10 +134,11 @@ class _AvWidgetState extends State<AvWidget> {
                                 ),
                                 child: Align(
                                   alignment: AlignmentDirectional(0.0, 0.0),
-                                  child: Image.network(
-                                    immItem,
+                                  child: CachedNetworkImage(
+                                    imageUrl: immItem,
                                     width: 150.0,
                                     fit: BoxFit.contain,
+                                    memCacheWidth: 300,
                                   ),
                                 ),
                               );

@@ -104,6 +104,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     width: double.infinity,
                                     height: double.infinity,
                                     fit: BoxFit.cover,
+                                    memCacheWidth: 200,
+                                    memCacheHeight: 200,
                                   ),
                                 );
                               } else {

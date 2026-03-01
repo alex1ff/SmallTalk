@@ -12,6 +12,7 @@ import '/flutter_flow/custom_functions.dart' as functions;
 import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
 import '/index.dart';
 import 'package:auto_size_text/auto_size_text.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
@@ -38,6 +39,8 @@ class NativeSpeakerPageWidget extends StatefulWidget {
 
 class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   late NativeSpeakerPageModel _model;
+  late Future<List<StatsRecord>> _statsFuture;
+  late Future<List<ReviewsRecord>> _reviewsFuture;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -45,6 +48,22 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => NativeSpeakerPageModel());
+    _statsFuture = queryStatsRecordOnce(
+      parent: widget.nsUserDocRef,
+      queryBuilder: (statsRecord) => statsRecord.where(
+        'isAllTime',
+        isEqualTo: true,
+      ),
+      singleRecord: true,
+    );
+    _reviewsFuture = queryReviewsRecordOnce(
+      queryBuilder: (reviewsRecord) => reviewsRecord
+          .where(
+            'toUserId',
+            isEqualTo: widget.nsUserDocRef,
+          )
+          .orderBy('createdAt', descending: true),
+    );
   }
 
   @override
@@ -59,7 +78,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     return StreamBuilder<UsersRecord>(
       stream: UsersRecord.getDocument(widget.nsUserDocRef!),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
+        if (snapshot.hasError || !snapshot.hasData) {
           return Scaffold(
             backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
             body: Center(
@@ -99,11 +118,14 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           topLeft: Radius.circular(0.0),
                           topRight: Radius.circular(0.0),
                         ),
-                        child: Image.network(
-                          nativeSpeakerPageUsersRecord.photoUrl,
+                        child: CachedNetworkImage(
+                          imageUrl: nativeSpeakerPageUsersRecord.photoUrl,
                           width: double.infinity,
                           height: double.infinity,
                           fit: BoxFit.cover,
+                          fadeInDuration: Duration(milliseconds: 0),
+                          fadeOutDuration: Duration(milliseconds: 0),
+                          memCacheWidth: 800,
                         ),
                       ),
                       Container(
@@ -378,15 +400,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                           Flexible(
                                             child: FutureBuilder<
                                                 List<StatsRecord>>(
-                                              future: queryStatsRecordOnce(
-                                                parent: widget.nsUserDocRef,
-                                                queryBuilder: (statsRecord) =>
-                                                    statsRecord.where(
-                                                  'isAllTime',
-                                                  isEqualTo: true,
-                                                ),
-                                                singleRecord: true,
-                                              ),
+                                              future: _statsFuture,
                                               builder: (context, snapshot) {
                                                 if (!snapshot.hasData) {
                                                   return Center(
@@ -576,14 +590,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 ),
                               ),
                               FutureBuilder<List<ReviewsRecord>>(
-                                future: queryReviewsRecordOnce(
-                                  queryBuilder: (reviewsRecord) => reviewsRecord
-                                      .where(
-                                        'toUserId',
-                                        isEqualTo: widget.nsUserDocRef,
-                                      )
-                                      .orderBy('createdAt', descending: true),
-                                ),
+                                future: _reviewsFuture,
                                 builder: (context, snapshot) {
                                   if (!snapshot.hasData) {
                                     return Center(

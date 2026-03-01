@@ -49,10 +49,6 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
     SchedulerBinding.instance.addPostFrameCallback((_) async {
       if (currentUserDocument?.gender != Gender.male) {
         _model.swipeableStackController.swipeLeft();
-        _model.genderISMALE = !_model.genderISMALE;
-        safeSetState(() {});
-        _model.genderISMALE = !_model.genderISMALE;
-        safeSetState(() {});
       }
     });
 

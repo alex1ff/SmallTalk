@@ -83,6 +83,8 @@ class _ChipWidgetState extends State<ChipWidget> {
                     width: 25.0,
                     height: 25.0,
                     fit: BoxFit.contain,
+                    memCacheWidth: 50,
+                    memCacheHeight: 50,
                     placeholder: (context, url) => const SizedBox.shrink(),
                     errorWidget: (context, url, error) =>
                         Icon(Icons.person, size: 24, color: Colors.grey),

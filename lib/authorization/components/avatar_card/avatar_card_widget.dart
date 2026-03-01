@@ -1,6 +1,7 @@
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'avatar_card_model.dart';
 export 'avatar_card_model.dart';
@@ -69,14 +70,16 @@ class _AvatarCardWidgetState extends State<AvatarCardWidget> {
         child: Stack(
           alignment: AlignmentDirectional(0.0, 0.0),
           children: [
-            Image.network(
-              (widget.selected == widget.avatarDoc?.reference) &&
+            CachedNetworkImage(
+              imageUrl: (widget.selected == widget.avatarDoc?.reference) &&
                       (widget.avatar != null && widget.avatar != '')
                   ? widget.avatar!
                   : widget.avatarDoc!.images.firstOrNull!,
               width: 90.0,
               height: 200.0,
               fit: BoxFit.contain,
+              memCacheWidth: 180,
+              memCacheHeight: 400,
             ),
             Align(
               alignment: AlignmentDirectional(1.0, -1.0),

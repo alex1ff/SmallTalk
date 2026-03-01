@@ -286,8 +286,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
           child: Scaffold(
             key: scaffoldKey,
             backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
-            body: AuthUserStreamWidget(
-              builder: (context) => Container(
+            body: Container(
                 width: double.infinity,
                 height: double.infinity,
                 child: custom_widgets.MinimalDailyWidget(
@@ -358,7 +357,6 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                   },
                 ),
               ),
-            ),
           ),
         );
       },

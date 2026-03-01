@@ -23,8 +23,14 @@ class FavoriteWidget extends StatefulWidget {
 
 class _FavoriteWidgetState extends State<FavoriteWidget> {
   late FavoriteModel _model;
+  final _userFutureCache = <DocumentReference, Future<UsersRecord>>{};
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
+
+  Future<UsersRecord> _getUserFuture(DocumentReference ref) {
+    return _userFutureCache.putIfAbsent(
+        ref, () => UsersRecord.getDocumentOnce(ref));
+  }
 
   @override
   void initState() {
@@ -83,7 +89,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                       itemBuilder: (context, listIndex) {
                         final listItem = list[listIndex];
                         return FutureBuilder<UsersRecord>(
-                          future: UsersRecord.getDocumentOnce(listItem),
+                          future: _getUserFuture(listItem),
                           builder: (context, snapshot) {
                             // Customize what your widget looks like when it's loading.
                             if (!snapshot.hasData) {
@@ -140,6 +146,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                             fit: BoxFit.cover,
                                             image: CachedNetworkImageProvider(
                                               containerUsersRecord.photoUrl,
+                                              maxWidth: 104,
+                                              maxHeight: 104,
                                             ),
                                           ),
                                           borderRadius:

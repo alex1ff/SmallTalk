@@ -32,6 +32,7 @@ class PayWidget extends StatefulWidget {
 
 class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
   late PayModel _model;
+  late Future<List<PackagesRecord>> _packagesFuture;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -41,6 +42,7 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _model = createModel(context, () => PayModel());
+    _packagesFuture = queryPackagesRecordOnce();
 
     _model.nameTextController ??= TextEditingController();
     _model.nameFocusNode ??= FocusNode();
@@ -121,7 +123,7 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                             padding:
                                 EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
                             child: FutureBuilder<List<PackagesRecord>>(
-                              future: queryPackagesRecordOnce(),
+                              future: _packagesFuture,
                               builder: (context, snapshot) {
                                 // Customize what your widget looks like when it's loading.
                                 if (!snapshot.hasData) {

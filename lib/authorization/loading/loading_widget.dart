@@ -4,6 +4,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
+import '/services/voip_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'loading_model.dart';
@@ -31,6 +32,13 @@ class _LoadingWidgetState extends State<LoadingWidget> {
 
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
+      // If a VoIP call is pending (accepted via CallKit), skip the session
+      // check and delay — VoIPService will navigate to VideoCallPage directly.
+      if (VoIPService().hasPendingNavigation()) {
+        debugPrint('⚡ LoadingWidget: VoIP call pending, skipping delay');
+        return;
+      }
+
       _model.check = await actions.checkActiveSessionAndNavigate(
         context,
       );

@@ -143,6 +143,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                         width: double.infinity,
                                         height: double.infinity,
                                         fit: BoxFit.cover,
+                                        memCacheWidth: 132,
+                                        memCacheHeight: 132,
                                       ),
                                     );
                                   } else {
@@ -782,7 +784,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                         singleRecord: true,
                       ),
                       builder: (context, snapshot) {
-                        // Customize what your widget looks like when it's loading.
+                        if (snapshot.hasError) {
+                          return const SizedBox.shrink();
+                        }
                         if (!snapshot.hasData) {
                           return Center(
                             child: SizedBox(

@@ -448,6 +448,10 @@ class _WaitingForTeacherPageWidgetState
                     .doc(sessionId)
                     .snapshots(),
                 builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return _buildStatusBody(context,
+                        status: null, data: null);
+                  }
                   final data = snapshot.data?.data();
                   final status = data?['status'] as String?;
 
@@ -583,6 +587,7 @@ class _WaitingForTeacherPageWidgetState
             child: CachedNetworkImage(
               imageUrl: tutorPhoto,
               fit: BoxFit.cover,
+              memCacheWidth: 800,
               placeholder: (context, url) => const SizedBox.shrink(),
               errorWidget: (context, url, error) => const SizedBox.shrink(),
             ),
