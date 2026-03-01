@@ -7,10 +7,15 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
+import '/flutter_flow/permissions_util.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
+import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
+import '/index.dart';
 import 'package:auto_size_text/auto_size_text.dart';
+import 'package:webviewx_plus/webviewx_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'native_speaker_page_model.dart';
 export 'native_speaker_page_model.dart';
@@ -40,12 +45,6 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => NativeSpeakerPageModel());
-    _model.userStream = UsersRecord.getDocument(widget.nsUserDocRef!);
-    _model.reviewsFuture = queryReviewsRecordOnce(
-      queryBuilder: (reviewsRecord) => reviewsRecord
-          .where('toUserId', isEqualTo: widget.nsUserDocRef)
-          .orderBy('createdAt', descending: true),
-    );
   }
 
   @override
@@ -58,10 +57,22 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<UsersRecord>(
-      stream: _model.userStream,
+      stream: UsersRecord.getDocument(widget.nsUserDocRef!),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const SizedBox.shrink();
+          return Scaffold(
+            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            body: Center(
+              child: SizedBox(
+                width: 50.0,
+                height: 50.0,
+                child: SpinKitCircle(
+                  color: FlutterFlowTheme.of(context).secondary,
+                  size: 50.0,
+                ),
+              ),
+            ),
+          );
         }
 
         final nativeSpeakerPageUsersRecord = snapshot.data!;
@@ -78,7 +89,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
               mainAxisSize: MainAxisSize.max,
               children: [
                 Container(
-                  height: MediaQuery.sizeOf(context).height * 0.35,
+                  height: MediaQuery.sizeOf(context).height * 0.5,
                   child: Stack(
                     children: [
                       ClipRRect(
@@ -93,7 +104,6 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           width: double.infinity,
                           height: double.infinity,
                           fit: BoxFit.cover,
-                          alignment: Alignment(0.0, -1.0),
                         ),
                       ),
                       Container(
@@ -157,7 +167,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                           icon: Icon(
                                             Icons.favorite_rounded,
                                             color: FlutterFlowTheme.of(context)
-                                                .primaryBackground,
+                                                .error,
                                             size: 20.0,
                                           ),
                                           onPressed: () async {
@@ -165,7 +175,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               ...mapToFirestore(
                                                 {
                                                   'favoriteNativeSpeakers':
-                                                      FieldValue.arrayUnion([
+                                                      FieldValue.arrayRemove([
                                                     widget.nsUserDocRef
                                                   ]),
                                                 },
@@ -189,7 +199,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               ...mapToFirestore(
                                                 {
                                                   'favoriteNativeSpeakers':
-                                                      FieldValue.arrayRemove([
+                                                      FieldValue.arrayUnion([
                                                     widget.nsUserDocRef
                                                   ]),
                                                 },
@@ -366,27 +376,67 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         mainAxisSize: MainAxisSize.max,
                                         children: [
                                           Flexible(
-                                            child: Text(
-                                              functions.getcallNumbString(
-                                                  valueOrDefault<String>(
-                                                nativeSpeakerPageUsersRecord
-                                                    .totalCalls
-                                                    .toString(),
-                                                '0',
-                                              )),
-                                              style:
-                                                  FlutterFlowTheme.of(context)
-                                                      .bodyMedium
-                                                      .override(
-                                                        fontFamily:
-                                                            'sf pro display',
+                                            child: FutureBuilder<
+                                                List<StatsRecord>>(
+                                              future: queryStatsRecordOnce(
+                                                parent: widget.nsUserDocRef,
+                                                queryBuilder: (statsRecord) =>
+                                                    statsRecord.where(
+                                                  'isAllTime',
+                                                  isEqualTo: true,
+                                                ),
+                                                singleRecord: true,
+                                              ),
+                                              builder: (context, snapshot) {
+                                                if (!snapshot.hasData) {
+                                                  return Center(
+                                                    child: SizedBox(
+                                                      width: 50.0,
+                                                      height: 50.0,
+                                                      child: SpinKitCircle(
                                                         color:
                                                             FlutterFlowTheme.of(
                                                                     context)
-                                                                .secondaryText,
-                                                        fontSize: 15.0,
-                                                        letterSpacing: 0.0,
+                                                                .secondary,
+                                                        size: 50.0,
                                                       ),
+                                                    ),
+                                                  );
+                                                }
+                                                List<StatsRecord>
+                                                    containerStatsRecordList =
+                                                    snapshot.data!;
+                                                if (snapshot.data!.isEmpty) {
+                                                  return Container();
+                                                }
+                                                final containerStatsRecord =
+                                                    containerStatsRecordList
+                                                            .isNotEmpty
+                                                        ? containerStatsRecordList
+                                                            .first
+                                                        : null;
+                                                return Container(
+                                                  decoration: BoxDecoration(),
+                                                  child: Text(
+                                                    functions.getcallNumbString(
+                                                        containerStatsRecord!
+                                                            .totalCalls
+                                                            .toString()),
+                                                    style: FlutterFlowTheme.of(
+                                                            context)
+                                                        .bodyMedium
+                                                        .override(
+                                                          fontFamily:
+                                                              'sf pro display',
+                                                          color: FlutterFlowTheme
+                                                                  .of(context)
+                                                              .secondaryText,
+                                                          fontSize: 15.0,
+                                                          letterSpacing: 0.0,
+                                                        ),
+                                                  ),
+                                                );
+                                              },
                                             ),
                                           ),
                                           SizedBox(
@@ -438,50 +488,56 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    FFButtonWidget(
-                                      onPressed: () async {
-                                        if (_model.numMaxLineAbout == 4) {
-                                          _model.numMaxLineAbout = 15;
-                                          safeSetState(() {});
-                                        } else {
-                                          _model.numMaxLineAbout = 4;
-                                          safeSetState(() {});
-                                        }
-                                      },
-                                      text: _model.numMaxLineAbout == 4
-                                          ? FFLocalizations.of(context)
-                                              .getVariableText(
-                                              ruText: 'Показать еще',
-                                              enText: 'Show more',
-                                            )
-                                          : FFLocalizations.of(context)
-                                              .getVariableText(
-                                              ruText: 'Скрыть',
-                                              enText: 'Hide',
-                                            ),
-                                      options: FFButtonOptions(
-                                        height: 35.0,
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            16.0, 0.0, 16.0, 0.0),
-                                        iconPadding:
-                                            EdgeInsetsDirectional.fromSTEB(
-                                                0.0, 0.0, 0.0, 0.0),
-                                        color: Colors.transparent,
-                                        textStyle: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .primary,
-                                              fontSize: 15.0,
-                                              letterSpacing: 0.0,
-                                            ),
-                                        elevation: 0.0,
-                                        borderRadius:
-                                            BorderRadius.circular(8.0),
+                                    if (functions.aboutt(
+                                            nativeSpeakerPageUsersRecord.aboutMe,
+                                            MediaQuery.sizeOf(context).width) ==
+                                        true)
+                                      FFButtonWidget(
+                                        onPressed: () async {
+                                          if (_model.numMaxLineAbout == 4) {
+                                            _model.numMaxLineAbout = 15;
+                                            safeSetState(() {});
+                                          } else {
+                                            _model.numMaxLineAbout = 4;
+                                            safeSetState(() {});
+                                          }
+                                        },
+                                        text: _model.numMaxLineAbout == 4
+                                            ? FFLocalizations.of(context)
+                                                .getVariableText(
+                                                ruText: 'Показать еще',
+                                                enText: 'Show more',
+                                              )
+                                            : FFLocalizations.of(context)
+                                                .getVariableText(
+                                                ruText: 'Скрыть',
+                                                enText: 'Hide',
+                                              ),
+                                        options: FFButtonOptions(
+                                          height: 35.0,
+                                          padding:
+                                              EdgeInsetsDirectional.fromSTEB(
+                                                  16.0, 0.0, 16.0, 0.0),
+                                          iconPadding:
+                                              EdgeInsetsDirectional.fromSTEB(
+                                                  0.0, 0.0, 0.0, 0.0),
+                                          color: Colors.transparent,
+                                          textStyle: FlutterFlowTheme.of(
+                                                  context)
+                                              .bodyMedium
+                                              .override(
+                                                fontFamily: 'sf pro display',
+                                                color:
+                                                    FlutterFlowTheme.of(context)
+                                                        .primary,
+                                                fontSize: 15.0,
+                                                letterSpacing: 0.0,
+                                              ),
+                                          elevation: 0.0,
+                                          borderRadius:
+                                              BorderRadius.circular(8.0),
+                                        ),
                                       ),
-                                    ),
                                     Padding(
                                       padding: EdgeInsetsDirectional.fromSTEB(
                                           16.0, 24.0, 0.0, 0.0),
@@ -502,17 +558,15 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                     Padding(
                                       padding: EdgeInsetsDirectional.fromSTEB(
                                           6.0, 10.0, 6.0, 0.0),
-                                      child: AuthUserStreamWidget(
-                                        builder: (context) => wrapWithModel(
-                                          model: _model.languageCardModel,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: LanguageCardWidget(
-                                            lang: currentUserDocument!
-                                                .languageInstructionNS,
-                                            callbackAction:
-                                                (selectedLangData) async {},
-                                          ),
+                                      child: wrapWithModel(
+                                        model: _model.languageCardModel,
+                                        updateCallback: () =>
+                                            safeSetState(() {}),
+                                        child: LanguageCardWidget(
+                                          lang: nativeSpeakerPageUsersRecord
+                                              .languageInstructionNS,
+                                          callbackAction:
+                                              (selectedLangData) async {},
                                         ),
                                       ),
                                     ),
@@ -522,11 +576,32 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 ),
                               ),
                               FutureBuilder<List<ReviewsRecord>>(
-                                future: _model.reviewsFuture,
+                                future: queryReviewsRecordOnce(
+                                  queryBuilder: (reviewsRecord) => reviewsRecord
+                                      .where(
+                                        'toUserId',
+                                        isEqualTo: widget.nsUserDocRef,
+                                      )
+                                      .orderBy('createdAt', descending: true),
+                                ),
                                 builder: (context, snapshot) {
+                                  if (!snapshot.hasData) {
+                                    return Center(
+                                      child: SizedBox(
+                                        width: 50.0,
+                                        height: 50.0,
+                                        child: SpinKitCircle(
+                                          color: FlutterFlowTheme.of(context)
+                                              .secondary,
+                                          size: 50.0,
+                                        ),
+                                      ),
+                                    );
+                                  }
+
                                   List<ReviewsRecord>
                                       containerReviewsRecordList =
-                                      snapshot.data ?? [];
+                                      snapshot.data!;
 
                                   return Container(
                                     decoration: BoxDecoration(),
@@ -2073,8 +2148,58 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         ),
                                       ),
                                       FFButtonWidget(
-                                        onPressed: () {
-                                          print('Button pressed ...');
+                                        onPressed: () async {
+                                          final balance =
+                                              currentUserDocument
+                                                  ?.balanceST
+                                                  .smallTalks ??
+                                              0.0;
+                                          if (balance <= 0) {
+                                            await showModalBottomSheet(
+                                              useRootNavigator: true,
+                                              isScrollControlled: true,
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              context: context,
+                                              builder: (context) {
+                                                return WebViewAware(
+                                                  child: GestureDetector(
+                                                    onTap: () {
+                                                      FocusScope.of(context)
+                                                          .unfocus();
+                                                      FocusManager
+                                                          .instance.primaryFocus
+                                                          ?.unfocus();
+                                                    },
+                                                    child: Padding(
+                                                      padding:
+                                                          MediaQuery.viewInsetsOf(
+                                                              context),
+                                                      child: NoBalanceWidget(),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ).then((value) =>
+                                                safeSetState(() {}));
+                                            return;
+                                          }
+
+                                          if (!(await getPermissionStatus(
+                                              cameraPermission))) {
+                                            await requestPermission(
+                                                cameraPermission);
+                                            if (!(await getPermissionStatus(
+                                                microphonePermission))) {
+                                              await requestPermission(
+                                                  microphonePermission);
+                                              return;
+                                            }
+                                          }
+
+                                          context.pushNamed(
+                                              WaitingForTeacherPageWidget
+                                                  .routeName);
                                         },
                                         text:
                                             FFLocalizations.of(context).getText(
@@ -2103,6 +2228,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                           borderRadius:
                                               BorderRadius.circular(60.0),
                                         ),
+                                        showLoadingIndicator: false,
                                       ),
                                     ],
                                   ),
