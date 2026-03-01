@@ -615,7 +615,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                   decoration: BoxDecoration(),
                                   child: Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        12, 0, 12, 0),
+                                        16, 0, 16, 0),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
                                       mainAxisAlignment:

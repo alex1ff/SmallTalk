@@ -97,33 +97,48 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       sessionData.createdAt?.toMillis() ||
       now;
     const duration = Math.max(0, Math.floor((now - startTime) / 1000)); // в секундах
-    const durationMinutes = Math.max(1, Math.ceil(duration / 60)); // в минутах, минимум 1
-    const tutorEarning = parseFloat((durationMinutes * TUTOR_RATE_PER_MINUTE).toFixed(2));
-    const amountST = parseFloat((durationMinutes / 10).toFixed(2)); // в SmallTalks
+
+    // Tutor earns for full call duration (fractional minutes, no rounding)
+    const tutorDurationMinutes = parseFloat((duration / 60).toFixed(4));
+    const tutorEarning = parseFloat((tutorDurationMinutes * TUTOR_RATE_PER_MINUTE).toFixed(2));
 
     // Formatted duration as "M:SS" string for transaction records
     const durMinPart = Math.floor(duration / 60);
     const durSecPart = duration % 60;
     const formattedDuration = `${durMinPart}:${durSecPart.toString().padStart(2, "0")}`;
 
-    console.log("⏱️ Session duration:", duration, "seconds /", durationMinutes, "minutes /", formattedDuration);
+    // Student billing vars (computed inside transaction after reading balance)
+    let amountST = 0;
+    let freeMinuteApplied = false;
+
+    console.log("⏱️ Session duration:", duration, "seconds /", tutorDurationMinutes, "tutor-minutes /", formattedDuration);
     console.log("👤 Ended by:", endedByRole, endedBy);
-    console.log("💰 Tutor earning:", tutorEarning, "RUB | Student charge:", amountST, "ST");
+    console.log("💰 Tutor earning:", tutorEarning, "RUB");
 
     // ─── MAIN TRANSACTION (fast, affects UX) ────────────────────────────────
     // 1. Set session status = ended
     // 2. Release tutor
     // 3. Deduct student balance (atomic with session end to prevent double-charge)
     await admin.firestore().runTransaction(async (transaction) => {
-      // Read student doc inside transaction for consistent balance read
       const studentDocRef = admin.firestore().collection("users").doc(sessionData.studentId);
       const studentDoc = await transaction.get(studentDocRef);
       const studentData = studentDoc.exists ? studentDoc.data() : {};
       const currentMinutes = studentData?.balanceST?.minutes || 0;
-      const newMinutes = Math.max(0, currentMinutes - durationMinutes);
-      const newSmallTalks = Math.floor(newMinutes / 10);
+      const currentSmallTalks = studentData?.balanceST?.smallTalks || 0;
 
-      console.log("📉 Student balance: ", currentMinutes, "→", newMinutes, "minutes,", newSmallTalks, "ST");
+      // Free minute: first 60 seconds free when student has positive balance
+      freeMinuteApplied = currentSmallTalks > 0;
+      const billableDuration = freeMinuteApplied
+        ? Math.max(0, duration - 60)
+        : duration;
+      const billableMinutes = parseFloat((billableDuration / 60).toFixed(4));
+      amountST = parseFloat((billableMinutes / 10).toFixed(4));
+
+      const newMinutes = parseFloat(Math.max(0, currentMinutes - billableMinutes).toFixed(4));
+      const newSmallTalks = parseFloat((newMinutes / 10).toFixed(2));
+
+      console.log("🎁 Free minute applied:", freeMinuteApplied, "| Billable:", billableDuration, "s /", billableMinutes, "min");
+      console.log("📉 Student balance:", currentMinutes, "→", newMinutes, "minutes,", newSmallTalks, "ST");
 
       // 1. Update session status
       transaction.update(
@@ -132,7 +147,8 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           status: "ended",
           endedAt: admin.firestore.FieldValue.serverTimestamp(),
           duration: duration,
-          durationMinutes: durationMinutes,
+          durationMinutes: tutorDurationMinutes,
+          freeMinuteApplied: freeMinuteApplied,
           tutorNavigationTriggered: false,
           studentNavigationTriggered: false,
           sessionMetadata: {
@@ -204,6 +220,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         amount_ST: Number(amountST),
         callDuration: formattedDuration,
         sessionId: sessionId,
+        freeMinuteApplied: freeMinuteApplied,
       }).catch((e) => console.error("❌ Student transaction doc failed:", e))
     );
 
@@ -235,52 +252,82 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       db.collection("analytics").doc("summary").set({
         totalCalls: admin.firestore.FieldValue.increment(1),
         totalTransactions: admin.firestore.FieldValue.increment(tutorRef ? 2 : 1),
-        totalDurationMinutes: admin.firestore.FieldValue.increment(durationMinutes),
+        totalDurationMinutes: admin.firestore.FieldValue.increment(tutorDurationMinutes),
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true }).catch((e) => console.error("❌ Analytics summary failed:", e))
     );
 
     // e) Student stats (all-time + today)
     backgroundTasks.push(
-      studentRef.collection("stats").doc("allTime").set({
-        totalCalls: admin.firestore.FieldValue.increment(1),
-        totalMinutes: admin.firestore.FieldValue.increment(durationMinutes),
-        isAllTime: true,
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true }).catch((e) => console.error("❌ Student allTime stats failed:", e))
+      db.runTransaction(async (t) => {
+        const ref = studentRef.collection("stats").doc("allTime");
+        const snap = await t.get(ref);
+        const d = snap.exists ? snap.data() : {};
+        const newSec = (d.totalDurationSeconds || 0) + duration;
+        t.set(ref, {
+          totalCalls: (d.totalCalls || 0) + 1,
+          totalDurationSeconds: newSec,
+          totalMinutes: formatSecondsToMinStr(newSec),
+          isAllTime: true,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }).catch((e) => console.error("❌ Student allTime stats failed:", e))
     );
 
     backgroundTasks.push(
-      studentRef.collection("stats").doc(todayStr).set({
-        callsToday: admin.firestore.FieldValue.increment(1),
-        minutesToday: admin.firestore.FieldValue.increment(durationMinutes),
-        date: new Date(todayStr + "T00:00:00Z"),
-        isAllTime: false,
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true }).catch((e) => console.error("❌ Student today stats failed:", e))
+      db.runTransaction(async (t) => {
+        const ref = studentRef.collection("stats").doc(todayStr);
+        const snap = await t.get(ref);
+        const d = snap.exists ? snap.data() : {};
+        const newSec = (d.durationSecondsToday || 0) + duration;
+        t.set(ref, {
+          callsToday: (d.callsToday || 0) + 1,
+          durationSecondsToday: newSec,
+          minutesToday: formatSecondsToMinStr(newSec),
+          date: new Date(todayStr + "T00:00:00Z"),
+          isAllTime: false,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }).catch((e) => console.error("❌ Student today stats failed:", e))
     );
 
     // f) Tutor stats (all-time + today)
     if (tutorRef) {
       backgroundTasks.push(
-        tutorRef.collection("stats").doc("allTime").set({
-          totalCalls: admin.firestore.FieldValue.increment(1),
-          totalMinutes: admin.firestore.FieldValue.increment(durationMinutes),
-          totalEarned: admin.firestore.FieldValue.increment(tutorEarning),
-          isAllTime: true,
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true }).catch((e) => console.error("❌ Tutor allTime stats failed:", e))
+        db.runTransaction(async (t) => {
+          const ref = tutorRef.collection("stats").doc("allTime");
+          const snap = await t.get(ref);
+          const d = snap.exists ? snap.data() : {};
+          const newSec = (d.totalDurationSeconds || 0) + duration;
+          t.set(ref, {
+            totalCalls: (d.totalCalls || 0) + 1,
+            totalDurationSeconds: newSec,
+            totalMinutes: formatSecondsToMinStr(newSec),
+            totalEarned: (d.totalEarned || 0) + tutorEarning,
+            isAllTime: true,
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }).catch((e) => console.error("❌ Tutor allTime stats failed:", e))
       );
 
       backgroundTasks.push(
-        tutorRef.collection("stats").doc(todayStr).set({
-          callsToday: admin.firestore.FieldValue.increment(1),
-          minutesToday: admin.firestore.FieldValue.increment(durationMinutes),
-          earnedToday: admin.firestore.FieldValue.increment(tutorEarning),
-          date: new Date(todayStr + "T00:00:00Z"),
-          isAllTime: false,
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true }).catch((e) => console.error("❌ Tutor today stats failed:", e))
+        db.runTransaction(async (t) => {
+          const ref = tutorRef.collection("stats").doc(todayStr);
+          const snap = await t.get(ref);
+          const d = snap.exists ? snap.data() : {};
+          const newSec = (d.durationSecondsToday || 0) + duration;
+          const newEarned = (d.earnedTodayNumeric || 0) + tutorEarning;
+          t.set(ref, {
+            callsToday: (d.callsToday || 0) + 1,
+            durationSecondsToday: newSec,
+            minutesToday: formatSecondsToMinStr(newSec),
+            earnedTodayNumeric: newEarned,
+            earnedToday: `${newEarned} ₽`,
+            date: new Date(todayStr + "T00:00:00Z"),
+            isAllTime: false,
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }).catch((e) => console.error("❌ Tutor today stats failed:", e))
       );
     }
 
@@ -303,6 +350,12 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("internal", error.message);
   }
 });
+
+function formatSecondsToMinStr(totalSeconds) {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")} мин`;
+}
 
 // ОТМЕНА ВСЕХ УВЕДОМЛЕНИЙ ДЛЯ СЕССИИ
 async function cancelAllSessionNotifications(sessionId) {

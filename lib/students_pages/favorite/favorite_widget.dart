@@ -63,7 +63,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                 builder: (context) => Builder(
                   builder: (context) {
                     final list =
-                        (currentUserDocument?.blockedUsers.toList() ?? [])
+                        (currentUserDocument?.favoriteNativeSpeakers.toList() ??
+                                [])
                             .toList();
                     if (list.isEmpty) {
                       return Center(
@@ -185,7 +186,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                           await currentUserReference!.update({
                                             ...mapToFirestore(
                                               {
-                                                'blockedUsers':
+                                                'favoriteNativeSpeakers':
                                                     FieldValue.arrayRemove([
                                                   containerUsersRecord.reference
                                                 ]),

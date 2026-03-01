@@ -43,6 +43,12 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
     super.initState();
     _model = createModel(context, () => PayModel());
     _packagesFuture = queryPackagesRecordOnce();
+    _packagesFuture.then((packages) {
+      if (!mounted || packages.isEmpty || _model.tarifDoc != null) {
+        return;
+      }
+      safeSetState(() => _model.tarifDoc = packages.first);
+    });
 
     _model.nameTextController ??= TextEditingController();
     _model.nameFocusNode ??= FocusNode();
