@@ -23,8 +23,14 @@ class BlackListWidget extends StatefulWidget {
 
 class _BlackListWidgetState extends State<BlackListWidget> {
   late BlackListModel _model;
+  final _userFutureCache = <DocumentReference, Future<UsersRecord>>{};
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
+
+  Future<UsersRecord> _getUserFuture(DocumentReference ref) {
+    return _userFutureCache.putIfAbsent(
+        ref, () => UsersRecord.getDocumentOnce(ref));
+  }
 
   @override
   void initState() {
@@ -83,7 +89,7 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                       itemBuilder: (context, listIndex) {
                         final listItem = list[listIndex];
                         return FutureBuilder<UsersRecord>(
-                          future: UsersRecord.getDocumentOnce(listItem),
+                          future: _getUserFuture(listItem),
                           builder: (context, snapshot) {
                             // Customize what your widget looks like when it's loading.
                             if (!snapshot.hasData) {
@@ -142,6 +148,8 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                                             fit: BoxFit.cover,
                                             image: CachedNetworkImageProvider(
                                               containerUsersRecord.photoUrl,
+                                              maxWidth: 104,
+                                              maxHeight: 104,
                                             ),
                                           ),
                                           borderRadius:

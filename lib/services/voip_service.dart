@@ -59,6 +59,10 @@ class VoIPService {
   // Для навигации нужен context - сохраним глобальный navigatorKey
   //static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+  /// Whether a VoIP call is pending navigation (accepted but not yet navigated).
+  bool hasPendingNavigation() =>
+      _pendingSessionId != null || _lastAcceptedSessionId != null;
+
   /// Инициализация VoIP сервиса
   /// Вызывается один раз при запуске приложения
   Future<void> initialize() async {
@@ -417,69 +421,57 @@ class VoIPService {
       return;
     }
 
-    // Вызываем Cloud Function acceptCall.
-    // NOTE: _tryRecoverActiveSession is only called in the catch block
-    // below (error recovery). For fresh calls it always fails because
-    // the session is not "active" yet — skipping it saves a Firestore
-    // round-trip (~200-500 ms).
-    debugPrint('☁️ VoIPService: Calling acceptCall function...');
-    final result = await _functions
-        .httpsCallable('acceptCall')
-        .call({'sessionId': sessionId});
-
-    debugPrint('✅ VoIPService: acceptCall response received');
-
-    // Получаем данные из ответа
-    final responseData = result.data as Map<String, dynamic>;
-    final status = responseData['status'];
-    final responseRoomUrl = responseData['roomUrl'];
-    final responseRoomName = responseData['roomName'];
-    final responseMeetingToken = responseData['meetingToken'];
-
-    debugPrint('📊 VoIPService: Status: $status, Room URL: ${responseRoomUrl != null ? "present" : "missing"}');
-
-    if (status != 'connected' || responseRoomUrl == null) {
-      debugPrint('❌ VoIPService: Invalid response from acceptCall');
-      return;
-    }
-
+    // Navigate to VideoCallPage IMMEDIATELY — before acceptCall completes.
+    // VideoCallPage will show a loading state; its StreamBuilder will pick up
+    // the room URL once acceptCall writes it to Firestore.
     _lastAcceptedIsTutor = true;
-    _lastRoomUrl = responseRoomUrl is String ? responseRoomUrl : null;
-    _lastMeetingToken =
-        responseMeetingToken is String ? responseMeetingToken : null;
-    _lastRoomName = responseRoomName is String ? responseRoomName : null;
     _acceptedSessions.add(sessionId);
 
-    // Navigate IMMEDIATELY — don't wait for Firestore write or prefetch.
     _tryNavigateToVideoCall(
       sessionId: sessionId,
       isTutor: true,
-      roomUrl: _lastRoomUrl,
-      meetingToken: _lastMeetingToken,
-      roomName: _lastRoomName,
     );
-    debugPrint('🎬 VoIPService: Navigated to VideoCallPage');
+    debugPrint('🎬 VoIPService: Navigated to VideoCallPage (tutor, instant)');
 
-    // Background tasks — fire-and-forget, not needed for navigation
-    unawaited(_prefetchSessionTokens(sessionId));
-    unawaited(_firestore.collection('videoSessions').doc(sessionId).update({
-      'tutorNavigationTriggered': true,
-      'navigationTimestamp': FieldValue.serverTimestamp(),
-    }).catchError((_) {}));
+    // Call acceptCall in the background — creates the Daily room and writes
+    // dailyRoomUrl to the session document. VideoCallPage's StreamBuilder
+    // reacts to this update and fetches a meeting token automatically.
+    unawaited(() async {
+      try {
+        debugPrint('☁️ VoIPService: Calling acceptCall function...');
+        final result = await _functions
+            .httpsCallable('acceptCall')
+            .call({'sessionId': sessionId});
+
+        final responseData = result.data as Map<String, dynamic>;
+        final status = responseData['status'];
+        final responseRoomUrl = responseData['roomUrl'];
+        final responseMeetingToken = responseData['meetingToken'];
+        final responseRoomName = responseData['roomName'];
+
+        debugPrint('✅ VoIPService: acceptCall response: status=$status');
+
+        if (status == 'connected' && responseRoomUrl != null) {
+          _lastRoomUrl = responseRoomUrl is String ? responseRoomUrl : null;
+          _lastMeetingToken =
+              responseMeetingToken is String ? responseMeetingToken : null;
+          _lastRoomName =
+              responseRoomName is String ? responseRoomName : null;
+        }
+      } catch (e) {
+        debugPrint('❌ VoIPService: acceptCall failed: $e');
+        await _tryRecoverActiveSession(sessionId);
+      }
+
+      unawaited(_prefetchSessionTokens(sessionId));
+      unawaited(_firestore.collection('videoSessions').doc(sessionId).update({
+        'tutorNavigationTriggered': true,
+        'navigationTimestamp': FieldValue.serverTimestamp(),
+      }).catchError((_) {}));
+    }());
 
   } catch (e) {
-    debugPrint('❌ VoIPService: Error accepting call: $e');
-    final recovered = await _tryRecoverActiveSession(sessionId);
-    if (recovered) {
-      _acceptedSessions.add(sessionId);
-      _tryNavigateToVideoCall(
-        sessionId: sessionId,
-        isTutor: true,
-        roomUrl: _lastRoomUrl,
-        meetingToken: _lastMeetingToken,
-        roomName: _lastRoomName,
-      );
-    }
+    debugPrint('❌ VoIPService: Error in call accept flow: $e');
   } finally {
     _acceptInProgress.remove(sessionId);
   }
@@ -643,7 +635,7 @@ class VoIPService {
         );
         return;
       }
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 100));
       attempts++;
     }
     if (_pendingSessionId != null) {

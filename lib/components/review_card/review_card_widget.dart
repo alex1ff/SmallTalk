@@ -2,6 +2,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
@@ -22,6 +23,7 @@ class ReviewCardWidget extends StatefulWidget {
 
 class _ReviewCardWidgetState extends State<ReviewCardWidget> {
   late ReviewCardModel _model;
+  late Future<UsersRecord> _userFuture;
 
   @override
   void setState(VoidCallback callback) {
@@ -33,6 +35,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => ReviewCardModel());
+    _userFuture = UsersRecord.getDocumentOnce(widget.rewDoc!.fromUserId!);
   }
 
   @override
@@ -62,8 +65,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
               children: [
                 Expanded(
                   child: FutureBuilder<UsersRecord>(
-                    future:
-                        UsersRecord.getDocumentOnce(widget.rewDoc!.fromUserId!),
+                    future: _userFuture,
                     builder: (context, snapshot) {
                       // Customize what your widget looks like when it's loading.
                       if (!snapshot.hasData) {
@@ -93,9 +95,11 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                               ),
-                              child: Image.network(
-                                containerUsersRecord.photoUrl,
+                              child: CachedNetworkImage(
+                                imageUrl: containerUsersRecord.photoUrl,
                                 fit: BoxFit.cover,
+                                memCacheWidth: 90,
+                                memCacheHeight: 90,
                               ),
                             ),
                             Flexible(

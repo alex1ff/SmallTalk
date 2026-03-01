@@ -291,6 +291,8 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                           width: 130.0,
                                           height: 130.0,
                                           fit: BoxFit.cover,
+                                          memCacheWidth: 260,
+                                          memCacheHeight: 260,
                                           placeholder: (context, url) =>
                                               const SizedBox.shrink(),
                                           errorWidget: (context, url, error) =>

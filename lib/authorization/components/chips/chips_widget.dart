@@ -103,6 +103,8 @@ class _ChipsWidgetState extends State<ChipsWidget> {
                     width: 20.0,
                     height: 20.0,
                     fit: BoxFit.contain,
+                    memCacheWidth: 40,
+                    memCacheHeight: 40,
                   ),
                 ),
               ),

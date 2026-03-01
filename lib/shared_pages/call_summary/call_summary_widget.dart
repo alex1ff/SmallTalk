@@ -820,6 +820,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   fit: BoxFit.cover,
                                   image: CachedNetworkImageProvider(
                                     stackUsersRecord.photoUrl,
+                                    maxWidth: 200,
+                                    maxHeight: 200,
                                   ),
                                 ),
                                 shape: BoxShape.circle,

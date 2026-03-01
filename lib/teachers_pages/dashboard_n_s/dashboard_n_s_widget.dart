@@ -142,6 +142,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                     width: double.infinity,
                                     height: double.infinity,
                                     fit: BoxFit.cover,
+                                    memCacheWidth: 132,
+                                    memCacheHeight: 132,
                                   ),
                                 );
                               } else {
@@ -767,6 +769,9 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                   child: StreamBuilder<List<StatsRecord>>(
                     stream: _model.statsStream,
                     builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return const SizedBox.shrink();
+                      }
                       List<StatsRecord> conditionalBuilderStatsRecordList =
                           snapshot.data ?? [];
                       final conditionalBuilderStatsRecord =

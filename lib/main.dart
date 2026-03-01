@@ -56,18 +56,20 @@ void main() async {
   debugPrint('🔔 VoIP background handler registered');
 
   await initFirebase();
-  await FFLocalizations.initialize();
 
-  // 🔔 Initialize VoIP service
-  try {
-    await VoIPService().initialize();
-    debugPrint('✅ VoIP Service initialized successfully');
-  } catch (e) {
-    debugPrint('❌ VoIP Service initialization failed: $e');
-  }
-
-  final appState = FFAppState(); // Initialize FFAppState
-  await appState.initializePersistedState();
+  final appState = FFAppState();
+  await Future.wait([
+    FFLocalizations.initialize(),
+    appState.initializePersistedState(),
+    () async {
+      try {
+        await VoIPService().initialize();
+        debugPrint('✅ VoIP Service initialized successfully');
+      } catch (e) {
+        debugPrint('❌ VoIP Service initialization failed: $e');
+      }
+    }(),
+  ]);
 
   runApp(ChangeNotifierProvider(
     create: (context) => appState,
@@ -119,11 +121,11 @@ class _MyAppState extends State<MyApp> {
     userStream = smallTalkFirebaseUserStream()
       ..listen((user) {
         _appStateNotifier.update(user);
-
+        _appStateNotifier.stopShowingSplashImage();
       });
     _jwtTokenSub = jwtTokenStream.listen((_) {});
     Future.delayed(
-      Duration(milliseconds: 1000),
+      Duration(milliseconds: 3000),
       () => _appStateNotifier.stopShowingSplashImage(),
     );
   }

@@ -1,6 +1,7 @@
 import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'language_card_model.dart';
 export 'language_card_model.dart';
@@ -76,11 +77,13 @@ class _LanguageCardWidgetState extends State<LanguageCardWidget> {
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),
-                  child: Image.network(
-                    widget.lang!.ss,
+                  child: CachedNetworkImage(
+                    imageUrl: widget.lang!.ss,
                     width: 25.0,
                     height: 25.0,
                     fit: BoxFit.contain,
+                    memCacheWidth: 50,
+                    memCacheHeight: 50,
                   ),
                 ),
               ),

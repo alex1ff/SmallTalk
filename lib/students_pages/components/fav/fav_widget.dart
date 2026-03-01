@@ -22,6 +22,7 @@ class FavWidget extends StatefulWidget {
 
 class _FavWidgetState extends State<FavWidget> {
   late FavModel _model;
+  late Future<UsersRecord> _userFuture;
 
   @override
   void setState(VoidCallback callback) {
@@ -33,6 +34,7 @@ class _FavWidgetState extends State<FavWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => FavModel());
+    _userFuture = UsersRecord.getDocumentOnce(widget.nsUser!);
   }
 
   @override
@@ -45,7 +47,7 @@ class _FavWidgetState extends State<FavWidget> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<UsersRecord>(
-      future: UsersRecord.getDocumentOnce(widget.nsUser!),
+      future: _userFuture,
       builder: (context, snapshot) {
         // Customize what your widget looks like when it's loading.
         if (!snapshot.hasData) {
@@ -103,6 +105,8 @@ class _FavWidgetState extends State<FavWidget> {
                             fit: BoxFit.cover,
                             image: CachedNetworkImageProvider(
                               containerUsersRecord.photoUrl,
+                              maxWidth: 250,
+                              maxHeight: 250,
                             ),
                           ),
                           shape: BoxShape.circle,
