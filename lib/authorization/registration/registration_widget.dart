@@ -9,6 +9,7 @@ import 'dart:async';
 import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -544,16 +545,12 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                             ),
                           ),
                         ),
-                        Switch.adaptive(
+                        AdaptiveSwitch(
                           value: _model.switchValue!,
                           onChanged: (newValue) async {
                             safeSetState(() => _model.switchValue = newValue);
                           },
-                          activeThumbColor: FlutterFlowTheme.of(context).success,
-                          activeTrackColor: FlutterFlowTheme.of(context).success,
-                          inactiveTrackColor: FlutterFlowTheme.of(context).alternate,
-                          inactiveThumbColor:
-                              FlutterFlowTheme.of(context).secondaryBackground,
+                          activeColor: FlutterFlowTheme.of(context).success,
                         ),
                       ],
                     ),

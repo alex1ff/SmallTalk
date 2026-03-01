@@ -6,6 +6,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/teachers_pages/components/add_inter/add_inter_widget.dart';
 import '/index.dart';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -319,9 +320,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                         ),
                                   ),
                                   TextSpan(
-                                    text: FFLocalizations.of(context).getText(
-                                      'z22ks730' /*  р */,
-                                    ),
+                                    text: ' ₽',
                                     style: TextStyle(
                                       color: FlutterFlowTheme.of(context)
                                           .secondaryText,
@@ -471,7 +470,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   fontWeight: FontWeight.normal,
                                 ),
                           ),
-                          Switch.adaptive(
+                          AdaptiveSwitch(
                             value: _model.switchValue!,
                             onChanged: (newValue) async {
                               safeSetState(() => _model.switchValue = newValue);
@@ -532,14 +531,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                 safeSetState(() {});
                               }
                             },
-                            activeThumbColor:
-                                FlutterFlowTheme.of(context).success,
-                            activeTrackColor:
-                                FlutterFlowTheme.of(context).success,
-                            inactiveTrackColor:
-                                FlutterFlowTheme.of(context).alternate,
-                            inactiveThumbColor: FlutterFlowTheme.of(context)
-                                .secondaryBackground,
+                            activeColor: FlutterFlowTheme.of(context).success,
                           ),
                         ],
                       ),
@@ -852,7 +844,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                               ).image,
                                             ),
                                             borderRadius:
-                                                BorderRadius.circular(12.0),
+                                                BorderRadius.circular(26.0),
                                             border: Border.all(
                                               color:
                                                   FlutterFlowTheme.of(context)
@@ -914,7 +906,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                           height: 64.0,
                                           decoration: BoxDecoration(
                                             borderRadius:
-                                                BorderRadius.circular(12.0),
+                                                BorderRadius.circular(26.0),
                                             border: Border.all(
                                               color:
                                                   FlutterFlowTheme.of(context)
@@ -982,7 +974,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                           height: 64.0,
                                           decoration: BoxDecoration(
                                             borderRadius:
-                                                BorderRadius.circular(12.0),
+                                                BorderRadius.circular(26.0),
                                             border: Border.all(
                                               color:
                                                   FlutterFlowTheme.of(context)

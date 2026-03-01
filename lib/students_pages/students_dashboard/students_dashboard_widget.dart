@@ -72,6 +72,18 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         ).then((value) => safeSetState(() {}));
       }
     });
+
+    // Create stats stream once, not on every build().
+    final now = DateTime.now().toUtc();
+    final todayMidnight = DateTime.utc(now.year, now.month, now.day);
+    _model.statsStream = queryStatsRecord(
+      parent: currentUserReference,
+      queryBuilder: (statsRecord) => statsRecord.where(
+        'date',
+        isEqualTo: todayMidnight,
+      ),
+      singleRecord: true,
+    );
   }
 
   @override
@@ -775,14 +787,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                   Padding(
                     padding: EdgeInsetsDirectional.fromSTEB(6, 10, 6, 0),
                     child: StreamBuilder<List<StatsRecord>>(
-                      stream: queryStatsRecord(
-                        parent: currentUserReference,
-                        queryBuilder: (statsRecord) => statsRecord.where(
-                          'date',
-                          isEqualTo: getCurrentTimestamp,
-                        ),
-                        singleRecord: true,
-                      ),
+                      stream: _model.statsStream,
                       builder: (context, snapshot) {
                         if (snapshot.hasError) {
                           return const SizedBox.shrink();

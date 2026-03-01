@@ -522,15 +522,17 @@ String getReviewString(String number) {
   // Определяем последнюю цифру
   int lastDigit = numValue % 10;
 
+  String word;
   if (lastTwoDigits >= 11 && lastTwoDigits <= 19) {
-    return 'Отзывов';
+    word = 'отзывов';
   } else if (lastDigit == 1) {
-    return 'Отзыв';
+    word = 'отзыв';
   } else if (lastDigit >= 2 && lastDigit <= 4) {
-    return 'Отзыва';
+    word = 'отзыва';
   } else {
-    return 'Отзывов';
+    word = 'отзывов';
   }
+  return '$numValue $word';
 }
 
 String getcallNumbString(String number) {
@@ -540,15 +542,17 @@ String getcallNumbString(String number) {
   int lastTwoDigits = numValue % 100;
   int lastDigit = numValue % 10;
 
+  String word;
   if (lastTwoDigits >= 11 && lastTwoDigits <= 19) {
-    return 'Звонков';
+    word = 'звонков';
   } else if (lastDigit == 1) {
-    return 'Звонок';
+    word = 'звонок';
   } else if (lastDigit >= 2 && lastDigit <= 4) {
-    return 'Звонка';
+    word = 'звонка';
   } else {
-    return 'Звонков';
+    word = 'звонков';
   }
+  return '$numValue $word';
 }
 
 bool aboutt(
