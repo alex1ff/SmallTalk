@@ -551,6 +551,23 @@ String getcallNumbString(String number) {
   }
 }
 
+bool aboutt(
+  String about,
+  double wit,
+) {
+  if (about.isEmpty) return false;
+
+  const double fontSize = 14.0;
+  final double avgCharWidth = fontSize * 0.6;
+  final int charsPerLine = (wit / avgCharWidth).floor();
+
+  if (charsPerLine <= 0) return false;
+
+  final int lineCount = (about.length / charsPerLine).ceil();
+
+  return lineCount > 4;
+}
+
 bool isValidEmail(String email) {
   final emailRegex =
       RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
