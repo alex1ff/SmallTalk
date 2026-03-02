@@ -2681,49 +2681,53 @@ Native */
                                       },
                                       child: Container(
                                         width: double.infinity,
-                                        height: 80.0,
+                                        height: 479.1,
                                         decoration: BoxDecoration(
                                           color: FlutterFlowTheme.of(context)
                                               .primaryBackground,
                                           borderRadius:
-                                              BorderRadius.circular(20.0),
+                                              BorderRadius.circular(26.0),
                                         ),
-                                        child: Padding(
-                                          padding: EdgeInsets.all(2.0),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.max,
-                                            children: [
-                                              Builder(
-                                                builder: (context) {
-                                                  if (_model.avatarPhooto !=
-                                                          null &&
-                                                      (_model
-                                                              .avatarPhooto
-                                                              ?.bytes
-                                                              ?.isNotEmpty ??
-                                                          false)) {
-                                                    return ClipRRect(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              18.0),
-                                                      child: Image.memory(
-                                                        _model.avatarPhooto
-                                                                ?.bytes ??
-                                                            Uint8List.fromList(
-                                                                []),
-                                                        width: 76.0,
-                                                        height: 76.0,
-                                                        fit: BoxFit.cover,
-                                                      ),
-                                                    );
-                                                  } else {
-                                                    return Container(
-                                                      width: 76.0,
-                                                      height: 76.0,
+                                        child: Align(
+                                          alignment:
+                                              AlignmentDirectional(0.0, 0.0),
+                                          child: Builder(
+                                            builder: (context) {
+                                              if (_model.avatarPhooto !=
+                                                      null &&
+                                                  (_model
+                                                          .avatarPhooto
+                                                          ?.bytes
+                                                          ?.isNotEmpty ??
+                                                      false)) {
+                                                return ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          26.0),
+                                                  child: Image.memory(
+                                                    _model.avatarPhooto
+                                                            ?.bytes ??
+                                                        Uint8List.fromList([]),
+                                                    width: double.infinity,
+                                                    height: double.infinity,
+                                                    fit: BoxFit.cover,
+                                                  ),
+                                                );
+                                              } else {
+                                                return Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.max,
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Container(
+                                                      width: 45.0,
+                                                      height: 45.0,
                                                       decoration: BoxDecoration(
-                                                        color: FlutterFlowTheme
-                                                                .of(context)
-                                                            .secondaryBackground,
+                                                        color:
+                                                            FlutterFlowTheme.of(
+                                                                    context)
+                                                                .secondaryBackground,
                                                         borderRadius:
                                                             BorderRadius
                                                                 .circular(20.0),
@@ -2736,38 +2740,42 @@ Native */
                                                                 .primaryText,
                                                         size: 20.0,
                                                       ),
-                                                    );
-                                                  }
-                                                },
-                                              ),
-                                              Padding(
-                                                padding: EdgeInsetsDirectional
-                                                    .fromSTEB(
-                                                        12.0, 0.0, 0.0, 0.0),
-                                                child: AutoSizeText(
-                                                  FFLocalizations.of(context)
-                                                      .getText(
-                                                    'x6szbodc' /* Или загрузить своё фото */,
-                                                  ),
-                                                  style: FlutterFlowTheme.of(
-                                                          context)
-                                                      .bodyMedium
-                                                      .override(
-                                                        fontFamily:
-                                                            'sf pro display',
-                                                        color:
+                                                    ),
+                                                    Padding(
+                                                      padding:
+                                                          EdgeInsetsDirectional
+                                                              .fromSTEB(12.0,
+                                                                  0.0, 0.0, 0.0),
+                                                      child: AutoSizeText(
+                                                        FFLocalizations.of(
+                                                                context)
+                                                            .getText(
+                                                          'x6szbodc' /* Или загрузить своё фото */,
+                                                        ),
+                                                        style:
                                                             FlutterFlowTheme.of(
                                                                     context)
-                                                                .primaryText,
-                                                        fontSize: 16.0,
-                                                        letterSpacing: 0.0,
-                                                        fontWeight:
-                                                            FontWeight.normal,
-                                                        lineHeight: 1.1,
+                                                                .bodyMedium
+                                                                .override(
+                                                                  fontFamily:
+                                                                      'sf pro display',
+                                                                  color: FlutterFlowTheme.of(
+                                                                          context)
+                                                                      .secondaryText,
+                                                                  fontSize:
+                                                                      16.0,
+                                                                  letterSpacing:
+                                                                      0.0,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .normal,
+                                                                ),
                                                       ),
-                                                ),
-                                              ),
-                                            ],
+                                                    ),
+                                                  ],
+                                                );
+                                              }
+                                            },
                                           ),
                                         ),
                                       ),

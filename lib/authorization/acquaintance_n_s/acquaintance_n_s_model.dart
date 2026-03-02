@@ -56,6 +56,9 @@ class AcquaintanceNSModel extends FlutterFlowModel<AcquaintanceNSWidget> {
   FocusNode? aboutMeFocusNode;
   TextEditingController? aboutMeTextController;
   String? Function(BuildContext, String?)? aboutMeTextControllerValidator;
+  bool isDataUploading_uploadDataIyo2 = false;
+  FFUploadedFile uploadedLocalFile_uploadDataIyo2 =
+      FFUploadedFile(bytes: Uint8List.fromList([]), originalFilename: '');
   bool isDataUploading_uploadData5az = false;
   FFUploadedFile uploadedLocalFile_uploadData5az =
       FFUploadedFile(bytes: Uint8List.fromList([]), originalFilename: '');
