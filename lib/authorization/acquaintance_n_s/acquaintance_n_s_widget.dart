@@ -908,97 +908,121 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                           selectedMedia.every((m) =>
                                               validateFileFormat(
                                                   m.storagePath, context))) {
+                                        safeSetState(() => _model
+                                            .isDataUploading_uploadDataIyo2 = true);
                                         var selectedUploadedFiles =
                                             <FFUploadedFile>[];
-                                        selectedUploadedFiles = selectedMedia
-                                            .map((m) => FFUploadedFile(
-                                                  name: m.storagePath
-                                                      .split('/')
-                                                      .last,
-                                                  bytes: m.bytes,
-                                                  height: m.dimensions?.height,
-                                                  width: m.dimensions?.width,
-                                                  blurHash: m.blurHash,
-                                                  originalFilename:
-                                                      m.originalFilename,
-                                                ))
-                                            .toList();
+                                        try {
+                                          selectedUploadedFiles = selectedMedia
+                                              .map((m) => FFUploadedFile(
+                                                    name: m.storagePath
+                                                        .split('/')
+                                                        .last,
+                                                    bytes: m.bytes,
+                                                    height:
+                                                        m.dimensions?.height,
+                                                    width: m.dimensions?.width,
+                                                    blurHash: m.blurHash,
+                                                    originalFilename:
+                                                        m.originalFilename,
+                                                  ))
+                                              .toList();
+                                        } finally {
+                                          _model.isDataUploading_uploadDataIyo2 =
+                                              false;
+                                        }
                                         if (selectedUploadedFiles.length ==
                                             selectedMedia.length) {
-                                          _model.avatar =
-                                              selectedUploadedFiles.first;
+                                          safeSetState(() {
+                                            _model.uploadedLocalFile_uploadDataIyo2 =
+                                                selectedUploadedFiles.first;
+                                          });
+                                        } else {
                                           safeSetState(() {});
+                                          return;
                                         }
+                                      }
+                                      if ((_model
+                                                  .uploadedLocalFile_uploadDataIyo2
+                                                  .bytes
+                                                  ?.isNotEmpty ??
+                                              false)) {
+                                        _model.avatar = _model
+                                            .uploadedLocalFile_uploadDataIyo2;
+                                        safeSetState(() {});
+                                        safeSetState(() {
+                                          _model.isDataUploading_uploadDataIyo2 =
+                                              false;
+                                          _model.uploadedLocalFile_uploadDataIyo2 =
+                                              FFUploadedFile(
+                                                  bytes:
+                                                      Uint8List.fromList([]),
+                                                  originalFilename: '');
+                                        });
                                       }
                                     },
                                     child: Container(
                                       width: double.infinity,
-                                      height: 80.0,
+                                      height: 479.1,
                                       decoration: BoxDecoration(
                                         color: FlutterFlowTheme.of(context)
                                             .primaryBackground,
                                         borderRadius:
-                                            BorderRadius.circular(20.0),
+                                            BorderRadius.circular(26.0),
                                       ),
-                                      child: Padding(
-                                        padding: EdgeInsets.all(2.0),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.max,
-                                          children: [
-                                            Builder(
-                                              builder: (context) {
-                                                if (_model.avatar != null &&
-                                                    (_model.avatar?.bytes
-                                                            ?.isNotEmpty ??
-                                                        false)) {
-                                                  return ClipRRect(
+                                      child: Builder(
+                                        builder: (context) {
+                                          if (_model.avatar != null &&
+                                              (_model.avatar?.bytes
+                                                      ?.isNotEmpty ??
+                                                  false)) {
+                                            return ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(26.0),
+                                              child: Image.memory(
+                                                _model.avatar?.bytes ??
+                                                    Uint8List.fromList([]),
+                                                width: double.infinity,
+                                                height: double.infinity,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            );
+                                          } else {
+                                            return Row(
+                                              mainAxisSize: MainAxisSize.max,
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Container(
+                                                  width: 45.0,
+                                                  height: 45.0,
+                                                  decoration: BoxDecoration(
+                                                    color: FlutterFlowTheme.of(
+                                                            context)
+                                                        .secondaryBackground,
                                                     borderRadius:
                                                         BorderRadius.circular(
-                                                            18.0),
-                                                    child: Image.memory(
-                                                      _model.avatar?.bytes ??
-                                                          Uint8List.fromList(
-                                                              []),
-                                                      width: 76.0,
-                                                      height: 76.0,
-                                                      fit: BoxFit.cover,
-                                                    ),
-                                                  );
-                                                } else {
-                                                  return Container(
-                                                    width: 76.0,
-                                                    height: 76.0,
-                                                    decoration: BoxDecoration(
-                                                      color: FlutterFlowTheme
-                                                              .of(context)
-                                                          .secondaryBackground,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              20.0),
-                                                    ),
-                                                    child: Icon(
-                                                      FFIcons.kcameraPlus,
-                                                      color:
-                                                          FlutterFlowTheme.of(
-                                                                  context)
-                                                              .primaryText,
-                                                      size: 20.0,
-                                                    ),
-                                                  );
-                                                }
-                                              },
-                                            ),
-                                            Padding(
-                                              padding: EdgeInsetsDirectional
-                                                  .fromSTEB(
-                                                      12.0, 0.0, 0.0, 0.0),
-                                              child: AutoSizeText(
-                                                FFLocalizations.of(context)
-                                                    .getText(
-                                                  'uijw0e1q' /* Загрузить фото */,
+                                                            20.0),
+                                                  ),
+                                                  child: Icon(
+                                                    FFIcons.kcameraPlus,
+                                                    color: FlutterFlowTheme.of(
+                                                            context)
+                                                        .primaryText,
+                                                    size: 20.0,
+                                                  ),
                                                 ),
-                                                style:
-                                                    FlutterFlowTheme.of(context)
+                                                Padding(
+                                                  padding: EdgeInsetsDirectional
+                                                      .fromSTEB(
+                                                          12.0, 0.0, 0.0, 0.0),
+                                                  child: AutoSizeText(
+                                                    FFLocalizations.of(context)
+                                                        .getText(
+                                                      'uijw0e1q' /* Загрузить фото */,
+                                                    ),
+                                                    style: FlutterFlowTheme.of(
+                                                            context)
                                                         .bodyMedium
                                                         .override(
                                                           fontFamily:
@@ -1011,10 +1035,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                                                           fontWeight:
                                                               FontWeight.normal,
                                                         ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                                  ),
+                                                ),
+                                              ],
+                                            );
+                                          }
+                                        },
                                       ),
                                     ),
                                   ),

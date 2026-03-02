@@ -3,7 +3,6 @@ import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_card/review_card_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
@@ -13,6 +12,7 @@ import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
 import '/index.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -47,6 +47,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _scrollController = ScrollController();
   bool _hapticFired = false;
+  bool _isSnapping = false;
 
   @override
   void initState() {
@@ -71,13 +72,46 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     );
   }
 
+  double get _snapOffset {
+    final statusBarH = MediaQuery.of(context).padding.top;
+    final maxExt = MediaQuery.sizeOf(context).height * 0.5;
+    final snapHeaderHeight = statusBarH + 8 + 110 + 8 + 42 + 16;
+    final minExt = statusBarH + kToolbarHeight;
+    return (maxExt - snapHeaderHeight).clamp(0.0, maxExt - minExt);
+  }
+
   void _onScroll() {
     final offset = _scrollController.offset;
-    if (offset > 10.0 && !_hapticFired) {
+    final snap = _snapOffset;
+
+    if (offset > 1.0 && !_hapticFired && !_isSnapping) {
       _hapticFired = true;
+      _isSnapping = true;
       HapticFeedback.mediumImpact();
-    } else if (offset <= 5.0) {
-      _hapticFired = false;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollController
+            .animateTo(
+              snap,
+              duration: Duration(milliseconds: 100),
+              curve: Curves.easeOut,
+            )
+            .then((_) => _isSnapping = false);
+      });
+    } else if (_hapticFired && !_isSnapping && offset < snap - 1) {
+      _hapticFired = true;
+      _isSnapping = true;
+      HapticFeedback.mediumImpact();
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollController
+            .animateTo(
+              0.0,
+              duration: Duration(milliseconds: 100),
+              curve: Curves.easeOut,
+            )
+            .then((_) => _isSnapping = false);
+      });
     }
   }
 
@@ -137,12 +171,9 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                         maxHeaderExtent:
                             MediaQuery.sizeOf(context).height * 0.5,
                         minHeaderExtent:
-                            MediaQuery.of(context).padding.top +
-                                kToolbarHeight,
-                        photoUrl:
-                            nativeSpeakerPageUsersRecord.photoUrl,
-                        displayName:
-                            nativeSpeakerPageUsersRecord.displayName,
+                            MediaQuery.of(context).padding.top + kToolbarHeight,
+                        photoUrl: nativeSpeakerPageUsersRecord.photoUrl,
+                        displayName: nativeSpeakerPageUsersRecord.displayName,
                         cityAndStatus:
                             '${nativeSpeakerPageUsersRecord.countryNS.nameEn} | ${() {
                           if (nativeSpeakerPageUsersRecord.isInCall) {
@@ -163,247 +194,256 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                         mainAxisSize: MainAxisSize.max,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(
-                            16.0, 24.0, 0.0, 0.0),
-                        child: Text(
-                          FFLocalizations.of(context).getText(
-                            'd7d95pj7' /* О себе */,
-                          ),
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
+                          Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                16.0, 24.0, 0.0, 0.0),
+                            child: Text(
+                              FFLocalizations.of(context).getText(
+                                'd7d95pj7' /* О себе */,
+                              ),
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
                                     fontFamily: 'Cool',
                                     fontSize: 24.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(
-                            16.0, 10.0, 16.0, 0.0),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.max,
-                          children: [
-                            Flexible(
-                              child: FutureBuilder<List<StatsRecord>>(
-                                future: _statsFuture,
-                                builder: (context, snapshot) {
-                                  if (!snapshot.hasData) {
-                                    return Center(
-                                      child: SizedBox(
-                                        width: 50.0,
-                                        height: 50.0,
-                                        child: SpinKitCircle(
-                                          color: FlutterFlowTheme.of(context)
-                                              .secondary,
-                                          size: 50.0,
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                  List<StatsRecord> containerStatsRecordList =
-                                      snapshot.data!;
-                                  if (snapshot.data!.isEmpty) {
-                                    return Container();
-                                  }
-                                  final containerStatsRecord =
-                                      containerStatsRecordList.isNotEmpty
-                                          ? containerStatsRecordList.first
-                                          : null;
-                                  return Container(
-                                    decoration: BoxDecoration(),
-                                    child: Text(
-                                      functions.getcallNumbString(
-                                          containerStatsRecord!.totalCalls
-                                              .toString()),
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'sf pro display',
-                                            color: FlutterFlowTheme.of(context)
-                                                .secondaryText,
-                                            fontSize: 15.0,
-                                            letterSpacing: 0.0,
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                16.0, 10.0, 16.0, 0.0),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.max,
+                              children: [
+                                Flexible(
+                                  child: FutureBuilder<List<StatsRecord>>(
+                                    future: _statsFuture,
+                                    builder: (context, snapshot) {
+                                      if (!snapshot.hasData) {
+                                        return Center(
+                                          child: SizedBox(
+                                            width: 50.0,
+                                            height: 50.0,
+                                            child: SpinKitCircle(
+                                              color:
+                                                  FlutterFlowTheme.of(context)
+                                                      .secondary,
+                                              size: 50.0,
+                                            ),
                                           ),
-                                    ),
-                                  );
-                                },
-                              ),
+                                        );
+                                      }
+                                      List<StatsRecord>
+                                          containerStatsRecordList =
+                                          snapshot.data!;
+                                      if (snapshot.data!.isEmpty) {
+                                        return Container();
+                                      }
+                                      final containerStatsRecord =
+                                          containerStatsRecordList.isNotEmpty
+                                              ? containerStatsRecordList.first
+                                              : null;
+                                      return Container(
+                                        decoration: BoxDecoration(),
+                                        child: Text(
+                                          functions.getcallNumbString(
+                                              containerStatsRecord!.totalCalls
+                                                  .toString()),
+                                          style: FlutterFlowTheme.of(context)
+                                              .bodyMedium
+                                              .override(
+                                                fontFamily: 'sf pro display',
+                                                color:
+                                                    FlutterFlowTheme.of(context)
+                                                        .secondaryText,
+                                                fontSize: 15.0,
+                                                letterSpacing: 0.0,
+                                              ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                SizedBox(
+                                  height: 10.0,
+                                  child: VerticalDivider(
+                                    thickness: 2.0,
+                                    color:
+                                        FlutterFlowTheme.of(context).alternate,
+                                  ),
+                                ),
+                                Flexible(
+                                  child: Text(
+                                    functions.getReviewString(
+                                        nativeSpeakerPageUsersRecord
+                                            .rating.totalReviews
+                                            .toString()),
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'sf pro display',
+                                          color: FlutterFlowTheme.of(context)
+                                              .secondaryText,
+                                          fontSize: 15.0,
+                                          letterSpacing: 0.0,
+                                        ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            SizedBox(
-                              height: 10.0,
-                              child: VerticalDivider(
-                                thickness: 2.0,
-                                color: FlutterFlowTheme.of(context).alternate,
-                              ),
-                            ),
-                            Flexible(
-                              child: Text(
-                                functions.getReviewString(
-                                    nativeSpeakerPageUsersRecord
-                                        .rating.totalReviews
-                                        .toString()),
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'sf pro display',
-                                      color: FlutterFlowTheme.of(context)
-                                          .secondaryText,
-                                      fontSize: 15.0,
-                                      letterSpacing: 0.0,
-                                    ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(
-                            16.0, 10.0, 16.0, 0.0),
-                        child: Text(
-                          nativeSpeakerPageUsersRecord.aboutMe,
-                          maxLines: _model.numMaxLineAbout,
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
+                          ),
+                          Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                16.0, 10.0, 16.0, 0.0),
+                            child: Text(
+                              nativeSpeakerPageUsersRecord.aboutMe,
+                              maxLines: _model.numMaxLineAbout,
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
                                     fontFamily: 'sf pro display',
                                     fontSize: 15.0,
                                     letterSpacing: 0.0,
                                   ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (functions.aboutt(nativeSpeakerPageUsersRecord.aboutMe,
-                              MediaQuery.sizeOf(context).width) ==
-                          true)
-                        FFButtonWidget(
-                          onPressed: () async {
-                            if (_model.numMaxLineAbout == 4) {
-                              _model.numMaxLineAbout = 15;
-                              safeSetState(() {});
-                            } else {
-                              _model.numMaxLineAbout = 4;
-                              safeSetState(() {});
-                            }
-                          },
-                          text: _model.numMaxLineAbout == 4
-                              ? FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Показать еще',
-                                  enText: 'Show more',
-                                )
-                              : FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Скрыть',
-                                  enText: 'Hide',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (functions.aboutt(
+                                  nativeSpeakerPageUsersRecord.aboutMe,
+                                  MediaQuery.sizeOf(context).width) ==
+                              true)
+                            FFButtonWidget(
+                              onPressed: () async {
+                                if (_model.numMaxLineAbout == 4) {
+                                  _model.numMaxLineAbout = 15;
+                                  safeSetState(() {});
+                                } else {
+                                  _model.numMaxLineAbout = 4;
+                                  safeSetState(() {});
+                                }
+                              },
+                              text: _model.numMaxLineAbout == 4
+                                  ? FFLocalizations.of(context).getVariableText(
+                                      ruText: 'Показать еще',
+                                      enText: 'Show more',
+                                    )
+                                  : FFLocalizations.of(context).getVariableText(
+                                      ruText: 'Скрыть',
+                                      enText: 'Hide',
+                                    ),
+                              options: FFButtonOptions(
+                                height: 35.0,
+                                padding: EdgeInsetsDirectional.fromSTEB(
+                                    16.0, 0.0, 16.0, 0.0),
+                                iconPadding: EdgeInsetsDirectional.fromSTEB(
+                                    0.0, 0.0, 0.0, 0.0),
+                                color: Colors.transparent,
+                                textStyle: FlutterFlowTheme.of(context)
+                                    .bodyMedium
+                                    .override(
+                                      fontFamily: 'sf pro display',
+                                      color:
+                                          FlutterFlowTheme.of(context).primary,
+                                      fontSize: 15.0,
+                                      letterSpacing: 0.0,
+                                    ),
+                                elevation: 0.0,
+                                borderRadius: BorderRadius.circular(8.0),
+                              ),
+                            ),
+                          if (hasInstructionLanguage)
+                            Padding(
+                              padding: EdgeInsetsDirectional.fromSTEB(
+                                  16.0, 24.0, 0.0, 0.0),
+                              child: Text(
+                                FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Я преподаю',
+                                  enText: 'I teach',
                                 ),
-                          options: FFButtonOptions(
-                            height: 35.0,
+                                style: FlutterFlowTheme.of(context)
+                                    .bodyMedium
+                                    .override(
+                                      fontFamily: 'Cool',
+                                      fontSize: 24.0,
+                                      letterSpacing: 0.0,
+                                      fontWeight: FontWeight.normal,
+                                    ),
+                              ),
+                            ),
+                          if (hasInstructionLanguage)
+                            Padding(
+                              padding: EdgeInsetsDirectional.fromSTEB(
+                                  6.0, 10.0, 6.0, 0.0),
+                              child: wrapWithModel(
+                                model: _model.languageCardModel1,
+                                updateCallback: () => safeSetState(() {}),
+                                child: LanguageCardWidget(
+                                  lang: nativeSpeakerPageUsersRecord
+                                      .languageInstructionNS,
+                                  callbackAction: (selectedLangData) async {},
+                                ),
+                              ),
+                            ),
+                          if (hasNativeLanguage)
+                            Padding(
+                              padding: EdgeInsetsDirectional.fromSTEB(
+                                  16.0, 24.0, 0.0, 0.0),
+                              child: Text(
+                                FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Мой родной язык',
+                                  enText: 'My native language',
+                                ),
+                                style: FlutterFlowTheme.of(context)
+                                    .bodyMedium
+                                    .override(
+                                      fontFamily: 'Cool',
+                                      fontSize: 24.0,
+                                      letterSpacing: 0.0,
+                                      fontWeight: FontWeight.normal,
+                                    ),
+                              ),
+                            ),
+                          if (hasNativeLanguage)
+                            Padding(
+                              padding: EdgeInsetsDirectional.fromSTEB(
+                                  6.0, 10.0, 6.0, 0.0),
+                              child: wrapWithModel(
+                                model: _model.languageCardModel2,
+                                updateCallback: () => safeSetState(() {}),
+                                child: LanguageCardWidget(
+                                  lang: nativeSpeakerPageUsersRecord
+                                      .nativeLanguageNS,
+                                  callbackAction: (selectedLangData) async {},
+                                ),
+                              ),
+                            ),
+                          Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                16.0, 0.0, 16.0, 0.0),
-                            iconPadding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 0.0, 0.0, 0.0),
-                            color: Colors.transparent,
-                            textStyle: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color: FlutterFlowTheme.of(context).primary,
-                                  fontSize: 15.0,
-                                  letterSpacing: 0.0,
-                                ),
-                            elevation: 0.0,
-                            borderRadius: BorderRadius.circular(8.0),
-                          ),
-                        ),
-                      if (hasInstructionLanguage)
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              16.0, 24.0, 0.0, 0.0),
-                          child: Text(
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: 'Я преподаю',
-                              enText: 'I teach',
-                            ),
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'Cool',
-                                  fontSize: 24.0,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.normal,
-                                ),
-                          ),
-                        ),
-                      if (hasInstructionLanguage)
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              6.0, 10.0, 6.0, 0.0),
-                          child: wrapWithModel(
-                            model: _model.languageCardModel1,
-                            updateCallback: () => safeSetState(() {}),
-                            child: LanguageCardWidget(
-                              lang: nativeSpeakerPageUsersRecord
-                                  .languageInstructionNS,
-                              callbackAction: (selectedLangData) async {},
-                            ),
-                          ),
-                        ),
-                      if (hasNativeLanguage)
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              16.0, 24.0, 0.0, 0.0),
-                          child: Text(
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: 'Мой родной язык',
-                              enText: 'My native language',
-                            ),
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'Cool',
-                                  fontSize: 24.0,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.normal,
-                                ),
-                          ),
-                        ),
-                      if (hasNativeLanguage)
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              6.0, 10.0, 6.0, 0.0),
-                          child: wrapWithModel(
-                            model: _model.languageCardModel2,
-                            updateCallback: () => safeSetState(() {}),
-                            child: LanguageCardWidget(
-                              lang:
-                                  nativeSpeakerPageUsersRecord.nativeLanguageNS,
-                              callbackAction: (selectedLangData) async {},
-                            ),
-                          ),
-                        ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(
-                            16.0, 24.0, 0.0, 0.0),
-                        child: Text(
-                          FFLocalizations.of(context).getVariableText(
-                            ruText: 'Отзывы',
-                            enText: 'Reviews',
-                          ),
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
+                                16.0, 24.0, 0.0, 0.0),
+                            child: Text(
+                              FFLocalizations.of(context).getVariableText(
+                                ruText: 'Отзывы',
+                                enText: 'Reviews',
+                              ),
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
                                     fontFamily: 'Cool',
                                     fontSize: 24.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
-                        ),
-                      ),
-                      Padding(
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
-                        child:
-                            _buildReviewsSection(nativeSpeakerPageUsersRecord),
-                      ),
-                      SizedBox(height: 140.0),
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                0.0, 10.0, 0.0, 0.0),
+                            child: _buildReviewsSection(
+                                nativeSpeakerPageUsersRecord),
+                          ),
+                          SizedBox(height: 140.0),
                         ],
                       ),
                     ),
@@ -442,11 +482,14 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
 
   Widget _buildTopActionButtons(double scrollOffset) {
     final maxExtent = MediaQuery.sizeOf(context).height * 0.5;
-    final minExtent =
-        MediaQuery.of(context).padding.top + kToolbarHeight;
+    final statusBarH = MediaQuery.of(context).padding.top;
+    final minExtent = statusBarH + kToolbarHeight;
     final totalShrink = maxExtent - minExtent;
-    final collapseProgress =
-        (scrollOffset / (totalShrink * 0.3)).clamp(0.0, 1.0);
+    final snapHeaderHeight = statusBarH + 8 + 110 + 8 + 42 + 16;
+    final phase1End =
+        ((maxExtent - snapHeaderHeight) / totalShrink).clamp(0.05, 0.9);
+    final progress = (scrollOffset / totalShrink).clamp(0.0, 1.0);
+    final collapseProgress = (progress / phase1End).clamp(0.0, 1.0);
 
     final fillColor = Color.lerp(
       Color(0x3CFFFFFF),
@@ -470,65 +513,89 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         mainAxisSize: MainAxisSize.max,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          FlutterFlowIconButton(
-            borderRadius: 70.0,
-            buttonSize: 45.0,
-            fillColor: fillColor,
-            icon: Icon(
-              FFIcons.kchevronLeft,
-              color: backIconColor,
-              size: 18.0,
+          SizedBox(
+            width: 45.0,
+            height: 45.0,
+            child: AdaptiveButton.child(
+              onPressed: () async {
+                context.safePop();
+              },
+              style: AdaptiveButtonStyle.glass,
+              size: AdaptiveButtonSize.large,
+              color: fillColor,
+              padding: EdgeInsets.zero,
+              minSize: Size(45.0, 45.0),
+              borderRadius: BorderRadius.circular(70.0),
+              useSmoothRectangleBorder: false,
+              child: Icon(
+                FFIcons.kchevronLeft,
+                color: backIconColor,
+                size: 18.0,
+              ),
             ),
-            onPressed: () async {
-              context.safePop();
-            },
           ),
           AuthUserStreamWidget(
             builder: (context) {
               if ((currentUserDocument?.favoriteNativeSpeakers.toList() ?? [])
                   .contains(widget.nsUserDocRef)) {
-                return FlutterFlowIconButton(
-                  borderRadius: 70.0,
-                  buttonSize: 45.0,
-                  fillColor: fillColor,
-                  icon: Icon(
-                    Icons.favorite_rounded,
-                    color: FlutterFlowTheme.of(context).error,
-                    size: 20.0,
+                return SizedBox(
+                  width: 45.0,
+                  height: 45.0,
+                  child: AdaptiveButton.child(
+                    onPressed: () async {
+                      await currentUserReference!.update({
+                        ...mapToFirestore(
+                          {
+                            'favoriteNativeSpeakers':
+                                FieldValue.arrayRemove([widget.nsUserDocRef]),
+                          },
+                        ),
+                      });
+                      safeSetState(() {});
+                    },
+                    style: AdaptiveButtonStyle.glass,
+                    size: AdaptiveButtonSize.large,
+                    color: fillColor,
+                    padding: EdgeInsets.zero,
+                    minSize: Size(45.0, 45.0),
+                    borderRadius: BorderRadius.circular(70.0),
+                    useSmoothRectangleBorder: false,
+                    child: Icon(
+                      Icons.favorite_rounded,
+                      color: FlutterFlowTheme.of(context).error,
+                      size: 20.0,
+                    ),
                   ),
-                  onPressed: () async {
-                    await currentUserReference!.update({
-                      ...mapToFirestore(
-                        {
-                          'favoriteNativeSpeakers':
-                              FieldValue.arrayRemove([widget.nsUserDocRef]),
-                        },
-                      ),
-                    });
-                    safeSetState(() {});
-                  },
                 );
               } else {
-                return FlutterFlowIconButton(
-                  borderRadius: 70.0,
-                  buttonSize: 45.0,
-                  fillColor: fillColor,
-                  icon: Icon(
-                    FFIcons.kheart,
-                    color: heartIconColor,
-                    size: 20.0,
+                return SizedBox(
+                  width: 45.0,
+                  height: 45.0,
+                  child: AdaptiveButton.child(
+                    onPressed: () async {
+                      await currentUserReference!.update({
+                        ...mapToFirestore(
+                          {
+                            'favoriteNativeSpeakers':
+                                FieldValue.arrayUnion([widget.nsUserDocRef]),
+                          },
+                        ),
+                      });
+                      safeSetState(() {});
+                    },
+                    style: AdaptiveButtonStyle.glass,
+                    size: AdaptiveButtonSize.large,
+                    color: fillColor,
+                    padding: EdgeInsets.zero,
+                    minSize: Size(45.0, 45.0),
+                    borderRadius: BorderRadius.circular(70.0),
+                    useSmoothRectangleBorder: false,
+                    child: Icon(
+                      FFIcons.kheart,
+                      color: heartIconColor,
+                      size: 20.0,
+                    ),
                   ),
-                  onPressed: () async {
-                    await currentUserReference!.update({
-                      ...mapToFirestore(
-                        {
-                          'favoriteNativeSpeakers':
-                              FieldValue.arrayUnion([widget.nsUserDocRef]),
-                        },
-                      ),
-                    });
-                    safeSetState(() {});
-                  },
                 );
               }
             },
@@ -1638,22 +1705,27 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
     final theme = FlutterFlowTheme.of(context);
+    final isIOS26OrHigher = PlatformInfo.isIOS26OrHigher();
     final totalShrink = maxExtent - minExtent;
     final progress = (shrinkOffset / totalShrink).clamp(0.0, 1.0);
     final statusBarHeight = MediaQuery.of(context).padding.top;
     final screenWidth = MediaQuery.sizeOf(context).width;
+    final currentExtent =
+        (maxExtent - shrinkOffset).clamp(minExtent, maxExtent);
 
-    const phase1End = 0.3;
-    const phase2End = 0.7;
+    final snapHeaderHeight = statusBarHeight + 8 + 110 + 8 + 42 + 16;
+    final phase1End =
+        ((maxExtent - snapHeaderHeight) / totalShrink).clamp(0.05, 0.9);
+    const phase2End = 0.88;
 
     final p1 = (progress / phase1End).clamp(0.0, 1.0);
     final p2 =
         ((progress - phase1End) / (phase2End - phase1End)).clamp(0.0, 1.0);
-    final p3 =
-        ((progress - phase2End) / (1.0 - phase2End)).clamp(0.0, 1.0);
+    final p3 = ((progress - phase2End) / (1.0 - phase2End)).clamp(0.0, 1.0);
 
-    const circleMaxSize = 90.0;
-    const circleMinSize = 36.0;
+    const circleMaxSize = 110.0;
+    const circleMinSize = 32.0;
+    final circleTop = statusBarHeight + 8.0;
 
     final double circleSize;
     if (progress <= phase1End) {
@@ -1664,30 +1736,93 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
       circleSize = ui.lerpDouble(circleMinSize, 0.0, p3)!;
     }
 
-    final fullPhotoOpacity = (1.0 - p1 * 1.5).clamp(0.0, 1.0);
-    final gradientOpacity = (1.0 - p1 * 1.5).clamp(0.0, 1.0);
+    // --- Single morphing photo ---
+    double photoW, photoH, photoL, photoT;
+    BorderRadius photoBR;
+    double photoOpacity;
+
+    if (progress <= phase1End) {
+      photoW = ui.lerpDouble(screenWidth, circleMaxSize, p1)!;
+      photoH = ui.lerpDouble(currentExtent, circleMaxSize, p1)!;
+      photoL = ui.lerpDouble(0.0, (screenWidth - circleMaxSize) / 2, p1)!;
+      photoT = ui.lerpDouble(0.0, circleTop, p1)!;
+      photoBR = BorderRadius.lerp(
+        BorderRadius.only(
+          bottomLeft: Radius.circular(20.0),
+          bottomRight: Radius.circular(20.0),
+        ),
+        BorderRadius.circular(circleMaxSize / 2),
+        p1,
+      )!;
+      photoOpacity = 1.0;
+    } else if (progress <= phase2End) {
+      photoW = circleSize;
+      photoH = circleSize;
+      photoL = (screenWidth - circleSize) / 2;
+      photoT = circleTop;
+      photoBR = BorderRadius.circular(circleSize / 2);
+      photoOpacity = 1.0;
+    } else {
+      final s = circleSize.clamp(1.0, circleMaxSize);
+      photoW = s;
+      photoH = s;
+      photoL = (screenWidth - s) / 2;
+      photoT = circleTop;
+      photoBR = BorderRadius.circular(s / 2);
+      photoOpacity = (1.0 - p3).clamp(0.0, 1.0);
+    }
+
+    // --- Rating badge ---
     final ratingOpacity = (1.0 - p1 * 2.0).clamp(0.0, 1.0);
-    final circlePhotoOpacity =
-        p1 > 0.0 ? (progress <= phase2End ? 1.0 : (1.0 - p3)) : 0.0;
-    final expandedInfoOpacity = (1.0 - p1 * 1.5).clamp(0.0, 1.0);
-    final centeredInfoOpacity =
-        p1 > 0.3 ? (progress <= phase2End ? 1.0 : (1.0 - p3)) : 0.0;
+
+    // --- Single sliding text block ---
+    const estimatedTextHeight = 42.0;
+    final expandedTextTop = currentExtent - 16.0 - estimatedTextHeight;
+    final collapsedTextTop = circleTop + circleSize + 8.0;
+
+    double textTop;
+    double textPadLeft, textPadRight;
+    Alignment textAlign;
+    double textOpacity;
+
+    if (progress <= phase1End) {
+      textTop = ui.lerpDouble(expandedTextTop, collapsedTextTop, p1)!;
+      textPadLeft = ui.lerpDouble(16.0, 0.0, p1)!;
+      textPadRight = ui.lerpDouble(100.0, 0.0, p1)!;
+      textAlign = Alignment.lerp(Alignment.centerLeft, Alignment.center, p1)!;
+      textOpacity = 1.0;
+    } else if (progress <= phase2End) {
+      textTop = collapsedTextTop;
+      textPadLeft = 0.0;
+      textPadRight = 0.0;
+      textAlign = Alignment.center;
+      textOpacity = (1.0 - p2).clamp(0.0, 1.0);
+    } else {
+      textTop = collapsedTextTop;
+      textPadLeft = 0.0;
+      textPadRight = 0.0;
+      textAlign = Alignment.center;
+      textOpacity = 0.0;
+    }
+
     final subtitleOpacity =
-        progress <= phase1End ? 1.0 : (1.0 - p2).clamp(0.0, 1.0);
+        progress <= phase1End ? 1.0 : (1.0 - p2 * 1.5).clamp(0.0, 1.0);
     final compactNameOpacity = p3.clamp(0.0, 1.0);
 
     final nameFontSize =
         progress <= phase1End ? 17.0 : ui.lerpDouble(17.0, 15.0, p2)!;
     final subtitleFontSize =
         progress <= phase1End ? 15.0 : ui.lerpDouble(15.0, 12.0, p2)!;
-
     final nameColor = Color.lerp(Colors.white, theme.primaryText, p1)!;
     final subtitleColor =
         Color.lerp(Color(0xFFEDEDED), theme.secondaryText, p1)!;
-    final bgColor =
-        Color.lerp(Colors.transparent, theme.secondaryBackground, p1)!;
-
-    final circleTop = statusBarHeight + 8.0;
+    final bgColor = isIOS26OrHigher
+        ? Color.lerp(
+            Colors.transparent,
+            theme.secondaryBackground.withValues(alpha: 0.08),
+            p1,
+          )!
+        : Color.lerp(Colors.transparent, theme.secondaryBackground, p1)!;
 
     return Container(
       color: bgColor,
@@ -1695,120 +1830,31 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
         fit: StackFit.expand,
         clipBehavior: Clip.hardEdge,
         children: [
-          if (fullPhotoOpacity > 0.01)
-            Opacity(
-              opacity: fullPhotoOpacity,
-              child: ClipRRect(
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(20.0),
-                  bottomRight: Radius.circular(20.0),
-                ),
-                child: CachedNetworkImage(
-                  imageUrl: photoUrl,
-                  width: double.infinity,
-                  height: double.infinity,
-                  fit: BoxFit.cover,
-                  fadeInDuration: Duration.zero,
-                  fadeOutDuration: Duration.zero,
-                  memCacheWidth: 800,
-                ),
-              ),
-            ),
-
-          if (gradientOpacity > 0.01)
-            Opacity(
-              opacity: gradientOpacity,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      Color(0x7F000000),
-                      Color(0xA3000000),
-                    ],
-                    stops: [0.0, 0.8, 1.0],
-                    begin: AlignmentDirectional(0.0, -1.0),
-                    end: AlignmentDirectional(0.0, 1.0),
-                  ),
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(20.0),
-                    bottomRight: Radius.circular(20.0),
-                  ),
-                ),
-              ),
-            ),
-
-          if (circleSize > 1 && circlePhotoOpacity > 0.01)
+          // Single morphing photo
+          if (photoOpacity > 0.01 && photoW > 1)
             Positioned(
-              top: circleTop,
-              left: (screenWidth - circleSize) / 2,
+              left: photoL,
+              top: photoT,
+              width: photoW,
+              height: photoH,
               child: Opacity(
-                opacity: circlePhotoOpacity.clamp(0.0, 1.0),
-                child: Container(
-                  width: circleSize,
-                  height: circleSize,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: theme.secondaryBackground,
-                      width: 2.0,
-                    ),
-                  ),
-                  child: ClipOval(
-                    child: CachedNetworkImage(
-                      imageUrl: photoUrl,
-                      fit: BoxFit.cover,
-                      fadeInDuration: Duration.zero,
-                      fadeOutDuration: Duration.zero,
-                      memCacheWidth: 200,
-                    ),
+                opacity: photoOpacity,
+                child: ClipRRect(
+                  borderRadius: photoBR,
+                  child: CachedNetworkImage(
+                    imageUrl: photoUrl,
+                    width: photoW,
+                    height: photoH,
+                    fit: BoxFit.cover,
+                    fadeInDuration: Duration.zero,
+                    fadeOutDuration: Duration.zero,
+                    memCacheWidth: 800,
                   ),
                 ),
               ),
             ),
 
-          if (expandedInfoOpacity > 0.01)
-            Positioned(
-              left: 16.0,
-              bottom: 16.0,
-              right: 100.0,
-              child: Opacity(
-                opacity: expandedInfoOpacity,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: FlutterFlowTheme.of(context)
-                          .bodyMedium
-                          .override(
-                            fontFamily: 'sf pro display',
-                            color: Colors.white,
-                            fontSize: 17.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    SizedBox(height: 3.0),
-                    Text(
-                      cityAndStatus,
-                      style: FlutterFlowTheme.of(context)
-                          .bodyMedium
-                          .override(
-                            fontFamily: 'sf pro display',
-                            color: Color(0xFFEDEDED),
-                            fontSize: 15.0,
-                            letterSpacing: 0.0,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
+          // Rating badge (fades early)
           if (ratingOpacity > 0.01)
             Positioned(
               right: 16.0,
@@ -1867,56 +1913,124 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
               ),
             ),
 
-          if (centeredInfoOpacity > 0.01 && circleSize > 1)
+          // Single sliding name + city/status
+          if (textOpacity > 0.01)
             Positioned(
-              top: circleTop + circleSize + 8.0,
-              left: 16.0,
-              right: 16.0,
+              left: 0,
+              right: 0,
+              top: textTop,
               child: Opacity(
-                opacity: centeredInfoOpacity.clamp(0.0, 1.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: FlutterFlowTheme.of(context)
-                          .bodyMedium
-                          .override(
-                            fontFamily: 'sf pro display',
-                            color: nameColor,
-                            fontSize: nameFontSize,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    if (subtitleOpacity > 0.01)
-                      Opacity(
-                        opacity: subtitleOpacity,
-                        child: Padding(
-                          padding: EdgeInsets.only(top: 3.0),
-                          child: Text(
-                            cityAndStatus,
-                            textAlign: TextAlign.center,
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color: subtitleColor,
-                                  fontSize: subtitleFontSize,
-                                  letterSpacing: 0.0,
-                                ),
-                          ),
+                opacity: textOpacity,
+                child: Padding(
+                  padding:
+                      EdgeInsets.only(left: textPadLeft, right: textPadRight),
+                  child: Align(
+                    alignment: textAlign,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: p1 < 0.5
+                          ? CrossAxisAlignment.start
+                          : CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign:
+                              p1 < 0.5 ? TextAlign.left : TextAlign.center,
+                          style:
+                              FlutterFlowTheme.of(context).bodyMedium.override(
+                                    fontFamily: 'sf pro display',
+                                    color: nameColor,
+                                    fontSize: nameFontSize,
+                                    letterSpacing: 0.0,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                         ),
-                      ),
-                  ],
+                        if (subtitleOpacity > 0.01)
+                          Opacity(
+                            opacity: subtitleOpacity,
+                            child: Padding(
+                              padding: EdgeInsets.only(top: 3.0),
+                              child: Text(
+                                cityAndStatus,
+                                textAlign: p1 < 0.5
+                                    ? TextAlign.left
+                                    : TextAlign.center,
+                                style: FlutterFlowTheme.of(context)
+                                    .bodyMedium
+                                    .override(
+                                      fontFamily: 'sf pro display',
+                                      color: subtitleColor,
+                                      fontSize: subtitleFontSize,
+                                      letterSpacing: 0.0,
+                                    ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
 
-          if (compactNameOpacity > 0.01)
+          // iOS 26 compact app bar (liquid glass)
+          if (isIOS26OrHigher && compactNameOpacity > 0.01)
+            Positioned(
+              top: 0.0,
+              left: 0.0,
+              right: 0.0,
+              child: Opacity(
+                opacity: compactNameOpacity,
+                child: AdaptiveBlurView(
+                  blurStyle: BlurStyle.systemUltraThinMaterial,
+                  child: Container(
+                    height: statusBarHeight + kToolbarHeight,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          theme.secondaryBackground.withValues(alpha: 0.0),
+                          theme.secondaryBackground.withValues(alpha: 0.03),
+                          theme.secondaryBackground.withValues(alpha: 0.06),
+                        ],
+                        stops: [0.0, 0.65, 1.0],
+                      ),
+                      border: Border(
+                        bottom: BorderSide(
+                          color: theme.alternate.withValues(alpha: 0.08),
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                          top: statusBarHeight, left: 60.0, right: 60.0),
+                      child: Center(
+                        child: Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              FlutterFlowTheme.of(context).bodyMedium.override(
+                                    fontFamily: 'sf pro display',
+                                    color: theme.primaryText,
+                                    fontSize: 17.0,
+                                    letterSpacing: 0.0,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // Compact header name fallback for non-iOS26 (fades in at the end)
+          if (!isIOS26OrHigher && compactNameOpacity > 0.01)
             Positioned(
               top: statusBarHeight + (kToolbarHeight - 20.0) / 2,
               left: 60.0,
@@ -1928,9 +2042,7 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
                     displayName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: FlutterFlowTheme.of(context)
-                        .bodyMedium
-                        .override(
+                    style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'sf pro display',
                           color: theme.primaryText,
                           fontSize: 17.0,
