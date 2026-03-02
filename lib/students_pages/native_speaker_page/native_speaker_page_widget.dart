@@ -93,13 +93,13 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         _scrollController
             .animateTo(
               snap,
-              duration: Duration(milliseconds: 100),
+              duration: Duration(milliseconds: 160),
               curve: Curves.easeOut,
             )
             .then((_) => _isSnapping = false);
       });
-    } else if (_hapticFired && !_isSnapping && offset < snap - 1) {
-      _hapticFired = true;
+    } else if (_hapticFired && !_isSnapping && offset < snap - 3) {
+      _hapticFired = false;
       _isSnapping = true;
       HapticFeedback.mediumImpact();
 
@@ -107,7 +107,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         _scrollController
             .animateTo(
               0.0,
-              duration: Duration(milliseconds: 100),
+              duration: Duration(milliseconds: 160),
               curve: Curves.easeOut,
             )
             .then((_) => _isSnapping = false);
