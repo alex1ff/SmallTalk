@@ -24,6 +24,31 @@ class NavBarWidget extends StatefulWidget {
 }
 
 class _NavBarWidgetState extends State<NavBarWidget> {
+  static const List<AdaptiveNavigationDestination> _teacherDestinations = [
+    AdaptiveNavigationDestination(
+      icon: 'house.fill',
+      label: 'Главная',
+    ),
+    AdaptiveNavigationDestination(
+      icon: 'person.fill',
+      label: 'Профиль',
+    ),
+  ];
+  static const List<AdaptiveNavigationDestination> _studentDestinations = [
+    AdaptiveNavigationDestination(
+      icon: 'house.fill',
+      label: 'Главная',
+    ),
+    AdaptiveNavigationDestination(
+      icon: 'book.fill',
+      label: 'Словарь',
+    ),
+    AdaptiveNavigationDestination(
+      icon: 'person.fill',
+      label: 'Профиль',
+    ),
+  ];
+
   late NavBarModel _model;
 
   @override
@@ -133,43 +158,21 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   // ─────── iOS 26+ — native Liquid Glass tab bar ───────
 
   Widget _buildNativeIOS26TabBar() {
-    final destinations = _isTeacher
-        ? const [
-            AdaptiveNavigationDestination(
-              icon: 'house.fill',
-              label: 'Главная',
-            ),
-            AdaptiveNavigationDestination(
-              icon: 'person.fill',
-              label: 'Профиль',
-            ),
-          ]
-        : const [
-            AdaptiveNavigationDestination(
-              icon: 'house.fill',
-              label: 'Главная',
-            ),
-            AdaptiveNavigationDestination(
-              icon: 'book.fill',
-              label: 'Словарь',
-            ),
-            AdaptiveNavigationDestination(
-              icon: 'person.fill',
-              label: 'Профиль',
-            ),
-          ];
+    final destinations = _isTeacher ? _teacherDestinations : _studentDestinations;
 
     final bottomPadding = MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomPadding),
-      child: IOS26NativeTabBar(
-        destinations: destinations,
-        selectedIndex: _selectedIndex,
-        onTap: _onTap,
-        tint: const Color(0xFF008BFF),
-        backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
-        minimizeBehavior: TabBarMinimizeBehavior.never,
+    return RepaintBoundary(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomPadding),
+        child: IOS26NativeTabBar(
+          destinations: destinations,
+          selectedIndex: _selectedIndex,
+          onTap: _onTap,
+          tint: const Color(0xFF008BFF),
+          backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
+          minimizeBehavior: TabBarMinimizeBehavior.never,
+        ),
       ),
     );
   }
