@@ -490,21 +490,20 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         ((maxExtent - snapHeaderHeight) / totalShrink).clamp(0.05, 0.9);
     final progress = (scrollOffset / totalShrink).clamp(0.0, 1.0);
     final collapseProgress = (progress / phase1End).clamp(0.0, 1.0);
+    // On iOS 26 native buttons, avoid per-frame color updates to reduce jank.
+    final buttonColorProgress = PlatformInfo.isIOS26OrHigher()
+        ? (collapseProgress * 4).round() / 4
+        : collapseProgress;
 
     final fillColor = Color.lerp(
       Color(0x3CFFFFFF),
       FlutterFlowTheme.of(context).secondaryBackground,
-      collapseProgress,
-    )!;
-    final backIconColor = Color.lerp(
-      FlutterFlowTheme.of(context).info,
-      FlutterFlowTheme.of(context).primaryText,
-      collapseProgress,
+      buttonColorProgress,
     )!;
     final heartIconColor = Color.lerp(
       FlutterFlowTheme.of(context).primaryBackground,
       FlutterFlowTheme.of(context).primaryText,
-      collapseProgress,
+      buttonColorProgress,
     )!;
 
     return Padding(
@@ -529,7 +528,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
               useSmoothRectangleBorder: false,
               child: Icon(
                 FFIcons.kchevronLeft,
-                color: backIconColor,
+                color: Colors.black,
                 size: 18.0,
               ),
             ),
@@ -1705,7 +1704,6 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
     final theme = FlutterFlowTheme.of(context);
-    final isIOS26OrHigher = PlatformInfo.isIOS26OrHigher();
     final totalShrink = maxExtent - minExtent;
     final progress = (shrinkOffset / totalShrink).clamp(0.0, 1.0);
     final statusBarHeight = MediaQuery.of(context).padding.top;
@@ -1816,13 +1814,7 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
     final nameColor = Color.lerp(Colors.white, theme.primaryText, p1)!;
     final subtitleColor =
         Color.lerp(Color(0xFFEDEDED), theme.secondaryText, p1)!;
-    final bgColor = isIOS26OrHigher
-        ? Color.lerp(
-            Colors.transparent,
-            theme.secondaryBackground.withValues(alpha: 0.08),
-            p1,
-          )!
-        : Color.lerp(Colors.transparent, theme.secondaryBackground, p1)!;
+    final bgColor = Colors.transparent;
 
     return Container(
       color: bgColor,
@@ -1855,7 +1847,7 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
             ),
 
           // Rating badge (fades early)
-          if (ratingOpacity > 0.01)
+          if (ratingOpacity > 0.01 && ratingAverage > 0.0)
             Positioned(
               right: 16.0,
               bottom: 16.0,
@@ -1975,80 +1967,44 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
               ),
             ),
 
-          // iOS 26 compact app bar (liquid glass)
-          if (isIOS26OrHigher && compactNameOpacity > 0.01)
+          if (compactNameOpacity > 0.01)
             Positioned(
               top: 0.0,
               left: 0.0,
               right: 0.0,
               child: Opacity(
                 opacity: compactNameOpacity,
-                child: AdaptiveBlurView(
-                  blurStyle: BlurStyle.systemUltraThinMaterial,
-                  child: Container(
-                    height: statusBarHeight + kToolbarHeight,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          theme.secondaryBackground.withValues(alpha: 0.0),
-                          theme.secondaryBackground.withValues(alpha: 0.03),
-                          theme.secondaryBackground.withValues(alpha: 0.06),
-                        ],
-                        stops: [0.0, 0.65, 1.0],
-                      ),
-                      border: Border(
-                        bottom: BorderSide(
-                          color: theme.alternate.withValues(alpha: 0.08),
-                          width: 0.5,
-                        ),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                          top: statusBarHeight, left: 60.0, right: 60.0),
-                      child: Center(
-                        child: Text(
-                          displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'sf pro display',
-                                    color: theme.primaryText,
-                                    fontSize: 17.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                        ),
-                      ),
+                child: Container(
+                  height: statusBarHeight + kToolbarHeight,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        FlutterFlowTheme.of(context).secondaryBackground,
+                        Color(0xEFF2F2F7),
+                        Color(0x00F2F2F7)
+                      ],
+                      stops: [0.0, 0.8, 1.0],
+                      begin: AlignmentDirectional(0.0, -1.0),
+                      end: AlignmentDirectional(0.0, 1.0),
                     ),
                   ),
-                ),
-              ),
-            ),
-
-          // Compact header name fallback for non-iOS26 (fades in at the end)
-          if (!isIOS26OrHigher && compactNameOpacity > 0.01)
-            Positioned(
-              top: statusBarHeight + (kToolbarHeight - 20.0) / 2,
-              left: 60.0,
-              right: 60.0,
-              child: Opacity(
-                opacity: compactNameOpacity,
-                child: Center(
-                  child: Text(
-                    displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          color: theme.primaryText,
-                          fontSize: 17.0,
-                          letterSpacing: 0.0,
-                          fontWeight: FontWeight.w600,
-                        ),
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                        top: statusBarHeight, left: 60.0, right: 60.0),
+                    child: Center(
+                      child: Text(
+                        displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: FlutterFlowTheme.of(context).bodyMedium.override(
+                              fontFamily: 'sf pro display',
+                              color: theme.primaryText,
+                              fontSize: 17.0,
+                              letterSpacing: 0.0,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
                   ),
                 ),
               ),

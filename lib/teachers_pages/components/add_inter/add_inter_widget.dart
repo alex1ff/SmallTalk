@@ -295,37 +295,31 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                             'bzho8r5y' /* Добавить интервал */,
                           ),
                           action: () async {
-                            unawaited(
-                              () async {
-                                await currentUserReference!
-                                    .update(createUsersRecordData(
-                                  availabilityToday:
-                                      createAvailabilityTodayStruct(
-                                    fieldValues: {
-                                      'intervals': FieldValue.arrayUnion([
-                                        getIntervalsFirestoreData(
-                                          updateIntervalsStruct(
-                                            IntervalsStruct(
-                                              start: _model.timeStart,
-                                              end: _model.timeEnd,
-                                            ),
-                                            clearUnsetFields: false,
-                                          ),
-                                          true,
-                                        )
-                                      ]),
-                                    },
-                                    clearUnsetFields: false,
-                                  ),
-                                ));
-                              }(),
-                            );
-                            unawaited(
-                              () async {
-                                await widget.act?.call();
-                              }(),
-                            );
-                            Navigator.pop(context);
+                            await currentUserReference!
+                                .update(createUsersRecordData(
+                              availabilityToday:
+                                  createAvailabilityTodayStruct(
+                                fieldValues: {
+                                  'intervals': FieldValue.arrayUnion([
+                                    getIntervalsFirestoreData(
+                                      updateIntervalsStruct(
+                                        IntervalsStruct(
+                                          start: _model.timeStart,
+                                          end: _model.timeEnd,
+                                        ),
+                                        clearUnsetFields: false,
+                                      ),
+                                      true,
+                                    )
+                                  ]),
+                                },
+                                clearUnsetFields: false,
+                              ),
+                            ));
+                            await widget.act?.call();
+                            if (mounted) {
+                              Navigator.pop(context);
+                            }
                           },
                         ),
                       ),

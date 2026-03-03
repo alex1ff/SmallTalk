@@ -33,6 +33,7 @@ class _TabShellPageState extends State<TabShellPage> {
 
   GoRouteInformationProvider? _provider;
   GoRouterDelegate? _delegate;
+  String _lastRoutePath = '';
 
   @override
   void didChangeDependencies() {
@@ -44,6 +45,7 @@ class _TabShellPageState extends State<TabShellPage> {
       _provider?.removeListener(_onProviderChanged);
       _provider = provider;
       _provider!.addListener(_onProviderChanged);
+      _lastRoutePath = _normalizePath(_provider!.value.uri.path);
     }
 
     final delegate = router.routerDelegate;
@@ -63,7 +65,10 @@ class _TabShellPageState extends State<TabShellPage> {
 
   /// Fires on push / go / replace — provider value is already correct.
   void _onProviderChanged() {
-    if (mounted) setState(() {});
+    if (!mounted || !_hasRoutePathChanged()) {
+      return;
+    }
+    setState(() {});
   }
 
   /// Fires on pop — provider value is updated later in the frame by
@@ -71,8 +76,23 @@ class _TabShellPageState extends State<TabShellPage> {
   void _onDelegateChanged() {
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() {});
+      if (!mounted || !_hasRoutePathChanged()) {
+        return;
+      }
+      setState(() {});
     });
+  }
+
+  bool _hasRoutePathChanged() {
+    if (_provider == null) {
+      return false;
+    }
+    final nextPath = _normalizePath(_provider!.value.uri.path);
+    if (nextPath == _lastRoutePath) {
+      return false;
+    }
+    _lastRoutePath = nextPath;
+    return true;
   }
 
   static String _normalizePath(String path) {
@@ -106,9 +126,8 @@ class _TabShellPageState extends State<TabShellPage> {
 
   @override
   Widget build(BuildContext context) {
-    final currentPath = _normalizePath(
-      _provider!.value.uri.path,
-    );
+    final currentPath = _normalizePath(_provider?.value.uri.path ?? widget.state.uri.path);
+    _lastRoutePath = currentPath;
     final showNavBar = _tabPaths.contains(currentPath);
     final indexCurrentPage = _indexCurrentPage(currentPath);
 

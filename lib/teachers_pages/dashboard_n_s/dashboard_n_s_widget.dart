@@ -34,6 +34,46 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
+  Future<void> _openAddInterBottomSheet({Future Function()? act}) async {
+    await showModalBottomSheet(
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      context: context,
+      builder: (context) {
+        return WebViewAware(
+          child: GestureDetector(
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
+            child: Padding(
+              padding: MediaQuery.viewInsetsOf(context),
+              child: AddInterWidget(act: act),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    try {
+      if (currentUserReference != null) {
+        final refreshedUser = await UsersRecord.getDocumentOnce(currentUserReference!);
+        if (mounted) {
+          _model.switchValue = refreshedUser.availabilityToday.enabled;
+        }
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      safeSetState(() {});
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -490,33 +530,13 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   safeSetState(() {
                                     _model.switchValue = false;
                                   });
-                                  await showModalBottomSheet(
-                                    isScrollControlled: true,
-                                    backgroundColor: Colors.transparent,
-                                    context: context,
-                                    builder: (context) {
-                                      return WebViewAware(
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            FocusScope.of(context).unfocus();
-                                            FocusManager.instance.primaryFocus
-                                                ?.unfocus();
-                                          },
-                                          child: Padding(
-                                            padding:
-                                                MediaQuery.viewInsetsOf(context),
-                                            child: AddInterWidget(
-                                              act: () async {
-                                                safeSetState(() {
-                                                  _model.switchValue = true;
-                                                });
-                                              },
-                                            ),
-                                          ),
-                                        ),
-                                      );
+                                  await _openAddInterBottomSheet(
+                                    act: () async {
+                                      safeSetState(() {
+                                        _model.switchValue = true;
+                                      });
                                     },
-                                  ).then((value) => safeSetState(() {}));
+                                  );
                                 }
                                 safeSetState(() {});
                               } else {
@@ -661,28 +681,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                             hoverColor: Colors.transparent,
                             highlightColor: Colors.transparent,
                             onTap: () async {
-                              await showModalBottomSheet(
-                                useRootNavigator: true,
-                                isScrollControlled: true,
-                                backgroundColor: Colors.transparent,
-                                context: context,
-                                builder: (context) {
-                                  return WebViewAware(
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        FocusScope.of(context).unfocus();
-                                        FocusManager.instance.primaryFocus
-                                            ?.unfocus();
-                                      },
-                                      child: Padding(
-                                        padding:
-                                            MediaQuery.viewInsetsOf(context),
-                                        child: AddInterWidget(),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ).then((value) => safeSetState(() {}));
+                              await _openAddInterBottomSheet();
                             },
                             child: Container(
                               width: double.infinity,
