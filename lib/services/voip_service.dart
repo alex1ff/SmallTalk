@@ -1,11 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:uuid/uuid.dart';
@@ -29,7 +27,10 @@ class VoIPService {
   bool _initialized = false;
   bool _initializing = false;
   StreamSubscription<String>? _tokenRefreshSub;
+  StreamSubscription<RemoteMessage>? _foregroundMessageSub;
   StreamSubscription<CallEvent?>? _callKitSubscription;
+  Timer? _sessionPruneTimer;
+  final Map<String, DateTime> _sessionStateTouchedAt = {};
   final Set<String> _acceptInProgress = {};
   final Set<String> _acceptedSessions = {};
   final Set<String> _handledCallKitAcceptIds = {};
@@ -55,6 +56,8 @@ class VoIPService {
   bool _prefetchInProgress = false;
   final Map<String, String> _sessionCallKitIds = {};
   String? _lastCallKitId;
+  static const Duration _sessionStateTtl = Duration(minutes: 10);
+  static const Duration _sessionStatePruneInterval = Duration(minutes: 2);
 
   // Для навигации нужен context - сохраним глобальный navigatorKey
   //static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -82,12 +85,14 @@ class VoIPService {
         criticalAlert: true,
       );
 
-      debugPrint('🔔 VoIPService: Permission status: ${settings.authorizationStatus}');
+      debugPrint(
+          '🔔 VoIPService: Permission status: ${settings.authorizationStatus}');
 
       // 2. Получаем FCM токен
       String? fcmToken = await _fcm.getToken();
       if (fcmToken != null) {
-        debugPrint('🔔 VoIPService: Got FCM token: ${fcmToken.substring(0, 20)}...');
+        debugPrint(
+            '🔔 VoIPService: Got FCM token: ${fcmToken.substring(0, 20)}...');
         await _saveVoipToken(fcmToken);
       } else {
         debugPrint('⚠️ VoIPService: Failed to get FCM token');
@@ -101,7 +106,9 @@ class VoIPService {
       });
 
       // 3.1. Обработка входящих уведомлений в фореграунде
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+      await _foregroundMessageSub?.cancel();
+      _foregroundMessageSub =
+          FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         if (message.data['type'] != 'incoming_call') return;
         if (kIsWeb) return;
 
@@ -127,6 +134,7 @@ class VoIPService {
       _callKitSubscription?.cancel();
       _callKitSubscription =
           FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent);
+      _startSessionPruneTimer();
 
       // 5. Пытаемся получить PushKit токен (iOS) если доступен
       await _syncPushKitToken();
@@ -140,12 +148,158 @@ class VoIPService {
     }
   }
 
+  void _resetInMemoryState() {
+    _sessionPruneTimer?.cancel();
+    _sessionPruneTimer = null;
+    _sessionStateTouchedAt.clear();
+    _acceptInProgress.clear();
+    _acceptedSessions.clear();
+    _handledCallKitAcceptIds.clear();
+    _recentAcceptBySession.clear();
+    _sessionCallKitIds.clear();
+
+    _lastAcceptedSessionId = null;
+    _lastAcceptedIsTutor = false;
+    _lastNavigatedSessionId = null;
+    _lastNavigatedIsTutor = null;
+    _pendingSessionId = null;
+    _pendingIsTutor = false;
+    _navRetryInProgress = false;
+    _pendingRoomUrl = null;
+    _pendingMeetingToken = null;
+    _pendingRoomName = null;
+    _lastRoomUrl = null;
+    _lastMeetingToken = null;
+    _lastRoomName = null;
+    _prefetchedSessionId = null;
+    _prefetchedMeetingToken = null;
+    _prefetchedRoomUrl = null;
+    _prefetchedRoomName = null;
+    _prefetchedTokenFetchedAt = null;
+    _prefetchInProgress = false;
+    _lastCallKitId = null;
+  }
+
+  void _startSessionPruneTimer() {
+    _sessionPruneTimer?.cancel();
+    _sessionPruneTimer = Timer.periodic(
+      _sessionStatePruneInterval,
+      (_) => _pruneStaleSessionState(),
+    );
+  }
+
+  void _touchSessionState(String sessionId) {
+    if (sessionId.isEmpty) return;
+    _sessionStateTouchedAt[sessionId] = DateTime.now();
+  }
+
+  void _pruneStaleSessionState() {
+    if (_sessionStateTouchedAt.isEmpty &&
+        _recentAcceptBySession.isEmpty &&
+        _acceptedSessions.isEmpty &&
+        _sessionCallKitIds.isEmpty) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final staleSessionIds = <String>{};
+
+    for (final entry in List<MapEntry<String, DateTime>>.from(
+      _sessionStateTouchedAt.entries,
+    )) {
+      if (now.difference(entry.value) >= _sessionStateTtl) {
+        staleSessionIds.add(entry.key);
+      }
+    }
+
+    for (final entry in List<MapEntry<String, DateTime>>.from(
+      _recentAcceptBySession.entries,
+    )) {
+      if (now.difference(entry.value) >= _sessionStateTtl) {
+        staleSessionIds.add(entry.key);
+      }
+    }
+
+    for (final sessionId in List<String>.from(_acceptedSessions)) {
+      final touchedAt = _sessionStateTouchedAt[sessionId];
+      if (touchedAt == null || now.difference(touchedAt) >= _sessionStateTtl) {
+        staleSessionIds.add(sessionId);
+      }
+    }
+
+    for (final sessionId in List<String>.from(_sessionCallKitIds.keys)) {
+      final touchedAt = _sessionStateTouchedAt[sessionId];
+      if (touchedAt == null || now.difference(touchedAt) >= _sessionStateTtl) {
+        staleSessionIds.add(sessionId);
+      }
+    }
+
+    if (_lastAcceptedSessionId != null) {
+      staleSessionIds.remove(_lastAcceptedSessionId);
+    }
+    if (_lastNavigatedSessionId != null) {
+      staleSessionIds.remove(_lastNavigatedSessionId);
+    }
+    if (_pendingSessionId != null) {
+      staleSessionIds.remove(_pendingSessionId);
+    }
+    if (_prefetchedSessionId != null) {
+      staleSessionIds.remove(_prefetchedSessionId);
+    }
+
+    if (staleSessionIds.isEmpty) return;
+
+    for (final sessionId in staleSessionIds) {
+      _clearSessionState(sessionId);
+    }
+    debugPrint(
+      '🧹 VoIPService: Pruned stale session state for ${staleSessionIds.length} session(s)',
+    );
+  }
+
+  /// Деинициализация VoIP сервиса (например, при logout).
+  Future<void> deinitialize() async {
+    if (!_initialized &&
+        !_initializing &&
+        _tokenRefreshSub == null &&
+        _foregroundMessageSub == null &&
+        _callKitSubscription == null) {
+      return;
+    }
+
+    debugPrint('🔔 VoIPService: Deinitializing...');
+    _initializing = false;
+
+    final tokenSub = _tokenRefreshSub;
+    _tokenRefreshSub = null;
+    if (tokenSub != null) {
+      await tokenSub.cancel();
+    }
+
+    final foregroundSub = _foregroundMessageSub;
+    _foregroundMessageSub = null;
+    if (foregroundSub != null) {
+      await foregroundSub.cancel();
+    }
+
+    final callKitSub = _callKitSubscription;
+    _callKitSubscription = null;
+    if (callKitSub != null) {
+      await callKitSub.cancel();
+    }
+
+    _resetInMemoryState();
+    _initialized = false;
+    debugPrint('✅ VoIPService: Deinitialized');
+  }
+
   /// Сохранение FCM токена в Firestore
   Future<void> _saveVoipToken(String token) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        debugPrint('⚠️ VoIPService: No authenticated user, skipping token save');
+        debugPrint(
+            '⚠️ VoIPService: No authenticated user, skipping token save');
         return;
       }
 
@@ -165,7 +319,8 @@ class VoIPService {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        debugPrint('⚠️ VoIPService: No authenticated user, skipping PushKit token save');
+        debugPrint(
+            '⚠️ VoIPService: No authenticated user, skipping PushKit token save');
         return;
       }
 
@@ -208,6 +363,7 @@ class VoIPService {
       final callKitId = const Uuid().v4();
       if (sessionId.isNotEmpty) {
         _sessionCallKitIds[sessionId] = callKitId;
+        _touchSessionState(sessionId);
         _lastCallKitId = callKitId;
       }
       final callKitParams = CallKitParams(
@@ -323,159 +479,158 @@ class VoIPService {
   /// Пользователь принял звонок
   /// Пользователь принял звонок
   Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
-  if (data == null) return;
+    if (data == null) return;
 
-  final extra = data['extra'] is Map
-      ? Map<String, dynamic>.from(data['extra'] as Map)
-      : <String, dynamic>{};
-  final rawSessionId =
-      extra['sessionId'] as String? ?? data['sessionId'] as String?;
-  final sessionId = rawSessionId?.trim();
-  final callKitId =
-      data['id'] as String? ?? extra['callKitId'] as String?;
-  if (callKitId != null) {
-    _lastCallKitId = callKitId;
-  }
-  if (sessionId != null && callKitId != null) {
-    _sessionCallKitIds[sessionId] = callKitId;
-  }
-  if (sessionId == null || sessionId.isEmpty) {
-    debugPrint('❌ VoIPService: No sessionId in accept event');
-    return;
-  }
+    final extra = data['extra'] is Map
+        ? Map<String, dynamic>.from(data['extra'] as Map)
+        : <String, dynamic>{};
+    final rawSessionId =
+        extra['sessionId'] as String? ?? data['sessionId'] as String?;
+    final sessionId = rawSessionId?.trim();
+    final callKitId = data['id'] as String? ?? extra['callKitId'] as String?;
+    if (callKitId != null) {
+      _lastCallKitId = callKitId;
+    }
+    if (sessionId != null && callKitId != null) {
+      _sessionCallKitIds[sessionId] = callKitId;
+    }
+    if (sessionId == null || sessionId.isEmpty) {
+      debugPrint('❌ VoIPService: No sessionId in accept event');
+      return;
+    }
+    _touchSessionState(sessionId);
 
-  if (callKitId != null && _handledCallKitAcceptIds.contains(callKitId)) {
-    debugPrint('⚠️ VoIPService: Duplicate accept event (callKitId): $callKitId');
-    return;
-  }
-
-  final lastAccept = _recentAcceptBySession[sessionId];
-  if (lastAccept != null &&
-      DateTime.now().difference(lastAccept) <
-          const Duration(seconds: 30)) {
-    debugPrint('⚠️ VoIPService: Duplicate accept event (time window)');
-    return;
-  }
-
-  if (_acceptedSessions.contains(sessionId)) {
-    debugPrint('⚠️ VoIPService: Call already accepted: $sessionId');
-    return;
-  }
-  if (_acceptInProgress.contains(sessionId)) {
-    debugPrint('⚠️ VoIPService: Accept already in progress for $sessionId');
-    return;
-  }
-  if (callKitId != null) {
-    _handledCallKitAcceptIds.add(callKitId);
-  }
-  _recentAcceptBySession[sessionId] = DateTime.now();
-  _acceptInProgress.add(sessionId);
-  final isSameSession = _lastAcceptedSessionId == sessionId;
-  _lastAcceptedSessionId = sessionId;
-  _lastAcceptedIsTutor = false;
-  _lastRoomUrl = null;
-  _lastMeetingToken = null;
-  _lastRoomName = null;
-  if (!isSameSession) {
-    _lastNavigatedSessionId = null;
-    _lastNavigatedIsTutor = null;
-  }
-
-  debugPrint('✅ VoIPService: Call accepted: $sessionId');
-
-  try {
-    final payloadRoomUrl = extra['roomUrl'] ?? data['roomUrl'];
-    final payloadMeetingToken = extra['meetingToken'] ?? data['meetingToken'];
-    final payloadRoomName = extra['roomName'] ?? data['roomName'];
-    final hasPayloadRoomUrl =
-        payloadRoomUrl is String && payloadRoomUrl.isNotEmpty;
-    final hasPayloadMeetingToken =
-        payloadMeetingToken is String && payloadMeetingToken.isNotEmpty;
-    _lastAcceptedIsTutor = !(hasPayloadRoomUrl || hasPayloadMeetingToken);
-
-    // Если в payload уже есть данные комнаты, значит это студент
-    if (hasPayloadRoomUrl || hasPayloadMeetingToken) {
-      _lastAcceptedIsTutor = false;
-      _lastRoomUrl = hasPayloadRoomUrl ? payloadRoomUrl as String : null;
-      _lastMeetingToken =
-          hasPayloadMeetingToken ? payloadMeetingToken as String : null;
-      _lastRoomName = payloadRoomName is String ? payloadRoomName : null;
-      unawaited(_prefetchSessionTokens(sessionId));
-      _acceptedSessions.add(sessionId);
-
-      // Navigate FIRST, then update Firestore in the background.
-      _tryNavigateToVideoCall(
-        sessionId: sessionId,
-        isTutor: false,
-        roomUrl: _lastRoomUrl,
-        meetingToken: _lastMeetingToken,
-        roomName: _lastRoomName,
-      );
-      debugPrint('✅ VoIPService: Student navigation triggered (no acceptCall)');
-
-      // Firestore metadata write — fire-and-forget, not needed for navigation
-      unawaited(_firestore.collection('videoSessions').doc(sessionId).update({
-        'studentNavigationTriggered': true,
-        'navigationTimestamp': FieldValue.serverTimestamp(),
-      }).catchError((_) {}));
+    if (callKitId != null && _handledCallKitAcceptIds.contains(callKitId)) {
+      debugPrint(
+          '⚠️ VoIPService: Duplicate accept event (callKitId): $callKitId');
       return;
     }
 
-    // Navigate to VideoCallPage IMMEDIATELY — before acceptCall completes.
-    // VideoCallPage will show a loading state; its StreamBuilder will pick up
-    // the room URL once acceptCall writes it to Firestore.
-    _lastAcceptedIsTutor = true;
-    _acceptedSessions.add(sessionId);
+    final lastAccept = _recentAcceptBySession[sessionId];
+    if (lastAccept != null &&
+        DateTime.now().difference(lastAccept) < const Duration(seconds: 30)) {
+      debugPrint('⚠️ VoIPService: Duplicate accept event (time window)');
+      return;
+    }
 
-    _tryNavigateToVideoCall(
-      sessionId: sessionId,
-      isTutor: true,
-    );
-    debugPrint('🎬 VoIPService: Navigated to VideoCallPage (tutor, instant)');
+    if (_acceptedSessions.contains(sessionId)) {
+      debugPrint('⚠️ VoIPService: Call already accepted: $sessionId');
+      return;
+    }
+    if (_acceptInProgress.contains(sessionId)) {
+      debugPrint('⚠️ VoIPService: Accept already in progress for $sessionId');
+      return;
+    }
+    if (callKitId != null) {
+      _handledCallKitAcceptIds.add(callKitId);
+    }
+    _recentAcceptBySession[sessionId] = DateTime.now();
+    _acceptInProgress.add(sessionId);
+    final isSameSession = _lastAcceptedSessionId == sessionId;
+    _lastAcceptedSessionId = sessionId;
+    _lastAcceptedIsTutor = false;
+    _lastRoomUrl = null;
+    _lastMeetingToken = null;
+    _lastRoomName = null;
+    if (!isSameSession) {
+      _lastNavigatedSessionId = null;
+      _lastNavigatedIsTutor = null;
+    }
 
-    // Call acceptCall in the background — creates the Daily room and writes
-    // dailyRoomUrl to the session document. VideoCallPage's StreamBuilder
-    // reacts to this update and fetches a meeting token automatically.
-    unawaited(() async {
-      try {
-        debugPrint('☁️ VoIPService: Calling acceptCall function...');
-        final result = await _functions
-            .httpsCallable('acceptCall')
-            .call({'sessionId': sessionId});
+    debugPrint('✅ VoIPService: Call accepted: $sessionId');
 
-        final responseData = result.data as Map<String, dynamic>;
-        final status = responseData['status'];
-        final responseRoomUrl = responseData['roomUrl'];
-        final responseMeetingToken = responseData['meetingToken'];
-        final responseRoomName = responseData['roomName'];
+    try {
+      final payloadRoomUrl = extra['roomUrl'] ?? data['roomUrl'];
+      final payloadMeetingToken = extra['meetingToken'] ?? data['meetingToken'];
+      final payloadRoomName = extra['roomName'] ?? data['roomName'];
+      final hasPayloadRoomUrl =
+          payloadRoomUrl is String && payloadRoomUrl.isNotEmpty;
+      final hasPayloadMeetingToken =
+          payloadMeetingToken is String && payloadMeetingToken.isNotEmpty;
+      _lastAcceptedIsTutor = !(hasPayloadRoomUrl || hasPayloadMeetingToken);
 
-        debugPrint('✅ VoIPService: acceptCall response: status=$status');
+      // Если в payload уже есть данные комнаты, значит это студент
+      if (hasPayloadRoomUrl || hasPayloadMeetingToken) {
+        _lastAcceptedIsTutor = false;
+        _lastRoomUrl = hasPayloadRoomUrl ? payloadRoomUrl : null;
+        _lastMeetingToken = hasPayloadMeetingToken ? payloadMeetingToken : null;
+        _lastRoomName = payloadRoomName is String ? payloadRoomName : null;
+        unawaited(_prefetchSessionTokens(sessionId));
+        _acceptedSessions.add(sessionId);
 
-        if (status == 'connected' && responseRoomUrl != null) {
-          _lastRoomUrl = responseRoomUrl is String ? responseRoomUrl : null;
-          _lastMeetingToken =
-              responseMeetingToken is String ? responseMeetingToken : null;
-          _lastRoomName =
-              responseRoomName is String ? responseRoomName : null;
-        }
-      } catch (e) {
-        debugPrint('❌ VoIPService: acceptCall failed: $e');
-        await _tryRecoverActiveSession(sessionId);
+        // Navigate FIRST, then update Firestore in the background.
+        _tryNavigateToVideoCall(
+          sessionId: sessionId,
+          isTutor: false,
+          roomUrl: _lastRoomUrl,
+          meetingToken: _lastMeetingToken,
+          roomName: _lastRoomName,
+        );
+        debugPrint(
+            '✅ VoIPService: Student navigation triggered (no acceptCall)');
+
+        // Firestore metadata write — fire-and-forget, not needed for navigation
+        unawaited(_firestore.collection('videoSessions').doc(sessionId).update({
+          'studentNavigationTriggered': true,
+          'navigationTimestamp': FieldValue.serverTimestamp(),
+        }).catchError((_) {}));
+        return;
       }
 
-      unawaited(_prefetchSessionTokens(sessionId));
-      unawaited(_firestore.collection('videoSessions').doc(sessionId).update({
-        'tutorNavigationTriggered': true,
-        'navigationTimestamp': FieldValue.serverTimestamp(),
-      }).catchError((_) {}));
-    }());
+      // Navigate to VideoCallPage IMMEDIATELY — before acceptCall completes.
+      // VideoCallPage will show a loading state; its StreamBuilder will pick up
+      // the room URL once acceptCall writes it to Firestore.
+      _lastAcceptedIsTutor = true;
+      _acceptedSessions.add(sessionId);
 
-  } catch (e) {
-    debugPrint('❌ VoIPService: Error in call accept flow: $e');
-  } finally {
-    _acceptInProgress.remove(sessionId);
+      _tryNavigateToVideoCall(
+        sessionId: sessionId,
+        isTutor: true,
+      );
+      debugPrint('🎬 VoIPService: Navigated to VideoCallPage (tutor, instant)');
+
+      // Call acceptCall in the background — creates the Daily room and writes
+      // dailyRoomUrl to the session document. VideoCallPage's StreamBuilder
+      // reacts to this update and fetches a meeting token automatically.
+      unawaited(() async {
+        try {
+          debugPrint('☁️ VoIPService: Calling acceptCall function...');
+          final result = await _functions
+              .httpsCallable('acceptCall')
+              .call({'sessionId': sessionId});
+
+          final responseData = result.data as Map<String, dynamic>;
+          final status = responseData['status'];
+          final responseRoomUrl = responseData['roomUrl'];
+          final responseMeetingToken = responseData['meetingToken'];
+          final responseRoomName = responseData['roomName'];
+
+          debugPrint('✅ VoIPService: acceptCall response: status=$status');
+
+          if (status == 'connected' && responseRoomUrl != null) {
+            _lastRoomUrl = responseRoomUrl is String ? responseRoomUrl : null;
+            _lastMeetingToken =
+                responseMeetingToken is String ? responseMeetingToken : null;
+            _lastRoomName =
+                responseRoomName is String ? responseRoomName : null;
+          }
+        } catch (e) {
+          debugPrint('❌ VoIPService: acceptCall failed: $e');
+          await _tryRecoverActiveSession(sessionId);
+        }
+
+        unawaited(_prefetchSessionTokens(sessionId));
+        unawaited(_firestore.collection('videoSessions').doc(sessionId).update({
+          'tutorNavigationTriggered': true,
+          'navigationTimestamp': FieldValue.serverTimestamp(),
+        }).catchError((_) {}));
+      }());
+    } catch (e) {
+      debugPrint('❌ VoIPService: Error in call accept flow: $e');
+    } finally {
+      _acceptInProgress.remove(sessionId);
+    }
   }
-}
 
   Future<bool> _tryRecoverActiveSession(String sessionId) async {
     try {
@@ -497,6 +652,7 @@ class VoIPService {
       _lastRoomUrl = roomUrl;
       _lastRoomName = data['dailyRoomName'] as String?;
       _lastMeetingToken = null;
+      _touchSessionState(sessionId);
       unawaited(_prefetchSessionTokens(sessionId));
       return true;
     } catch (e) {
@@ -559,12 +715,10 @@ class VoIPService {
     final prefetchedRoomName = _getPrefetchedRoomName(sessionId);
     final usePrefetch = prefetchedToken != null && prefetchedRoomUrl != null;
     final effectiveMeetingToken = usePrefetch ? prefetchedToken : meetingToken;
-    final effectiveRoomUrl = usePrefetch
-        ? prefetchedRoomUrl
-        : (roomUrl ?? prefetchedRoomUrl);
-    final effectiveRoomName = usePrefetch
-        ? prefetchedRoomName
-        : (roomName ?? prefetchedRoomName);
+    final effectiveRoomUrl =
+        usePrefetch ? prefetchedRoomUrl : (roomUrl ?? prefetchedRoomUrl);
+    final effectiveRoomName =
+        usePrefetch ? prefetchedRoomName : (roomName ?? prefetchedRoomName);
     final params = <String, String>{
       'videoDocRef': sessionId,
     };
@@ -602,6 +756,7 @@ class VoIPService {
     String? meetingToken,
     String? roomName,
   }) {
+    _touchSessionState(sessionId);
     _pendingSessionId = sessionId;
     _pendingIsTutor = isTutor;
     _pendingRoomUrl = roomUrl;
@@ -653,7 +808,8 @@ class VoIPService {
     // Only care about activation, and only if we haven't already navigated
     if (!isActive) return;
     if (_lastNavigatedSessionId != null) {
-      debugPrint('ℹ️ VoIPService: Already navigated, skipping audio session toggle');
+      debugPrint(
+          'ℹ️ VoIPService: Already navigated, skipping audio session toggle');
       return;
     }
     if (_lastAcceptedSessionId != null &&
@@ -674,15 +830,15 @@ class VoIPService {
   Future<void> _handleCallDecline(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-  final extra = data['extra'] is Map
-      ? Map<String, dynamic>.from(data['extra'] as Map)
-      : <String, dynamic>{};
-  final sessionId =
-      extra['sessionId'] as String? ?? data['sessionId'] as String?;
-  if (sessionId == null) {
-    debugPrint('❌ VoIPService: No sessionId in decline event');
-    return;
-  }
+    final extra = data['extra'] is Map
+        ? Map<String, dynamic>.from(data['extra'] as Map)
+        : <String, dynamic>{};
+    final sessionId =
+        extra['sessionId'] as String? ?? data['sessionId'] as String?;
+    if (sessionId == null) {
+      debugPrint('❌ VoIPService: No sessionId in decline event');
+      return;
+    }
 
     _clearSessionState(sessionId);
     debugPrint('❌ VoIPService: Call declined: $sessionId');
@@ -693,59 +849,55 @@ class VoIPService {
           .httpsCallable('declineCall')
           .call({'sessionId': sessionId});
 
-    debugPrint('✅ VoIPService: declineCall completed');
-  } catch (e) {
-    debugPrint('❌ VoIPService: Error declining call: $e');
-  }
-
+      debugPrint('✅ VoIPService: declineCall completed');
+    } catch (e) {
+      debugPrint('❌ VoIPService: Error declining call: $e');
+    }
   }
 
   /// Звонок завершен
   Future<void> _handleCallEnded(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-  final extra = data['extra'] is Map
-      ? Map<String, dynamic>.from(data['extra'] as Map)
-      : <String, dynamic>{};
-  final sessionId =
-      extra['sessionId'] as String? ?? data['sessionId'] as String?;
-  if (sessionId == null) {
-    debugPrint('❌ VoIPService: No sessionId in ended event');
-    return;
-  }
+    final extra = data['extra'] is Map
+        ? Map<String, dynamic>.from(data['extra'] as Map)
+        : <String, dynamic>{};
+    final sessionId =
+        extra['sessionId'] as String? ?? data['sessionId'] as String?;
+    if (sessionId == null) {
+      debugPrint('❌ VoIPService: No sessionId in ended event');
+      return;
+    }
 
     _clearSessionState(sessionId);
     debugPrint('🔚 VoIPService: Call ended: $sessionId');
 
     try {
       // Вызываем Cloud Function endSession
-      await _functions
-          .httpsCallable('endSession')
-          .call({
-            'sessionId': sessionId,
-            'endReason': 'user_ended',
-          });
+      await _functions.httpsCallable('endSession').call({
+        'sessionId': sessionId,
+        'endReason': 'user_ended',
+      });
 
-    debugPrint('✅ VoIPService: endSession completed');
-  } catch (e) {
-    debugPrint('❌ VoIPService: Error ending session: $e');
-  }
-
+      debugPrint('✅ VoIPService: endSession completed');
+    } catch (e) {
+      debugPrint('❌ VoIPService: Error ending session: $e');
+    }
   }
 
   /// Таймаут звонка (45 секунд без ответа)
   Future<void> _handleCallTimeout(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-  final extra = data['extra'] is Map
-      ? Map<String, dynamic>.from(data['extra'] as Map)
-      : <String, dynamic>{};
-  final sessionId =
-      extra['sessionId'] as String? ?? data['sessionId'] as String?;
-  if (sessionId == null) {
-    debugPrint('❌ VoIPService: No sessionId in timeout event');
-    return;
-  }
+    final extra = data['extra'] is Map
+        ? Map<String, dynamic>.from(data['extra'] as Map)
+        : <String, dynamic>{};
+    final sessionId =
+        extra['sessionId'] as String? ?? data['sessionId'] as String?;
+    if (sessionId == null) {
+      debugPrint('❌ VoIPService: No sessionId in timeout event');
+      return;
+    }
 
     _clearSessionState(sessionId);
     debugPrint('⏰ VoIPService: Call timeout: $sessionId');
@@ -754,6 +906,7 @@ class VoIPService {
   }
 
   void _clearSessionState(String sessionId) {
+    _sessionStateTouchedAt.remove(sessionId);
     _acceptInProgress.remove(sessionId);
     _acceptedSessions.remove(sessionId);
     _recentAcceptBySession.remove(sessionId);
@@ -790,6 +943,7 @@ class VoIPService {
   }
 
   Future<void> _prefetchSessionTokens(String sessionId) async {
+    _touchSessionState(sessionId);
     if (_prefetchInProgress && _prefetchedSessionId == sessionId) return;
     _prefetchInProgress = true;
     _prefetchedSessionId = sessionId;

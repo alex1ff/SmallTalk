@@ -108,6 +108,7 @@ class _MyAppState extends State<MyApp> {
           .map((e) => getRoute(e))
           .toList();
   late Stream<BaseAuthUser> userStream;
+  StreamSubscription<BaseAuthUser>? _userStreamSub;
 
   final authUserSub = authenticatedUserStream.listen((_) {});
   StreamSubscription? _jwtTokenSub;
@@ -118,21 +119,18 @@ class _MyAppState extends State<MyApp> {
 
     _appStateNotifier = AppStateNotifier.instance;
     _router = createRouter(_appStateNotifier);
-    userStream = smallTalkFirebaseUserStream()
-      ..listen((user) {
-        _appStateNotifier.update(user);
-        _appStateNotifier.stopShowingSplashImage();
-      });
+    userStream = smallTalkFirebaseUserStream();
+    _userStreamSub = userStream.listen((user) {
+      _appStateNotifier.update(user);
+      _appStateNotifier.stopShowingSplashImage();
+    });
     _jwtTokenSub = jwtTokenStream.listen((_) {});
-    Future.delayed(
-      Duration(milliseconds: 3000),
-      () => _appStateNotifier.stopShowingSplashImage(),
-    );
   }
 
   @override
   void dispose() {
     authUserSub.cancel();
+    _userStreamSub?.cancel();
     _jwtTokenSub?.cancel();
 
     super.dispose();

@@ -2,21 +2,16 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.dart';
 import '/backend/schema/enums/enums.dart';
-import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/flutter_flow/flutter_flow_widgets.dart';
 import '/students_pages/components/new_word/new_word_widget.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 
 import '/services/voip_service.dart';
@@ -56,6 +51,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   String? _lastLoggedTokenSource;
   String? _lastLoggedRoomName;
   String? _lastLoggedRoomUrl;
+  String? _deepgramAccessToken;
+  bool _deepgramTokenLoading = false;
 
   @override
   void initState() {
@@ -74,6 +71,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     if (!hasInitialRoom || !hasInitialToken) {
       unawaited(_fetchSessionTokens());
     }
+    unawaited(_fetchDeepgramToken());
   }
 
   @override
@@ -85,6 +83,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       _lastTokenSessionId = null;
       _didNavigateToSummary = false;
       unawaited(_fetchSessionTokens(force: true));
+      unawaited(_fetchDeepgramToken(force: true));
     }
   }
 
@@ -99,7 +98,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     final sessionId = widget.videoDocRef?.id;
     if (sessionId == null || sessionId.isEmpty) return null;
     if (_tokenLoading) return _freshMeetingToken;
-    if (!force && _lastTokenSessionId == sessionId && _freshMeetingToken != null) {
+    if (!force &&
+        _lastTokenSessionId == sessionId &&
+        _freshMeetingToken != null) {
       return _freshMeetingToken;
     }
 
@@ -127,6 +128,53 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         });
       }
     }
+  }
+
+  Future<String?> _fetchDeepgramToken({bool force = false}) async {
+    final sessionId = widget.videoDocRef?.id;
+    if (sessionId == null || sessionId.isEmpty) return null;
+    if (_deepgramTokenLoading) return _deepgramAccessToken;
+    if (!force && _nonEmptyValue(_deepgramAccessToken) != null) {
+      return _deepgramAccessToken;
+    }
+
+    setState(() {
+      _deepgramTokenLoading = true;
+    });
+
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('getDeepgramToken')
+          .call({
+        'sessionId': sessionId,
+      });
+      final data = result.data as Map<String, dynamic>? ?? {};
+      _deepgramAccessToken = data['accessToken'] as String?;
+      return _deepgramAccessToken;
+    } catch (_) {
+      return _deepgramAccessToken;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _deepgramTokenLoading = false;
+        });
+      }
+    }
+  }
+
+  String? _nonEmptyValue(String? value) {
+    if (value == null) return null;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    final lowered = trimmed.toLowerCase();
+    if (lowered == 'null' ||
+        lowered == 'undefined' ||
+        lowered == 'false' ||
+        lowered == '0' ||
+        lowered == 'none') {
+      return null;
+    }
+    return trimmed;
   }
 
   bool _isValidRoomUrl(String value) {
@@ -197,27 +245,14 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       stream: _model.sessionStream,
       builder: (context, snapshot) {
         final videoCallPageVideoSessionsRecord = snapshot.data;
-        String? _nonEmpty(String? value) {
-          if (value == null) return null;
-          final trimmed = value.trim();
-          if (trimmed.isEmpty) return null;
-          final lowered = trimmed.toLowerCase();
-          if (lowered == 'null' ||
-              lowered == 'undefined' ||
-              lowered == 'false' ||
-              lowered == '0' ||
-              lowered == 'none') {
-            return null;
-          }
-          return trimmed;
-        }
+        String? _nonEmpty(String? value) => _nonEmptyValue(value);
 
         final resolvedRoomUrl = _nonEmpty(_freshRoomUrl) ??
             _nonEmpty(videoCallPageVideoSessionsRecord?.dailyRoomUrl) ??
             _nonEmpty(widget.initialRoomUrl) ??
             '';
-        final resolvedMeetingToken =
-            _nonEmpty(_freshMeetingToken) ?? _nonEmpty(widget.initialMeetingToken);
+        final resolvedMeetingToken = _nonEmpty(_freshMeetingToken) ??
+            _nonEmpty(widget.initialMeetingToken);
         final resolvedRoomName =
             _nonEmpty(videoCallPageVideoSessionsRecord?.dailyRoomName) ??
                 _nonEmpty(widget.initialRoomName);
@@ -225,11 +260,10 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
               videoCallPageVideoSessionsRecord?.language,
             ) ??
             'en';
-        final sessionStatus = _nonEmpty(videoCallPageVideoSessionsRecord?.status);
-        final isStudent =
-            currentUserUid != null &&
-            currentUserUid ==
-                _nonEmpty(videoCallPageVideoSessionsRecord?.studentId);
+        final sessionStatus =
+            _nonEmpty(videoCallPageVideoSessionsRecord?.status);
+        final isStudent = currentUserUid ==
+            _nonEmpty(videoCallPageVideoSessionsRecord?.studentId);
 
         if (kDebugMode) {
           final tokenSource = _nonEmpty(_freshMeetingToken) != null
@@ -287,76 +321,79 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             key: scaffoldKey,
             backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
             body: Container(
+              width: double.infinity,
+              height: double.infinity,
+              child: custom_widgets.MinimalDailyWidget(
                 width: double.infinity,
                 height: double.infinity,
-                child: custom_widgets.MinimalDailyWidget(
-                  width: double.infinity,
-                  height: double.infinity,
-                  roomUrl: resolvedRoomUrl,
-                  meetingToken: resolvedMeetingToken,
-                  tokenRefreshCallback: () async {
-                    return await _fetchSessionTokens(force: true);
-                  },
-                  sessionStatus: sessionStatus,
-                  isStudent: isStudent,
-                  deepgramApiKey: 'REDACTED_DEEPGRAM_KEY',
-                  deepgramLanguage: resolvedLanguage,
-                  username: currentUserDisplayName,
-                  enableDeepgram: true,
-                  actionCallback: (word, sentence) async {
-                    await showModalBottomSheet(
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      context: context,
-                      builder: (context) {
-                        return WebViewAware(
-                          child: GestureDetector(
-                            onTap: () {
-                              FocusScope.of(context).unfocus();
-                              FocusManager.instance.primaryFocus?.unfocus();
-                            },
-                            child: Padding(
-                              padding: MediaQuery.viewInsetsOf(context),
-                              child: NewWordWidget(
-                                word: word,
-                                langCode: resolvedLanguage,
-                              ),
+                roomUrl: resolvedRoomUrl,
+                meetingToken: resolvedMeetingToken,
+                tokenRefreshCallback: () async {
+                  return await _fetchSessionTokens(force: true);
+                },
+                deepgramTokenRefreshCallback: () async {
+                  return await _fetchDeepgramToken(force: true);
+                },
+                sessionStatus: sessionStatus,
+                isStudent: isStudent,
+                deepgramApiKey: _nonEmpty(_deepgramAccessToken),
+                deepgramLanguage: resolvedLanguage,
+                username: currentUserDisplayName,
+                enableDeepgram: true,
+                actionCallback: (word, sentence) async {
+                  await showModalBottomSheet(
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    context: context,
+                    builder: (context) {
+                      return WebViewAware(
+                        child: GestureDetector(
+                          onTap: () {
+                            FocusScope.of(context).unfocus();
+                            FocusManager.instance.primaryFocus?.unfocus();
+                          },
+                          child: Padding(
+                            padding: MediaQuery.viewInsetsOf(context),
+                            child: NewWordWidget(
+                              word: word,
+                              langCode: resolvedLanguage,
                             ),
                           ),
+                        ),
+                      );
+                    },
+                  ).then((value) => safeSetState(() {}));
+                },
+                endCallCallback: () async {
+                  unawaited(
+                    () async {
+                      try {
+                        await FirebaseFunctions.instance
+                            .httpsCallable('endSession')
+                            .call({
+                          "sessionId": widget.videoDocRef!.id,
+                        });
+                        _model.cloudFunctiona1y =
+                            EndSessionCloudFunctionCallResponse(
+                          succeeded: true,
                         );
-                      },
-                    ).then((value) => safeSetState(() {}));
-                  },
-                  endCallCallback: () async {
-                    unawaited(
-                      () async {
-                        try {
-                          await FirebaseFunctions.instance
-                              .httpsCallable('endSession')
-                              .call({
-                            "sessionId": widget!.videoDocRef!.id,
-                          });
-                          _model.cloudFunctiona1y =
-                              EndSessionCloudFunctionCallResponse(
-                            succeeded: true,
-                          );
-                        } on FirebaseFunctionsException catch (error) {
-                          _model.cloudFunctiona1y =
-                              EndSessionCloudFunctionCallResponse(
-                            errorCode: error.code,
-                            succeeded: false,
-                          );
-                        }
-                      }(),
-                    );
-                    await _navigateToSummary(videoCallPageVideoSessionsRecord);
-                    safeSetState(() {});
-                  },
-                  participantLeftCallback: () async {
-                    await _navigateToSummary(videoCallPageVideoSessionsRecord);
-                  },
-                ),
+                      } on FirebaseFunctionsException catch (error) {
+                        _model.cloudFunctiona1y =
+                            EndSessionCloudFunctionCallResponse(
+                          errorCode: error.code,
+                          succeeded: false,
+                        );
+                      }
+                    }(),
+                  );
+                  await _navigateToSummary(videoCallPageVideoSessionsRecord);
+                  safeSetState(() {});
+                },
+                participantLeftCallback: () async {
+                  await _navigateToSummary(videoCallPageVideoSessionsRecord);
+                },
               ),
+            ),
           ),
         );
       },

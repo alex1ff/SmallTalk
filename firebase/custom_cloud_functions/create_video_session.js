@@ -8,6 +8,13 @@ const {
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const matchDebugSampleRateRaw = Number.parseFloat(
+  process.env.MATCH_DEBUG_SAMPLE_RATE || "0.1",
+);
+const MATCH_DEBUG_SAMPLE_RATE = Number.isFinite(matchDebugSampleRateRaw)
+  ? Math.min(Math.max(matchDebugSampleRateRaw, 0), 1)
+  : 0.1;
+const MAX_TUTOR_DEBUG_SAMPLES = 8;
 
 /*
 ОБНОВЛЁННАЯ ФУНКЦИЯ: createVideoSession
@@ -17,7 +24,7 @@ const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 exports.createVideoSession = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .https.onCall(async (data, context) => {
-    console.log("📹 Creating video session with filters...");
+    console.log("📹 createVideoSession started");
 
     try {
       if (!context.auth) {
@@ -32,18 +39,6 @@ exports.createVideoSession = functions
       // Получаем параметры из вызова функции
       const { language, preferredNativeLanguage, preferredCountry } = data;
 
-      console.log("👨‍🎓 Student ID:", studentId);
-      console.log("🌍 Requested language:", language);
-      console.log("🎯 Filters:");
-      console.log(
-        "   - Preferred native language:",
-        preferredNativeLanguage || "Not specified",
-      );
-      console.log(
-        "   - Preferred country:",
-        preferredCountry || "Not specified",
-      );
-
       if (!language) {
         throw new functions.https.HttpsError(
           "invalid-argument",
@@ -53,9 +48,36 @@ exports.createVideoSession = functions
 
       const normalizedLanguage = String(language).trim().toLowerCase();
       const tutorRoles = ["tutor", "native_speaker"];
+      const shouldSampleTutorDebug = Math.random() < MATCH_DEBUG_SAMPLE_RATE;
+      const tutorDebugSamples = [];
+      const tutorFilterStats = {
+        totalCandidates: 0,
+        blockedByStudent: 0,
+        blockedByTutor: 0,
+        availableAfterInFuture: 0,
+        unavailableOrInCall: 0,
+        missingInstructionCode: 0,
+        instructionLanguageMismatch: 0,
+        missingNativeLanguage: 0,
+        nativeLanguageMismatch: 0,
+        missingCountry: 0,
+        countryMismatch: 0,
+        matched: 0,
+      };
+      const addTutorSample = (payload) => {
+        if (!shouldSampleTutorDebug) return;
+        if (tutorDebugSamples.length >= MAX_TUTOR_DEBUG_SAMPLES) return;
+        tutorDebugSamples.push(payload);
+      };
+
+      console.log("📹 createVideoSession params", {
+        studentId,
+        requestedLanguage: normalizedLanguage,
+        preferredNativeLanguage: preferredNativeLanguage || "any",
+        preferredCountry: preferredCountry || "any",
+      });
 
       // Fetch student data and tutor list in parallel for faster startup
-      console.log("🔍 Fetching student + tutors in parallel...");
       const tutorBaseQuery = admin
         .firestore()
         .collection("users")
@@ -65,10 +87,13 @@ exports.createVideoSession = functions
         admin.firestore().collection("users").doc(studentId).get(),
         tutorBaseQuery.get().catch((queryError) => {
           console.error(
-            "❌ Tutor query failed, fallback to all users:",
+            "❌ Tutor query failed (no collection-scan fallback):",
             queryError.message,
           );
-          return admin.firestore().collection("users").get();
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "Tutor query failed. Ensure required Firestore indexes are deployed.",
+          );
         }),
       ]);
 
@@ -87,14 +112,14 @@ exports.createVideoSession = functions
       let tutorsQuery = tutorsQueryResult;
 
       if (tutorsQuery.empty) {
-        console.log("❌ No tutors found for roles:", tutorRoles.join(", "));
+        console.log("📹 createVideoSession no tutors for roles", {
+          roles: tutorRoles,
+        });
         return {
           status: "no_tutors_available",
           message: "No tutors available for this language right now",
         };
       }
-
-      console.log(`📊 Found ${tutorsQuery.size} potential tutors`);
 
       // Получаем черные списки для фильтрации
       const studentBlockedUsers = studentData.blockedUsers || [];
@@ -108,13 +133,12 @@ exports.createVideoSession = functions
         })
         .filter((id) => id !== null);
 
-      console.log("🚫 Student blocked users:", studentBlockedIds);
-
       // Фильтруем преподавателей по всем критериям
       const availableTutors = [];
       const tutorDetails = {}; // Для отладки и приоритизации
 
       for (const doc of tutorsQuery.docs) {
+        tutorFilterStats.totalCandidates += 1;
         const tutorData = doc.data();
         const tutorId = doc.id;
 
@@ -122,7 +146,8 @@ exports.createVideoSession = functions
 
         // 1. Проверяем, не заблокировал ли студент этого преподавателя
         if (studentBlockedIds.includes(tutorId)) {
-          console.log(`🚫 Tutor ${tutorId} is blocked by student - SKIP`);
+          tutorFilterStats.blockedByStudent += 1;
+          addTutorSample({ tutorId, outcome: "skip", reason: "blocked_by_student" });
           continue;
         }
 
@@ -137,11 +162,10 @@ exports.createVideoSession = functions
           .filter((id) => id !== null);
 
         if (tutorBlockedIds.includes(studentId)) {
-          console.log(`🚫 Student is blocked by tutor ${tutorId} - SKIP`);
+          tutorFilterStats.blockedByTutor += 1;
+          addTutorSample({ tutorId, outcome: "skip", reason: "blocked_by_tutor" });
           continue;
         }
-
-        console.log(`✅ Tutor ${tutorId} passed blocklist check`);
 
         // === БАЗОВАЯ ПРОВЕРКА ДОСТУПНОСТИ ===
 
@@ -149,9 +173,12 @@ exports.createVideoSession = functions
           tutorData.availableAfter &&
           tutorData.availableAfter.toDate() > new Date()
         ) {
-          console.log(
-            `⏭️ Tutor ${tutorId} not available yet (availableAfter in future)`,
-          );
+          tutorFilterStats.availableAfterInFuture += 1;
+          addTutorSample({
+            tutorId,
+            outcome: "skip",
+            reason: "available_after_in_future",
+          });
           continue;
         }
 
@@ -162,7 +189,14 @@ exports.createVideoSession = functions
             : (availabilityToday?.enabled ?? true);
 
         if (!isAvailable || tutorData.isInCall) {
-          console.log(`⏭️ Tutor ${tutorId} is not available or in call`);
+          tutorFilterStats.unavailableOrInCall += 1;
+          addTutorSample({
+            tutorId,
+            outcome: "skip",
+            reason: "unavailable_or_in_call",
+            isAvailable: !!isAvailable,
+            isInCall: !!tutorData.isInCall,
+          });
           continue;
         }
 
@@ -175,16 +209,23 @@ exports.createVideoSession = functions
             : "";
 
         if (!instructionCode) {
-          console.log(
-            `⚠️ Tutor ${tutorId} has no language_instruction_NS.code`,
-          );
+          tutorFilterStats.missingInstructionCode += 1;
+          addTutorSample({
+            tutorId,
+            outcome: "skip",
+            reason: "missing_instruction_language_code",
+          });
           continue;
         }
 
         if (instructionCode !== normalizedLanguage) {
-          console.log(
-            `⏭️ Tutor ${tutorId} doesn't match instruction code: ${instructionCode}`,
-          );
+          tutorFilterStats.instructionLanguageMismatch += 1;
+          addTutorSample({
+            tutorId,
+            outcome: "skip",
+            reason: "instruction_language_mismatch",
+            instructionCode,
+          });
           continue;
         }
 
@@ -202,12 +243,22 @@ exports.createVideoSession = functions
               .trim()
               .toLowerCase();
             nativeLanguageMatch = nativeLanguageCode === preferredNative;
-
-            console.log(
-              `🔤 Tutor ${tutorId} native language: ${nativeLanguageCode} (match: ${nativeLanguageMatch})`,
-            );
+            if (!nativeLanguageMatch) {
+              tutorFilterStats.nativeLanguageMismatch += 1;
+              addTutorSample({
+                tutorId,
+                outcome: "skip",
+                reason: "native_language_mismatch",
+                tutorNativeLanguage: nativeLanguageCode,
+              });
+            }
           } else {
-            console.log(`⚠️ Tutor ${tutorId} has no native_language_NS set`);
+            tutorFilterStats.missingNativeLanguage += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "missing_native_language",
+            });
           }
         } else {
           // Если студент не указал предпочтение, любой язык подходит
@@ -223,12 +274,22 @@ exports.createVideoSession = functions
           if (tutorCountry && typeof tutorCountry === "object") {
             const countryCode = tutorCountry.code;
             countryMatch = countryCode === preferredCountry;
-
-            console.log(
-              `🌍 Tutor ${tutorId} country: ${countryCode} (match: ${countryMatch})`,
-            );
+            if (!countryMatch) {
+              tutorFilterStats.countryMismatch += 1;
+              addTutorSample({
+                tutorId,
+                outcome: "skip",
+                reason: "country_mismatch",
+                tutorCountry: countryCode,
+              });
+            }
           } else {
-            console.log(`⚠️ Tutor ${tutorId} has no Country_NS set`);
+            tutorFilterStats.missingCountry += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "missing_country",
+            });
           }
         } else {
           // Если студент не указал предпочтение, любая страна подходит
@@ -238,6 +299,7 @@ exports.createVideoSession = functions
         // Если оба фильтра совпали (или не были указаны), добавляем преподавателя
         if (nativeLanguageMatch && countryMatch) {
           availableTutors.push(tutorId);
+          tutorFilterStats.matched += 1;
 
           // Сохраняем детали для потенциальной приоритизации
           tutorDetails[tutorId] = {
@@ -247,28 +309,63 @@ exports.createVideoSession = functions
             priorityScore: tutorData.priorityScore || 50, // из ТЗ: 100-балльная система
             name: tutorData.display_name || "Tutor",
           };
-
-          console.log(`✅ Tutor ${tutorId} matches all criteria`);
+          addTutorSample({
+            tutorId,
+            outcome: "match",
+            priorityScore: tutorDetails[tutorId].priorityScore,
+          });
         } else {
-          console.log(
-            `⏭️ Tutor ${tutorId} doesn't match preferences (lang: ${nativeLanguageMatch}, country: ${countryMatch})`,
-          );
+          addTutorSample({
+            tutorId,
+            outcome: "skip",
+            reason: "preference_mismatch",
+            nativeLanguageMatch,
+            countryMatch,
+          });
         }
       }
 
+      const filteringSummary = {
+        studentId,
+        requestedLanguage: normalizedLanguage,
+        preferredNativeLanguage: preferredNativeLanguage || "any",
+        preferredCountry: preferredCountry || "any",
+        totalTutorsQueried: tutorsQuery.size,
+        totalCandidatesChecked: tutorFilterStats.totalCandidates,
+        matchedTutors: tutorFilterStats.matched,
+        rejected: {
+          blockedByStudent: tutorFilterStats.blockedByStudent,
+          blockedByTutor: tutorFilterStats.blockedByTutor,
+          availableAfterInFuture: tutorFilterStats.availableAfterInFuture,
+          unavailableOrInCall: tutorFilterStats.unavailableOrInCall,
+          missingInstructionCode: tutorFilterStats.missingInstructionCode,
+          instructionLanguageMismatch:
+            tutorFilterStats.instructionLanguageMismatch,
+          missingNativeLanguage: tutorFilterStats.missingNativeLanguage,
+          nativeLanguageMismatch: tutorFilterStats.nativeLanguageMismatch,
+          missingCountry: tutorFilterStats.missingCountry,
+          countryMismatch: tutorFilterStats.countryMismatch,
+        },
+        sampledDebugEnabled: shouldSampleTutorDebug,
+      };
+      if (shouldSampleTutorDebug && tutorDebugSamples.length > 0) {
+        filteringSummary.sample = tutorDebugSamples;
+      }
+      console.log("📊 Tutor filtering summary", filteringSummary);
+
       if (availableTutors.length === 0) {
-        console.log("❌ No tutors match the student preferences");
+        console.log("📹 createVideoSession no matching tutors after filtering", {
+          studentId,
+          requestedLanguage: normalizedLanguage,
+          preferredNativeLanguage: preferredNativeLanguage || "any",
+          preferredCountry: preferredCountry || "any",
+        });
         return {
           status: "no_tutors_available",
           message:
             "No tutors available matching your preferences. Try adjusting your filters.",
         };
       }
-
-      console.log(
-        `✅ Found ${availableTutors.length} tutors matching all criteria`,
-      );
-      console.log("👥 Available tutors:", availableTutors);
 
       // ОПЦИОНАЛЬНО: Сортируем преподавателей по приоритету (из ТЗ)
       // Чем ниже priorityScore, тем выше в очереди
@@ -277,13 +374,13 @@ exports.createVideoSession = functions
         const scoreB = tutorDetails[b].priorityScore;
         return scoreA - scoreB; // по возрастанию (меньше = выше приоритет)
       });
-
-      console.log(
-        "📊 Tutors sorted by priority:",
-        availableTutors.map(
-          (id) => `${id} (score: ${tutorDetails[id].priorityScore})`,
-        ),
-      );
+      console.log("📊 Matched tutors after sorting", {
+        count: availableTutors.length,
+        topTutorPreview: availableTutors.slice(0, 3).map((id) => ({
+          tutorId: id,
+          priorityScore: tutorDetails[id].priorityScore,
+        })),
+      });
 
       // Создаем videoSession
       const expiresAt = new Date();

@@ -1,0 +1,285 @@
+{
+  "generated_at_utc": "2026-03-04T07:20:50Z",
+  "project": "SmallTalk",
+  "audit_cycle": "cycle_2_retest_execution",
+  "scope": {
+    "coverage": "full_project_including_generated_code",
+    "platform_priority": [
+      "ios",
+      "android"
+    ]
+  },
+  "repository": {
+    "dart_files_total": 233,
+    "dart_loc_total": 61492,
+    "dart_loc_non_generated_non_custom": 49978,
+    "dart_loc_custom_code": 5184,
+    "tests_detected": 1,
+    "heaviest_dart_files": [
+      {
+        "path": "lib/authorization/acquaintance_s_t_u_d_e_n_t/acquaintance_s_t_u_d_e_n_t_widget.dart",
+        "loc": 3351
+      },
+      {
+        "path": "lib/shared_pages/profile_edit/profile_edit_widget.dart",
+        "loc": 2642
+      },
+      {
+        "path": "lib/students_pages/native_speaker_page/native_speaker_page_widget.dart",
+        "loc": 2016
+      },
+      {
+        "path": "lib/custom_code/widgets/minimal_daily_widget.dart",
+        "loc": 2238
+      },
+      {
+        "path": "lib/services/voip_service.dart",
+        "loc": 867
+      }
+    ]
+  },
+  "quality_gates": {
+    "flutter_analyze": {
+      "command": "flutter analyze",
+      "status": "passed",
+      "issues_total": 0,
+      "warnings": 0,
+      "info": 0,
+      "errors": 0,
+      "top_issue_files": []
+    },
+    "flutter_test": {
+      "command": "flutter test",
+      "status": "passed",
+      "tests_total": 1,
+      "notes": "Only localization initialization widget test exists; critical runtime flows are still undercovered."
+    },
+    "integration_smoke_test": {
+      "command_android": "flutter test integration_test/critical_flows_smoke_test.dart -d emulator-5554",
+      "command_ios_simulator": "flutter test integration_test/critical_flows_smoke_test.dart -d 0C14CC14-2144-458F-89DE-90C2D9F27893",
+      "command_ios_usb": "flutter test integration_test/critical_flows_smoke_test.dart -d 00008101-00056C640A88001E",
+      "android_status": "passed",
+      "ios_simulator_status": "passed",
+      "ios_usb_status": "blocked_code_signing",
+      "android_failure_signature": null,
+      "ios_simulator_failure_signature": null,
+      "android_failure_evidence": [],
+      "ios_simulator_failure_evidence": [],
+      "ios_blocker": "No valid iOS development certificate/provisioning profile configured for Runner target"
+    }
+  },
+  "performance_signals_static": {
+    "ui_patterns": {
+      "future_builder_count": 12,
+      "stream_builder_count": 13,
+      "single_child_scroll_view_count": 32,
+      "list_view_count": 24,
+      "list_view_shrink_wrap_true_count": 21
+    },
+    "assets": {
+      "fonts_total_size": "3.9M",
+      "images_total_size": "1.6M",
+      "json_total_size": "608K",
+      "videos_total_size": "4.0K",
+      "audios_total_size": "4.0K",
+      "largest_individual_assets": [
+        "assets/jsons/World_Map_Pinging_Animation.json (396K)",
+        "assets/fonts/SF-Pro-Display-Semibold.otf (328K)",
+        "assets/fonts/SF-Pro-Display-Heavy.otf (328K)",
+        "assets/images/frame_1321318905.webp (162K)",
+        "assets/images/sticker_32.png (156K)"
+      ]
+    },
+    "dependencies": {
+      "upgradable_locked_dependencies": 6,
+      "constrained_older_than_resolvable": 84,
+      "examples_major_gap": [
+        "firebase_core 3.14.0 -> 4.5.0",
+        "firebase_auth 5.6.0 -> 6.2.0",
+        "cloud_firestore 5.6.9 -> 6.1.3",
+        "go_router 12.1.3 -> 17.1.0",
+        "daily_flutter 0.34.0 -> 0.37.0"
+      ]
+    }
+  },
+  "runtime_perf_baseline": {
+    "startup": {
+      "ttff_ms": 10890,
+      "first_interactive_ms": 10890,
+      "service_init_ms": null,
+      "status": "partial_measured_android_emulator",
+      "samples_android_waittime_ms": [
+        11942,
+        10890,
+        10581
+      ],
+      "method": "adb shell am start -W cold starts"
+    },
+    "ui_smoothness": {
+      "frames_over_16_7ms_percent": null,
+      "frames_over_33ms_percent": null,
+      "build_time_avg_ms": null,
+      "raster_time_avg_ms": null,
+      "status": "measurement_blocked_flutter_surfaceview_in_adb_gfxinfo",
+      "notes": "adb dumpsys gfxinfo returned 0 rendered frames for Flutter surface on Android emulator API 36"
+    },
+    "realtime_calls": {
+      "join_success_rate": null,
+      "reconnect_success_rate": null,
+      "dropped_calls_rate": null,
+      "token_refresh_fail_rate": null,
+      "status": "not_run_on_real_devices",
+      "backend_end_session_concurrency_pass": true
+    },
+    "resources": {
+      "peak_memory_mb": 201.3,
+      "memory_growth_15min_mb": null,
+      "cpu_percent_15min_call": null,
+      "battery_drop_percent_15min_call": null,
+      "status": "partial_measured_android_emulator",
+      "memory_samples": {
+        "pss_before_kb": 206117,
+        "pss_after_3min_kb": 204064,
+        "delta_3min_kb": -2053
+      }
+    },
+    "data_cost": {
+      "reads_per_critical_flow": null,
+      "writes_per_critical_flow": null,
+      "redundant_streams_detected": true,
+      "status": "partial_static_only"
+    },
+    "backend_callable_loadtest": {
+      "create_video_session": {
+        "requests": 20,
+        "concurrency": 5,
+        "success_count": 20,
+        "error_count": 0,
+        "p50_ms": 108,
+        "p95_ms": 160,
+        "max_ms": 162,
+        "avg_ms": 111.6,
+        "log_lines": 200,
+        "error_lines": 20,
+        "status": "pass_emulator"
+      },
+      "end_session_concurrency": {
+        "status": "pass_emulator",
+        "call_charge_docs": 1,
+        "earning_docs": 1,
+        "student_balance_minutes_before": 50,
+        "student_balance_minutes_after": 41
+      },
+      "rules_security": {
+        "status": "pass_emulator",
+        "checks_total": 7
+      }
+    },
+    "app_size": {
+      "android_release_apk_mb": 90.8,
+      "android_compressed_report_mb": 87,
+      "android_profile_apk_mb": 108.4,
+      "devtools_report_path": "/Users/patrikkardenas/.flutter-devtools/apk-code-size-analysis_01.json",
+      "status": "measured_android"
+    }
+  },
+  "before_after_delta": {
+    "before_snapshot_generated_at_utc": "2026-03-03T18:12:16Z",
+    "flutter_analyze_issues_total": {
+      "before": 68,
+      "after": 0
+    },
+    "flutter_test_status": {
+      "before": "passed",
+      "after": "passed"
+    },
+    "integration_smoke_status": {
+      "before": "not_executed",
+      "after": "passed_android_emulator_and_ios_simulator_ios_usb_blocked_by_signing"
+    },
+    "android_release_apk_mb": {
+      "before": null,
+      "after": 90.8
+    },
+    "backend_rules_security": {
+      "before": "not_executed",
+      "after": "pass_emulator"
+    },
+    "backend_end_session_concurrency": {
+      "before": "not_executed",
+      "after": "pass_emulator"
+    },
+    "backend_create_video_session_p95_ms": {
+      "before": null,
+      "after": 160
+    }
+  },
+  "crash_repro_matrix": [
+    {
+      "id": "CR-01",
+      "scenario": "Cold start offline / weak / normal network",
+      "status": "not_run"
+    },
+    {
+      "id": "CR-02",
+      "scenario": "Login / logout / relogin / role transitions",
+      "status": "not_run"
+    },
+    {
+      "id": "CR-03",
+      "scenario": "Heavy screens repeated navigation",
+      "status": "not_run"
+    },
+    {
+      "id": "CR-04",
+      "scenario": "Incoming call foreground/background/terminated",
+      "status": "not_run"
+    },
+    {
+      "id": "CR-05",
+      "scenario": "Call accept with valid vs expired token",
+      "status": "not_run"
+    },
+    {
+      "id": "CR-06",
+      "scenario": "Call interruption and reconnect",
+      "status": "not_run"
+    },
+    {
+      "id": "CR-07",
+      "scenario": "End call by both sides and summary navigation",
+      "status": "pass_emulator_backend"
+    },
+    {
+      "id": "CR-08",
+      "scenario": "Mass Firestore updates and stream churn",
+      "status": "not_run"
+    },
+    {
+      "id": "CR-09",
+      "scenario": "15+ min call soak test",
+      "status": "not_run"
+    },
+    {
+      "id": "CR-10",
+      "scenario": "Payment and webview flows",
+      "status": "not_run"
+    },
+    {
+      "id": "CR-11",
+      "scenario": "UI regression after optimization patch",
+      "status": "not_run"
+    },
+    {
+      "id": "CR-12",
+      "scenario": "Re-run analyze/test + profiling after fixes",
+      "status": "partial_analyze_test_done_integration_failed_android_ios_simulator"
+    }
+  ],
+  "limitations": [
+    "USB iPhone integration/profiling is blocked by missing iOS development certificate/provisioning profile.",
+    "Most scenario-matrix flows (RT-01..RT-10 except backend RT-07) still require manual real-device execution.",
+    "ADB gfxinfo frame metrics are not available for this Flutter surface configuration on Android emulator API 36.",
+    "No production traffic replay or Firebase billing export was available."
+  ]
+}

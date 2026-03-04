@@ -18,3 +18,7 @@ const cleanupExpiredSessions = require("./cleanup_expired_sessions.js");
 exports.cleanupExpiredSessions = cleanupExpiredSessions.cleanupExpiredSessions;
 const getSessionTokens = require("./get_session_tokens.js");
 exports.getSessionTokens = getSessionTokens.getSessionTokens;
+const getDeepgramToken = require("./get_deepgram_token.js");
+exports.getDeepgramToken = getDeepgramToken.getDeepgramToken;
+const submitReview = require("./submit_review.js");
+exports.submitReview = submitReview.submitReview;

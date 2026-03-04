@@ -5,6 +5,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
 import '/services/voip_service.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'loading_model.dart';
@@ -25,6 +26,29 @@ class _LoadingWidgetState extends State<LoadingWidget> {
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
+  bool _hasPendingVoipNavigationSafe() {
+    try {
+      return VoIPService().hasPendingNavigation();
+    } catch (error) {
+      debugPrint(
+          '⚠️ LoadingWidget: VoIP pending navigation check skipped: $error');
+      return false;
+    }
+  }
+
+  Future<void> _waitForUserDocumentReady() async {
+    if (!loggedIn || currentUserDocument != null) {
+      return;
+    }
+    try {
+      await authenticatedUserStream
+          .firstWhere((user) => user != null)
+          .timeout(const Duration(seconds: 3));
+    } on TimeoutException {
+      // Continue with safe fallbacks if profile stream is delayed.
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
@@ -34,7 +58,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
     SchedulerBinding.instance.addPostFrameCallback((_) async {
       // If a VoIP call is pending (accepted via CallKit), skip the session
       // check and delay — VoIPService will navigate to VideoCallPage directly.
-      if (VoIPService().hasPendingNavigation()) {
+      if (_hasPendingVoipNavigationSafe()) {
         debugPrint('⚡ LoadingWidget: VoIP call pending, skipping delay');
         return;
       }
@@ -45,12 +69,10 @@ class _LoadingWidgetState extends State<LoadingWidget> {
       if (_model.check == true) {
         return;
       }
-
-      await Future.delayed(
-        Duration(
-          milliseconds: 1000,
-        ),
-      );
+      await _waitForUserDocumentReady();
+      if (!mounted) {
+        return;
+      }
       if (currentUserDocument?.role == UserRole.native_speaker) {
         if (valueOrDefault<bool>(currentUserDocument?.acquaintance, false)) {
           context.goNamed(

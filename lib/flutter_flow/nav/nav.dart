@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:provider/provider.dart';
@@ -76,7 +77,7 @@ class AppStateNotifier extends ChangeNotifier {
 
 GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
       initialLocation: '/',
-      debugLogDiagnostics: true,
+      debugLogDiagnostics: kDebugMode,
       refreshListenable: appStateNotifier,
       navigatorKey: appNavigatorKey,
       errorBuilder: (context, state) =>
@@ -109,6 +110,7 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
           FFRoute(
             name: AcquaintanceSTUDENTWidget.routeName,
             path: AcquaintanceSTUDENTWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => AcquaintanceSTUDENTWidget(
               index: params.getParam(
                 'index',
@@ -119,11 +121,13 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
           FFRoute(
             name: LoadingWidget.routeName,
             path: LoadingWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => LoadingWidget(),
           ),
           FFRoute(
             name: CallSummaryWidget.routeName,
             path: CallSummaryWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => CallSummaryWidget(
               userRef: params.getParam(
                 'userRef',
@@ -150,6 +154,7 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
           FFRoute(
             name: VideoCallPageWidget.routeName,
             path: VideoCallPageWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => VideoCallPageWidget(
               videoDocRef: params.getParam(
                 'videoDocRef',
@@ -174,11 +179,13 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
           FFRoute(
             name: WaitingForTeacherPageWidget.routeName,
             path: WaitingForTeacherPageWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => WaitingForTeacherPageWidget(),
           ),
           FFRoute(
             name: NativeSpeakerPageWidget.routeName,
             path: NativeSpeakerPageWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => NativeSpeakerPageWidget(
               nsUserDocRef: params.getParam(
                 'nsUserDocRef',
@@ -191,16 +198,19 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
           FFRoute(
             name: MyRewWidget.routeName,
             path: MyRewWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => MyRewWidget(),
           ),
           FFRoute(
             name: PayWidget.routeName,
             path: PayWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => PayWidget(),
           ),
           FFRoute(
             name: AcquaintanceNSWidget.routeName,
             path: AcquaintanceNSWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => AcquaintanceNSWidget(
               index: params.getParam(
                 'index',
@@ -221,31 +231,37 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
           FFRoute(
             name: PayCopyWidget.routeName,
             path: PayCopyWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => PayCopyWidget(),
           ),
           FFRoute(
             name: PayWebWiewWidget.routeName,
             path: PayWebWiewWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => PayWebWiewWidget(),
           ),
           FFRoute(
             name: BlackListWidget.routeName,
             path: BlackListWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => BlackListWidget(),
           ),
           FFRoute(
             name: MyRewNSWidget.routeName,
             path: MyRewNSWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => MyRewNSWidget(),
           ),
           FFRoute(
             name: FavoriteWidget.routeName,
             path: FavoriteWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => FavoriteWidget(),
           ),
           FFRoute(
             name: ProfileEditWidget.routeName,
             path: ProfileEditWidget.routePath,
+            requireAuth: true,
             builder: (context, params) => ProfileEditWidget(),
           ),
         ].map((r) => r.toRoute(appStateNotifier)),
@@ -258,6 +274,7 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             FFRoute(
               name: DashboardNSWidget.routeName,
               path: DashboardNSWidget.routePath,
+              requireAuth: true,
               noTransition: true,
               builder: (context, params) => DashboardNSWidget(
                 zn: params.getParam(
@@ -269,6 +286,7 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             FFRoute(
               name: StudentsDashboardWidget.routeName,
               path: StudentsDashboardWidget.routePath,
+              requireAuth: true,
               noTransition: true,
               builder: (context, params) => StudentsDashboardWidget(
                 zn: params.getParam(
@@ -284,12 +302,14 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             FFRoute(
               name: ProfileWidget.routeName,
               path: ProfileWidget.routePath,
+              requireAuth: true,
               noTransition: true,
               builder: (context, params) => ProfileWidget(),
             ),
             FFRoute(
               name: WordsWidget.routeName,
               path: WordsWidget.routePath,
+              requireAuth: true,
               noTransition: true,
               builder: (context, params) => WordsWidget(),
             ),
@@ -362,7 +382,7 @@ extension GoRouterExtensions on GoRouter {
       !ignoreRedirect && appState.hasRedirect();
   void clearRedirectLocation() => appState.clearRedirectLocation();
   void setRedirectLocationIfUnset(String location) =>
-      appState.updateNotifyOnAuthChange(false);
+      appState.setRedirectLocationIfUnset(location);
 }
 
 extension _GoRouterStateExtensions on GoRouterState {

@@ -4,6 +4,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import '/custom_code/widgets/index.dart' as custom_widgets;
+import '/services/voip_service.dart';
 import '/index.dart';
 import 'package:flutter/material.dart';
 import 'logout_model.dart';
@@ -151,6 +152,7 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                       child: FFButtonWidget(
                         onPressed: () async {
                           GoRouter.of(context).prepareAuthEvent();
+                          await VoIPService().deinitialize();
                           await authManager.signOut();
                           GoRouter.of(context).clearRedirectLocation();
 
