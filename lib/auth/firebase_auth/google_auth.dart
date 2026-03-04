@@ -1,8 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-
-final _googleSignIn = GoogleSignIn(scopes: ['profile', 'email']);
 
 Future<UserCredential?> googleSignInFunc() async {
   if (kIsWeb) {
@@ -10,14 +7,9 @@ Future<UserCredential?> googleSignInFunc() async {
     return await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
   }
 
-  await signOutWithGoogle().catchError((_) => null);
-  final auth = await (await _googleSignIn.signIn())?.authentication;
-  if (auth == null) {
-    return null;
-  }
-  final credential = GoogleAuthProvider.credential(
-      idToken: auth.idToken, accessToken: auth.accessToken);
-  return FirebaseAuth.instance.signInWithCredential(credential);
+  // Use Firebase OAuth provider flow on mobile to avoid native plugin crashes
+  // caused by incomplete platform GoogleSignIn configuration.
+  return FirebaseAuth.instance.signInWithProvider(GoogleAuthProvider());
 }
 
-Future signOutWithGoogle() => _googleSignIn.signOut();
+Future signOutWithGoogle() async {}

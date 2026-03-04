@@ -626,45 +626,54 @@ class _LoginWidgetState extends State<LoginWidget> {
                                   ],
                                 ),
                               ),
-                              isAndroid
-                                  ? Container()
-                                  : FFButtonWidget(
-                                      onPressed: () async {
-                                        GoRouter.of(context).prepareAuthEvent();
-                                        final user = await authManager
-                                            .signInWithApple(context);
-                                        if (user == null) {
-                                          return;
-                                        }
+                              FFButtonWidget(
+                                onPressed: () async {
+                                  if (isAndroid) {
+                                    showSnackbar(
+                                      context,
+                                      FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText:
+                                            'Вход через Apple доступен только на iOS.',
+                                        enText:
+                                            'Apple Sign-In is available on iOS only.',
+                                      ),
+                                    );
+                                    return;
+                                  }
 
-                                        context.goNamedAuth(
-                                            LoadingWidget.routeName,
-                                            context.mounted);
-                                      },
-                                      text: FFLocalizations.of(context).getText(
-                                        'zga53c5g' /*  */,
-                                      ),
-                                      options: FFButtonOptions(
-                                        width: 125.0,
-                                        height: 60.0,
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            0.0, 0.0, 0.0, 0.0),
-                                        iconPadding:
-                                            EdgeInsetsDirectional.fromSTEB(
-                                                0.0, 0.0, 0.0, 0.0),
+                                  GoRouter.of(context).prepareAuthEvent();
+                                  final user =
+                                      await authManager.signInWithApple(context);
+                                  if (user == null) {
+                                    return;
+                                  }
+
+                                  context.goNamedAuth(
+                                      LoadingWidget.routeName, context.mounted);
+                                },
+                                text: FFLocalizations.of(context).getText(
+                                  'zga53c5g' /*  */,
+                                ),
+                                options: FFButtonOptions(
+                                  width: 125.0,
+                                  height: 60.0,
+                                  padding: EdgeInsetsDirectional.fromSTEB(
+                                      0.0, 0.0, 0.0, 0.0),
+                                  iconPadding: EdgeInsetsDirectional.fromSTEB(
+                                      0.0, 0.0, 0.0, 0.0),
+                                  color: Colors.transparent,
+                                  textStyle: FlutterFlowTheme.of(context)
+                                      .titleSmall
+                                      .override(
+                                        fontFamily: 'sf pro display',
                                         color: Colors.transparent,
-                                        textStyle: FlutterFlowTheme.of(context)
-                                            .titleSmall
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color: Colors.transparent,
-                                              letterSpacing: 0.0,
-                                            ),
-                                        elevation: 0.0,
-                                        borderRadius:
-                                            BorderRadius.circular(50.0),
+                                        letterSpacing: 0.0,
                                       ),
-                                    ),
+                                  elevation: 0.0,
+                                  borderRadius: BorderRadius.circular(50.0),
+                                ),
+                              ),
                             ],
                           ),
                         ),
