@@ -10,8 +10,21 @@ class FFLocalizations {
 
   final Locale locale;
 
-  static FFLocalizations of(BuildContext context) =>
-      Localizations.of<FFLocalizations>(context, FFLocalizations)!;
+  static FFLocalizations of(BuildContext context) {
+    final localizations =
+        Localizations.of<FFLocalizations>(context, FFLocalizations);
+    if (localizations != null) {
+      return localizations;
+    }
+
+    final fallbackLocale =
+        Localizations.maybeLocaleOf(context) ??
+        WidgetsBinding.instance.platformDispatcher.locale;
+    final supportedLocale = _isSupportedLocale(fallbackLocale)
+        ? fallbackLocale
+        : const Locale('ru');
+    return FFLocalizations(supportedLocale);
+  }
 
   static List<String> languages() => ['ru', 'en'];
 
@@ -237,6 +250,10 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Password',
     },
     'gytrv60k': {
+      'ru': 'Войти как Native Speaker',
+      'en': 'Login as a Native Speaker',
+    },
+    'ov47f2e3': {
       'ru': 'Войти как Native Speaker',
       'en': 'Login as a Native Speaker',
     },

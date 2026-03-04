@@ -706,10 +706,17 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
 
                   if (!(await getPermissionStatus(cameraPermission))) {
                     await requestPermission(cameraPermission);
-                    if (!(await getPermissionStatus(microphonePermission))) {
-                      await requestPermission(microphonePermission);
-                      return;
-                    }
+                  }
+                  if (!(await getPermissionStatus(microphonePermission))) {
+                    await requestPermission(microphonePermission);
+                  }
+
+                  final hasCameraPermission =
+                      await getPermissionStatus(cameraPermission);
+                  final hasMicrophonePermission =
+                      await getPermissionStatus(microphonePermission);
+                  if (!hasCameraPermission || !hasMicrophonePermission) {
+                    return;
                   }
 
                   context.pushNamed(WaitingForTeacherPageWidget.routeName);
@@ -759,6 +766,23 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         }
 
         List<ReviewsRecord> containerReviewsRecordList = snapshot.data!;
+        final ratingBuckets = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+        for (final review in containerReviewsRecordList) {
+          if (ratingBuckets.containsKey(review.rating)) {
+            ratingBuckets[review.rating] = ratingBuckets[review.rating]! + 1;
+          }
+        }
+        final totalReviews = nativeSpeakerPageUsersRecord.rating.totalReviews;
+
+        int countForRating(int ratingValue) => ratingBuckets[ratingValue] ?? 0;
+
+        double percentForRating(int ratingValue) {
+          if (totalReviews <= 0) {
+            return 0.0;
+          }
+          final percent = countForRating(ratingValue) / totalReviews;
+          return percent.clamp(0.0, 1.0).toDouble();
+        }
 
         return Container(
           decoration: BoxDecoration(),
@@ -883,12 +907,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               LinearPercentIndicator(
-                                            percent: containerReviewsRecordList
-                                                    .where((e) => e.rating == 5)
-                                                    .toList()
-                                                    .length /
-                                                currentUserDocument!
-                                                    .rating.totalReviews,
+                                            percent: percentForRating(5),
                                             width: 106.0,
                                             lineHeight: 4.0,
                                             animation: true,
@@ -908,14 +927,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         width: 33.0,
                                         decoration: BoxDecoration(),
                                         child: AutoSizeText(
-                                          valueOrDefault<String>(
-                                            containerReviewsRecordList
-                                                .where((e) => e.rating == 5)
-                                                .toList()
-                                                .length
-                                                .toString(),
-                                            '0',
-                                          ),
+                                          countForRating(5).toString(),
                                           maxLines: 1,
                                           style: FlutterFlowTheme.of(context)
                                               .bodyMedium
@@ -965,12 +977,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               LinearPercentIndicator(
-                                            percent: containerReviewsRecordList
-                                                    .where((e) => e.rating == 5)
-                                                    .toList()
-                                                    .length /
-                                                currentUserDocument!
-                                                    .rating.totalReviews,
+                                            percent: percentForRating(4),
                                             width: 106.0,
                                             lineHeight: 4.0,
                                             animation: true,
@@ -990,14 +997,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         width: 33.0,
                                         decoration: BoxDecoration(),
                                         child: AutoSizeText(
-                                          valueOrDefault<String>(
-                                            containerReviewsRecordList
-                                                .where((e) => e.rating == 4)
-                                                .toList()
-                                                .length
-                                                .toString(),
-                                            '0',
-                                          ),
+                                          countForRating(4).toString(),
                                           maxLines: 1,
                                           style: FlutterFlowTheme.of(context)
                                               .bodyMedium
@@ -1048,12 +1048,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               LinearPercentIndicator(
-                                            percent: containerReviewsRecordList
-                                                    .where((e) => e.rating == 5)
-                                                    .toList()
-                                                    .length /
-                                                currentUserDocument!
-                                                    .rating.totalReviews,
+                                            percent: percentForRating(3),
                                             width: 106.0,
                                             lineHeight: 4.0,
                                             animation: true,
@@ -1073,11 +1068,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         width: 33.0,
                                         decoration: BoxDecoration(),
                                         child: AutoSizeText(
-                                          containerReviewsRecordList
-                                              .where((e) => e.rating == 3)
-                                              .toList()
-                                              .length
-                                              .toString(),
+                                          countForRating(3).toString(),
                                           maxLines: 1,
                                           style: FlutterFlowTheme.of(context)
                                               .bodyMedium
@@ -1127,12 +1118,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               LinearPercentIndicator(
-                                            percent: containerReviewsRecordList
-                                                    .where((e) => e.rating == 5)
-                                                    .toList()
-                                                    .length /
-                                                currentUserDocument!
-                                                    .rating.totalReviews,
+                                            percent: percentForRating(2),
                                             width: 106.0,
                                             lineHeight: 4.0,
                                             animation: true,
@@ -1152,11 +1138,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         width: 33.0,
                                         decoration: BoxDecoration(),
                                         child: AutoSizeText(
-                                          containerReviewsRecordList
-                                              .where((e) => e.rating == 2)
-                                              .toList()
-                                              .length
-                                              .toString(),
+                                          countForRating(2).toString(),
                                           maxLines: 1,
                                           style: FlutterFlowTheme.of(context)
                                               .bodyMedium
@@ -1206,12 +1188,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               LinearPercentIndicator(
-                                            percent: containerReviewsRecordList
-                                                    .where((e) => e.rating == 5)
-                                                    .toList()
-                                                    .length /
-                                                currentUserDocument!
-                                                    .rating.totalReviews,
+                                            percent: percentForRating(1),
                                             width: 106.0,
                                             lineHeight: 4.0,
                                             animation: true,
@@ -1231,14 +1208,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         width: 33.0,
                                         decoration: BoxDecoration(),
                                         child: AutoSizeText(
-                                          valueOrDefault<String>(
-                                            containerReviewsRecordList
-                                                .where((e) => e.rating == 1)
-                                                .toList()
-                                                .length
-                                                .toString(),
-                                            '0',
-                                          ),
+                                          countForRating(1).toString(),
                                           maxLines: 1,
                                           style: FlutterFlowTheme.of(context)
                                               .bodyMedium

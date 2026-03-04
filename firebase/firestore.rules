@@ -1,105 +1,127 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    match /videoSessions/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    match /users/{parent}/userWords/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    function currentUserRef() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
     }
 
-    match /{path=**}/userWords/{document} {
-      allow read: if true;
+    function isOwnerRef(userRef) {
+      return isSignedIn() && userRef == currentUserRef();
     }
 
-
-    match /notifications/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    function isSessionParticipant(data) {
+      return isSignedIn() && (
+        data.studentId == request.auth.uid ||
+        data.tutorId == request.auth.uid ||
+        data.currentTutorId == request.auth.uid
+      );
     }
 
-    match /transactions/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    function isPromoCodeRedeemUpdate() {
+      return isSignedIn() &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'usageCount',
+          'usedBy'
+        ]) &&
+        request.resource.data.usageCount is int &&
+        resource.data.usageCount is int &&
+        request.resource.data.usageCount == resource.data.usageCount + 1;
     }
 
-    match /promoCodes/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    function isRatingOnlyUpdate() {
+      return isSignedIn() &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'rating'
+        ]);
     }
 
-    match /reviews/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    match /users/{userId} {
+      allow create: if isSelf(userId);
+      allow read: if isSignedIn();
+      allow update: if isSelf(userId) || isRatingOnlyUpdate();
+      allow delete: if false;
     }
 
-    match /withdrawalRequests/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    match /videoSessions/{sessionId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.studentId == request.auth.uid;
+      allow read: if isSessionParticipant(resource.data);
+      allow update: if isSessionParticipant(resource.data);
+      allow delete: if false;
     }
 
-    match /packages/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    match /users/{userId}/userWords/{wordId} {
+      allow create, read, update, delete: if isSelf(userId);
     }
 
-    match /rewiews_of_the_app/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    match /notifications/{notificationId} {
+      allow create: if false;
+      allow read: if isSignedIn() &&
+        resource.data.recipientId == request.auth.uid;
+      allow update, delete: if false;
     }
 
-    match /avatars/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    match /transactions/{transactionId} {
+      allow create: if isOwnerRef(request.resource.data.userId);
+      allow read: if isOwnerRef(resource.data.userId);
+      allow update, delete: if false;
     }
 
-    match /users/{parent}/stats/{document} {
-      allow create: if true;
-      allow read: if true;
-      allow write: if true;
-      allow delete: if true;
+    match /promoCodes/{promoCodeId} {
+      allow read: if isSignedIn();
+      allow update: if isPromoCodeRedeemUpdate();
+      allow create, delete: if false;
     }
 
-    match /{path=**}/stats/{document} {
-      allow read: if true;
+    match /reviews/{reviewId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.fromUserId == currentUserRef() &&
+        request.resource.data.rating is int &&
+        request.resource.data.rating >= 1 &&
+        request.resource.data.rating <= 5;
+      allow read: if isSignedIn();
+      allow update, delete: if false;
     }
 
+    match /withdrawalRequests/{withdrawalRequestId} {
+      allow create: if isOwnerRef(request.resource.data.userId);
+      allow read: if isOwnerRef(resource.data.userId);
+      allow update, delete: if false;
+    }
 
-    match /users/{parent}/cards/{document} {
-      allow create: if request.auth.uid == parent;
-      allow read: if request.auth.uid == parent;
-      allow write: if request.auth.uid == parent;
-      allow delete: if request.auth.uid == parent;
+    match /packages/{packageId} {
+      allow read: if true;
+      allow create, update, delete: if false;
+    }
+
+    match /rewiews_of_the_app/{reviewId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.user == currentUserRef();
+      allow read: if isSignedIn() &&
+        resource.data.user == currentUserRef();
+      allow update, delete: if false;
+    }
+
+    match /avatars/{avatarId} {
+      allow read: if true;
+      allow create, update, delete: if false;
+    }
+
+    match /users/{userId}/stats/{statsId} {
+      allow read: if isSelf(userId);
+      allow create, update, delete: if false;
+    }
+
+    match /users/{userId}/cards/{cardId} {
+      allow create, read, update, delete: if isSelf(userId);
     }
   }
 }

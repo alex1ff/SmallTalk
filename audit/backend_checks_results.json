@@ -1,0 +1,89 @@
+{
+  "startedAt": "2026-03-04T01:52:47.343Z",
+  "projectId": "demo-smalltalk",
+  "emulators": {
+    "firestore": "127.0.0.1:8080",
+    "storage": "127.0.0.1:9199"
+  },
+  "checks": {
+    "rules": {
+      "pass": true,
+      "checks": [
+        {
+          "label": "Firestore unauth read users denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore cross-user profile update denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore cross-user transaction read denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore self profile update allowed",
+          "status": "pass"
+        },
+        {
+          "label": "Storage cross-user write denied",
+          "status": "pass"
+        },
+        {
+          "label": "Storage unauth write denied",
+          "status": "pass"
+        },
+        {
+          "label": "Storage self write allowed",
+          "status": "pass"
+        }
+      ],
+      "failures": []
+    },
+    "endSessionConcurrency": {
+      "pass": true,
+      "sessionId": "audit_session_1772589169156",
+      "invocation": [
+        {
+          "caller": "student",
+          "status": "fulfilled",
+          "responseStatus": "already_ended",
+          "message": "Session was already ended"
+        },
+        {
+          "caller": "tutor",
+          "status": "fulfilled",
+          "responseStatus": "ended",
+          "message": "Session ended successfully"
+        }
+      ],
+      "transactionCounts": {
+        "total": 2,
+        "call_charge": 1,
+        "earning": 1
+      },
+      "studentBalanceMinutesBefore": 50,
+      "studentBalanceMinutesAfter": 41,
+      "sessionStatusAfter": "ended",
+      "failure": null
+    },
+    "createVideoSessionLoad": {
+      "pass": true,
+      "requests": 20,
+      "concurrency": 5,
+      "successCount": 20,
+      "errorCount": 0,
+      "p50_ms": 108,
+      "p95_ms": 160,
+      "max_ms": 162,
+      "avg_ms": 111.6,
+      "logLines": 200,
+      "errorLines": 20,
+      "responseStatuses": {
+        "searching": 20
+      },
+      "failure": null
+    }
+  },
+  "finishedAt": "2026-03-04T01:52:54.302Z"
+}

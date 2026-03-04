@@ -38,173 +38,197 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       );
     }
 
-    // Получаем данные сессии
-    const sessionDoc = await admin
-      .firestore()
-      .collection("videoSessions")
-      .doc(sessionId)
-      .get();
+    const db = admin.firestore();
+    const sessionRef = db.collection("videoSessions").doc(sessionId);
+    const requestTimestamp = Date.now();
 
-    if (!sessionDoc.exists) {
-      console.log("❌ Video session not found:", sessionId);
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Video session not found",
-      );
-    }
+    // ─── MAIN TRANSACTION (CAS + billing guard) ─────────────────────────────
+    // Read session INSIDE transaction and only allow transition:
+    // connecting|active -> ended. This makes endSession idempotent under races.
+    const txResult = await db.runTransaction(async (transaction) => {
+      const sessionDoc = await transaction.get(sessionRef);
+      if (!sessionDoc.exists) {
+        console.log("❌ Video session not found:", sessionId);
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Video session not found",
+        );
+      }
 
-    const sessionData = sessionDoc.data();
-    console.log("📋 Current session status:", sessionData.status);
+      const sessionData = sessionDoc.data() || {};
+      console.log("📋 Current session status:", sessionData.status);
 
-    // Проверяем права доступа
-    if (sessionData.studentId !== userId && sessionData.tutorId !== userId) {
-      console.log("❌ Permission denied - user is not a participant");
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "You are not a participant of this session",
-      );
-    }
-
-    // Проверяем, что сессия может быть завершена
-    if (!["connecting", "active"].includes(sessionData.status)) {
-      console.log(
-        "❌ Session cannot be ended, current status:",
-        sessionData.status,
-      );
+      if (sessionData.studentId !== userId && sessionData.tutorId !== userId) {
+        console.log("❌ Permission denied - user is not a participant");
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "You are not a participant of this session",
+        );
+      }
 
       if (sessionData.status === "ended") {
         return {
           status: "already_ended",
           message: "Session was already ended",
-          endedAt: sessionData.endedAt?.toMillis() || null,
+          endedAt:
+            sessionData.endedAt?.toMillis?.() ||
+            sessionData.sessionMetadata?.endedAtTimestamp ||
+            null,
         };
       }
 
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        `Session cannot be ended. Current status: ${sessionData.status}`,
-      );
-    }
-
-    // Определяем, кто завершил сессию
-    const endedBy = userId;
-    const endedByRole = sessionData.studentId === userId ? "student" : "tutor";
-    const now = Date.now();
-
-    // Вычисляем длительность сессии
-    const startTime =
-      sessionData.startedAt?.toMillis() ||
-      sessionData.createdAt?.toMillis() ||
-      now;
-    const duration = Math.max(0, Math.floor((now - startTime) / 1000)); // в секундах
-
-    // Tutor earns for full call duration (fractional minutes, no rounding)
-    const tutorDurationMinutes = parseFloat((duration / 60).toFixed(4));
-    const tutorEarning = parseFloat((tutorDurationMinutes * TUTOR_RATE_PER_MINUTE).toFixed(2));
-
-    // Formatted duration as "M:SS" string for transaction records
-    const durMinPart = Math.floor(duration / 60);
-    const durSecPart = duration % 60;
-    const formattedDuration = `${durMinPart}:${durSecPart.toString().padStart(2, "0")}`;
-
-    // Student billing vars (computed inside transaction after reading balance)
-    let amountST = 0;
-    let freeMinuteApplied = false;
-
-    console.log("⏱️ Session duration:", duration, "seconds /", tutorDurationMinutes, "tutor-minutes /", formattedDuration);
-    console.log("👤 Ended by:", endedByRole, endedBy);
-    console.log("💰 Tutor earning:", tutorEarning, "RUB");
-
-    // ─── MAIN TRANSACTION (fast, affects UX) ────────────────────────────────
-    // 1. Set session status = ended
-    // 2. Release tutor
-    // 3. Deduct student balance (atomic with session end to prevent double-charge)
-    await admin.firestore().runTransaction(async (transaction) => {
-      const studentDocRef = admin.firestore().collection("users").doc(sessionData.studentId);
-      const studentDoc = await transaction.get(studentDocRef);
-      const studentData = studentDoc.exists ? studentDoc.data() : {};
-      const currentMinutes = studentData?.balanceST?.minutes || 0;
-      const currentSmallTalks = studentData?.balanceST?.smallTalks || 0;
-
-      // Free minute: first 60 seconds free when student has positive balance
-      freeMinuteApplied = currentSmallTalks > 0;
-      const billableDuration = freeMinuteApplied
-        ? Math.max(0, duration - 60)
-        : duration;
-      const billableMinutes = parseFloat((billableDuration / 60).toFixed(4));
-      amountST = parseFloat((billableMinutes / 10).toFixed(4));
-
-      const newMinutes = parseFloat(Math.max(0, currentMinutes - billableMinutes).toFixed(4));
-      const newSmallTalks = parseFloat((newMinutes / 10).toFixed(2));
-
-      console.log("🎁 Free minute applied:", freeMinuteApplied, "| Billable:", billableDuration, "s /", billableMinutes, "min");
-      console.log("📉 Student balance:", currentMinutes, "→", newMinutes, "minutes,", newSmallTalks, "ST");
-
-      // 1. Update session status
-      transaction.update(
-        admin.firestore().collection("videoSessions").doc(sessionId),
-        {
-          status: "ended",
-          endedAt: admin.firestore.FieldValue.serverTimestamp(),
-          duration: duration,
-          durationMinutes: tutorDurationMinutes,
-          freeMinuteApplied: freeMinuteApplied,
-          tutorNavigationTriggered: false,
-          studentNavigationTriggered: false,
-          sessionMetadata: {
-            ...sessionData.sessionMetadata,
-            endedBy: endedBy,
-            endedByRole: endedByRole,
-            endReason: endReason || "manual",
-            endedAtTimestamp: now,
-            finalDuration: duration,
-          },
-        },
-      );
-
-      // 2. Release tutor
-      if (sessionData.tutorId) {
-        console.log("👨‍🏫 Releasing tutor:", sessionData.tutorId);
-        transaction.update(
-          admin.firestore().collection("users").doc(sessionData.tutorId),
-          {
-            isInCall: false,
-            isAvailable: true,
-            currentSessionId: admin.firestore.FieldValue.delete(),
-            lastCallEndedAt: admin.firestore.FieldValue.serverTimestamp(),
-            availableAfter: admin.firestore.FieldValue.delete(),
-          },
+      if (!["connecting", "active"].includes(sessionData.status)) {
+        console.log(
+          "❌ Session cannot be ended, current status:",
+          sessionData.status,
+        );
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          `Session cannot be ended. Current status: ${sessionData.status}`,
         );
       }
 
-      // 3. Deduct student balance
+      const endedBy = userId;
+      const endedByRole = sessionData.studentId === userId ? "student" : "tutor";
+      const startTime =
+        sessionData.startedAt?.toMillis?.() ||
+        sessionData.createdAt?.toMillis?.() ||
+        requestTimestamp;
+      const duration = Math.max(0, Math.floor((requestTimestamp - startTime) / 1000));
+      const tutorDurationMinutes = parseFloat((duration / 60).toFixed(4));
+      const tutorEarning = parseFloat(
+        (tutorDurationMinutes * TUTOR_RATE_PER_MINUTE).toFixed(2),
+      );
+      const formattedDuration = formatDuration(duration);
+
+      const studentDocRef = db.collection("users").doc(sessionData.studentId);
+      const studentDoc = await transaction.get(studentDocRef);
+      const studentData = studentDoc.exists ? studentDoc.data() : {};
+      const currentMinutes = Number(studentData?.balanceST?.minutes || 0);
+      const currentSmallTalks = Number(studentData?.balanceST?.smallTalks || 0);
+
+      // Free minute: first 60 seconds free when student has positive balance
+      const freeMinuteApplied = currentSmallTalks > 0;
+      const billableDuration = freeMinuteApplied ? Math.max(0, duration - 60) : duration;
+      const billableMinutes = parseFloat((billableDuration / 60).toFixed(4));
+      const amountST = parseFloat((billableMinutes / 10).toFixed(4));
+
+      const newMinutes = parseFloat(
+        Math.max(0, currentMinutes - billableMinutes).toFixed(4),
+      );
+      const newSmallTalks = parseFloat((newMinutes / 10).toFixed(2));
+
+      console.log(
+        "⏱️ Session duration:",
+        duration,
+        "seconds /",
+        tutorDurationMinutes,
+        "tutor-minutes /",
+        formattedDuration,
+      );
+      console.log("👤 Ended by:", endedByRole, endedBy);
+      console.log("💰 Tutor earning:", tutorEarning, "RUB");
+      console.log(
+        "🎁 Free minute applied:",
+        freeMinuteApplied,
+        "| Billable:",
+        billableDuration,
+        "s /",
+        billableMinutes,
+        "min",
+      );
+      console.log(
+        "📉 Student balance:",
+        currentMinutes,
+        "→",
+        newMinutes,
+        "minutes,",
+        newSmallTalks,
+        "ST",
+      );
+
+      const idempotencyKey = `end_session:${sessionId}`;
+      transaction.update(sessionRef, {
+        status: "ended",
+        endedAt: admin.firestore.FieldValue.serverTimestamp(),
+        duration: duration,
+        durationMinutes: tutorDurationMinutes,
+        freeMinuteApplied: freeMinuteApplied,
+        tutorNavigationTriggered: false,
+        studentNavigationTriggered: false,
+        sessionMetadata: {
+          ...sessionData.sessionMetadata,
+          endedBy: endedBy,
+          endedByRole: endedByRole,
+          endReason: endReason || "manual",
+          endedAtTimestamp: requestTimestamp,
+          finalDuration: duration,
+          billing: {
+            idempotencyKey,
+            amountST,
+            tutorEarning,
+            freeMinuteApplied,
+            processedBy: userId,
+            processedAtTimestamp: requestTimestamp,
+          },
+        },
+      });
+
+      if (sessionData.tutorId) {
+        console.log("👨‍🏫 Releasing tutor:", sessionData.tutorId);
+        transaction.update(db.collection("users").doc(sessionData.tutorId), {
+          isInCall: false,
+          isAvailable: true,
+          currentSessionId: admin.firestore.FieldValue.delete(),
+          lastCallEndedAt: admin.firestore.FieldValue.serverTimestamp(),
+          availableAfter: admin.firestore.FieldValue.delete(),
+        });
+      }
+
       transaction.update(studentDocRef, {
         "balanceST.minutes": newMinutes,
         "balanceST.smallTalks": newSmallTalks,
       });
 
-      console.log("✅ Transaction completed - session ended, tutor released, student charged");
+      console.log(
+        "✅ Transaction completed - session ended, tutor released, student charged",
+      );
+      return {
+        status: "ended",
+        message: "Session ended successfully",
+        sessionId,
+        duration,
+        endedBy: endedByRole,
+        endedAt: requestTimestamp,
+        amountST,
+        freeMinuteApplied,
+        tutorDurationMinutes,
+        tutorEarning,
+        formattedDuration,
+        studentId: sessionData.studentId,
+        tutorId: sessionData.tutorId || null,
+      };
     });
 
-    // Return response to client IMMEDIATELY — all remaining writes are background
+    if (txResult.status === "already_ended") {
+      return txResult;
+    }
+
     const response = {
-      status: "ended",
-      message: "Session ended successfully",
-      sessionId: sessionId,
-      duration: duration,
-      endedBy: endedByRole,
-      endedAt: now,
+      status: txResult.status,
+      message: txResult.message,
+      sessionId: txResult.sessionId,
+      duration: txResult.duration,
+      endedBy: txResult.endedBy,
+      endedAt: txResult.endedAt,
     };
 
     // ─── BACKGROUND OPERATIONS (non-blocking for UX) ──────────────────────
-    // These run in parallel after the response is conceptually ready.
-    // We still await them on the server so Cloud Functions doesn't terminate early.
     console.log("📊 Running background billing, stats & notifications...");
 
-    const db = admin.firestore();
-    const studentRef = db.collection("users").doc(sessionData.studentId);
-    const tutorRef = sessionData.tutorId
-      ? db.collection("users").doc(sessionData.tutorId)
+    const studentRef = db.collection("users").doc(txResult.studentId);
+    const tutorRef = txResult.tutorId
+      ? db.collection("users").doc(txResult.tutorId)
       : null;
     const todayStr = new Date().toISOString().slice(0, 10); // "2026-02-15"
 
@@ -217,10 +241,10 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         type: "call_charge",
         status: "completed",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        amount_ST: Number(amountST),
-        callDuration: formattedDuration,
+        amount_ST: Number(txResult.amountST),
+        callDuration: txResult.formattedDuration,
         sessionId: sessionId,
-        freeMinuteApplied: freeMinuteApplied,
+        freeMinuteApplied: txResult.freeMinuteApplied,
       }).catch((e) => console.error("❌ Student transaction doc failed:", e))
     );
 
@@ -229,7 +253,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       // b) Increment tutor balance
       backgroundTasks.push(
         tutorRef.update({
-          balance_NS: admin.firestore.FieldValue.increment(tutorEarning),
+          balance_NS: admin.firestore.FieldValue.increment(txResult.tutorEarning),
         }).catch((e) => console.error("❌ Tutor balance update failed:", e))
       );
 
@@ -240,8 +264,8 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           type: "earning",
           status: "completed",
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          amount: tutorEarning,
-          callDuration: formattedDuration,
+          amount: txResult.tutorEarning,
+          callDuration: txResult.formattedDuration,
           sessionId: sessionId,
         }).catch((e) => console.error("❌ Tutor transaction doc failed:", e))
       );
@@ -252,7 +276,9 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       db.collection("analytics").doc("summary").set({
         totalCalls: admin.firestore.FieldValue.increment(1),
         totalTransactions: admin.firestore.FieldValue.increment(tutorRef ? 2 : 1),
-        totalDurationMinutes: admin.firestore.FieldValue.increment(tutorDurationMinutes),
+        totalDurationMinutes: admin.firestore.FieldValue.increment(
+          txResult.tutorDurationMinutes,
+        ),
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true }).catch((e) => console.error("❌ Analytics summary failed:", e))
     );
@@ -263,7 +289,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         const ref = studentRef.collection("stats").doc("allTime");
         const snap = await t.get(ref);
         const d = snap.exists ? snap.data() : {};
-        const newSec = (d.totalDurationSeconds || 0) + duration;
+        const newSec = (d.totalDurationSeconds || 0) + txResult.duration;
         t.set(ref, {
           totalCalls: (d.totalCalls || 0) + 1,
           totalDurationSeconds: newSec,
@@ -279,7 +305,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         const ref = studentRef.collection("stats").doc(todayStr);
         const snap = await t.get(ref);
         const d = snap.exists ? snap.data() : {};
-        const newSec = (d.durationSecondsToday || 0) + duration;
+        const newSec = (d.durationSecondsToday || 0) + txResult.duration;
         t.set(ref, {
           callsToday: (d.callsToday || 0) + 1,
           durationSecondsToday: newSec,
@@ -298,12 +324,12 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           const ref = tutorRef.collection("stats").doc("allTime");
           const snap = await t.get(ref);
           const d = snap.exists ? snap.data() : {};
-          const newSec = (d.totalDurationSeconds || 0) + duration;
+          const newSec = (d.totalDurationSeconds || 0) + txResult.duration;
           t.set(ref, {
             totalCalls: (d.totalCalls || 0) + 1,
             totalDurationSeconds: newSec,
             totalMinutes: formatSecondsToMinStr(newSec),
-            totalEarned: (d.totalEarned || 0) + tutorEarning,
+            totalEarned: (d.totalEarned || 0) + txResult.tutorEarning,
             isAllTime: true,
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
@@ -315,8 +341,8 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           const ref = tutorRef.collection("stats").doc(todayStr);
           const snap = await t.get(ref);
           const d = snap.exists ? snap.data() : {};
-          const newSec = (d.durationSecondsToday || 0) + duration;
-          const newEarned = (d.earnedTodayNumeric || 0) + tutorEarning;
+          const newSec = (d.durationSecondsToday || 0) + txResult.duration;
+          const newEarned = (d.earnedTodayNumeric || 0) + txResult.tutorEarning;
           t.set(ref, {
             callsToday: (d.callsToday || 0) + 1,
             durationSecondsToday: newSec,
@@ -350,6 +376,12 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("internal", error.message);
   }
 });
+
+function formatDuration(totalSeconds) {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
 
 function formatSecondsToMinStr(totalSeconds) {
   const mins = Math.floor(totalSeconds / 60);

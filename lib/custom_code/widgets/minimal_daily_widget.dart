@@ -107,6 +107,7 @@ class MinimalDailyWidget extends StatefulWidget {
     this.sessionStatus,
     this.isStudent,
     this.deepgramApiKey,
+    this.deepgramTokenRefreshCallback,
     this.enableDeepgram = true,
     required this.deepgramLanguage,
     this.actionCallback,
@@ -123,6 +124,7 @@ class MinimalDailyWidget extends StatefulWidget {
   final String? sessionStatus;
   final bool? isStudent;
   final String? deepgramApiKey;
+  final Future<String?> Function()? deepgramTokenRefreshCallback;
   final bool enableDeepgram;
   final String deepgramLanguage;
   final Future Function(String word, String sentence)? actionCallback;
@@ -162,6 +164,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _tokenRefreshInProgress = false;
   int _tokenRefreshAttempts = 0;
   static const int _maxTokenRefreshAttempts = 2;
+  String? _deepgramCredential;
   Timer? _remoteLeftTimer;
   bool _remoteLeftNotified = false;
   bool _userRequestedEnd = false;
@@ -189,6 +192,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _deepgramCredential = _sanitizeDeepgramCredential(widget.deepgramApiKey);
     _initializeWidget();
   }
 
@@ -260,9 +264,82 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return _sanitizeMeetingToken(_dynamicMeetingToken ?? widget.meetingToken);
   }
 
+  String? _sanitizeDeepgramCredential(String? value) {
+    if (value == null) return null;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    final lowered = trimmed.toLowerCase();
+    if (lowered == 'null' ||
+        lowered == 'undefined' ||
+        lowered == 'false' ||
+        lowered == '0' ||
+        lowered == 'none') {
+      return null;
+    }
+    return trimmed;
+  }
+
+  bool _looksLikeJwt(String value) {
+    final parts = value.split('.');
+    return parts.length == 3 &&
+        parts[0].isNotEmpty &&
+        parts[1].isNotEmpty &&
+        parts[2].isNotEmpty;
+  }
+
+  String _buildDeepgramAuthHeader(String credential) {
+    final sanitized = credential.trim();
+    final lowered = sanitized.toLowerCase();
+    if (lowered.startsWith('token ') || lowered.startsWith('bearer ')) {
+      return sanitized;
+    }
+    return _looksLikeJwt(sanitized) ? 'Bearer $sanitized' : 'Token $sanitized';
+  }
+
+  bool _canUseDeepgram() {
+    if (!widget.enableDeepgram) return false;
+    if (_sanitizeDeepgramCredential(_deepgramCredential) != null) return true;
+    if (_sanitizeDeepgramCredential(widget.deepgramApiKey) != null) return true;
+    return widget.deepgramTokenRefreshCallback != null;
+  }
+
+  Future<String?> _resolveDeepgramCredential({
+    bool forceRefresh = false,
+  }) async {
+    final staticCredential = _sanitizeDeepgramCredential(widget.deepgramApiKey);
+
+    if (!forceRefresh) {
+      final cached = _sanitizeDeepgramCredential(_deepgramCredential);
+      if (cached != null) return cached;
+      if (staticCredential != null) {
+        _deepgramCredential = staticCredential;
+        return staticCredential;
+      }
+    }
+
+    if (widget.deepgramTokenRefreshCallback != null) {
+      try {
+        final fetched = await widget.deepgramTokenRefreshCallback!.call();
+        final sanitized = _sanitizeDeepgramCredential(fetched);
+        if (sanitized != null) {
+          _deepgramCredential = sanitized;
+          return sanitized;
+        }
+      } catch (e) {
+        if (kDebugMode) print('Deepgram token refresh failed: $e');
+      }
+    }
+
+    if (staticCredential != null) {
+      _deepgramCredential = staticCredential;
+      return staticCredential;
+    }
+
+    return null;
+  }
+
   bool _hasValidJoinData() {
-    return _isValidRoomUrl(widget.roomUrl) &&
-        _effectiveMeetingToken() != null;
+    return _isValidRoomUrl(widget.roomUrl) && _effectiveMeetingToken() != null;
   }
 
   /// Simplified initialization
@@ -299,8 +376,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       await _joinRoomWithEnhancedSettings();
 
       // Start Deepgram if configured
-      if (widget.enableDeepgram &&
-          (widget.deepgramApiKey?.isNotEmpty ?? false)) {
+      if (_canUseDeepgram()) {
         _scheduleDeepgramStart();
       }
 
@@ -982,14 +1058,27 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void _scheduleDeepgramStart() {
     final timer = Timer(const Duration(milliseconds: 1000), () {
       if (mounted && _state.connectionState == ConnectionState.connected) {
-        _startDeepgramStreaming(widget.deepgramApiKey!);
+        _startDeepgramStreamingWithResolvedCredential();
       }
     });
     _trackTimer(timer);
   }
 
+  Future<void> _startDeepgramStreamingWithResolvedCredential({
+    bool forceRefresh = false,
+  }) async {
+    final credential = await _resolveDeepgramCredential(
+      forceRefresh: forceRefresh,
+    );
+    if (credential == null) {
+      if (kDebugMode) print('Deepgram disabled: no credential available');
+      return;
+    }
+    await _startDeepgramStreaming(credential);
+  }
+
   /// Start Deepgram streaming with proper resource management
-  Future<void> _startDeepgramStreaming(String apiKey) async {
+  Future<void> _startDeepgramStreaming(String credential) async {
     if (_state.isStreamingToDeepgram || !mounted) return;
 
     try {
@@ -1007,7 +1096,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _recorder!.setSubscriptionDuration(const Duration(milliseconds: 100));
 
       // Initialize Deepgram WebSocket
-      await _initializeDeepgramWebSocket(apiKey);
+      await _initializeDeepgramWebSocket(credential);
 
       // Setup audio streaming
       _audioStreamController = StreamController<Uint8List>();
@@ -1043,7 +1132,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   /// Initialize Deepgram WebSocket connection
-  Future<void> _initializeDeepgramWebSocket(String apiKey) async {
+  Future<void> _initializeDeepgramWebSocket(String credential) async {
     final uri = Uri.https('api.deepgram.com', '/v1/listen', {
       'encoding': 'linear16',
       'sample_rate': '16000',
@@ -1063,7 +1152,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     _deepgramChannel = IOWebSocketChannel.connect(
       wsUrl,
-      headers: {'Authorization': 'token $apiKey'},
+      headers: {'Authorization': _buildDeepgramAuthHeader(credential)},
     );
 
     final subscription = _deepgramChannel!.stream.listen(
@@ -1175,9 +1264,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (!_state.isStreamingToDeepgram) return;
 
     final timer = Timer(const Duration(seconds: 2), () async {
-      if (mounted && widget.deepgramApiKey != null) {
+      if (mounted) {
         await _stopDeepgramStreaming();
-        await _startDeepgramStreaming(widget.deepgramApiKey!);
+        await _startDeepgramStreamingWithResolvedCredential(
+          forceRefresh: true,
+        );
       }
     });
     _trackTimer(timer);
@@ -1249,10 +1340,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         microphone: _resumeMicrophoneEnabled,
       );
 
-      if (widget.enableDeepgram &&
-          widget.deepgramApiKey != null &&
-          !_state.isStreamingToDeepgram) {
-        _startDeepgramStreaming(widget.deepgramApiKey!);
+      if (_canUseDeepgram() && !_state.isStreamingToDeepgram) {
+        _startDeepgramStreamingWithResolvedCredential(forceRefresh: true);
       }
     }
   }
@@ -1267,6 +1356,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   @override
   void didUpdateWidget(MinimalDailyWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.deepgramApiKey != widget.deepgramApiKey) {
+      _deepgramCredential = _sanitizeDeepgramCredential(widget.deepgramApiKey);
+    }
 
     final oldUrl = oldWidget.roomUrl;
     final newUrl = widget.roomUrl;
@@ -1298,10 +1391,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (!mounted || _disposed) return;
 
     // Start/stop duration timer based on connection state changes
-    final wasConnected =
-        _state.connectionState == ConnectionState.connected;
-    final isConnected =
-        newState.connectionState == ConnectionState.connected;
+    final wasConnected = _state.connectionState == ConnectionState.connected;
+    final isConnected = newState.connectionState == ConnectionState.connected;
     if (!wasConnected && isConnected) {
       _startDurationTimer();
     } else if (wasConnected && !isConnected) {

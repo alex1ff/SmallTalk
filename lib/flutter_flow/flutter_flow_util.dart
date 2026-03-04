@@ -317,7 +317,13 @@ void showSnackbar(
                 ),
               ),
             ),
-          Text(message),
+          Expanded(
+            child: Text(
+              message,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
       duration: Duration(seconds: duration),

@@ -529,9 +529,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                             padding:
                                 EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 0.0, 0.0),
                             child: Text(
-                              FFLocalizations.of(context).getText(
-                                'ov47f2e3' /* Войти как Native Speaker */,
-                              ),
+                              'Войти как Native Speaker',
                               style: FlutterFlowTheme.of(context)
                                   .bodyMedium
                                   .override(

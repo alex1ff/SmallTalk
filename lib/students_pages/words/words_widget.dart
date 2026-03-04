@@ -617,23 +617,27 @@ class _WordsWidgetState extends State<WordsWidget> {
                                           );
                                         }
 
-                                        return ListView.separated(
-                                          padding: EdgeInsets.zero,
-                                          primary: false,
-                                          shrinkWrap: true,
-                                          scrollDirection: Axis.vertical,
-                                          itemCount: pronoun.length,
-                                          separatorBuilder: (_, __) =>
-                                              SizedBox(height: 6.0),
-                                          itemBuilder: (context, pronounIndex) {
+                                        return Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: List.generate(
+                                              pronoun.length, (pronounIndex) {
                                             final pronounItem =
                                                 pronoun[pronounIndex];
-                                            return WordCardWidget(
-                                              key: Key(
-                                                  'Keyeax_${pronounIndex}_of_${pronoun.length}'),
-                                              wordDoc: pronounItem,
+                                            return Padding(
+                                              padding: EdgeInsetsDirectional
+                                                  .fromSTEB(
+                                                0.0,
+                                                pronounIndex == 0 ? 0.0 : 6.0,
+                                                0.0,
+                                                0.0,
+                                              ),
+                                              child: WordCardWidget(
+                                                key: Key(
+                                                    'Keyeax_${pronounIndex}_of_${pronoun.length}'),
+                                                wordDoc: pronounItem,
+                                              ),
                                             );
-                                          },
+                                          }),
                                         );
                                       },
                                     ),

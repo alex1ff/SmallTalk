@@ -49,10 +49,6 @@ class FirebaseAuthManager extends AuthManager
         JwtSignInManager,
         GithubSignInManager,
         PhoneSignInManager {
-  // Set when using phone verification (after phone number is provided).
-  String? _phoneAuthVerificationCode;
-  // Set when using phone sign in in web mode (ignored otherwise).
-  ConfirmationResult? _webPhoneAuthConfirmationResult;
   FirebasePhoneAuthManager phoneAuthManager = FirebasePhoneAuthManager();
 
   @override
@@ -106,7 +102,6 @@ class FirebaseAuthManager extends AuthManager
     }
   }
 
-  @override
   Future updatePassword({
     required String newPassword,
     required BuildContext context,
@@ -215,7 +210,6 @@ class FirebaseAuthManager extends AuthManager
         phoneAuthManager
             .update(() => phoneAuthManager.triggerOnCodeSent = false);
       } else if (phoneAuthManager.phoneAuthError != null) {
-        final e = phoneAuthManager.phoneAuthError!;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(FFLocalizations.of(context).getText(
             '60fb8f43' /* Ошибка */,
@@ -349,12 +343,10 @@ class FirebaseAuthManager extends AuthManager
         'too-many-requests' => isRu
             ? 'Слишком много попыток. Попробуйте позже.'
             : 'Too many attempts. Try again later.',
-        'user-disabled' => isRu
-            ? 'Этот аккаунт отключен.'
-            : 'This account has been disabled.',
-        'invalid-email' => isRu
-            ? 'Неверный формат e-mail.'
-            : 'Invalid e-mail format.',
+        'user-disabled' =>
+          isRu ? 'Этот аккаунт отключен.' : 'This account has been disabled.',
+        'invalid-email' =>
+          isRu ? 'Неверный формат e-mail.' : 'Invalid e-mail format.',
         _ => FFLocalizations.of(context).getText(
             '60fb8f43' /* Ошибка */,
           ),

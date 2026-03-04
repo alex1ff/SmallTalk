@@ -138,181 +138,90 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                 List<PackagesRecord>
                                     listViewPackagesRecordList = snapshot.data!;
 
-                                return ListView.separated(
-                                  padding: EdgeInsets.zero,
-                                  primary: false,
-                                  shrinkWrap: true,
-                                  scrollDirection: Axis.vertical,
-                                  itemCount: listViewPackagesRecordList.length,
-                                  separatorBuilder: (_, __) =>
-                                      SizedBox(height: 6),
-                                  itemBuilder: (context, listViewIndex) {
+                                return Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: List.generate(
+                                      listViewPackagesRecordList.length,
+                                      (listViewIndex) {
                                     final listViewPackagesRecord =
                                         listViewPackagesRecordList[
                                             listViewIndex];
-                                    return InkWell(
-                                      splashColor: Colors.transparent,
-                                      focusColor: Colors.transparent,
-                                      hoverColor: Colors.transparent,
-                                      highlightColor: Colors.transparent,
-                                      onTap: () async {
-                                        _model.tarifDoc =
-                                            listViewPackagesRecord;
-                                        safeSetState(() {});
-                                        HapticFeedback.mediumImpact();
-                                      },
-                                      child: Stack(
-                                        alignment:
-                                            AlignmentDirectional(1, -1.4),
-                                        children: [
-                                          Container(
-                                            width: double.infinity,
-                                            height: 90,
-                                            decoration: BoxDecoration(
-                                              color: listViewPackagesRecord
-                                                          .reference ==
-                                                      _model.tarifDoc?.reference
-                                                  ? FlutterFlowTheme.of(context)
-                                                      .primary
-                                                  : FlutterFlowTheme.of(context)
-                                                      .primaryBackground,
-                                              borderRadius:
-                                                  BorderRadius.circular(26),
-                                              border: Border.all(
+                                    return Padding(
+                                      padding: EdgeInsetsDirectional.fromSTEB(
+                                        0.0,
+                                        listViewIndex == 0 ? 0.0 : 6.0,
+                                        0.0,
+                                        0.0,
+                                      ),
+                                      child: InkWell(
+                                        splashColor: Colors.transparent,
+                                        focusColor: Colors.transparent,
+                                        hoverColor: Colors.transparent,
+                                        highlightColor: Colors.transparent,
+                                        onTap: () async {
+                                          _model.tarifDoc =
+                                              listViewPackagesRecord;
+                                          safeSetState(() {});
+                                          HapticFeedback.mediumImpact();
+                                        },
+                                        child: Stack(
+                                          alignment:
+                                              AlignmentDirectional(1, -1.4),
+                                          children: [
+                                            Container(
+                                              width: double.infinity,
+                                              height: 90,
+                                              decoration: BoxDecoration(
                                                 color: listViewPackagesRecord
                                                             .reference ==
                                                         _model
                                                             .tarifDoc?.reference
                                                     ? FlutterFlowTheme.of(
                                                             context)
-                                                        .primaryText
-                                                    : Colors.transparent,
-                                                width: 1,
+                                                        .primary
+                                                    : FlutterFlowTheme.of(
+                                                            context)
+                                                        .primaryBackground,
+                                                borderRadius:
+                                                    BorderRadius.circular(26),
+                                                border: Border.all(
+                                                  color:
+                                                      listViewPackagesRecord
+                                                                  .reference ==
+                                                              _model.tarifDoc
+                                                                  ?.reference
+                                                          ? FlutterFlowTheme.of(
+                                                                  context)
+                                                              .primaryText
+                                                          : Colors.transparent,
+                                                  width: 1,
+                                                ),
                                               ),
-                                            ),
-                                            child: Padding(
-                                              padding: EdgeInsetsDirectional
-                                                  .fromSTEB(20, 16, 20, 16),
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.max,
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: [
-                                                  Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.max,
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment
-                                                            .spaceBetween,
-                                                    children: [
-                                                      Text(
-                                                        listViewPackagesRecord
-                                                            .name,
-                                                        style:
-                                                            FlutterFlowTheme.of(
-                                                                    context)
-                                                                .bodyMedium
-                                                                .override(
-                                                                  fontFamily:
-                                                                      'Cool',
-                                                                  color: listViewPackagesRecord
-                                                                              .reference ==
-                                                                          _model
-                                                                              .tarifDoc
-                                                                              ?.reference
-                                                                      ? FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .primaryBackground
-                                                                      : FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .primaryText,
-                                                                  fontSize: 24,
-                                                                  letterSpacing:
-                                                                      0.0,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .normal,
-                                                                ),
-                                                      ),
-                                                      Text(
-                                                        '${listViewPackagesRecord.price.toString()}₽',
-                                                        style:
-                                                            FlutterFlowTheme.of(
-                                                                    context)
-                                                                .bodyMedium
-                                                                .override(
-                                                                  fontFamily:
-                                                                      'Cool',
-                                                                  color: listViewPackagesRecord
-                                                                              .reference ==
-                                                                          _model
-                                                                              .tarifDoc
-                                                                              ?.reference
-                                                                      ? FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .primaryBackground
-                                                                      : FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .primaryText,
-                                                                  fontSize: 24,
-                                                                  letterSpacing:
-                                                                      0.0,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .normal,
-                                                                ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.max,
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment
-                                                            .spaceBetween,
-                                                    children: [
-                                                      if (listViewPackagesRecord
-                                                              .description !=
-                                                          '')
+                                              child: Padding(
+                                                padding: EdgeInsetsDirectional
+                                                    .fromSTEB(20, 16, 20, 16),
+                                                child: Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.max,
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.max,
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .spaceBetween,
+                                                      children: [
                                                         Text(
                                                           listViewPackagesRecord
-                                                              .description,
+                                                              .name,
                                                           style: FlutterFlowTheme
                                                                   .of(context)
                                                               .bodyMedium
                                                               .override(
                                                                 fontFamily:
-                                                                    'sf pro display',
-                                                                color: listViewPackagesRecord
-                                                                            .reference ==
-                                                                        _model.tarifDoc
-                                                                            ?.reference
-                                                                    ? FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .success
-                                                                    : FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .error,
-                                                                fontSize: 15,
-                                                                letterSpacing:
-                                                                    0.0,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                                lineHeight: 1.5,
-                                                              ),
-                                                        ),
-                                                      if (listViewPackagesRecord
-                                                              .oldPrice !=
-                                                          0)
-                                                        Text(
-                                                          ' ${listViewPackagesRecord.oldPrice.toString()}₽ ',
-                                                          style: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .bodyMedium
-                                                              .override(
-                                                                fontFamily:
-                                                                    'sf pro display',
+                                                                    'Cool',
                                                                 color: listViewPackagesRecord
                                                                             .reference ==
                                                                         _model.tarifDoc
@@ -322,56 +231,156 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                                                         .primaryBackground
                                                                     : FlutterFlowTheme.of(
                                                                             context)
-                                                                        .secondaryText,
-                                                                fontSize: 15,
+                                                                        .primaryText,
+                                                                fontSize: 24,
                                                                 letterSpacing:
                                                                     0.0,
                                                                 fontWeight:
                                                                     FontWeight
                                                                         .normal,
-                                                                decoration:
-                                                                    TextDecoration
-                                                                        .lineThrough,
-                                                                lineHeight: 1.5,
                                                               ),
                                                         ),
-                                                    ],
-                                                  ),
-                                                ],
+                                                        Text(
+                                                          '${listViewPackagesRecord.price.toString()}₽',
+                                                          style: FlutterFlowTheme
+                                                                  .of(context)
+                                                              .bodyMedium
+                                                              .override(
+                                                                fontFamily:
+                                                                    'Cool',
+                                                                color: listViewPackagesRecord
+                                                                            .reference ==
+                                                                        _model.tarifDoc
+                                                                            ?.reference
+                                                                    ? FlutterFlowTheme.of(
+                                                                            context)
+                                                                        .primaryBackground
+                                                                    : FlutterFlowTheme.of(
+                                                                            context)
+                                                                        .primaryText,
+                                                                fontSize: 24,
+                                                                letterSpacing:
+                                                                    0.0,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .normal,
+                                                              ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.max,
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .spaceBetween,
+                                                      children: [
+                                                        if (listViewPackagesRecord
+                                                                .description !=
+                                                            '')
+                                                          Text(
+                                                            listViewPackagesRecord
+                                                                .description,
+                                                            style: FlutterFlowTheme
+                                                                    .of(context)
+                                                                .bodyMedium
+                                                                .override(
+                                                                  fontFamily:
+                                                                      'sf pro display',
+                                                                  color: listViewPackagesRecord
+                                                                              .reference ==
+                                                                          _model
+                                                                              .tarifDoc
+                                                                              ?.reference
+                                                                      ? FlutterFlowTheme.of(
+                                                                              context)
+                                                                          .success
+                                                                      : FlutterFlowTheme.of(
+                                                                              context)
+                                                                          .error,
+                                                                  fontSize: 15,
+                                                                  letterSpacing:
+                                                                      0.0,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .normal,
+                                                                  lineHeight:
+                                                                      1.5,
+                                                                ),
+                                                          ),
+                                                        if (listViewPackagesRecord
+                                                                .oldPrice !=
+                                                            0)
+                                                          Text(
+                                                            ' ${listViewPackagesRecord.oldPrice.toString()}₽ ',
+                                                            style: FlutterFlowTheme
+                                                                    .of(context)
+                                                                .bodyMedium
+                                                                .override(
+                                                                  fontFamily:
+                                                                      'sf pro display',
+                                                                  color: listViewPackagesRecord
+                                                                              .reference ==
+                                                                          _model
+                                                                              .tarifDoc
+                                                                              ?.reference
+                                                                      ? FlutterFlowTheme.of(
+                                                                              context)
+                                                                          .primaryBackground
+                                                                      : FlutterFlowTheme.of(
+                                                                              context)
+                                                                          .secondaryText,
+                                                                  fontSize: 15,
+                                                                  letterSpacing:
+                                                                      0.0,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .normal,
+                                                                  decoration:
+                                                                      TextDecoration
+                                                                          .lineThrough,
+                                                                  lineHeight:
+                                                                      1.5,
+                                                                ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          if (listViewPackagesRecord
-                                                  .reference ==
-                                              _model.tarifDoc?.reference)
-                                            Padding(
-                                              padding: EdgeInsetsDirectional
-                                                  .fromSTEB(0, 0, 2, 0),
-                                              child: Container(
-                                                width: 24,
-                                                height: 24,
-                                                decoration: BoxDecoration(
-                                                  color: FlutterFlowTheme.of(
-                                                          context)
-                                                      .success,
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: Align(
-                                                  alignment:
-                                                      AlignmentDirectional(
-                                                          0, 0),
-                                                  child: Icon(
-                                                    Icons.done,
-                                                    color: Colors.black,
-                                                    size: 13,
+                                            if (listViewPackagesRecord
+                                                    .reference ==
+                                                _model.tarifDoc?.reference)
+                                              Padding(
+                                                padding: EdgeInsetsDirectional
+                                                    .fromSTEB(0, 0, 2, 0),
+                                                child: Container(
+                                                  width: 24,
+                                                  height: 24,
+                                                  decoration: BoxDecoration(
+                                                    color: FlutterFlowTheme.of(
+                                                            context)
+                                                        .success,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: Align(
+                                                    alignment:
+                                                        AlignmentDirectional(
+                                                            0, 0),
+                                                    child: Icon(
+                                                      Icons.done,
+                                                      color: Colors.black,
+                                                      size: 13,
+                                                    ),
                                                   ),
                                                 ),
                                               ),
-                                            ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     );
-                                  },
+                                  }),
                                 );
                               },
                             ),
@@ -947,22 +956,25 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                           }())
                                       .toList();
 
-                                  return ListView.separated(
-                                    padding: EdgeInsets.zero,
-                                    primary: false,
-                                    shrinkWrap: true,
-                                    scrollDirection: Axis.vertical,
-                                    itemCount: list.length,
-                                    separatorBuilder: (_, __) =>
-                                        SizedBox(height: 6),
-                                    itemBuilder: (context, listIndex) {
+                                  return Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children:
+                                        List.generate(list.length, (listIndex) {
                                       final listItem = list[listIndex];
-                                      return TransWidget(
-                                        key: Key(
-                                            'Keya8r_${listIndex}_of_${list.length}'),
-                                        trans: listItem,
+                                      return Padding(
+                                        padding: EdgeInsetsDirectional.fromSTEB(
+                                          0.0,
+                                          listIndex == 0 ? 0.0 : 6.0,
+                                          0.0,
+                                          0.0,
+                                        ),
+                                        child: TransWidget(
+                                          key: Key(
+                                              'Keya8r_${listIndex}_of_${list.length}'),
+                                          trans: listItem,
+                                        ),
                                       );
-                                    },
+                                    }),
                                   );
                                 },
                               ),

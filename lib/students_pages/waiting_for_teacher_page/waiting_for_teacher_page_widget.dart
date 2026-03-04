@@ -27,6 +27,8 @@ class WaitingForTeacherPageWidget extends StatefulWidget {
 
 class _WaitingForTeacherPageWidgetState
     extends State<WaitingForTeacherPageWidget> {
+  static const bool _isFlutterTest = bool.fromEnvironment('FLUTTER_TEST');
+
   late WaitingForTeacherPageModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
@@ -36,19 +38,28 @@ class _WaitingForTeacherPageWidgetState
   bool _isCreating = false;
   bool _createFailed = false;
   String? _createMessage;
+  bool _createSessionRequested = false;
   bool _cancelRequested = false;
   bool _isCancelling = false;
   Completer<void>? _createSessionCompleter;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _sessionSubscription;
+  String? _listeningSessionId;
+  String? _lastSnapshotFingerprint;
 
   @override
   void initState() {
     super.initState();
     _model = createModel(context, () => WaitingForTeacherPageModel());
-    unawaited(_startCreateSession());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _tryStartCreateSession();
+    });
   }
 
   @override
   void dispose() {
+    _detachSessionListener();
     if (_createSessionCompleter != null &&
         !_createSessionCompleter!.isCompleted) {
       _createSessionCompleter!.complete();
@@ -66,6 +77,66 @@ class _WaitingForTeacherPageWidgetState
       return null;
     }
     return trimmed;
+  }
+
+  String? _sanitizeMessage(String? value) {
+    final message = _nonEmpty(value);
+    if (message == null) return null;
+    const maxLen = 200;
+    if (message.length <= maxLen) return message;
+    return '${message.substring(0, maxLen)}…';
+  }
+
+  String _snapshotFingerprint(Map<String, dynamic>? data) {
+    if (data == null) return 'null';
+
+    final status = _nonEmpty(data['status']?.toString()) ?? '';
+    final roomUrl = _nonEmpty(data['dailyRoomUrl']?.toString()) ?? '';
+    final roomName = _nonEmpty(data['dailyRoomName']?.toString()) ?? '';
+    final meetingToken =
+        _nonEmpty(data['studentMeetingToken']?.toString()) ?? '';
+    final studentTriggered =
+        data['studentNavigationTriggered'] == true ? '1' : '0';
+
+    return '$status|$roomUrl|$roomName|$meetingToken|$studentTriggered';
+  }
+
+  void _detachSessionListener() {
+    _listeningSessionId = null;
+    _lastSnapshotFingerprint = null;
+    final subscription = _sessionSubscription;
+    _sessionSubscription = null;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+  }
+
+  void _ensureSessionListener(String sessionId) {
+    if (_sessionSubscription != null && _listeningSessionId == sessionId) {
+      return;
+    }
+
+    _detachSessionListener();
+    _listeningSessionId = sessionId;
+
+    _sessionSubscription = FirebaseFirestore.instance
+        .collection('videoSessions')
+        .doc(sessionId)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        final data = snapshot.data();
+        final fingerprint = _snapshotFingerprint(data);
+        if (fingerprint == _lastSnapshotFingerprint) {
+          return;
+        }
+        _lastSnapshotFingerprint = fingerprint;
+        _handleSnapshot(data);
+      },
+      onError: (error) {
+        debugPrint('WaitingForTeacher: session stream error: $error');
+      },
+    );
   }
 
   Map<String, dynamic> _asMap(dynamic value) {
@@ -115,14 +186,18 @@ class _WaitingForTeacherPageWidgetState
     );
   }
 
-  void _showToastAndPop(String message) {
-    if (!mounted || _navigationHandled) return;
-    _navigationHandled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      showSnackbar(context, message);
-      context.safePop();
-    });
+  void _tryStartCreateSession() {
+    if (_createSessionRequested ||
+        _isCreating ||
+        _navigationHandled ||
+        _cancelRequested) {
+      return;
+    }
+    if (currentUserDocument == null) {
+      return;
+    }
+    _createSessionRequested = true;
+    unawaited(_startCreateSession());
   }
 
   Map<String, dynamic>? _buildCreateSessionPayload() {
@@ -156,8 +231,17 @@ class _WaitingForTeacherPageWidgetState
     }
 
     try {
+      if (currentUserDocument == null) {
+        debugPrint(
+          'WaitingForTeacher: user profile is not ready yet, delaying createVideoSession.',
+        );
+        _createSessionRequested = false;
+        return;
+      }
+
       final payload = _buildCreateSessionPayload();
       if (payload == null) {
+        _detachSessionListener();
         _model.sessionId = null;
         _createFailed = true;
         _createMessage = _createFailureMessage(
@@ -168,9 +252,6 @@ class _WaitingForTeacherPageWidgetState
         );
         debugPrint(
             'WaitingForTeacher: missing user data for createVideoSession');
-        if (!_cancelRequested && _createMessage != null) {
-          _showToastAndPop(_createMessage!);
-        }
         return;
       }
 
@@ -201,8 +282,9 @@ class _WaitingForTeacherPageWidgetState
       }
 
       if (sessionId == null) {
+        _detachSessionListener();
         final status = _nonEmpty(resultMap['status']?.toString());
-        final backendMessage = _nonEmpty(resultMap['message']?.toString());
+        final backendMessage = _sanitizeMessage(resultMap['message']?.toString());
         _createFailed = true;
         _createMessage = _createFailureMessage(
           status: status,
@@ -212,11 +294,11 @@ class _WaitingForTeacherPageWidgetState
           'WaitingForTeacher: createVideoSession returned without sessionId '
           '(status: ${status ?? "unknown"})',
         );
-        if (!_cancelRequested && _createMessage != null) {
-          _showToastAndPop(_createMessage!);
-        }
+      } else {
+        _ensureSessionListener(sessionId);
       }
     } on FirebaseFunctionsException catch (error) {
+      _detachSessionListener();
       _model.newSession = CreateVideoSessionCloudFunctionCallResponse(
         errorCode: error.code,
         succeeded: false,
@@ -224,27 +306,22 @@ class _WaitingForTeacherPageWidgetState
       _model.sessionId = null;
       _createFailed = true;
       _createMessage = _createFailureMessage(
-        fallbackMessage: _nonEmpty(error.message),
+        fallbackMessage: _sanitizeMessage(error.message),
         errorCode: error.code,
       );
       debugPrint(
         'WaitingForTeacher: createVideoSession failed: '
         '${error.code} ${error.message}',
       );
-      if (!_cancelRequested && _createMessage != null) {
-        _showToastAndPop(_createMessage!);
-      }
     } catch (error) {
+      _detachSessionListener();
       _model.sessionId = null;
       _createFailed = true;
       _createMessage = _createFailureMessage(
-        fallbackMessage: _nonEmpty(error.toString()),
+        fallbackMessage: _sanitizeMessage(error.toString()),
       );
       debugPrint(
           'WaitingForTeacher: unexpected createVideoSession error: $error');
-      if (!_cancelRequested && _createMessage != null) {
-        _showToastAndPop(_createMessage!);
-      }
     } finally {
       _isCreating = false;
       final completer = _createSessionCompleter;
@@ -312,6 +389,7 @@ class _WaitingForTeacherPageWidgetState
         );
       }
     } finally {
+      _detachSessionListener();
       if (mounted && !_navigationHandled) {
         _navigationHandled = true;
         context.safePop();
@@ -354,9 +432,8 @@ class _WaitingForTeacherPageWidgetState
     // Auto-pop on terminal statuses
     if (status == 'cancelled' || status == 'ended') {
       _navigationHandled = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.safePop();
-      });
+      _detachSessionListener();
+      context.safePop();
     }
   }
 
@@ -428,8 +505,14 @@ class _WaitingForTeacherPageWidgetState
 
   @override
   Widget build(BuildContext context) {
+    _tryStartCreateSession();
     final sessionId = _nonEmpty(_model.sessionId);
     final isLoading = sessionId == null && !_createFailed;
+    if (sessionId != null) {
+      _ensureSessionListener(sessionId);
+    } else {
+      _detachSessionListener();
+    }
 
     return GestureDetector(
       onTap: () {
@@ -449,18 +532,12 @@ class _WaitingForTeacherPageWidgetState
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
-                    return _buildStatusBody(context,
-                        status: null, data: null);
+                    return _buildStatusBody(context, status: null, data: null);
                   }
                   final data = snapshot.data?.data();
                   final status = data?['status'] as String?;
 
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _handleSnapshot(data);
-                  });
-
-                  return _buildStatusBody(context,
-                      status: status, data: data);
+                  return _buildStatusBody(context, status: status, data: data);
                 },
               ),
       ),
@@ -474,12 +551,11 @@ class _WaitingForTeacherPageWidgetState
     Map<String, dynamic>? data,
   }) {
     final tutorInfoRaw = data?['tutorInfo'];
-    final tutorInfoMap =
-        tutorInfoRaw is Map ? _asMap(tutorInfoRaw) : null;
+    final tutorInfoMap = tutorInfoRaw is Map ? _asMap(tutorInfoRaw) : null;
     final tutorName = _nonEmpty(tutorInfoMap?['name'] as String?);
     final tutorPhoto = _nonEmpty(tutorInfoMap?['photo'] as String?);
-    final isDialingTutor = tutorName != null &&
-        (status == 'searching' || status == 'connecting');
+    final isDialingTutor =
+        tutorName != null && (status == 'searching' || status == 'connecting');
 
     String title;
     String subtitle;
@@ -575,13 +651,13 @@ class _WaitingForTeacherPageWidgetState
         if (!isDialingTutor && !_createFailed)
           Positioned.fill(
             child: Center(
-              child: Lottie.asset(
-                'assets/jsons/World_Map_Pinging_Animation.json',
-                fit: BoxFit.contain,
-                animate: true,
+                child: Lottie.asset(
+                  'assets/jsons/World_Map_Pinging_Animation.json',
+                  fit: BoxFit.contain,
+                  animate: !_isFlutterTest,
+                ),
               ),
             ),
-          ),
         if (isDialingTutor && tutorPhoto != null)
           Positioned.fill(
             child: CachedNetworkImage(
@@ -614,8 +690,7 @@ class _WaitingForTeacherPageWidgetState
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Padding(
-                    padding:
-                        EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 6.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 6.0),
                     child: Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
@@ -665,7 +740,7 @@ class _WaitingForTeacherPageWidgetState
                               width: 50.0,
                               height: 117.52,
                               fit: BoxFit.contain,
-                              animate: true,
+                              animate: !_isFlutterTest,
                             ),
                           ],
                         ),
@@ -690,9 +765,12 @@ class _WaitingForTeacherPageWidgetState
                       iconPadding:
                           EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
                       color: Color(0xFF6E6CFA),
-                      textStyle: FlutterFlowTheme.of(context).titleSmall.override(
+                      textStyle: FlutterFlowTheme.of(context)
+                          .titleSmall
+                          .override(
                             fontFamily: 'sf pro display',
-                            color: FlutterFlowTheme.of(context).primaryBackground,
+                            color:
+                                FlutterFlowTheme.of(context).primaryBackground,
                             fontSize: 16.0,
                             letterSpacing: 0.0,
                             fontWeight: FontWeight.w500,

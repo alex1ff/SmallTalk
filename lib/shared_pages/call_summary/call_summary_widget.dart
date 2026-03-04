@@ -5,18 +5,13 @@ import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/flutter_flow/flutter_flow_widgets.dart';
 import 'dart:async';
-import 'dart:ui';
-import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:provider/provider.dart';
 
 import 'call_summary_model.dart';
 export 'call_summary_model.dart';
@@ -120,7 +115,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             children: [
                               Text(
                                 () {
-                                  final totalSeconds = widget!.dur;
+                                  final totalSeconds = widget.dur;
                                   final minutes = totalSeconds ~/ 60;
                                   final seconds = totalSeconds % 60;
                                   return '$minutes:${seconds.toString().padLeft(2, '0')} мин';
@@ -146,7 +141,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               Flexible(
                                 child: Text(
                                   valueOrDefault<String>(
-                                    widget!.lang,
+                                    widget.lang,
                                     '-',
                                   ),
                                   style: FlutterFlowTheme.of(context)
@@ -699,48 +694,70 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                       ),
                       action: () async {
                         if (_model.rait != 0) {
-                          if (_model.aboutMeTextController.text != null &&
-                              _model.aboutMeTextController.text != '') {
-                            await ReviewsRecord.collection
-                                .doc()
-                                .set(createReviewsRecordData(
-                                  sessionId: widget!.sessionID,
-                                  fromUserId: currentUserReference,
-                                  toUserId: widget!.userRef,
-                                  rating: _model.rait,
-                                  comment: _model.aboutMeTextController.text,
-                                  createdAt: getCurrentTimestamp,
-                                ));
-                          } else {
-                            await ReviewsRecord.collection
-                                .doc()
-                                .set(createReviewsRecordData(
-                                  sessionId: widget!.sessionID,
-                                  fromUserId: currentUserReference,
-                                  toUserId: widget!.userRef,
-                                  rating: _model.rait,
-                                  createdAt: getCurrentTimestamp,
-                                ));
+                          final sessionRef = widget.sessionID;
+                          final toUserRef = widget.userRef;
+                          if (sessionRef == null || toUserRef == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  FFLocalizations.of(context).getVariableText(
+                                    ruText:
+                                        'Не удалось отправить отзыв: отсутствуют данные сессии.',
+                                    enText:
+                                        'Unable to submit review: missing session data.',
+                                  ),
+                                ),
+                              ),
+                            );
+                            return;
                           }
 
-                          unawaited(
-                            () async {
-                              await widget!.userRef!
-                                  .update(createUsersRecordData(
-                                rating: createURatingStruct(
-                                  average:
-                                      functions.recalculateRatingWithNewReview(
-                                          stackUsersRecord.rating.totalReviews,
-                                          stackUsersRecord.rating.average,
-                                          _model.rait),
-                                  fieldValues: {
-                                    'totalReviews': FieldValue.increment(1),
-                                  },
-                                  clearUnsetFields: false,
+                          final payload = <String, dynamic>{
+                            'sessionId': sessionRef.id,
+                            'toUserId': toUserRef.id,
+                            'rating': _model.rait,
+                          };
+                          final reviewComment =
+                              _model.aboutMeTextController.text.trim();
+                          if (reviewComment.isNotEmpty) {
+                            payload['comment'] = reviewComment;
+                          }
+
+                          try {
+                            await FirebaseFunctions.instance
+                                .httpsCallable('submitReview')
+                                .call(payload);
+                          } on FirebaseFunctionsException catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  e.message ??
+                                      FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText:
+                                            'Не удалось отправить отзыв. Попробуйте снова.',
+                                        enText:
+                                            'Failed to submit review. Please try again.',
+                                      ),
                                 ),
-                              ));
-                            }(),
-                          );
+                              ),
+                            );
+                            return;
+                          } catch (_) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  FFLocalizations.of(context).getVariableText(
+                                    ruText:
+                                        'Не удалось отправить отзыв. Попробуйте снова.',
+                                    enText:
+                                        'Failed to submit review. Please try again.',
+                                  ),
+                                ),
+                              ),
+                            );
+                            return;
+                          }
                         }
                         if (_model.fav) {
                           unawaited(
@@ -749,8 +766,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                 ...mapToFirestore(
                                   {
                                     'favoriteNativeSpeakers':
-                                        FieldValue.arrayUnion(
-                                            [widget!.userRef]),
+                                        FieldValue.arrayUnion([widget.userRef]),
                                   },
                                 ),
                               });
@@ -762,8 +778,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               await currentUserReference!.update({
                                 ...mapToFirestore(
                                   {
-                                    'blockedUsers': FieldValue.arrayUnion(
-                                        [widget!.userRef]),
+                                    'blockedUsers':
+                                        FieldValue.arrayUnion([widget.userRef]),
                                   },
                                 ),
                               });
