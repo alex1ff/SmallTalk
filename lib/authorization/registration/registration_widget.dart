@@ -837,99 +837,107 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                   ],
                                 ),
                               ),
-                              isAndroid
-                                  ? Container()
-                                  : FFButtonWidget(
-                                      onPressed: () async {
-                                        GoRouter.of(context).prepareAuthEvent();
-                                        final user = await authManager
-                                            .signInWithApple(context);
-                                        if (user == null) {
-                                          return;
-                                        }
-                                        if (_model.switchValue == true) {
-                                          await currentUserReference!
-                                              .update(createUsersRecordData(
-                                            role: UserRole.native_speaker,
-                                          ));
-
-                                          context.goNamedAuth(
-                                            AcquaintanceNSWidget.routeName,
-                                            context.mounted,
-                                            queryParameters: {
-                                              'index': serializeParam(
-                                                1,
-                                                ParamType.int,
-                                              ),
-                                            }.withoutNulls,
-                                          );
-                                        } else {
-                                          await currentUserReference!
-                                              .update(createUsersRecordData(
-                                            role: UserRole.student,
-                                            balanceST: updateBalanceStruct(
-                                              BalanceStruct(
-                                                smallTalks: 1,
-                                                minutes: 10,
-                                              ),
-                                              clearUnsetFields: false,
-                                              create: true,
-                                            ),
-                                          ));
-
-                                          unawaited(
-                                            () async {
-                                              await TransactionsRecord.collection
-                                                  .doc()
-                                                  .set(
-                                                      createTransactionsRecordData(
-                                                    userId: currentUserReference,
-                                                    createdAt:
-                                                        getCurrentTimestamp,
-                                                    type:
-                                                        TypeTransactions.bonus,
-                                                    status: StatusTransactions
-                                                        .completed,
-                                                    amountST: 1.0,
-                                                  ));
-                                            }(),
-                                          );
-
-                                          context.goNamedAuth(
-                                            AcquaintanceSTUDENTWidget.routeName,
-                                            context.mounted,
-                                            queryParameters: {
-                                              'index': serializeParam(
-                                                1,
-                                                ParamType.int,
-                                              ),
-                                            }.withoutNulls,
-                                          );
-                                        }
-                                      },
-                                      text: FFLocalizations.of(context).getText(
-                                        '4xlxvpvt' /*  */,
+                              FFButtonWidget(
+                                onPressed: () async {
+                                  if (isAndroid) {
+                                    showSnackbar(
+                                      context,
+                                      FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText:
+                                            'Вход через Apple доступен только на iOS.',
+                                        enText:
+                                            'Apple Sign-In is available on iOS only.',
                                       ),
-                                      options: FFButtonOptions(
-                                        width: 125.0,
-                                        height: 60.0,
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            0.0, 0.0, 0.0, 0.0),
-                                        iconPadding:
-                                            EdgeInsetsDirectional.fromSTEB(
-                                                0.0, 0.0, 0.0, 0.0),
+                                    );
+                                    return;
+                                  }
+
+                                  GoRouter.of(context).prepareAuthEvent();
+                                  final user =
+                                      await authManager.signInWithApple(context);
+                                  if (user == null) {
+                                    return;
+                                  }
+                                  if (_model.switchValue == true) {
+                                    await currentUserReference!
+                                        .update(createUsersRecordData(
+                                      role: UserRole.native_speaker,
+                                    ));
+
+                                    context.goNamedAuth(
+                                      AcquaintanceNSWidget.routeName,
+                                      context.mounted,
+                                      queryParameters: {
+                                        'index': serializeParam(
+                                          1,
+                                          ParamType.int,
+                                        ),
+                                      }.withoutNulls,
+                                    );
+                                  } else {
+                                    await currentUserReference!
+                                        .update(createUsersRecordData(
+                                      role: UserRole.student,
+                                      balanceST: updateBalanceStruct(
+                                        BalanceStruct(
+                                          smallTalks: 1,
+                                          minutes: 10,
+                                        ),
+                                        clearUnsetFields: false,
+                                        create: true,
+                                      ),
+                                    ));
+
+                                    unawaited(
+                                      () async {
+                                        await TransactionsRecord.collection
+                                            .doc()
+                                            .set(createTransactionsRecordData(
+                                              userId: currentUserReference,
+                                              createdAt: getCurrentTimestamp,
+                                              type: TypeTransactions.bonus,
+                                              status:
+                                                  StatusTransactions.completed,
+                                              amountST: 1.0,
+                                            ));
+                                      }(),
+                                    );
+
+                                    context.goNamedAuth(
+                                      AcquaintanceSTUDENTWidget.routeName,
+                                      context.mounted,
+                                      queryParameters: {
+                                        'index': serializeParam(
+                                          1,
+                                          ParamType.int,
+                                        ),
+                                      }.withoutNulls,
+                                    );
+                                  }
+                                },
+                                text: FFLocalizations.of(context).getText(
+                                  '4xlxvpvt' /*  */,
+                                ),
+                                options: FFButtonOptions(
+                                  width: 125.0,
+                                  height: 60.0,
+                                  padding: EdgeInsetsDirectional.fromSTEB(
+                                      0.0, 0.0, 0.0, 0.0),
+                                  iconPadding: EdgeInsetsDirectional.fromSTEB(
+                                      0.0, 0.0, 0.0, 0.0),
+                                  color: Colors.transparent,
+                                  textStyle: FlutterFlowTheme.of(context)
+                                      .titleSmall
+                                      .override(
+                                        fontFamily: 'sf pro display',
                                         color: Colors.transparent,
-                                        textStyle: FlutterFlowTheme.of(context)
-                                            .titleSmall
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color: Colors.transparent,
-                                              letterSpacing: 0.0,
-                                            ),
-                                        elevation: 0.0,
-                                        borderRadius: BorderRadius.circular(50.0),
+                                        letterSpacing: 0.0,
                                       ),
-                                    ),
+                                  elevation: 0.0,
+                                  borderRadius: BorderRadius.circular(50.0),
+                                ),
+                              ),
                             ],
                           ),
                         ),

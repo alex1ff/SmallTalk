@@ -356,6 +356,57 @@ class FirebaseAuthManager extends AuthManager
         SnackBar(content: Text(errorMsg)),
       );
       return null;
+    } catch (e) {
+      debugPrint('Auth exception ($authProvider): $e');
+      final langCode = FFLocalizations.of(context).languageCode;
+      final isRu = langCode == 'ru';
+      final raw = e.toString().toLowerCase();
+
+      final isUserCancelled = raw.contains('canceled') ||
+          raw.contains('cancelled') ||
+          raw.contains('aborted_by_user') ||
+          raw.contains('sign_in_canceled');
+      if (isUserCancelled) {
+        return null;
+      }
+
+      String errorMsg = FFLocalizations.of(context).getText(
+        '60fb8f43' /* Ошибка */,
+      );
+
+      if (authProvider == 'GOOGLE') {
+        final looksLikeGoogleConfigIssue = raw.contains('apiexception: 10') ||
+            raw.contains('sign_in_failed') ||
+            raw.contains('missing-client-id') ||
+            raw.contains('reversed_client_id') ||
+            raw.contains('12500');
+        if (looksLikeGoogleConfigIssue) {
+          errorMsg = isRu
+              ? 'Google вход не настроен для этого приложения. Проверьте Firebase iOS/Android OAuth конфигурацию.'
+              : 'Google Sign-In is not configured for this app. Check Firebase iOS/Android OAuth configuration.';
+        } else {
+          errorMsg = isRu
+              ? 'Не удалось войти через Google. Попробуйте ещё раз.'
+              : 'Google Sign-In failed. Please try again.';
+        }
+      } else if (authProvider == 'APPLE') {
+        final looksLikeAppleConfigIssue = raw.contains('authorizationerror') ||
+            raw.contains('not available') ||
+            raw.contains('invalid response');
+        errorMsg = looksLikeAppleConfigIssue
+            ? (isRu
+                ? 'Apple вход недоступен или не настроен. Проверьте Sign in with Apple capability и настройки Firebase.'
+                : 'Apple Sign-In is unavailable or not configured. Check Sign in with Apple capability and Firebase settings.')
+            : (isRu
+                ? 'Не удалось войти через Apple. Попробуйте ещё раз.'
+                : 'Apple Sign-In failed. Please try again.');
+      }
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg)),
+      );
+      return null;
     }
   }
 }

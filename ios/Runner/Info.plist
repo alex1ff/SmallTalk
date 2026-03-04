@@ -33,8 +33,7 @@
             <string>Editor</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <!--FF_REVERSED_CLIENT_ID-->
-                
+                <string>app-1-1024626146715-ios-cea92eb277b0b0f36bf53e</string>
             </array>
         </dict>
 
