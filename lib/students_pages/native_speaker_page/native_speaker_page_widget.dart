@@ -3,6 +3,7 @@ import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_card/review_card_widget.dart';
+import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
@@ -12,7 +13,6 @@ import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
 import '/index.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -460,10 +460,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                 AnimatedBuilder(
                   animation: _scrollController,
                   builder: (context, _) {
-                    final offset = _scrollController.hasClients
-                        ? _scrollController.offset
-                        : 0.0;
-                    return _buildTopActionButtons(offset);
+                    return _buildTopActionButtons();
                   },
                 ),
               ],
@@ -480,120 +477,91 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         language.nameRu.isNotEmpty;
   }
 
-  Widget _buildTopActionButtons(double scrollOffset) {
-    final maxExtent = MediaQuery.sizeOf(context).height * 0.5;
-    final statusBarH = MediaQuery.of(context).padding.top;
-    final minExtent = statusBarH + kToolbarHeight;
-    final totalShrink = maxExtent - minExtent;
-    final snapHeaderHeight = statusBarH + 8 + 110 + 8 + 42 + 16;
-    final phase1End =
-        ((maxExtent - snapHeaderHeight) / totalShrink).clamp(0.05, 0.9);
-    final progress = (scrollOffset / totalShrink).clamp(0.0, 1.0);
-    final collapseProgress = (progress / phase1End).clamp(0.0, 1.0);
-    // On iOS 26 native buttons, avoid per-frame color updates to reduce jank.
-    final buttonColorProgress = PlatformInfo.isIOS26OrHigher()
-        ? (collapseProgress * 4).round() / 4
-        : collapseProgress;
+  Widget _buildTopCircleIconButton({
+    required Widget icon,
+    required Future<void> Function() onPressed,
+  }) {
+    return SizedBox(
+      width: 45.0,
+      height: 45.0,
+      child: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 7.0,
+              color: Color(0x0D2C2C2C),
+              offset: Offset(0.0, 2.0),
+            ),
+          ],
+          shape: BoxShape.circle,
+        ),
+        child: FlutterFlowIconButton(
+          borderRadius: 70.0,
+          buttonSize: 45.0,
+          fillColor: Colors.white,
+          icon: icon,
+          onPressed: onPressed,
+        ),
+      ),
+    );
+  }
 
-    final fillColor = Color.lerp(
-      Color(0x3CFFFFFF),
-      FlutterFlowTheme.of(context).secondaryBackground,
-      buttonColorProgress,
-    )!;
-    final heartIconColor = Color.lerp(
-      FlutterFlowTheme.of(context).primaryBackground,
-      FlutterFlowTheme.of(context).primaryText,
-      buttonColorProgress,
-    )!;
-
+  Widget _buildTopActionButtons() {
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(8.0, 55.0, 8.0, 0.0),
       child: Row(
         mainAxisSize: MainAxisSize.max,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          SizedBox(
-            width: 45.0,
-            height: 45.0,
-            child: AdaptiveButton.child(
-              onPressed: () async {
-                context.safePop();
-              },
-              style: AdaptiveButtonStyle.glass,
-              size: AdaptiveButtonSize.large,
-              color: fillColor,
-              padding: EdgeInsets.zero,
-              minSize: Size(45.0, 45.0),
-              borderRadius: BorderRadius.circular(70.0),
-              useSmoothRectangleBorder: false,
-              child: Icon(
-                FFIcons.kchevronLeft,
-                color: Colors.black,
-                size: 18.0,
-              ),
+          _buildTopCircleIconButton(
+            onPressed: () async {
+              context.safePop();
+            },
+            icon: Icon(
+              FFIcons.kchevronLeft,
+              color: FlutterFlowTheme.of(context).primaryText,
+              size: 20.0,
             ),
           ),
           AuthUserStreamWidget(
             builder: (context) {
               if ((currentUserDocument?.favoriteNativeSpeakers.toList() ?? [])
                   .contains(widget.nsUserDocRef)) {
-                return SizedBox(
-                  width: 45.0,
-                  height: 45.0,
-                  child: AdaptiveButton.child(
-                    onPressed: () async {
-                      await currentUserReference!.update({
-                        ...mapToFirestore(
-                          {
-                            'favoriteNativeSpeakers':
-                                FieldValue.arrayRemove([widget.nsUserDocRef]),
-                          },
-                        ),
-                      });
-                      safeSetState(() {});
-                    },
-                    style: AdaptiveButtonStyle.glass,
-                    size: AdaptiveButtonSize.large,
-                    color: fillColor,
-                    padding: EdgeInsets.zero,
-                    minSize: Size(45.0, 45.0),
-                    borderRadius: BorderRadius.circular(70.0),
-                    useSmoothRectangleBorder: false,
-                    child: Icon(
-                      Icons.favorite_rounded,
-                      color: FlutterFlowTheme.of(context).error,
-                      size: 20.0,
-                    ),
+                return _buildTopCircleIconButton(
+                  onPressed: () async {
+                    await currentUserReference!.update({
+                      ...mapToFirestore(
+                        {
+                          'favoriteNativeSpeakers':
+                              FieldValue.arrayRemove([widget.nsUserDocRef]),
+                        },
+                      ),
+                    });
+                    safeSetState(() {});
+                  },
+                  icon: Icon(
+                    Icons.favorite_rounded,
+                    color: FlutterFlowTheme.of(context).error,
+                    size: 20.0,
                   ),
                 );
               } else {
-                return SizedBox(
-                  width: 45.0,
-                  height: 45.0,
-                  child: AdaptiveButton.child(
-                    onPressed: () async {
-                      await currentUserReference!.update({
-                        ...mapToFirestore(
-                          {
-                            'favoriteNativeSpeakers':
-                                FieldValue.arrayUnion([widget.nsUserDocRef]),
-                          },
-                        ),
-                      });
-                      safeSetState(() {});
-                    },
-                    style: AdaptiveButtonStyle.glass,
-                    size: AdaptiveButtonSize.large,
-                    color: fillColor,
-                    padding: EdgeInsets.zero,
-                    minSize: Size(45.0, 45.0),
-                    borderRadius: BorderRadius.circular(70.0),
-                    useSmoothRectangleBorder: false,
-                    child: Icon(
-                      FFIcons.kheart,
-                      color: heartIconColor,
-                      size: 20.0,
-                    ),
+                return _buildTopCircleIconButton(
+                  onPressed: () async {
+                    await currentUserReference!.update({
+                      ...mapToFirestore(
+                        {
+                          'favoriteNativeSpeakers':
+                              FieldValue.arrayUnion([widget.nsUserDocRef]),
+                        },
+                      ),
+                    });
+                    safeSetState(() {});
+                  },
+                  icon: Icon(
+                    FFIcons.kheart,
+                    color: FlutterFlowTheme.of(context).primaryText,
+                    size: 20.0,
                   ),
                 );
               }
