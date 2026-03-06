@@ -4,7 +4,7 @@ const axios = require("axios");
 
 const deepgramSecrets = ["DEEPGRAM_API_KEY"];
 const DEEPGRAM_GRANT_URL = "https://api.deepgram.com/v1/auth/grant";
-const DEFAULT_TTL_SECONDS = 60;
+const DEFAULT_TTL_SECONDS = 600;
 
 exports.getDeepgramToken = functions
   .runWith({secrets: deepgramSecrets})
