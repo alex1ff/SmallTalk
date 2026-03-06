@@ -13,6 +13,10 @@ class CallSummaryModel extends FlutterFlowModel<CallSummaryWidget> {
 
   bool black = false;
 
+  bool favTouched = false;
+
+  bool blackTouched = false;
+
   ///  State fields for stateful widgets in this page.
 
   // Stores action output result for [Backend Call - Read Document] action in CallSummary widget.
