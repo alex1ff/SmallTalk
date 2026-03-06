@@ -500,7 +500,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                             child: Container(
                               decoration: BoxDecoration(
                                 color: FlutterFlowTheme.of(context)
-                                    .secondaryBackground,
+                                    .primaryBackground,
                                 borderRadius: BorderRadius.only(
                                   bottomLeft: Radius.circular(0.0),
                                   bottomRight: Radius.circular(0.0),
@@ -512,86 +512,54 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                   width: 0.5,
                                 ),
                               ),
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Padding(
-                                      padding: EdgeInsetsDirectional.fromSTEB(
-                                          6.0, 0.0, 6.0, 0.0),
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                          borderRadius:
-                                              BorderRadius.circular(26.0),
-                                        ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.max,
-                                          children: [
-                                            Row(
-                                              mainAxisSize: MainAxisSize.max,
-                                              children: [
-                                                Padding(
-                                                  padding: EdgeInsetsDirectional
-                                                      .fromSTEB(
-                                                          6.0, 0.0, 0.0, 0.0),
-                                                  child: _buildLanguageFlag(
-                                                    widget.langCode,
-                                                    fallbackLabel: '🌐',
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${valueOrDefault<String>(
-                                                    widget.word,
-                                                    '-',
-                                                  )} ',
-                                                  style: FlutterFlowTheme.of(
-                                                          context)
-                                                      .bodyMedium
-                                                      .override(
-                                                        fontFamily:
-                                                            'sf pro display',
-                                                        fontSize: 17.0,
-                                                        letterSpacing: 0.0,
-                                                        fontWeight:
-                                                            FontWeight.w600,
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  return SingleChildScrollView(
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        minHeight: constraints.maxHeight,
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Padding(
+                                            padding:
+                                                EdgeInsetsDirectional.fromSTEB(
+                                                    6.0, 0.0, 6.0, 0.0),
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    FlutterFlowTheme.of(context)
+                                                        .primaryBackground,
+                                                borderRadius:
+                                                    BorderRadius.circular(26.0),
+                                              ),
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.max,
+                                                children: [
+                                                  Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.max,
+                                                    children: [
+                                                      Padding(
+                                                        padding:
+                                                            EdgeInsetsDirectional
+                                                                .fromSTEB(
+                                                                    6.0,
+                                                                    0.0,
+                                                                    0.0,
+                                                                    0.0),
+                                                        child:
+                                                            _buildLanguageFlag(
+                                                          widget.langCode,
+                                                          fallbackLabel: '🌐',
+                                                        ),
                                                       ),
-                                                ),
-                                              ],
-                                            ),
-                                            Divider(
-                                              height: 1.0,
-                                              thickness: 1.0,
-                                              indent: 56.0,
-                                              endIndent: 16.0,
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .alternate,
-                                            ),
-                                            Row(
-                                              mainAxisSize: MainAxisSize.max,
-                                              children: [
-                                                Padding(
-                                                  padding: EdgeInsetsDirectional
-                                                      .fromSTEB(
-                                                          6.0, 0.0, 0.0, 0.0),
-                                                  child: _buildLanguageFlag(
-                                                    translationLanguageCode,
-                                                    fallbackLabel: '🌐',
-                                                  ),
-                                                ),
-                                                Builder(
-                                                  builder: (context) {
-                                                    if (_model.worrd != null) {
-                                                      final translationText =
-                                                          _primaryTranslationText();
-                                                      return Text(
-                                                        translationText
-                                                                .isNotEmpty
-                                                            ? translationText
-                                                            : (widget.word ??
-                                                                ''),
+                                                      Text(
+                                                        '${valueOrDefault<String>(
+                                                          widget.word,
+                                                          '-',
+                                                        )} ',
                                                         style: FlutterFlowTheme
                                                                 .of(context)
                                                             .bodyMedium
@@ -605,301 +573,501 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                   FontWeight
                                                                       .w600,
                                                             ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  Divider(
+                                                    height: 1.0,
+                                                    thickness: 1.0,
+                                                    indent: 56.0,
+                                                    endIndent: 16.0,
+                                                    color: FlutterFlowTheme.of(
+                                                            context)
+                                                        .alternate,
+                                                  ),
+                                                  Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.max,
+                                                    children: [
+                                                      Padding(
+                                                        padding:
+                                                            EdgeInsetsDirectional
+                                                                .fromSTEB(
+                                                                    6.0,
+                                                                    0.0,
+                                                                    0.0,
+                                                                    0.0),
+                                                        child:
+                                                            _buildLanguageFlag(
+                                                          translationLanguageCode,
+                                                          fallbackLabel: '🌐',
+                                                        ),
+                                                      ),
+                                                      Builder(
+                                                        builder: (context) {
+                                                          if (_model.worrd !=
+                                                              null) {
+                                                            final translationText =
+                                                                _primaryTranslationText();
+                                                            return Text(
+                                                              translationText
+                                                                      .isNotEmpty
+                                                                  ? translationText
+                                                                  : (widget
+                                                                          .word ??
+                                                                      ''),
+                                                              style: FlutterFlowTheme
+                                                                      .of(context)
+                                                                  .bodyMedium
+                                                                  .override(
+                                                                    fontFamily:
+                                                                        'sf pro display',
+                                                                    fontSize:
+                                                                        17.0,
+                                                                    letterSpacing:
+                                                                        0.0,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w600,
+                                                                  ),
+                                                            );
+                                                          } else {
+                                                            return Padding(
+                                                              padding:
+                                                                  EdgeInsetsDirectional
+                                                                      .fromSTEB(
+                                                                          0.0,
+                                                                          0.0,
+                                                                          0.0,
+                                                                          20.0),
+                                                              child:
+                                                                  Lottie.asset(
+                                                                'assets/jsons/Material_Wave_Loading_Animation.json',
+                                                                width: 44.67,
+                                                                height: 20.2,
+                                                                fit: BoxFit
+                                                                    .cover,
+                                                                animate: true,
+                                                              ),
+                                                            );
+                                                          }
+                                                        },
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          if (_phraseContextText() != null ||
+                                              _conversationSentenceText() !=
+                                                  null)
+                                            Padding(
+                                              padding: EdgeInsetsDirectional
+                                                  .fromSTEB(
+                                                      16.0, 12.0, 16.0, 0.0),
+                                              child: _buildContextCard(context),
+                                            ),
+                                          AnimatedOpacity(
+                                            opacity: _model.worrd != null
+                                                ? 1.0
+                                                : 0.0,
+                                            duration: 200.0.ms,
+                                            curve: Curves.easeInOut,
+                                            child: Padding(
+                                              padding: EdgeInsets.all(16.0),
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.max,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Builder(
+                                                    builder: (context) {
+                                                      final wwww =
+                                                          _dictionaryEntries();
+
+                                                      return ListView.separated(
+                                                        padding:
+                                                            EdgeInsets.zero,
+                                                        primary: false,
+                                                        shrinkWrap: true,
+                                                        scrollDirection:
+                                                            Axis.vertical,
+                                                        itemCount: wwww.length,
+                                                        separatorBuilder:
+                                                            (_, __) => SizedBox(
+                                                                height: 24.0),
+                                                        itemBuilder: (context,
+                                                            wwwwIndex) {
+                                                          final wwwwItem =
+                                                              wwww[wwwwIndex];
+                                                          return Column(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .max,
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment
+                                                                    .start,
+                                                            children: [
+                                                              RichText(
+                                                                textScaler: MediaQuery.of(
+                                                                        context)
+                                                                    .textScaler,
+                                                                text: TextSpan(
+                                                                  children: [
+                                                                    TextSpan(
+                                                                      text: wwwwItem
+                                                                          .text,
+                                                                      style: FlutterFlowTheme.of(
+                                                                              context)
+                                                                          .bodyMedium
+                                                                          .override(
+                                                                            fontFamily:
+                                                                                'Cool',
+                                                                            fontSize:
+                                                                                21.0,
+                                                                            letterSpacing:
+                                                                                0.0,
+                                                                            fontWeight:
+                                                                                FontWeight.normal,
+                                                                          ),
+                                                                    ),
+                                                                    TextSpan(
+                                                                      text:
+                                                                          ' [${wwwwItem.ts}] ',
+                                                                      style:
+                                                                          TextStyle(
+                                                                        fontFamily:
+                                                                            'Cool',
+                                                                        color: FlutterFlowTheme.of(context)
+                                                                            .secondaryText,
+                                                                        fontWeight:
+                                                                            FontWeight.normal,
+                                                                        fontSize:
+                                                                            21.0,
+                                                                      ),
+                                                                    ),
+                                                                    TextSpan(
+                                                                      text: () {
+                                                                        if (wwwwItem.pos ==
+                                                                            'noun') {
+                                                                          return 'сущ';
+                                                                        } else if (wwwwItem.pos ==
+                                                                            'abjective') {
+                                                                          return 'прил';
+                                                                        } else if (wwwwItem.pos ==
+                                                                            'participle') {
+                                                                          return 'прич';
+                                                                        } else if (wwwwItem.pos ==
+                                                                            'verb') {
+                                                                          return 'гл';
+                                                                        } else {
+                                                                          return ' ';
+                                                                        }
+                                                                      }(),
+                                                                      style:
+                                                                          TextStyle(
+                                                                        fontFamily:
+                                                                            'Cool',
+                                                                        color: FlutterFlowTheme.of(context)
+                                                                            .secondaryText,
+                                                                        fontWeight:
+                                                                            FontWeight.normal,
+                                                                        fontSize:
+                                                                            21.0,
+                                                                        fontStyle:
+                                                                            FontStyle.italic,
+                                                                      ),
+                                                                    )
+                                                                  ],
+                                                                  style: FlutterFlowTheme.of(
+                                                                          context)
+                                                                      .bodyMedium
+                                                                      .override(
+                                                                        fontFamily:
+                                                                            'Cool',
+                                                                        color: Colors
+                                                                            .black,
+                                                                        fontSize:
+                                                                            21.0,
+                                                                        letterSpacing:
+                                                                            0.0,
+                                                                        fontWeight:
+                                                                            FontWeight.normal,
+                                                                      ),
+                                                                ),
+                                                              ),
+                                                              Builder(
+                                                                builder:
+                                                                    (context) {
+                                                                  final tr = wwwwItem
+                                                                      .tr
+                                                                      .toList()
+                                                                      .take(3)
+                                                                      .toList();
+
+                                                                  return ListView
+                                                                      .separated(
+                                                                    padding:
+                                                                        EdgeInsets
+                                                                            .zero,
+                                                                    primary:
+                                                                        false,
+                                                                    shrinkWrap:
+                                                                        true,
+                                                                    scrollDirection:
+                                                                        Axis.vertical,
+                                                                    itemCount: tr
+                                                                        .length,
+                                                                    separatorBuilder: (_,
+                                                                            __) =>
+                                                                        SizedBox(
+                                                                            height:
+                                                                                8.0),
+                                                                    itemBuilder:
+                                                                        (context,
+                                                                            trIndex) {
+                                                                      final trItem =
+                                                                          tr[trIndex];
+                                                                      return Column(
+                                                                        mainAxisSize:
+                                                                            MainAxisSize.max,
+                                                                        crossAxisAlignment:
+                                                                            CrossAxisAlignment.start,
+                                                                        children: [
+                                                                          Padding(
+                                                                            padding: EdgeInsetsDirectional.fromSTEB(
+                                                                                0.0,
+                                                                                12.0,
+                                                                                0.0,
+                                                                                0.0),
+                                                                            child:
+                                                                                Builder(
+                                                                              builder: (context) {
+                                                                                final sssss = functions.syn(trItem.gen, trItem.text, trItem.syn.toList())?.toList() ?? [];
+
+                                                                                return Wrap(
+                                                                                  spacing: 4.0,
+                                                                                  runSpacing: 8.0,
+                                                                                  alignment: WrapAlignment.start,
+                                                                                  crossAxisAlignment: WrapCrossAlignment.start,
+                                                                                  direction: Axis.horizontal,
+                                                                                  runAlignment: WrapAlignment.start,
+                                                                                  verticalDirection: VerticalDirection.down,
+                                                                                  clipBehavior: Clip.none,
+                                                                                  children: List.generate(sssss.length, (sssssIndex) {
+                                                                                    final sssssItem = sssss[sssssIndex];
+                                                                                    return Container(
+                                                                                      height: 35.0,
+                                                                                      decoration: BoxDecoration(
+                                                                                        color: FlutterFlowTheme.of(context).primaryBackground,
+                                                                                        borderRadius: BorderRadius.circular(50.0),
+                                                                                      ),
+                                                                                      child: Padding(
+                                                                                        padding: EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 12.0, 0.0),
+                                                                                        child: Column(
+                                                                                          mainAxisSize: MainAxisSize.max,
+                                                                                          mainAxisAlignment: MainAxisAlignment.center,
+                                                                                          children: [
+                                                                                            RichText(
+                                                                                              textScaler: MediaQuery.of(context).textScaler,
+                                                                                              text: TextSpan(
+                                                                                                children: [
+                                                                                                  TextSpan(
+                                                                                                    text: sssssItem.text,
+                                                                                                    style: FlutterFlowTheme.of(context).bodyMedium.override(
+                                                                                                          fontFamily: 'sf pro display',
+                                                                                                          color: Colors.black,
+                                                                                                          fontSize: 15.0,
+                                                                                                          letterSpacing: 0.0,
+                                                                                                          fontWeight: FontWeight.w500,
+                                                                                                        ),
+                                                                                                  ),
+                                                                                                  TextSpan(
+                                                                                                    text: FFLocalizations.of(context).getText(
+                                                                                                      'wwfgr0mf' /*   */,
+                                                                                                    ),
+                                                                                                    style: TextStyle(),
+                                                                                                  ),
+                                                                                                  TextSpan(
+                                                                                                    text: sssssItem.gen,
+                                                                                                    style: TextStyle(
+                                                                                                      color: Color(0xFF727272),
+                                                                                                    ),
+                                                                                                  )
+                                                                                                ],
+                                                                                                style: FlutterFlowTheme.of(context).bodyMedium.override(
+                                                                                                      fontFamily: 'sf pro display',
+                                                                                                      fontSize: 16.0,
+                                                                                                      letterSpacing: 0.0,
+                                                                                                      fontWeight: FontWeight.normal,
+                                                                                                    ),
+                                                                                              ),
+                                                                                            ),
+                                                                                          ],
+                                                                                        ),
+                                                                                      ),
+                                                                                    );
+                                                                                  }),
+                                                                                );
+                                                                              },
+                                                                            ),
+                                                                          ),
+                                                                          Padding(
+                                                                            padding: EdgeInsetsDirectional.fromSTEB(
+                                                                                0.0,
+                                                                                6.0,
+                                                                                0.0,
+                                                                                0.0),
+                                                                            child:
+                                                                                Container(
+                                                                              height: 17.0,
+                                                                              decoration: BoxDecoration(),
+                                                                              child: Builder(
+                                                                                builder: (context) {
+                                                                                  final meanb = trItem.mean.toList();
+
+                                                                                  return ListView.builder(
+                                                                                    padding: EdgeInsets.zero,
+                                                                                    primary: false,
+                                                                                    shrinkWrap: true,
+                                                                                    scrollDirection: Axis.horizontal,
+                                                                                    itemCount: meanb.length,
+                                                                                    itemBuilder: (context, meanbIndex) {
+                                                                                      final meanbItem = meanb[meanbIndex];
+                                                                                      return Text(
+                                                                                        '${meanbItem.text}. ',
+                                                                                        style: FlutterFlowTheme.of(context).bodyMedium.override(
+                                                                                              fontFamily: 'sf pro display',
+                                                                                              color: Color(0xFF727272),
+                                                                                              fontSize: 15.0,
+                                                                                              letterSpacing: 0.0,
+                                                                                            ),
+                                                                                      );
+                                                                                    },
+                                                                                  );
+                                                                                },
+                                                                              ),
+                                                                            ),
+                                                                          ),
+                                                                        ],
+                                                                      );
+                                                                    },
+                                                                  );
+                                                                },
+                                                              ),
+                                                            ],
+                                                          );
+                                                        },
                                                       );
-                                                    } else {
-                                                      return Padding(
+                                                    },
+                                                  ),
+                                                  if (exampleSentences
+                                                      .isNotEmpty)
+                                                    Padding(
+                                                      padding:
+                                                          EdgeInsetsDirectional
+                                                              .fromSTEB(
+                                                                  0.0,
+                                                                  16.0,
+                                                                  0.0,
+                                                                  0.0),
+                                                      child: Text(
+                                                        FFLocalizations.of(
+                                                                context)
+                                                            .getText(
+                                                          'c1hnqtt4' /* Примеры */,
+                                                        ),
+                                                        style: FlutterFlowTheme
+                                                                .of(context)
+                                                            .bodyMedium
+                                                            .override(
+                                                              fontFamily:
+                                                                  'Cool',
+                                                              fontSize: 21.0,
+                                                              letterSpacing:
+                                                                  0.0,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .normal,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                  if (exampleSentences
+                                                      .isNotEmpty)
+                                                    Container(
+                                                      decoration:
+                                                          BoxDecoration(),
+                                                      child: Padding(
                                                         padding:
                                                             EdgeInsetsDirectional
                                                                 .fromSTEB(
                                                                     0.0,
+                                                                    12.0,
                                                                     0.0,
-                                                                    0.0,
-                                                                    20.0),
-                                                        child: Lottie.asset(
-                                                          'assets/jsons/Material_Wave_Loading_Animation.json',
-                                                          width: 44.67,
-                                                          height: 20.2,
-                                                          fit: BoxFit.cover,
-                                                          animate: true,
-                                                        ),
-                                                      );
-                                                    }
-                                                  },
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    if (_phraseContextText() != null ||
-                                        _conversationSentenceText() != null)
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            16.0, 12.0, 16.0, 0.0),
-                                        child: _buildContextCard(context),
-                                      ),
-                                    AnimatedOpacity(
-                                      opacity: _model.worrd != null ? 1.0 : 0.0,
-                                      duration: 200.0.ms,
-                                      curve: Curves.easeInOut,
-                                      child: Padding(
-                                        padding: EdgeInsets.all(16.0),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.max,
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Builder(
-                                              builder: (context) {
-                                                final wwww =
-                                                    _dictionaryEntries();
-
-                                                return ListView.separated(
-                                                  padding: EdgeInsets.zero,
-                                                  primary: false,
-                                                  shrinkWrap: true,
-                                                  scrollDirection:
-                                                      Axis.vertical,
-                                                  itemCount: wwww.length,
-                                                  separatorBuilder: (_, __) =>
-                                                      SizedBox(height: 24.0),
-                                                  itemBuilder:
-                                                      (context, wwwwIndex) {
-                                                    final wwwwItem =
-                                                        wwww[wwwwIndex];
-                                                    return Column(
-                                                      mainAxisSize:
-                                                          MainAxisSize.max,
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: [
-                                                        RichText(
-                                                          textScaler:
-                                                              MediaQuery.of(
-                                                                      context)
-                                                                  .textScaler,
-                                                          text: TextSpan(
-                                                            children: [
-                                                              TextSpan(
-                                                                text: wwwwItem
-                                                                    .text,
-                                                                style: FlutterFlowTheme.of(
+                                                                    0.0),
+                                                        child:
+                                                            ListView.separated(
+                                                          padding:
+                                                              EdgeInsets.zero,
+                                                          primary: false,
+                                                          shrinkWrap: true,
+                                                          scrollDirection:
+                                                              Axis.vertical,
+                                                          itemCount:
+                                                              exampleSentences
+                                                                  .length,
+                                                          separatorBuilder: (_,
+                                                                  __) =>
+                                                              SizedBox(
+                                                                  height: 8.0),
+                                                          itemBuilder: (context,
+                                                              sssIndex) {
+                                                            final sssItem =
+                                                                exampleSentences[
+                                                                    sssIndex];
+                                                            return Container(
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                color: FlutterFlowTheme.of(
                                                                         context)
-                                                                    .bodyMedium
-                                                                    .override(
-                                                                      fontFamily:
-                                                                          'Cool',
-                                                                      fontSize:
-                                                                          21.0,
-                                                                      letterSpacing:
-                                                                          0.0,
-                                                                      fontWeight:
-                                                                          FontWeight
-                                                                              .normal,
-                                                                    ),
+                                                                    .primaryBackground,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            26.0),
                                                               ),
-                                                              TextSpan(
-                                                                text:
-                                                                    ' [${wwwwItem.ts}] ',
-                                                                style:
-                                                                    TextStyle(
-                                                                  fontFamily:
-                                                                      'Cool',
-                                                                  color: FlutterFlowTheme.of(
-                                                                          context)
-                                                                      .secondaryText,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .normal,
-                                                                  fontSize:
-                                                                      21.0,
-                                                                ),
-                                                              ),
-                                                              TextSpan(
-                                                                text: () {
-                                                                  if (wwwwItem
-                                                                          .pos ==
-                                                                      'noun') {
-                                                                    return 'сущ';
-                                                                  } else if (wwwwItem
-                                                                          .pos ==
-                                                                      'abjective') {
-                                                                    return 'прил';
-                                                                  } else if (wwwwItem
-                                                                          .pos ==
-                                                                      'participle') {
-                                                                    return 'прич';
-                                                                  } else if (wwwwItem
-                                                                          .pos ==
-                                                                      'verb') {
-                                                                    return 'гл';
-                                                                  } else {
-                                                                    return ' ';
-                                                                  }
-                                                                }(),
-                                                                style:
-                                                                    TextStyle(
-                                                                  fontFamily:
-                                                                      'Cool',
-                                                                  color: FlutterFlowTheme.of(
-                                                                          context)
-                                                                      .secondaryText,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .normal,
-                                                                  fontSize:
-                                                                      21.0,
-                                                                  fontStyle:
-                                                                      FontStyle
-                                                                          .italic,
-                                                                ),
-                                                              )
-                                                            ],
-                                                            style: FlutterFlowTheme
-                                                                    .of(context)
-                                                                .bodyMedium
-                                                                .override(
-                                                                  fontFamily:
-                                                                      'Cool',
-                                                                  color: Colors
-                                                                      .black,
-                                                                  fontSize:
-                                                                      21.0,
-                                                                  letterSpacing:
-                                                                      0.0,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .normal,
-                                                                ),
-                                                          ),
-                                                        ),
-                                                        Builder(
-                                                          builder: (context) {
-                                                            final tr = wwwwItem
-                                                                .tr
-                                                                .toList()
-                                                                .take(3)
-                                                                .toList();
-
-                                                            return ListView
-                                                                .separated(
-                                                              padding:
-                                                                  EdgeInsets
-                                                                      .zero,
-                                                              primary: false,
-                                                              shrinkWrap: true,
-                                                              scrollDirection:
-                                                                  Axis.vertical,
-                                                              itemCount:
-                                                                  tr.length,
-                                                              separatorBuilder: (_,
-                                                                      __) =>
-                                                                  SizedBox(
-                                                                      height:
-                                                                          8.0),
-                                                              itemBuilder:
-                                                                  (context,
-                                                                      trIndex) {
-                                                                final trItem =
-                                                                    tr[trIndex];
-                                                                return Column(
+                                                              child: Padding(
+                                                                padding:
+                                                                    EdgeInsets
+                                                                        .all(
+                                                                            16.0),
+                                                                child: Column(
                                                                   mainAxisSize:
                                                                       MainAxisSize
-                                                                          .max,
+                                                                          .min,
                                                                   crossAxisAlignment:
                                                                       CrossAxisAlignment
                                                                           .start,
                                                                   children: [
-                                                                    Padding(
-                                                                      padding: EdgeInsetsDirectional.fromSTEB(
-                                                                          0.0,
-                                                                          12.0,
-                                                                          0.0,
-                                                                          0.0),
-                                                                      child:
-                                                                          Builder(
-                                                                        builder:
-                                                                            (context) {
-                                                                          final sssss =
-                                                                              functions.syn(trItem.gen, trItem.text, trItem.syn.toList())?.toList() ?? [];
-
-                                                                          return Wrap(
-                                                                            spacing:
-                                                                                4.0,
-                                                                            runSpacing:
-                                                                                8.0,
-                                                                            alignment:
-                                                                                WrapAlignment.start,
-                                                                            crossAxisAlignment:
-                                                                                WrapCrossAlignment.start,
-                                                                            direction:
-                                                                                Axis.horizontal,
-                                                                            runAlignment:
-                                                                                WrapAlignment.start,
-                                                                            verticalDirection:
-                                                                                VerticalDirection.down,
-                                                                            clipBehavior:
-                                                                                Clip.none,
-                                                                            children:
-                                                                                List.generate(sssss.length, (sssssIndex) {
-                                                                              final sssssItem = sssss[sssssIndex];
-                                                                              return Container(
-                                                                                height: 35.0,
-                                                                                decoration: BoxDecoration(
-                                                                                  color: FlutterFlowTheme.of(context).primaryBackground,
-                                                                                  borderRadius: BorderRadius.circular(50.0),
-                                                                                ),
-                                                                                child: Padding(
-                                                                                  padding: EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 12.0, 0.0),
-                                                                                  child: Column(
-                                                                                    mainAxisSize: MainAxisSize.max,
-                                                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                                                    children: [
-                                                                                      RichText(
-                                                                                        textScaler: MediaQuery.of(context).textScaler,
-                                                                                        text: TextSpan(
-                                                                                          children: [
-                                                                                            TextSpan(
-                                                                                              text: sssssItem.text,
-                                                                                              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                                                                                    fontFamily: 'sf pro display',
-                                                                                                    color: Colors.black,
-                                                                                                    fontSize: 15.0,
-                                                                                                    letterSpacing: 0.0,
-                                                                                                    fontWeight: FontWeight.w500,
-                                                                                                  ),
-                                                                                            ),
-                                                                                            TextSpan(
-                                                                                              text: FFLocalizations.of(context).getText(
-                                                                                                'wwfgr0mf' /*   */,
-                                                                                              ),
-                                                                                              style: TextStyle(),
-                                                                                            ),
-                                                                                            TextSpan(
-                                                                                              text: sssssItem.gen,
-                                                                                              style: TextStyle(
-                                                                                                color: Color(0xFF727272),
-                                                                                              ),
-                                                                                            )
-                                                                                          ],
-                                                                                          style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                                                                                fontFamily: 'sf pro display',
-                                                                                                fontSize: 16.0,
-                                                                                                letterSpacing: 0.0,
-                                                                                                fontWeight: FontWeight.normal,
-                                                                                              ),
-                                                                                        ),
-                                                                                      ),
-                                                                                    ],
-                                                                                  ),
-                                                                                ),
-                                                                              );
-                                                                            }),
-                                                                          );
-                                                                        },
-                                                                      ),
+                                                                    Text(
+                                                                      sssItem
+                                                                          .text,
+                                                                      style: FlutterFlowTheme.of(
+                                                                              context)
+                                                                          .bodyMedium
+                                                                          .override(
+                                                                            fontFamily:
+                                                                                'sf pro display',
+                                                                            color:
+                                                                                Colors.black,
+                                                                            fontSize:
+                                                                                16.0,
+                                                                            letterSpacing:
+                                                                                0.0,
+                                                                            fontWeight:
+                                                                                FontWeight.w500,
+                                                                          ),
                                                                     ),
                                                                     Padding(
                                                                       padding: EdgeInsetsDirectional.fromSTEB(
@@ -908,187 +1076,44 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                           0.0,
                                                                           0.0),
                                                                       child:
-                                                                          Container(
-                                                                        height:
-                                                                            17.0,
-                                                                        decoration:
-                                                                            BoxDecoration(),
-                                                                        child:
-                                                                            Builder(
-                                                                          builder:
-                                                                              (context) {
-                                                                            final meanb =
-                                                                                trItem.mean.toList();
-
-                                                                            return ListView.builder(
-                                                                              padding: EdgeInsets.zero,
-                                                                              primary: false,
-                                                                              shrinkWrap: true,
-                                                                              scrollDirection: Axis.horizontal,
-                                                                              itemCount: meanb.length,
-                                                                              itemBuilder: (context, meanbIndex) {
-                                                                                final meanbItem = meanb[meanbIndex];
-                                                                                return Text(
-                                                                                  '${meanbItem.text}. ',
-                                                                                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                                                                        fontFamily: 'sf pro display',
-                                                                                        color: Color(0xFF727272),
-                                                                                        fontSize: 15.0,
-                                                                                        letterSpacing: 0.0,
-                                                                                      ),
-                                                                                );
-                                                                              },
-                                                                            );
-                                                                          },
+                                                                          Text(
+                                                                        valueOrDefault<
+                                                                            String>(
+                                                                          sssItem
+                                                                              .translations
+                                                                              .firstOrNull
+                                                                              ?.text,
+                                                                          '-',
                                                                         ),
+                                                                        style: FlutterFlowTheme.of(context)
+                                                                            .bodyMedium
+                                                                            .override(
+                                                                              fontFamily: 'sf pro display',
+                                                                              color: Color(0xFF727272),
+                                                                              fontSize: 16.0,
+                                                                              letterSpacing: 0.0,
+                                                                            ),
                                                                       ),
                                                                     ),
                                                                   ],
-                                                                );
-                                                              },
+                                                                ),
+                                                              ),
                                                             );
                                                           },
                                                         ),
-                                                      ],
-                                                    );
-                                                  },
-                                                );
-                                              },
-                                            ),
-                                            if (exampleSentences.isNotEmpty)
-                                              Padding(
-                                                padding: EdgeInsetsDirectional
-                                                    .fromSTEB(
-                                                        0.0, 16.0, 0.0, 0.0),
-                                                child: Text(
-                                                  FFLocalizations.of(context)
-                                                      .getText(
-                                                    'c1hnqtt4' /* Примеры */,
-                                                  ),
-                                                  style: FlutterFlowTheme.of(
-                                                          context)
-                                                      .bodyMedium
-                                                      .override(
-                                                        fontFamily: 'Cool',
-                                                        fontSize: 21.0,
-                                                        letterSpacing: 0.0,
-                                                        fontWeight:
-                                                            FontWeight.normal,
                                                       ),
-                                                ),
+                                                    ),
+                                                ],
                                               ),
-                                            if (exampleSentences.isNotEmpty)
-                                              Container(
-                                                decoration: BoxDecoration(),
-                                                child: Padding(
-                                                  padding: EdgeInsetsDirectional
-                                                      .fromSTEB(
-                                                          0.0, 12.0, 0.0, 0.0),
-                                                  child: ListView.separated(
-                                                    padding: EdgeInsets.zero,
-                                                    primary: false,
-                                                    shrinkWrap: true,
-                                                    scrollDirection:
-                                                        Axis.vertical,
-                                                    itemCount:
-                                                        exampleSentences.length,
-                                                    separatorBuilder: (_, __) =>
-                                                        SizedBox(height: 8.0),
-                                                    itemBuilder:
-                                                        (context, sssIndex) {
-                                                      final sssItem =
-                                                          exampleSentences[
-                                                              sssIndex];
-                                                      return Container(
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .primaryBackground,
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(
-                                                                      26.0),
-                                                        ),
-                                                        child: Padding(
-                                                          padding:
-                                                              EdgeInsets.all(
-                                                                  16.0),
-                                                          child: Column(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .min,
-                                                            crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .start,
-                                                            children: [
-                                                              Text(
-                                                                sssItem.text,
-                                                                style: FlutterFlowTheme.of(
-                                                                        context)
-                                                                    .bodyMedium
-                                                                    .override(
-                                                                      fontFamily:
-                                                                          'sf pro display',
-                                                                      color: Colors
-                                                                          .black,
-                                                                      fontSize:
-                                                                          16.0,
-                                                                      letterSpacing:
-                                                                          0.0,
-                                                                      fontWeight:
-                                                                          FontWeight
-                                                                              .w500,
-                                                                    ),
-                                                              ),
-                                                              Padding(
-                                                                padding:
-                                                                    EdgeInsetsDirectional
-                                                                        .fromSTEB(
-                                                                            0.0,
-                                                                            6.0,
-                                                                            0.0,
-                                                                            0.0),
-                                                                child: Text(
-                                                                  valueOrDefault<
-                                                                      String>(
-                                                                    sssItem
-                                                                        .translations
-                                                                        .firstOrNull
-                                                                        ?.text,
-                                                                    '-',
-                                                                  ),
-                                                                  style: FlutterFlowTheme.of(
-                                                                          context)
-                                                                      .bodyMedium
-                                                                      .override(
-                                                                        fontFamily:
-                                                                            'sf pro display',
-                                                                        color: Color(
-                                                                            0xFF727272),
-                                                                        fontSize:
-                                                                            16.0,
-                                                                        letterSpacing:
-                                                                            0.0,
-                                                                      ),
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      );
-                                                    },
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
+                                            ),
+                                          ),
+                                        ]
+                                            .addToStart(SizedBox(height: 16.0))
+                                            .addToEnd(SizedBox(height: 24.0)),
                                       ),
                                     ),
-                                  ]
-                                      .addToStart(SizedBox(height: 16.0))
-                                      .addToEnd(SizedBox(height: 24.0)),
-                                ),
+                                  );
+                                },
                               ),
                             ),
                           ),
