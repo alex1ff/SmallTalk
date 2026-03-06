@@ -326,6 +326,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
               child: custom_widgets.MinimalDailyWidget(
                 width: double.infinity,
                 height: double.infinity,
+                sessionId: widget.videoDocRef?.id,
                 roomUrl: resolvedRoomUrl,
                 meetingToken: resolvedMeetingToken,
                 tokenRefreshCallback: () async {

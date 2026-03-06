@@ -7,6 +7,18 @@ const admin = require("firebase-admin");
 const TUTOR_RATE_PER_MINUTE = 15; // 15 RUB/min paid to tutor
 // Platform margin: ~30-35 RUB/min
 
+function toMillis(value) {
+  if (!value) return 0;
+  if (typeof value?.toMillis === "function") {
+    return value.toMillis();
+  }
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
 /*
 endSession
 Завершает активную видео сессию, списывает баланс студента,
@@ -90,10 +102,14 @@ exports.endSession = functions.https.onCall(async (data, context) => {
 
       const endedBy = userId;
       const endedByRole = sessionData.studentId === userId ? "student" : "tutor";
+      const callConnectedAt =
+        toMillis(sessionData.sessionMetadata?.callConnectedAtTimestamp);
+      const startedAt = toMillis(sessionData.startedAt);
+      const acceptedAt =
+        toMillis(sessionData.acceptedAt) ||
+        toMillis(sessionData.sessionMetadata?.acceptedAt);
       const startTime =
-        sessionData.startedAt?.toMillis?.() ||
-        sessionData.createdAt?.toMillis?.() ||
-        requestTimestamp;
+        callConnectedAt || startedAt || acceptedAt || requestTimestamp;
       const duration = Math.max(0, Math.floor((requestTimestamp - startTime) / 1000));
       const tutorDurationMinutes = parseFloat((duration / 60).toFixed(4));
       const tutorEarning = parseFloat(
@@ -108,7 +124,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       const currentSmallTalks = Number(studentData?.balanceST?.smallTalks || 0);
 
       // Free minute: first 60 seconds free when student has positive balance
-      const freeMinuteApplied = currentSmallTalks > 0;
+      const freeMinuteApplied = currentMinutes > 0 || currentSmallTalks > 0;
       const billableDuration = freeMinuteApplied ? Math.max(0, duration - 60) : duration;
       const billableMinutes = parseFloat((billableDuration / 60).toFixed(4));
       const amountST = parseFloat((billableMinutes / 10).toFixed(4));

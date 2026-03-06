@@ -23,6 +23,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '/services/voip_service.dart';
 
 // VideoQuality enum simplified - only auto mode needed
@@ -101,6 +102,7 @@ class MinimalDailyWidget extends StatefulWidget {
     super.key,
     this.width,
     this.height,
+    this.sessionId,
     required this.roomUrl,
     this.meetingToken,
     this.tokenRefreshCallback,
@@ -118,6 +120,7 @@ class MinimalDailyWidget extends StatefulWidget {
 
   final double? width;
   final double? height;
+  final String? sessionId;
   final String roomUrl;
   final String? meetingToken;
   final Future<String?> Function()? tokenRefreshCallback;
@@ -160,6 +163,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _resumeMicrophoneEnabled = true;
   bool _isInitializing = false;
   bool _systemCallMarkedConnected = false;
+  bool _sessionStartedMarked = false;
   String? _dynamicMeetingToken;
   bool _tokenRefreshInProgress = false;
   int _tokenRefreshAttempts = 0;
@@ -178,6 +182,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   IOWebSocketChannel? _deepgramChannel;
   StreamController<Uint8List>? _audioStreamController;
   bool _recorderOpen = false;
+  bool _deepgramStopRequested = false;
 
   // Removed quality monitoring - Daily Adaptive Bitrate handles this
 
@@ -605,6 +610,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         ));
         _tokenRefreshAttempts = 0;
         _updateLocalVideoTrack();
+        unawaited(_markSessionStarted());
         unawaited(_markSystemCallConnected());
         break;
 
@@ -1085,7 +1091,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void _scheduleDeepgramStart() {
     final timer = Timer(const Duration(milliseconds: 1000), () {
       if (mounted && _state.connectionState == ConnectionState.connected) {
-        _startDeepgramStreamingWithResolvedCredential();
+        _startDeepgramStreamingWithResolvedCredential(forceRefresh: true);
       }
     });
     _trackTimer(timer);
@@ -1109,6 +1115,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (_state.isStreamingToDeepgram || !mounted) return;
 
     try {
+      _deepgramStopRequested = false;
+
       // Request microphone permission
       final permission = await Permission.microphone.request();
       if (!permission.isGranted) {
@@ -1186,10 +1194,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _handleDeepgramMessage,
       onError: (e) {
         if (kDebugMode) print('Deepgram WebSocket error: $e');
-        _restartDeepgramConnection();
+        if (!_deepgramStopRequested) {
+          _restartDeepgramConnection();
+        }
       },
       onDone: () {
         if (kDebugMode) print('Deepgram WebSocket closed');
+        if (!_deepgramStopRequested) {
+          _restartDeepgramConnection();
+        }
       },
     );
     _trackSubscription(subscription);
@@ -1288,7 +1301,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Restart Deepgram connection on failure
   void _restartDeepgramConnection() {
-    if (!_state.isStreamingToDeepgram) return;
+    if (!mounted || _disposed || _userRequestedEnd) return;
+    if (_state.connectionState != ConnectionState.connected) return;
 
     final timer = Timer(const Duration(seconds: 2), () async {
       if (mounted) {
@@ -1306,6 +1320,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (!_state.isStreamingToDeepgram) return;
 
     try {
+      _deepgramStopRequested = true;
+
       if (_recorder?.isRecording ?? false) {
         await _recorder!.stopRecorder();
       }
@@ -1386,6 +1402,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     if (oldWidget.deepgramApiKey != widget.deepgramApiKey) {
       _deepgramCredential = _sanitizeDeepgramCredential(widget.deepgramApiKey);
+    }
+    if (oldWidget.sessionId != widget.sessionId) {
+      _sessionStartedMarked = false;
     }
 
     final oldUrl = oldWidget.roomUrl;
@@ -1474,6 +1493,43 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       await VoIPService().endCurrentCall();
     } catch (e) {
       if (kDebugMode) print('Failed to end system call UI: $e');
+    }
+  }
+
+  Future<void> _markSessionStarted() async {
+    final sessionId = widget.sessionId?.trim();
+    if (_sessionStartedMarked || sessionId == null || sessionId.isEmpty) {
+      return;
+    }
+
+    _sessionStartedMarked = true;
+    final sessionRef =
+        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId);
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(sessionRef);
+        if (!snapshot.exists) return;
+
+        final data = snapshot.data() ?? <String, dynamic>{};
+        final status = (data['status'] ?? '').toString();
+        if (status == 'ended' || status == 'cancelled') return;
+
+        final sessionMetadata = data['sessionMetadata'];
+        final connectedAtTimestamp = sessionMetadata is Map
+            ? sessionMetadata['callConnectedAtTimestamp']
+            : null;
+        if (connectedAtTimestamp != null) return;
+
+        transaction.update(sessionRef, {
+          'startedAt': FieldValue.serverTimestamp(),
+          'sessionMetadata.callConnectedAtTimestamp':
+              DateTime.now().millisecondsSinceEpoch,
+        });
+      });
+    } catch (e) {
+      _sessionStartedMarked = false;
+      if (kDebugMode) print('Failed to mark session started: $e');
     }
   }
 
