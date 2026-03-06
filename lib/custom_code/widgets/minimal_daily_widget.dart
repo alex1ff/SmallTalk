@@ -93,6 +93,47 @@ class _CallState {
   }
 }
 
+@immutable
+class _CaptionWord {
+  const _CaptionWord({
+    required this.displayText,
+    required this.lookupText,
+  });
+
+  final String displayText;
+  final String lookupText;
+}
+
+@immutable
+class _CaptionWordGroup {
+  const _CaptionWordGroup({
+    required this.words,
+    required this.fullSentence,
+    required this.lookupText,
+    required this.isMyWord,
+  });
+
+  final List<_CaptionWord> words;
+  final String fullSentence;
+  final String lookupText;
+  final bool isMyWord;
+
+  bool get isPhrase => words.length > 1;
+}
+
+@immutable
+class _CaptionOverlayData {
+  const _CaptionOverlayData({
+    this.myGroups = const <_CaptionWordGroup>[],
+    this.theirGroups = const <_CaptionWordGroup>[],
+  });
+
+  final List<_CaptionWordGroup> myGroups;
+  final List<_CaptionWordGroup> theirGroups;
+
+  bool get isEmpty => myGroups.isEmpty && theirGroups.isEmpty;
+}
+
 /// Production-ready video calling widget with enhanced quality and resilience
 class MinimalDailyWidget extends StatefulWidget {
   const MinimalDailyWidget({
@@ -133,7 +174,8 @@ class MinimalDailyWidget extends StatefulWidget {
   final Future<String?> Function()? deepgramTokenRefreshCallback;
   final bool enableDeepgram;
   final String deepgramLanguage;
-  final Future Function(String word, String sentence)? actionCallback;
+  final Future Function(String word, String sentence, String contextText)?
+      actionCallback;
   final Future Function()? endCallCallback;
   final String? username;
   final Future Function()? participantLeftCallback;
@@ -209,6 +251,47 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   static const int _remoteVideoGraceMs = 2000;
   static const int _deepgramFinalizeWaitMs = 250;
   static const int _deepgramCloseWaitMs = 100;
+  static const Set<String> _captionJoinerWords = <String>{
+    'a',
+    'an',
+    'and',
+    'as',
+    'at',
+    'be',
+    'but',
+    'by',
+    'for',
+    'from',
+    'if',
+    'in',
+    'into',
+    'is',
+    'it',
+    'of',
+    'on',
+    'or',
+    'the',
+    'to',
+    'up',
+    'with',
+    'и',
+    'или',
+    'к',
+    'ко',
+    'на',
+    'не',
+    'но',
+    'о',
+    'об',
+    'по',
+    'под',
+    'при',
+    'с',
+    'со',
+    'у',
+    'в',
+    'во',
+  };
 
   @override
   void initState() {
@@ -2215,12 +2298,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Build captions overlay with speaker separation
   Widget _buildCaptionsOverlay() {
-    final words = _getAllCaptionWords();
-    if (words.isEmpty) return const SizedBox.shrink();
-
-    // Separate words by speaker
-    final myWords = words.where((w) => w['isMyWord'] == true).toList();
-    final theirWords = words.where((w) => w['isMyWord'] == false).toList();
+    final overlayData = _getCaptionOverlayData();
+    if (overlayData.isEmpty) return const SizedBox.shrink();
 
     // Get remote participant name
     String participantName = 'Собеседник';
@@ -2233,133 +2312,355 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
     }
 
-    return Container(
+    return ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 230),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // My subtitles section
-          if (myWords.isNotEmpty) ...[
-            _buildSpeakerSection('Me:', myWords, true),
-            const SizedBox(height: 12),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (overlayData.myGroups.isNotEmpty) ...[
+              _buildSpeakerSection('Вы', overlayData.myGroups, true),
+              const SizedBox(height: 12),
+            ],
+            if (overlayData.theirGroups.isNotEmpty)
+              _buildSpeakerSection(
+                participantName,
+                overlayData.theirGroups,
+                false,
+              ),
           ],
-
-          // Remote participant subtitles section
-          if (theirWords.isNotEmpty)
-            _buildSpeakerSection('$participantName:', theirWords, false),
-        ],
+        ),
       ),
     );
   }
 
   /// Build speaker section with label and words
   Widget _buildSpeakerSection(
-      String label, List<Map<String, dynamic>> words, bool isMySection) {
-    // Create label chip first
-    final labelChip = Container(
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: isMySection
-            ? Colors.white.withValues(alpha: 0.9)
-            : const Color(0xFFB8A4FF).withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.3),
-          width: 0.5,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1A000000),
-            blurRadius: 4,
-            offset: Offset(0, 2),
-            spreadRadius: 0,
-          ),
-        ],
-      ),
-      child: Center(
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isMySection ? Colors.black : Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            shadows: [
-              Shadow(
-                offset: const Offset(0, 1),
-                blurRadius: 2,
-                color: Colors.black.withValues(alpha: 0.3),
+      String label, List<_CaptionWordGroup> groups, bool isMySection) {
+    final labelColor = isMySection
+        ? Colors.white.withValues(alpha: 0.92)
+        : const Color(0xFFB8A4FF).withValues(alpha: 0.92);
+    final labelTextColor = isMySection ? Colors.black : Colors.white;
+    final panelColor = isMySection
+        ? Colors.black.withValues(alpha: 0.42)
+        : const Color(0xFF24143E).withValues(alpha: 0.58);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: labelColor,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.24),
+              width: 0.5,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1A000000),
+                blurRadius: 4,
+                offset: Offset(0, 2),
               ),
             ],
           ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: labelTextColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
-      ),
-    );
-
-    // Combine label and words in a single wrap
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [labelChip, ...words.map(_buildWordChip)],
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: panelColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.16),
+              width: 0.8,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x24000000),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final group in groups)
+                _buildCaptionGroup(group, isMySection),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
-  /// Get all caption words with caching
-  List<Map<String, dynamic>> _cachedWords = [];
+  Widget _buildCaptionGroup(_CaptionWordGroup group, bool isMySection) {
+    final phraseColor = isMySection
+        ? Colors.white.withValues(alpha: 0.10)
+        : const Color(0xFFB8A4FF).withValues(alpha: 0.20);
+
+    return Container(
+      padding: group.isPhrase
+          ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+          : EdgeInsets.zero,
+      decoration: BoxDecoration(
+        color: group.isPhrase ? phraseColor : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border: group.isPhrase
+            ? Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 0.5,
+              )
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < group.words.length; index++) ...[
+            _buildCaptionWord(
+              wordData: group.words[index],
+              group: group,
+              isMySection: isMySection,
+            ),
+            if (index != group.words.length - 1) const SizedBox(width: 4),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Get all caption groups with caching
+  _CaptionOverlayData _cachedCaptionOverlayData = const _CaptionOverlayData();
   String _lastCaptionState = '';
 
-  List<Map<String, dynamic>> _getAllCaptionWords() {
-    // Create a simple state hash to detect changes
-    final currentState =
-        '${_getCurrentCaption()}|${_state.remoteCaptions.hashCode}';
+  _CaptionOverlayData _getCaptionOverlayData() {
+    final currentState = _captionCacheSignature();
 
-    // Return cached result if nothing changed
     if (currentState == _lastCaptionState) {
-      return _cachedWords;
+      return _cachedCaptionOverlayData;
     }
 
-    final List<Map<String, dynamic>> words = [];
+    final myGroups = _buildCaptionGroups(_getCurrentCaption(), isMyWord: true);
+    final remoteGroups = <_CaptionWordGroup>[];
 
-    // Add own words
-    final myCaption = _getCurrentCaption();
-    if (myCaption.isNotEmpty) {
-      final myWords = myCaption.split(RegExp(r'\s+'));
-      for (final word in myWords) {
-        if (word.isNotEmpty && word.length > 1) {
-          // Filter out single characters
-          words.add({
-            'word': word,
-            'isMyWord': true,
-            'fullSentence': myCaption,
-          });
-        }
-      }
-    }
-
-    // Add remote words
-    _state.remoteCaptions.forEach((id, captions) {
-      if (captions.isNotEmpty) {
-        final caption = captions.last;
-        final remoteWords = caption.split(RegExp(r'\s+'));
-        for (final word in remoteWords) {
-          if (word.isNotEmpty && word.length > 1) {
-            // Filter out single characters
-            words.add({
-              'word': word,
-              'isMyWord': false,
-              'fullSentence': caption,
-            });
-          }
-        }
-      }
+    _state.remoteCaptions.forEach((_, captions) {
+      if (captions.isEmpty) return;
+      remoteGroups.addAll(
+        _buildCaptionGroups(captions.last, isMyWord: false),
+      );
     });
 
-    // Cache the result
-    _cachedWords = words;
+    _cachedCaptionOverlayData = _CaptionOverlayData(
+      myGroups: myGroups,
+      theirGroups: List<_CaptionWordGroup>.unmodifiable(remoteGroups),
+    );
     _lastCaptionState = currentState;
+    return _cachedCaptionOverlayData;
+  }
 
-    return words;
+  String _captionCacheSignature() {
+    final buffer = StringBuffer(_getCurrentCaption());
+    final participantIds = _state.remoteCaptions.keys.toList()
+      ..sort((a, b) => a.toString().compareTo(b.toString()));
+    for (final participantId in participantIds) {
+      final captions = _state.remoteCaptions[participantId] ?? const <String>[];
+      buffer
+        ..write('|')
+        ..write(participantId)
+        ..write(':');
+      if (captions.isNotEmpty) {
+        buffer.write(captions.last);
+      }
+    }
+    return buffer.toString();
+  }
+
+  List<_CaptionWordGroup> _buildCaptionGroups(
+    String caption, {
+    required bool isMyWord,
+  }) {
+    final normalizedCaption = caption.trim();
+    if (normalizedCaption.isEmpty) {
+      return const <_CaptionWordGroup>[];
+    }
+
+    final groups = <_CaptionWordGroup>[];
+    final pendingWords = <_CaptionWord>[];
+    final rawTokens = normalizedCaption.split(RegExp(r'\s+'));
+
+    for (final rawToken in rawTokens) {
+      final captionWord = _createCaptionWord(rawToken);
+      if (captionWord == null) continue;
+
+      pendingWords.add(captionWord);
+      final shouldAttachForward =
+          _shouldAttachToNextWord(captionWord.lookupText) &&
+              pendingWords.length < 3;
+      if (shouldAttachForward) {
+        continue;
+      }
+
+      groups.add(
+        _createCaptionWordGroup(
+          words: pendingWords,
+          fullSentence: normalizedCaption,
+          isMyWord: isMyWord,
+        ),
+      );
+      pendingWords.clear();
+    }
+
+    if (pendingWords.isNotEmpty) {
+      final trailingJoiners = pendingWords
+          .every((word) => _shouldAttachToNextWord(word.lookupText));
+      if (trailingJoiners && groups.isNotEmpty) {
+        final mergedWords = <_CaptionWord>[
+          ...groups.last.words,
+          ...pendingWords,
+        ];
+        groups[groups.length - 1] = _createCaptionWordGroup(
+          words: mergedWords,
+          fullSentence: normalizedCaption,
+          isMyWord: isMyWord,
+        );
+      } else {
+        groups.add(
+          _createCaptionWordGroup(
+            words: pendingWords,
+            fullSentence: normalizedCaption,
+            isMyWord: isMyWord,
+          ),
+        );
+      }
+    }
+
+    return List<_CaptionWordGroup>.unmodifiable(groups);
+  }
+
+  _CaptionWordGroup _createCaptionWordGroup({
+    required List<_CaptionWord> words,
+    required String fullSentence,
+    required bool isMyWord,
+  }) {
+    final immutableWords = List<_CaptionWord>.unmodifiable(words);
+    final lookupText = immutableWords
+        .map((word) => word.lookupText)
+        .where((word) => word.isNotEmpty)
+        .join(' ');
+    return _CaptionWordGroup(
+      words: immutableWords,
+      fullSentence: fullSentence,
+      lookupText: lookupText,
+      isMyWord: isMyWord,
+    );
+  }
+
+  _CaptionWord? _createCaptionWord(String rawToken) {
+    final displayText = rawToken.trim();
+    if (displayText.isEmpty) {
+      return null;
+    }
+
+    final lookupText = _cleanCaptionLookupText(displayText);
+    if (lookupText.isEmpty) {
+      return null;
+    }
+
+    return _CaptionWord(
+      displayText: displayText,
+      lookupText: lookupText,
+    );
+  }
+
+  bool _shouldAttachToNextWord(String lookupText) {
+    final normalized = lookupText.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return false;
+    }
+
+    return normalized.length <= 2 || _captionJoinerWords.contains(normalized);
+  }
+
+  String _cleanCaptionLookupText(String rawText) {
+    return rawText
+        .trim()
+        .replaceAll(
+          RegExp(r"^[^0-9A-Za-zА-Яа-яЁёÀ-ÖØ-öø-ÿ'-]+"),
+          '',
+        )
+        .replaceAll(
+          RegExp(r"[^0-9A-Za-zА-Яа-яЁёÀ-ÖØ-öø-ÿ'-]+$"),
+          '',
+        );
+  }
+
+  String _resolveLookupText(_CaptionWord wordData, _CaptionWordGroup group) {
+    if (group.isPhrase && _shouldAttachToNextWord(wordData.lookupText)) {
+      return group.lookupText;
+    }
+    return wordData.lookupText;
+  }
+
+  Widget _buildCaptionWord({
+    required _CaptionWord wordData,
+    required _CaptionWordGroup group,
+    required bool isMySection,
+  }) {
+    final selectedText = _resolveLookupText(wordData, group);
+    final contextText =
+        group.lookupText.isNotEmpty ? group.lookupText : group.fullSentence;
+    final textColor = isMySection ? Colors.white : const Color(0xFFF8F2FF);
+    final fontWeight = group.isPhrase ? FontWeight.w700 : FontWeight.w600;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: selectedText.isEmpty
+            ? null
+            : () {
+                widget.actionCallback?.call(
+                  selectedText,
+                  group.fullSentence,
+                  contextText,
+                );
+              },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+          child: Text(
+            wordData.displayText,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 18,
+              height: 1.15,
+              fontWeight: fontWeight,
+              letterSpacing: 0.1,
+              shadows: [
+                Shadow(
+                  offset: const Offset(0, 1),
+                  blurRadius: 4,
+                  color: Colors.black.withValues(alpha: 0.55),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// Get current caption text
@@ -2370,58 +2671,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return _state.finalCaptions.last['text'] as String;
     }
     return '';
-  }
-
-  /// Build word chip widget - FIXED
-  Widget _buildWordChip(Map<String, dynamic> wordData) {
-    final word = wordData['word'] as String;
-    final isMyWord = wordData['isMyWord'] as bool;
-    final fullSentence = wordData['fullSentence'] as String;
-
-    final color = isMyWord ? const Color(0x9CD1D1D1) : const Color(0xB6BA8CFF);
-
-    return GestureDetector(
-      onTap: () {
-        widget.actionCallback?.call(word, fullSentence);
-      },
-      child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.3),
-            width: 0.5,
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1A000000),
-              blurRadius: 4,
-              offset: Offset(0, 2),
-              spreadRadius: 0,
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            word,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              shadows: [
-                Shadow(
-                  offset: const Offset(0, 1),
-                  blurRadius: 2,
-                  color: Colors.black.withValues(alpha: 0.3),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   /// Build controls overlay

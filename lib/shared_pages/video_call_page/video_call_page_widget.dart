@@ -361,7 +361,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                 deepgramLanguage: resolvedLanguage,
                 username: currentUserDisplayName,
                 enableDeepgram: true,
-                actionCallback: (word, sentence) async {
+                actionCallback: (word, sentence, contextText) async {
                   await showModalBottomSheet(
                     isScrollControlled: true,
                     backgroundColor: Colors.transparent,
@@ -378,6 +378,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                             child: NewWordWidget(
                               word: word,
                               langCode: resolvedLanguage,
+                              sentence: sentence,
+                              contextText: contextText,
                             ),
                           ),
                         ),
