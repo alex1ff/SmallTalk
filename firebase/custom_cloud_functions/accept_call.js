@@ -7,6 +7,7 @@ const {
   getDailyRoom,
   getRoomNameFromUrl,
 } = require("./daily_room");
+const { evaluateTutorAvailabilityWindow } = require("./availability");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -230,18 +231,18 @@ exports.acceptCall = functions
       }
 
       const tutorData = tutorDoc.data();
-      const availabilityToday = tutorData.availabilityToday;
-      const isAvailable =
-        tutorData.isAvailable !== undefined
-          ? tutorData.isAvailable
-          : (availabilityToday?.enabled ?? true);
+      const availabilityCheck = evaluateTutorAvailabilityWindow(tutorData);
+      const isAvailable = availabilityCheck.isAvailable;
 
       console.log("👨‍🏫 Tutor data:", {
         display_name: tutorData.display_name,
         role: tutorData.role,
         isAvailable: tutorData.isAvailable,
-        availabilityTodayEnabled: availabilityToday?.enabled,
+        availabilityTodayEnabled: tutorData.availabilityToday?.enabled,
         isInCall: tutorData.isInCall,
+        availabilityReason: availabilityCheck.reason,
+        tutorLocalTime: availabilityCheck.localTime || null,
+        timezoneOffsetMinutes: availabilityCheck.timezoneOffsetMinutes ?? null,
       });
 
       const allowedRoles = ["tutor", "native_speaker"];

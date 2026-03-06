@@ -16,13 +16,13 @@ class StatsRecord extends FirestoreRecord {
   }
 
   // "totalCalls" field.
-  int? _totalCalls;
-  int get totalCalls => _totalCalls ?? 0;
+  String? _totalCalls;
+  String get totalCalls => _totalCalls ?? '0';
   bool hasTotalCalls() => _totalCalls != null;
 
   // "totalMinutes" field.
-  int? _totalMinutes;
-  int get totalMinutes => _totalMinutes ?? 0;
+  String? _totalMinutes;
+  String get totalMinutes => _totalMinutes ?? '0';
   bool hasTotalMinutes() => _totalMinutes != null;
 
   // "lastUpdated" field.
@@ -31,28 +31,28 @@ class StatsRecord extends FirestoreRecord {
   bool hasLastUpdated() => _lastUpdated != null;
 
   // "totalEarned" field.
-  double? _totalEarned;
-  double get totalEarned => _totalEarned ?? 0.0;
+  String? _totalEarned;
+  String get totalEarned => _totalEarned ?? '0';
   bool hasTotalEarned() => _totalEarned != null;
 
   // "callsToday" field.
-  int? _callsToday;
-  int get callsToday => _callsToday ?? 0;
+  String? _callsToday;
+  String get callsToday => _callsToday ?? '0';
   bool hasCallsToday() => _callsToday != null;
 
   // "minutesToday" field.
-  int? _minutesToday;
-  int get minutesToday => _minutesToday ?? 0;
+  String? _minutesToday;
+  String get minutesToday => _minutesToday ?? '0';
   bool hasMinutesToday() => _minutesToday != null;
 
   // "spentToday" field.
-  double? _spentToday;
-  double get spentToday => _spentToday ?? 0.0;
+  String? _spentToday;
+  String get spentToday => _spentToday ?? '0';
   bool hasSpentToday() => _spentToday != null;
 
   // "earnedToday" field.
-  double? _earnedToday;
-  double get earnedToday => _earnedToday ?? 0.0;
+  String? _earnedToday;
+  String get earnedToday => _earnedToday ?? '0';
   bool hasEarnedToday() => _earnedToday != null;
 
   // "date" field.
@@ -68,14 +68,14 @@ class StatsRecord extends FirestoreRecord {
   DocumentReference get parentReference => reference.parent.parent!;
 
   void _initializeFields() {
-    _totalCalls = castToType<int>(snapshotData['totalCalls']);
-    _totalMinutes = castToType<int>(snapshotData['totalMinutes']);
+    _totalCalls = _statString(snapshotData['totalCalls']);
+    _totalMinutes = _statString(snapshotData['totalMinutes']);
     _lastUpdated = snapshotData['lastUpdated'] as DateTime?;
-    _totalEarned = castToType<double>(snapshotData['totalEarned']);
-    _callsToday = castToType<int>(snapshotData['callsToday']);
-    _minutesToday = castToType<int>(snapshotData['minutesToday']);
-    _spentToday = castToType<double>(snapshotData['spentToday']);
-    _earnedToday = castToType<double>(snapshotData['earnedToday']);
+    _totalEarned = _statString(snapshotData['totalEarned']);
+    _callsToday = _statString(snapshotData['callsToday']);
+    _minutesToday = _statString(snapshotData['minutesToday']);
+    _spentToday = _statString(snapshotData['spentToday']);
+    _earnedToday = _statString(snapshotData['earnedToday']);
     _date = snapshotData['date'] as DateTime?;
     _isAllTime = snapshotData['isAllTime'] as bool?;
   }
@@ -118,15 +118,23 @@ class StatsRecord extends FirestoreRecord {
       reference.path.hashCode == other.reference.path.hashCode;
 }
 
+String? _statString(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+
+  return value.toString();
+}
+
 Map<String, dynamic> createStatsRecordData({
-  int? totalCalls,
-  int? totalMinutes,
+  String? totalCalls,
+  String? totalMinutes,
   DateTime? lastUpdated,
-  double? totalEarned,
-  int? callsToday,
-  int? minutesToday,
-  double? spentToday,
-  double? earnedToday,
+  String? totalEarned,
+  String? callsToday,
+  String? minutesToday,
+  String? spentToday,
+  String? earnedToday,
   DateTime? date,
   bool? isAllTime,
 }) {

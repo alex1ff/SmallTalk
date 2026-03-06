@@ -49,6 +49,131 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   bool _hapticFired = false;
   bool _isSnapping = false;
 
+  String _localizedText({
+    required String ruText,
+    required String enText,
+  }) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: ruText,
+      enText: enText,
+    );
+  }
+
+  int? _normalizeOffsetMinutes(dynamic rawValue) {
+    if (rawValue is int) {
+      return rawValue;
+    }
+    if (rawValue is double) {
+      return rawValue.toInt();
+    }
+    if (rawValue is String) {
+      return int.tryParse(rawValue.trim());
+    }
+    return null;
+  }
+
+  int? _parseTimeBoundary(String? rawValue) {
+    if (rawValue == null) {
+      return null;
+    }
+
+    final match = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(rawValue.trim());
+    if (match == null) {
+      return null;
+    }
+
+    final hours = int.tryParse(match.group(1)!);
+    final minutes = int.tryParse(match.group(2)!);
+    if (hours == null ||
+        minutes == null ||
+        hours < 0 ||
+        hours > 23 ||
+        minutes < 0 ||
+        minutes > 59) {
+      return null;
+    }
+
+    return hours * 60 + minutes;
+  }
+
+  bool _intervalContains({
+    required int localMinutes,
+    required int startMinutes,
+    required int endMinutes,
+  }) {
+    if (startMinutes == endMinutes) {
+      return false;
+    }
+
+    if (startMinutes < endMinutes) {
+      return localMinutes >= startMinutes && localMinutes < endMinutes;
+    }
+
+    return localMinutes >= startMinutes || localMinutes < endMinutes;
+  }
+
+  bool _isTutorAvailableNow(UsersRecord tutorRecord) {
+    final availabilityToday = tutorRecord.availabilityToday;
+    final enabled = availabilityToday.enabled;
+    if (!enabled) {
+      return false;
+    }
+
+    final intervals = availabilityToday.intervals;
+    if (intervals.isEmpty) {
+      return true;
+    }
+
+    final timezoneOffsetMinutes =
+        _normalizeOffsetMinutes(tutorRecord.snapshotData['timezoneOffsetMinutes']);
+    if (timezoneOffsetMinutes == null) {
+      return true;
+    }
+
+    final localNow =
+        DateTime.now().toUtc().add(Duration(minutes: timezoneOffsetMinutes));
+    final localMinutes = localNow.hour * 60 + localNow.minute;
+
+    for (final interval in intervals) {
+      final startMinutes = _parseTimeBoundary(interval.start);
+      final endMinutes = _parseTimeBoundary(interval.end);
+      if (startMinutes == null || endMinutes == null) {
+        continue;
+      }
+
+      if (_intervalContains(
+        localMinutes: localMinutes,
+        startMinutes: startMinutes,
+        endMinutes: endMinutes,
+      )) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  String _buildTutorStatusLabel(UsersRecord tutorRecord) {
+    if (tutorRecord.isInCall) {
+      return _localizedText(
+        ruText: 'Занят',
+        enText: 'Busy',
+      );
+    }
+
+    if (_isTutorAvailableNow(tutorRecord)) {
+      return _localizedText(
+        ruText: 'В сети',
+        enText: 'Online',
+      );
+    }
+
+    return _localizedText(
+      ruText: 'Не в сети',
+      enText: 'Offline',
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -151,6 +276,14 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         final hasNativeLanguage = _hasLanguageData(
           nativeSpeakerPageUsersRecord.nativeLanguageNS,
         );
+        final isAvailableForCalls =
+            _isTutorAvailableNow(nativeSpeakerPageUsersRecord);
+        final isBlockedByStudent =
+            (currentUserDocument?.blockedUsers.toList() ?? [])
+                .contains(widget.nsUserDocRef);
+        final canStartDirectCall = !nativeSpeakerPageUsersRecord.isInCall &&
+            isAvailableForCalls &&
+            !isBlockedByStudent;
 
         return GestureDetector(
           onTap: () {
@@ -175,16 +308,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                         photoUrl: nativeSpeakerPageUsersRecord.photoUrl,
                         displayName: nativeSpeakerPageUsersRecord.displayName,
                         cityAndStatus:
-                            '${nativeSpeakerPageUsersRecord.countryNS.nameEn} | ${() {
-                          if (nativeSpeakerPageUsersRecord.isInCall) {
-                            return 'Занят';
-                          } else if (nativeSpeakerPageUsersRecord
-                              .availabilityToday.enabled) {
-                            return 'В сети ';
-                          } else {
-                            return 'Не в сети';
-                          }
-                        }()}',
+                            '${nativeSpeakerPageUsersRecord.countryNS.nameEn} | ${_buildTutorStatusLabel(nativeSpeakerPageUsersRecord)}',
                         ratingAverage:
                             nativeSpeakerPageUsersRecord.rating.average,
                       ),
@@ -449,10 +573,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                     ),
                   ],
                 ),
-                if (!nativeSpeakerPageUsersRecord.isInCall &&
-                    nativeSpeakerPageUsersRecord.availabilityToday.enabled &&
-                    !(currentUserDocument?.blockedUsers.toList() ?? [])
-                        .contains(widget.nsUserDocRef))
+                if (canStartDirectCall)
                   Align(
                     alignment: AlignmentDirectional(0.0, 1.0),
                     child: _buildBottomCallToAction(),
@@ -687,7 +808,23 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                     return;
                   }
 
-                  context.pushNamed(WaitingForTeacherPageWidget.routeName);
+                  final targetTutorId = widget.nsUserDocRef?.id;
+                  if (targetTutorId == null || targetTutorId.isEmpty) {
+                    debugPrint(
+                        'NativeSpeakerPage: missing target tutor id for direct call');
+                    return;
+                  }
+
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => WaitingForTeacherPageWidget(
+                        targetTutorId: targetTutorId,
+                      ),
+                      settings: RouteSettings(
+                        name: WaitingForTeacherPageWidget.routeName,
+                      ),
+                    ),
+                  );
                 },
                 text: FFLocalizations.of(context).getText(
                   '1b1w4r9j' /*  */,

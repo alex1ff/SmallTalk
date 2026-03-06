@@ -5,6 +5,7 @@ const {
   createDailyRoom,
   createMeetingToken,
 } = require("./daily_room");
+const { evaluateTutorAvailabilityWindow } = require("./availability");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -37,7 +38,12 @@ exports.createVideoSession = functions
       const studentId = context.auth.uid;
 
       // Получаем параметры из вызова функции
-      const { language, preferredNativeLanguage, preferredCountry } = data;
+      const {
+        language,
+        preferredNativeLanguage,
+        preferredCountry,
+        directTutorId: rawDirectTutorId,
+      } = data;
 
       if (!language) {
         throw new functions.https.HttpsError(
@@ -47,6 +53,9 @@ exports.createVideoSession = functions
       }
 
       const normalizedLanguage = String(language).trim().toLowerCase();
+      const directTutorId =
+        typeof rawDirectTutorId === "string" ? rawDirectTutorId.trim() : "";
+      const isDirectTutorCall = directTutorId.length > 0;
       const tutorRoles = ["tutor", "native_speaker"];
       const shouldSampleTutorDebug = Math.random() < MATCH_DEBUG_SAMPLE_RATE;
       const tutorDebugSamples = [];
@@ -73,29 +82,17 @@ exports.createVideoSession = functions
       console.log("📹 createVideoSession params", {
         studentId,
         requestedLanguage: normalizedLanguage,
+        matchMode: isDirectTutorCall ? "direct" : "filtered",
+        directTutorId: isDirectTutorCall ? directTutorId : null,
         preferredNativeLanguage: preferredNativeLanguage || "any",
         preferredCountry: preferredCountry || "any",
       });
 
-      // Fetch student data and tutor list in parallel for faster startup
-      const tutorBaseQuery = admin
+      const studentDoc = await admin
         .firestore()
         .collection("users")
-        .where("role", "in", tutorRoles);
-
-      const [studentDoc, tutorsQueryResult] = await Promise.all([
-        admin.firestore().collection("users").doc(studentId).get(),
-        tutorBaseQuery.get().catch((queryError) => {
-          console.error(
-            "❌ Tutor query failed (no collection-scan fallback):",
-            queryError.message,
-          );
-          throw new functions.https.HttpsError(
-            "failed-precondition",
-            "Tutor query failed. Ensure required Firestore indexes are deployed.",
-          );
-        }),
-      ]);
+        .doc(studentId)
+        .get();
 
       if (!studentDoc.exists) {
         throw new functions.https.HttpsError("not-found", "Student not found");
@@ -109,65 +106,82 @@ exports.createVideoSession = functions
         );
       }
 
-      let tutorsQuery = tutorsQueryResult;
-
-      if (tutorsQuery.empty) {
-        console.log("📹 createVideoSession no tutors for roles", {
-          roles: tutorRoles,
-        });
-        return {
-          status: "no_tutors_available",
-          message: "No tutors available for this language right now",
-        };
-      }
-
-      // Получаем черные списки для фильтрации
-      const studentBlockedUsers = studentData.blockedUsers || [];
-      const studentBlockedIds = studentBlockedUsers
+      const extractBlockedIds = (blockedUsers = []) =>
+        blockedUsers
         .map((ref) => {
-          // Если это DocumentReference, извлекаем ID
           if (ref && ref.id) return ref.id;
-          // Если это строка, возвращаем как есть
           if (typeof ref === "string") return ref;
           return null;
         })
         .filter((id) => id !== null);
 
-      // Фильтруем преподавателей по всем критериям
+      const studentBlockedUsers = studentData.blockedUsers || [];
+      const studentBlockedIds = extractBlockedIds(studentBlockedUsers);
+
       const availableTutors = [];
-      const tutorDetails = {}; // Для отладки и приоритизации
+      const tutorDetails = {};
+      let tutorsQuery = null;
+      let directTutorInfo = null;
 
-      for (const doc of tutorsQuery.docs) {
-        tutorFilterStats.totalCandidates += 1;
-        const tutorData = doc.data();
-        const tutorId = doc.id;
+      if (isDirectTutorCall) {
+        const directTutorDoc = await admin
+          .firestore()
+          .collection("users")
+          .doc(directTutorId)
+          .get();
 
-        // === ПРОВЕРКА ЧЕРНЫХ СПИСКОВ (КРИТИЧНО!) ===
+        tutorFilterStats.totalCandidates = 1;
 
-        // 1. Проверяем, не заблокировал ли студент этого преподавателя
-        if (studentBlockedIds.includes(tutorId)) {
-          tutorFilterStats.blockedByStudent += 1;
-          addTutorSample({ tutorId, outcome: "skip", reason: "blocked_by_student" });
-          continue;
+        if (!directTutorDoc.exists) {
+          console.log("📹 createVideoSession direct tutor not found", {
+            studentId,
+            directTutorId,
+          });
+          return {
+            status: "no_tutors_available",
+            message: "Selected tutor is not available right now",
+          };
         }
 
-        // 2. Проверяем, не заблокировал ли преподаватель этого студента
-        const tutorBlockedUsers = tutorData.blockedUsers || [];
-        const tutorBlockedIds = tutorBlockedUsers
-          .map((ref) => {
-            if (ref && ref.id) return ref.id;
-            if (typeof ref === "string") return ref;
-            return null;
-          })
-          .filter((id) => id !== null);
+        const tutorData = directTutorDoc.data() || {};
+        if (!tutorRoles.includes(tutorData.role)) {
+          console.log("📹 createVideoSession direct tutor has invalid role", {
+            studentId,
+            directTutorId,
+            role: tutorData.role || null,
+          });
+          return {
+            status: "no_tutors_available",
+            message: "Selected tutor is not available right now",
+          };
+        }
 
+        if (studentBlockedIds.includes(directTutorId)) {
+          tutorFilterStats.blockedByStudent += 1;
+          addTutorSample({
+            tutorId: directTutorId,
+            outcome: "skip",
+            reason: "blocked_by_student",
+          });
+          return {
+            status: "no_tutors_available",
+            message: "Selected tutor is not available right now",
+          };
+        }
+
+        const tutorBlockedIds = extractBlockedIds(tutorData.blockedUsers || []);
         if (tutorBlockedIds.includes(studentId)) {
           tutorFilterStats.blockedByTutor += 1;
-          addTutorSample({ tutorId, outcome: "skip", reason: "blocked_by_tutor" });
-          continue;
+          addTutorSample({
+            tutorId: directTutorId,
+            outcome: "skip",
+            reason: "blocked_by_tutor",
+          });
+          return {
+            status: "no_tutors_available",
+            message: "Selected tutor is not available right now",
+          };
         }
-
-        // === БАЗОВАЯ ПРОВЕРКА ДОСТУПНОСТИ ===
 
         if (
           tutorData.availableAfter &&
@@ -175,162 +189,286 @@ exports.createVideoSession = functions
         ) {
           tutorFilterStats.availableAfterInFuture += 1;
           addTutorSample({
-            tutorId,
+            tutorId: directTutorId,
             outcome: "skip",
             reason: "available_after_in_future",
           });
-          continue;
+          return {
+            status: "no_tutors_available",
+            message: "Selected tutor is not available right now",
+          };
         }
 
-        const availabilityToday = tutorData.availabilityToday;
-        const isAvailable =
-          tutorData.isAvailable !== undefined
-            ? tutorData.isAvailable
-            : (availabilityToday?.enabled ?? true);
+        const availabilityCheck = evaluateTutorAvailabilityWindow(tutorData);
+        const isAvailable = availabilityCheck.isAvailable;
 
         if (!isAvailable || tutorData.isInCall) {
           tutorFilterStats.unavailableOrInCall += 1;
           addTutorSample({
-            tutorId,
+            tutorId: directTutorId,
             outcome: "skip",
             reason: "unavailable_or_in_call",
             isAvailable: !!isAvailable,
             isInCall: !!tutorData.isInCall,
+            availabilityReason: availabilityCheck.reason,
+            tutorLocalTime: availabilityCheck.localTime || null,
+            timezoneOffsetMinutes: availabilityCheck.timezoneOffsetMinutes ?? null,
           });
-          continue;
-        }
-
-        const instructionLang = tutorData.language_instruction_NS;
-        const instructionCode =
-          instructionLang && typeof instructionLang === "object"
-            ? String(instructionLang.code || "")
-                .trim()
-                .toLowerCase()
-            : "";
-
-        if (!instructionCode) {
-          tutorFilterStats.missingInstructionCode += 1;
-          addTutorSample({
-            tutorId,
-            outcome: "skip",
-            reason: "missing_instruction_language_code",
-          });
-          continue;
-        }
-
-        if (instructionCode !== normalizedLanguage) {
-          tutorFilterStats.instructionLanguageMismatch += 1;
-          addTutorSample({
-            tutorId,
-            outcome: "skip",
-            reason: "instruction_language_mismatch",
-            instructionCode,
-          });
-          continue;
-        }
-
-        // Проверяем соответствие нативному языку (если указан)
-        let nativeLanguageMatch = false;
-        if (preferredNativeLanguage) {
-          // Получаем код нативного языка преподавателя
-          const tutorNativeLanguage = tutorData.native_language_NS;
-
-          if (tutorNativeLanguage && typeof tutorNativeLanguage === "object") {
-            const nativeLanguageCode = String(tutorNativeLanguage.code || "")
-              .trim()
-              .toLowerCase();
-            const preferredNative = String(preferredNativeLanguage)
-              .trim()
-              .toLowerCase();
-            nativeLanguageMatch = nativeLanguageCode === preferredNative;
-            if (!nativeLanguageMatch) {
-              tutorFilterStats.nativeLanguageMismatch += 1;
-              addTutorSample({
-                tutorId,
-                outcome: "skip",
-                reason: "native_language_mismatch",
-                tutorNativeLanguage: nativeLanguageCode,
-              });
-            }
-          } else {
-            tutorFilterStats.missingNativeLanguage += 1;
-            addTutorSample({
-              tutorId,
-              outcome: "skip",
-              reason: "missing_native_language",
-            });
-          }
-        } else {
-          // Если студент не указал предпочтение, любой язык подходит
-          nativeLanguageMatch = true;
-        }
-
-        // Проверяем соответствие локации/стране (если указана)
-        let countryMatch = false;
-        if (preferredCountry) {
-          // Получаем код страны преподавателя
-          const tutorCountry = tutorData.Country_NS;
-
-          if (tutorCountry && typeof tutorCountry === "object") {
-            const countryCode = tutorCountry.code;
-            countryMatch = countryCode === preferredCountry;
-            if (!countryMatch) {
-              tutorFilterStats.countryMismatch += 1;
-              addTutorSample({
-                tutorId,
-                outcome: "skip",
-                reason: "country_mismatch",
-                tutorCountry: countryCode,
-              });
-            }
-          } else {
-            tutorFilterStats.missingCountry += 1;
-            addTutorSample({
-              tutorId,
-              outcome: "skip",
-              reason: "missing_country",
-            });
-          }
-        } else {
-          // Если студент не указал предпочтение, любая страна подходит
-          countryMatch = true;
-        }
-
-        // Если оба фильтра совпали (или не были указаны), добавляем преподавателя
-        if (nativeLanguageMatch && countryMatch) {
-          availableTutors.push(tutorId);
-          tutorFilterStats.matched += 1;
-
-          // Сохраняем детали для потенциальной приоритизации
-          tutorDetails[tutorId] = {
-            nativeLanguage: tutorData.native_language_NS?.code || "unknown",
-            country: tutorData.Country_NS?.code || "unknown",
-            rating: tutorData.rating || 0,
-            priorityScore: tutorData.priorityScore || 50, // из ТЗ: 100-балльная система
-            name: tutorData.display_name || "Tutor",
+          return {
+            status: "no_tutors_available",
+            message: "Selected tutor is not available right now",
           };
-          addTutorSample({
-            tutorId,
-            outcome: "match",
-            priorityScore: tutorDetails[tutorId].priorityScore,
+        }
+
+        availableTutors.push(directTutorId);
+        tutorFilterStats.matched = 1;
+        tutorDetails[directTutorId] = {
+          nativeLanguage: tutorData.native_language_NS?.code || "unknown",
+          country: tutorData.Country_NS?.code || "unknown",
+          rating: tutorData.rating || 0,
+          priorityScore: tutorData.priorityScore || 50,
+          name: tutorData.display_name || "Tutor",
+        };
+        directTutorInfo = {
+          name: tutorData.display_name || "Tutor",
+          photo: tutorData.photo_url || null,
+        };
+        addTutorSample({
+          tutorId: directTutorId,
+          outcome: "match",
+          direct: true,
+        });
+      } else {
+        const tutorBaseQuery = admin
+          .firestore()
+          .collection("users")
+          .where("role", "in", tutorRoles);
+
+        tutorsQuery = await tutorBaseQuery.get().catch((queryError) => {
+          console.error(
+            "❌ Tutor query failed (no collection-scan fallback):",
+            queryError.message,
+          );
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "Tutor query failed. Ensure required Firestore indexes are deployed.",
+          );
+        });
+
+        if (tutorsQuery.empty) {
+          console.log("📹 createVideoSession no tutors for roles", {
+            roles: tutorRoles,
           });
-        } else {
-          addTutorSample({
-            tutorId,
-            outcome: "skip",
-            reason: "preference_mismatch",
-            nativeLanguageMatch,
-            countryMatch,
-          });
+          return {
+            status: "no_tutors_available",
+            message: "No tutors available for this language right now",
+          };
+        }
+
+        for (const doc of tutorsQuery.docs) {
+          tutorFilterStats.totalCandidates += 1;
+          const tutorData = doc.data();
+          const tutorId = doc.id;
+
+          // === ПРОВЕРКА ЧЕРНЫХ СПИСКОВ (КРИТИЧНО!) ===
+
+          // 1. Проверяем, не заблокировал ли студент этого преподавателя
+          if (studentBlockedIds.includes(tutorId)) {
+            tutorFilterStats.blockedByStudent += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "blocked_by_student",
+            });
+            continue;
+          }
+
+          // 2. Проверяем, не заблокировал ли преподаватель этого студента
+          const tutorBlockedIds = extractBlockedIds(tutorData.blockedUsers || []);
+
+          if (tutorBlockedIds.includes(studentId)) {
+            tutorFilterStats.blockedByTutor += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "blocked_by_tutor",
+            });
+            continue;
+          }
+
+          // === БАЗОВАЯ ПРОВЕРКА ДОСТУПНОСТИ ===
+
+          if (
+            tutorData.availableAfter &&
+            tutorData.availableAfter.toDate() > new Date()
+          ) {
+            tutorFilterStats.availableAfterInFuture += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "available_after_in_future",
+            });
+            continue;
+          }
+
+          const availabilityCheck = evaluateTutorAvailabilityWindow(tutorData);
+          const isAvailable = availabilityCheck.isAvailable;
+
+          if (!isAvailable || tutorData.isInCall) {
+            tutorFilterStats.unavailableOrInCall += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "unavailable_or_in_call",
+              isAvailable: !!isAvailable,
+              isInCall: !!tutorData.isInCall,
+              availabilityReason: availabilityCheck.reason,
+              tutorLocalTime: availabilityCheck.localTime || null,
+              timezoneOffsetMinutes:
+                availabilityCheck.timezoneOffsetMinutes ?? null,
+            });
+            continue;
+          }
+
+          const instructionLang = tutorData.language_instruction_NS;
+          const instructionCode =
+            instructionLang && typeof instructionLang === "object"
+              ? String(instructionLang.code || "")
+                  .trim()
+                  .toLowerCase()
+              : "";
+
+          if (!instructionCode) {
+            tutorFilterStats.missingInstructionCode += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "missing_instruction_language_code",
+            });
+            continue;
+          }
+
+          if (instructionCode !== normalizedLanguage) {
+            tutorFilterStats.instructionLanguageMismatch += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "instruction_language_mismatch",
+              instructionCode,
+            });
+            continue;
+          }
+
+          // Проверяем соответствие нативному языку (если указан)
+          let nativeLanguageMatch = false;
+          if (preferredNativeLanguage) {
+            // Получаем код нативного языка преподавателя
+            const tutorNativeLanguage = tutorData.native_language_NS;
+
+            if (tutorNativeLanguage && typeof tutorNativeLanguage === "object") {
+              const nativeLanguageCode = String(tutorNativeLanguage.code || "")
+                .trim()
+                .toLowerCase();
+              const preferredNative = String(preferredNativeLanguage)
+                .trim()
+                .toLowerCase();
+              nativeLanguageMatch = nativeLanguageCode === preferredNative;
+              if (!nativeLanguageMatch) {
+                tutorFilterStats.nativeLanguageMismatch += 1;
+                addTutorSample({
+                  tutorId,
+                  outcome: "skip",
+                  reason: "native_language_mismatch",
+                  tutorNativeLanguage: nativeLanguageCode,
+                });
+              }
+            } else {
+              tutorFilterStats.missingNativeLanguage += 1;
+              addTutorSample({
+                tutorId,
+                outcome: "skip",
+                reason: "missing_native_language",
+              });
+            }
+          } else {
+            // Если студент не указал предпочтение, любой язык подходит
+            nativeLanguageMatch = true;
+          }
+
+          // Проверяем соответствие локации/стране (если указана)
+          let countryMatch = false;
+          if (preferredCountry) {
+            // Получаем код страны преподавателя
+            const tutorCountry = tutorData.Country_NS;
+
+            if (tutorCountry && typeof tutorCountry === "object") {
+              const countryCode = tutorCountry.code;
+              countryMatch = countryCode === preferredCountry;
+              if (!countryMatch) {
+                tutorFilterStats.countryMismatch += 1;
+                addTutorSample({
+                  tutorId,
+                  outcome: "skip",
+                  reason: "country_mismatch",
+                  tutorCountry: countryCode,
+                });
+              }
+            } else {
+              tutorFilterStats.missingCountry += 1;
+              addTutorSample({
+                tutorId,
+                outcome: "skip",
+                reason: "missing_country",
+              });
+            }
+          } else {
+            // Если студент не указал предпочтение, любая страна подходит
+            countryMatch = true;
+          }
+
+          // Если оба фильтра совпали (или не были указаны), добавляем преподавателя
+          if (nativeLanguageMatch && countryMatch) {
+            availableTutors.push(tutorId);
+            tutorFilterStats.matched += 1;
+
+            // Сохраняем детали для потенциальной приоритизации
+            tutorDetails[tutorId] = {
+              nativeLanguage: tutorData.native_language_NS?.code || "unknown",
+              country: tutorData.Country_NS?.code || "unknown",
+              rating: tutorData.rating || 0,
+              priorityScore: tutorData.priorityScore || 50,
+              name: tutorData.display_name || "Tutor",
+            };
+            addTutorSample({
+              tutorId,
+              outcome: "match",
+              priorityScore: tutorDetails[tutorId].priorityScore,
+            });
+          } else {
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "preference_mismatch",
+              nativeLanguageMatch,
+              countryMatch,
+            });
+          }
         }
       }
 
+      const totalTutorsQueried = isDirectTutorCall ? 1 : tutorsQuery.size;
       const filteringSummary = {
         studentId,
         requestedLanguage: normalizedLanguage,
-        preferredNativeLanguage: preferredNativeLanguage || "any",
-        preferredCountry: preferredCountry || "any",
-        totalTutorsQueried: tutorsQuery.size,
+        matchMode: isDirectTutorCall ? "direct" : "filtered",
+        directTutorId: isDirectTutorCall ? directTutorId : null,
+        preferredNativeLanguage: isDirectTutorCall
+          ? "skipped_for_direct_call"
+          : (preferredNativeLanguage || "any"),
+        preferredCountry: isDirectTutorCall
+          ? "skipped_for_direct_call"
+          : (preferredCountry || "any"),
+        totalTutorsQueried,
         totalCandidatesChecked: tutorFilterStats.totalCandidates,
         matchedTutors: tutorFilterStats.matched,
         rejected: {
@@ -357,30 +495,33 @@ exports.createVideoSession = functions
         console.log("📹 createVideoSession no matching tutors after filtering", {
           studentId,
           requestedLanguage: normalizedLanguage,
+          matchMode: isDirectTutorCall ? "direct" : "filtered",
+          directTutorId: isDirectTutorCall ? directTutorId : null,
           preferredNativeLanguage: preferredNativeLanguage || "any",
           preferredCountry: preferredCountry || "any",
         });
         return {
           status: "no_tutors_available",
-          message:
-            "No tutors available matching your preferences. Try adjusting your filters.",
+          message: isDirectTutorCall
+            ? "Selected tutor is not available right now"
+            : "No tutors available matching your preferences. Try adjusting your filters.",
         };
       }
 
-      // ОПЦИОНАЛЬНО: Сортируем преподавателей по приоритету (из ТЗ)
-      // Чем ниже priorityScore, тем выше в очереди
-      availableTutors.sort((a, b) => {
-        const scoreA = tutorDetails[a].priorityScore;
-        const scoreB = tutorDetails[b].priorityScore;
-        return scoreA - scoreB; // по возрастанию (меньше = выше приоритет)
-      });
-      console.log("📊 Matched tutors after sorting", {
-        count: availableTutors.length,
-        topTutorPreview: availableTutors.slice(0, 3).map((id) => ({
-          tutorId: id,
-          priorityScore: tutorDetails[id].priorityScore,
-        })),
-      });
+      if (!isDirectTutorCall) {
+        availableTutors.sort((a, b) => {
+          const scoreA = tutorDetails[a].priorityScore;
+          const scoreB = tutorDetails[b].priorityScore;
+          return scoreA - scoreB;
+        });
+        console.log("📊 Matched tutors after sorting", {
+          count: availableTutors.length,
+          topTutorPreview: availableTutors.slice(0, 3).map((id) => ({
+            tutorId: id,
+            priorityScore: tutorDetails[id].priorityScore,
+          })),
+        });
+      }
 
       // Создаем videoSession
       const expiresAt = new Date();
@@ -433,8 +574,8 @@ exports.createVideoSession = functions
 
         // Предпочтения студента (для логов и аналитики)
         studentPreferences: {
-          nativeLanguage: preferredNativeLanguage,
-          country: preferredCountry,
+          nativeLanguage: preferredNativeLanguage || null,
+          country: preferredCountry || null,
         },
 
         // Для поиска
@@ -453,17 +594,23 @@ exports.createVideoSession = functions
         startedAt: null,
         endedAt: null,
         duration: null,
-        tutorInfo: null,
+        tutorInfo: directTutorInfo,
 
         // Метаданные для отладки
         sessionMetadata: {
-          totalTutorsFound: tutorsQuery.size,
+          matchMode: isDirectTutorCall ? "direct" : "filtered",
+          directTutorId: isDirectTutorCall ? directTutorId : null,
+          totalTutorsFound: totalTutorsQueried,
           filteredTutorsCount: availableTutors.length,
           studentBlockedCount: studentBlockedIds.length,
           filtersApplied: {
             language: language,
-            nativeLanguage: preferredNativeLanguage || "any",
-            country: preferredCountry || "any",
+            nativeLanguage: isDirectTutorCall
+              ? "skipped_for_direct_call"
+              : (preferredNativeLanguage || "any"),
+            country: isDirectTutorCall
+              ? "skipped_for_direct_call"
+              : (preferredCountry || "any"),
             blocklistEnabled: true,
           },
           roomPrecreated: precreatedRoomOk,
@@ -483,7 +630,9 @@ exports.createVideoSession = functions
       return {
         status: "searching",
         sessionId: sessionRef.id,
-        message: "Searching for available tutor...",
+        message: isDirectTutorCall
+          ? "Calling selected tutor..."
+          : "Searching for available tutor...",
         matchedTutors: availableTutors.length,
       };
     } catch (error) {
