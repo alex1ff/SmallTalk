@@ -699,13 +699,40 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (!mounted) return;
 
     try {
-      final payload = jsonDecode(message);
-      if (payload['type'] == 'caption') {
-        _processCaptionMessage(payload['text'], from);
+      final payload = _decodeAppMessagePayload(message);
+      if (payload == null) return;
+
+      final type = payload['type']?.toString();
+      if (type == 'caption') {
+        _processCaptionMessage(payload['text']?.toString() ?? '', from);
       }
     } catch (e) {
       if (kDebugMode) print('Invalid app message: $e');
     }
+  }
+
+  /// Decode Daily app messages from string/map and handle double encoding.
+  ///
+  /// daily_flutter can emit app-message data as JSON-encoded strings, and when
+  /// sender payload is already a JSON string this arrives double-encoded.
+  Map<String, dynamic>? _decodeAppMessagePayload(String rawMessage) {
+    dynamic payload = rawMessage;
+
+    for (var i = 0; i < 2; i++) {
+      if (payload is String) {
+        final trimmed = payload.trim();
+        if (trimmed.isEmpty) return null;
+        payload = jsonDecode(trimmed);
+        continue;
+      }
+      break;
+    }
+
+    if (payload is Map) {
+      return Map<String, dynamic>.from(payload);
+    }
+
+    return null;
   }
 
   /// Process caption message with deduplication
