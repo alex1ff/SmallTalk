@@ -183,6 +183,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   StreamController<Uint8List>? _audioStreamController;
   bool _recorderOpen = false;
   bool _deepgramStopRequested = false;
+  bool _deepgramStartInProgress = false;
 
   // Removed quality monitoring - Daily Adaptive Bitrate handles this
 
@@ -612,6 +613,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _updateLocalVideoTrack();
         unawaited(_markSessionStarted());
         unawaited(_markSystemCallConnected());
+        if (_canUseDeepgram() && !_state.isStreamingToDeepgram) {
+          unawaited(
+            _startDeepgramStreamingWithResolvedCredential(forceRefresh: true),
+          );
+        }
         break;
 
       case CallState.left:
@@ -1112,10 +1118,21 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Start Deepgram streaming with proper resource management
   Future<void> _startDeepgramStreaming(String credential) async {
-    if (_state.isStreamingToDeepgram || !mounted) return;
+    if (_state.isStreamingToDeepgram ||
+        !mounted ||
+        _deepgramStartInProgress) {
+      return;
+    }
 
     try {
+      _deepgramStartInProgress = true;
       _deepgramStopRequested = false;
+
+      if (kDebugMode) {
+        print(
+          'Deepgram starting with ${_looksLikeJwt(credential) ? "temporary token" : "API key"} auth',
+        );
+      }
 
       // Request microphone permission
       final permission = await Permission.microphone.request();
@@ -1163,11 +1180,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     } catch (e) {
       if (kDebugMode) print('Failed to start Deepgram streaming: $e');
       await _stopDeepgramStreaming();
+    } finally {
+      _deepgramStartInProgress = false;
     }
   }
 
   /// Initialize Deepgram WebSocket connection
   Future<void> _initializeDeepgramWebSocket(String credential) async {
+    final sanitizedCredential = credential.trim();
     final uri = Uri.https('api.deepgram.com', '/v1/listen', {
       'encoding': 'linear16',
       'sample_rate': '16000',
@@ -1184,10 +1204,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     });
 
     final wsUrl = uri.toString().replaceFirst('https://', 'wss://');
+    final usesJwt = _looksLikeJwt(sanitizedCredential);
 
     _deepgramChannel = IOWebSocketChannel.connect(
       wsUrl,
-      headers: {'Authorization': _buildDeepgramAuthHeader(credential)},
+      protocols: usesJwt ? null : <String>['token', sanitizedCredential],
+      headers: {
+        'Authorization': _buildDeepgramAuthHeader(sanitizedCredential),
+      },
+      connectTimeout: const Duration(seconds: 10),
     );
 
     final subscription = _deepgramChannel!.stream.listen(
@@ -1317,7 +1342,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Stop Deepgram streaming and cleanup resources
   Future<void> _stopDeepgramStreaming() async {
-    if (!_state.isStreamingToDeepgram) return;
+    if (!_state.isStreamingToDeepgram &&
+        !_deepgramStartInProgress &&
+        _recorder == null &&
+        _deepgramChannel == null &&
+        _audioStreamController == null) {
+      return;
+    }
 
     try {
       _deepgramStopRequested = true;
@@ -1337,6 +1368,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       await _audioStreamController?.close();
       _audioStreamController = null;
+      _deepgramStartInProgress = false;
 
       _updateState(_state.copyWith(
         isStreamingToDeepgram: false,

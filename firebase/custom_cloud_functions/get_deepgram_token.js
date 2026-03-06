@@ -6,6 +6,20 @@ const deepgramSecrets = ["DEEPGRAM_API_KEY"];
 const DEEPGRAM_GRANT_URL = "https://api.deepgram.com/v1/auth/grant";
 const DEFAULT_TTL_SECONDS = 600;
 
+function shouldFallbackToApiKey(error) {
+  const status = error?.response?.status;
+  const errCode = String(error?.response?.data?.err_code || "").toUpperCase();
+  const errMsg = String(error?.response?.data?.err_msg || "").toLowerCase();
+
+  if (status !== 403) return false;
+
+  return (
+    errCode === "FORBIDDEN" ||
+    errCode === "INSUFFICIENT_PERMISSIONS" ||
+    errMsg.includes("insufficient permissions")
+  );
+}
+
 exports.getDeepgramToken = functions
   .runWith({secrets: deepgramSecrets})
   .https.onCall(async (data, context) => {
@@ -82,9 +96,30 @@ exports.getDeepgramToken = functions
         status: "ok",
         sessionId,
         accessToken: token,
+        credentialType: "temporary_token",
         ttlSeconds: DEFAULT_TTL_SECONDS,
       };
     } catch (error) {
+      if (shouldFallbackToApiKey(error)) {
+        console.warn(
+          "⚠️ Deepgram grant forbidden, falling back to API key auth",
+          {
+            sessionId,
+            userId,
+            status: error?.response?.status,
+            data: error?.response?.data,
+          },
+        );
+
+        return {
+          status: "ok",
+          sessionId,
+          accessToken: apiKey,
+          credentialType: "api_key_fallback",
+          ttlSeconds: null,
+        };
+      }
+
       console.error("❌ Failed to create Deepgram access token:", {
         sessionId,
         userId,

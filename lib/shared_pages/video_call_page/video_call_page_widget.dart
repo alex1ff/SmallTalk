@@ -148,10 +148,23 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
           .call({
         'sessionId': sessionId,
       });
-      final data = result.data as Map<String, dynamic>? ?? {};
-      _deepgramAccessToken = data['accessToken'] as String?;
+      final rawData = result.data;
+      final data = rawData is Map
+          ? Map<String, dynamic>.from(rawData)
+          : <String, dynamic>{};
+      _deepgramAccessToken = _nonEmptyValue(data['accessToken']?.toString());
+      if (kDebugMode) {
+        debugPrint(
+          _deepgramAccessToken != null
+              ? '🎙️ Deepgram credential ready: ${data['credentialType'] ?? 'unknown'}'
+              : '⚠️ Deepgram credential response was empty',
+        );
+      }
       return _deepgramAccessToken;
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ Deepgram credential fetch failed: $e');
+      }
       return _deepgramAccessToken;
     } finally {
       if (mounted) {
