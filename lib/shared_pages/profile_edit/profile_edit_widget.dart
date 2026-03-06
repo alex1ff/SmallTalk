@@ -37,6 +37,9 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
   late ProfileEditModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  LanguageStruct? _selectedLearningLanguage;
+  LanguageStruct? _selectedInstructionLanguage;
+  LanguageStruct? _selectedNativeLanguage;
 
   @override
   void initState() {
@@ -95,6 +98,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
             ruText: currentUserDocument?.learningLanguage.nameRu,
             enText: currentUserDocument?.learningLanguage.nameEn,
           );
+          _selectedLearningLanguage = currentUserDocument?.learningLanguage;
           _model.levelLTextController?.text =
               FFLocalizations.of(context).getVariableText(
             ruText: () {
@@ -122,11 +126,14 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
             ruText: currentUserDocument?.languageInstructionNS.nameRu,
             enText: currentUserDocument?.languageInstructionNS.nameEn,
           );
+          _selectedInstructionLanguage =
+              currentUserDocument?.languageInstructionNS;
           _model.nSLang2TextController?.text =
               FFLocalizations.of(context).getVariableText(
             ruText: currentUserDocument?.nativeLanguageNS.nameRu,
             enText: currentUserDocument?.nativeLanguageNS.nameEn,
           );
+          _selectedNativeLanguage = currentUserDocument?.nativeLanguageNS;
           _model.countryNSTextController?.text =
               FFLocalizations.of(context).getVariableText(
             ruText: currentUserDocument?.countryNS.nameRu,
@@ -746,8 +753,9 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                                             context),
                                                     child: EditLangWidget(
                                                       selected:
-                                                          currentUserDocument!
-                                                              .learningLanguage,
+                                                          _selectedLearningLanguage ??
+                                                              currentUserDocument
+                                                                  ?.learningLanguage,
                                                       title: FFLocalizations.of(
                                                               context)
                                                           .getText(
@@ -769,6 +777,8 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                                           }(),
                                                         );
                                                         safeSetState(() {
+                                                          _selectedLearningLanguage =
+                                                              lang;
                                                           _model.langLTextController
                                                                   ?.text =
                                                               FFLocalizations.of(
@@ -1980,8 +1990,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                               padding: MediaQuery.viewInsetsOf(
                                                   context),
                                               child: EditLangWidget(
-                                                selected: currentUserDocument!
-                                                    .languageInstructionNS,
+                                                selected:
+                                                    _selectedInstructionLanguage ??
+                                                        currentUserDocument
+                                                            ?.languageInstructionNS,
                                                 title:
                                                     FFLocalizations.of(context)
                                                         .getText(
@@ -2003,6 +2015,8 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                                     }(),
                                                   );
                                                   safeSetState(() {
+                                                    _selectedInstructionLanguage =
+                                                        lang;
                                                     _model.nSLangTextController
                                                             ?.text =
                                                         FFLocalizations.of(
@@ -2187,8 +2201,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                               padding: MediaQuery.viewInsetsOf(
                                                   context),
                                               child: EditLangWidget(
-                                                selected: currentUserDocument!
-                                                    .languageInstructionNS,
+                                                selected:
+                                                    _selectedNativeLanguage ??
+                                                        currentUserDocument
+                                                            ?.nativeLanguageNS,
                                                 title:
                                                     FFLocalizations.of(context)
                                                         .getText(
@@ -2210,6 +2226,8 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                                     }(),
                                                   );
                                                   safeSetState(() {
+                                                    _selectedNativeLanguage =
+                                                        lang;
                                                     _model.nSLang2TextController
                                                             ?.text =
                                                         FFLocalizations.of(
