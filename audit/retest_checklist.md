@@ -13,6 +13,28 @@
 3. `flutter pub outdated --no-dev-dependencies`
 4. Collect profile traces on critical flows via DevTools/`flutter run --profile`.
 
+## Latest Local Snapshot (2026-03-06)
+- Build commit: `147dec0`.
+- `flutter analyze`: passed (`No issues found!`).
+- `flutter analyze lib/custom_code/widgets/minimal_daily_widget.dart`: `6 issues`, all limited to the generated import header above `DO NOT REMOVE OR MODIFY THE CODE ABOVE!`.
+- `flutter test`: passed (`All tests passed!`).
+- Full-file follow-up widget fixes applied:
+  - token refresh state now survives cleanup/reconnect,
+  - audio-only remote calls no longer stay in “waiting” UI,
+  - caption clear timers no longer wipe newer subtitles prematurely.
+- Android Daily NDK blocker:
+  - resolved by setting `ndkVersion = "27.3.13750724"` in `android/app/build.gradle`.
+- Android emulator smoke rerun:
+  - `flutter drive` now has a host-driver at `test_driver/integration_test.dart`,
+  - build advanced past the old Daily NDK version mismatch,
+  - current blocker is a malformed local NDK install at `~/Library/Android/sdk/ndk/27.3.13750724` with no `source.properties`.
+- Wireless iPhone runtime path:
+  - `flutter test integration_test/critical_flows_smoke_test.dart -d 00008101-00056C640A88001E` is blocked because `flutter test` cannot launch on a wirelessly tethered iPhone without a port-publication path.
+  - `flutter drive` host-driver was added to unblock wireless automation attempts.
+  - `flutter run --profile -d 00008101-00056C640A88001E --publish-port --no-resident` started but did not yield a confirmed launch result in-session.
+  - `flutter drive --profile ... --publish-port` also started but did not yield a confirmed launch/test result in-session.
+  - direct `xcrun devicectl` probing showed the current immediate blocker: the iPhone was locked, so the developer disk image could not be mounted.
+
 ## Latest Local Snapshot (2026-03-04)
 - `flutter analyze`: passed, 0 issues.
 - `flutter test`: passed (`test/widget_test.dart`).
@@ -39,7 +61,7 @@
 | RT-09 | 15+ minute video call soak test | iOS, Android | Not run | Memory/CPU/battery trends |
 | RT-10 | Payment flow + webview lifecycle | iOS, Android | Not run | Stuck state count, memory leaks |
 | RT-11 | Security regression (rules) unauthorized access attempts | Emulator + devices | Pass (Emulator validation) | Denied reads/writes coverage |
-| RT-12 | Post-fix analyze/test/profile rerun | iOS, Android | Partial (analyze/test + integration smoke pass on Android emulator/iOS simulator, USB iOS blocked by signing) | Delta vs baseline |
+| RT-12 | Post-fix analyze/test/profile rerun | iOS, Android | Partial (analyze/test pass; widget analyze only generated-header warnings; Android project blocker resolved but local NDK install is malformed; wireless iPhone now has a `flutter drive` harness but no confirmed pass yet) | Delta vs baseline |
 
 ## Execution Notes (2026-03-04)
 - Build commit: `f599c29`.

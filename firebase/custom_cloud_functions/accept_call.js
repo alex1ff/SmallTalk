@@ -469,7 +469,6 @@ exports.acceptCall = functions
             tutorId: tutorId,
             status: "active",
             acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
-            startedAt: admin.firestore.FieldValue.serverTimestamp(),
 
             // Добавляем данные Daily.co
             dailyRoomUrl: roomUrl,
@@ -602,7 +601,7 @@ exports.acceptCall = functions
         },
         sessionData: {
           language: sessionData.language,
-          startedAt: Date.now(),
+          startedAt: null,
           maxDuration: 3600000, // 1 час в миллисекундах
         },
       };
