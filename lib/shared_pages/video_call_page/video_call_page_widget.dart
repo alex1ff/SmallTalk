@@ -232,12 +232,17 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       return;
     }
 
+    final sessionMetadata = session?.snapshotData['sessionMetadata'];
+    final connectedAt =
+        sessionMetadata is Map ? sessionMetadata['callConnectedAt'] : null;
+    final fallbackStartedAt =
+        connectedAt is DateTime ? connectedAt : session?.startedAt;
+
     // If the Firestore duration is 0 (e.g. endSession cloud function hasn't
-    // finished yet), compute it client-side from startedAt so the summary
-    // page always shows a meaningful value.
+    // finished yet), use the server-authored call-connected timestamp.
     int duration = session?.duration ?? 0;
-    if (duration <= 0 && session?.startedAt != null) {
-      duration = DateTime.now().difference(session!.startedAt!).inSeconds;
+    if (duration <= 0 && fallbackStartedAt != null) {
+      duration = DateTime.now().difference(fallbackStartedAt).inSeconds;
       if (duration < 0) duration = 0;
     }
 
@@ -319,7 +324,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             !_didNavigateToSummary) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && !_didNavigateToSummary) {
-              unawaited(VoIPService().endCurrentCall());
+              unawaited(
+                VoIPService().endCurrentCall(sessionId: widget.videoDocRef?.id),
+              );
               _navigateToSummary(videoCallPageVideoSessionsRecord);
             }
           });
@@ -350,7 +357,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                 },
                 sessionStatus: sessionStatus,
                 isStudent: isStudent,
-                deepgramApiKey: _nonEmpty(_deepgramAccessToken),
+                deepgramCredential: _nonEmpty(_deepgramAccessToken),
                 deepgramLanguage: resolvedLanguage,
                 username: currentUserDisplayName,
                 enableDeepgram: true,

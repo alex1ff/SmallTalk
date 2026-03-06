@@ -103,14 +103,22 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       const endedBy = userId;
       const endedByRole = sessionData.studentId === userId ? "student" : "tutor";
       const callConnectedAt =
+        toMillis(sessionData.sessionMetadata?.callConnectedAt);
+      const legacyCallConnectedAt =
         toMillis(sessionData.sessionMetadata?.callConnectedAtTimestamp);
       const startedAt = toMillis(sessionData.startedAt);
       const acceptedAt =
         toMillis(sessionData.acceptedAt) ||
         toMillis(sessionData.sessionMetadata?.acceptedAt);
+      const serverConnectedAt =
+        startedAt > 0 && (acceptedAt === 0 || startedAt - acceptedAt > 1000)
+          ? startedAt
+          : 0;
       const startTime =
-        callConnectedAt || startedAt || acceptedAt || requestTimestamp;
-      const duration = Math.max(0, Math.floor((requestTimestamp - startTime) / 1000));
+        callConnectedAt || legacyCallConnectedAt || serverConnectedAt || 0;
+      const duration = startTime > 0
+        ? Math.max(0, Math.floor((requestTimestamp - startTime) / 1000))
+        : 0;
       const tutorDurationMinutes = parseFloat((duration / 60).toFixed(4));
       const tutorEarning = parseFloat(
         (tutorDurationMinutes * TUTOR_RATE_PER_MINUTE).toFixed(2),

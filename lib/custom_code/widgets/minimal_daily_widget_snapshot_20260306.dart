@@ -1,3 +1,7 @@
+// Rollback snapshot created on 2026-03-06.
+// Source baseline: lib/custom_code/widgets/minimal_daily_widget.dart
+// Purpose: restore the pre-audit implementation before any verification fixes.
+
 // Automatic FlutterFlow imports
 import '/backend/backend.dart';
 import '/backend/schema/structs/index.dart';
@@ -11,16 +15,19 @@ import 'package:flutter/material.dart';
 // Begin custom widget code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
+import 'index.dart'; // Imports other custom widgets
+
 import 'package:flutter/foundation.dart';
 import 'package:daily_flutter/daily_flutter.dart';
 import 'dart:async';
-import 'dart:convert' as dart_convert;
-import 'dart:typed_data' as typed_data;
+import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:math' as math;
 import 'package:web_socket_channel/io.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '/services/voip_service.dart';
 
 // VideoQuality enum simplified - only auto mode needed
@@ -105,10 +112,6 @@ class MinimalDailyWidget extends StatefulWidget {
     this.tokenRefreshCallback,
     this.sessionStatus,
     this.isStudent,
-    this.deepgramCredential,
-    @Deprecated(
-      'Use deepgramCredential for both temporary tokens and API keys.',
-    )
     this.deepgramApiKey,
     this.deepgramTokenRefreshCallback,
     this.enableDeepgram = true,
@@ -127,8 +130,6 @@ class MinimalDailyWidget extends StatefulWidget {
   final Future<String?> Function()? tokenRefreshCallback;
   final String? sessionStatus;
   final bool? isStudent;
-  final String? deepgramCredential;
-  @Deprecated('Use deepgramCredential for both temporary tokens and API keys.')
   final String? deepgramApiKey;
   final Future<String?> Function()? deepgramTokenRefreshCallback;
   final bool enableDeepgram;
@@ -148,8 +149,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   CallClient? _callClient;
   VideoViewController? _localVideoController;
   StreamSubscription? _eventSubscription;
-  StreamSubscription<dynamic>? _deepgramMessageSubscription;
-  StreamSubscription<typed_data.Uint8List>? _audioStreamSubscription;
 
   // State management - immutable
   _CallState _state = const _CallState();
@@ -162,12 +161,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   // Remote track readiness tracking
   final Map<ParticipantId, DateTime> _remoteJoinTimes = {};
   final Map<ParticipantId, bool> _remoteTrackReady = {};
-  final Map<ParticipantId, int> _remoteCaptionClearGenerations = {};
-  final Set<ParticipantId> _prioritySubscribedParticipants = {};
-  bool _activeRemoteProfileConfigured = false;
 
   bool _disposed = false;
-  bool _appInForeground = true;
   bool _resumeCameraEnabled = true;
   bool _resumeMicrophoneEnabled = true;
   bool _isInitializing = false;
@@ -183,21 +178,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _userRequestedEnd = false;
 
   // Call duration timer
+  int _callDurationSeconds = 0;
   Timer? _durationTimer;
-  final Stopwatch _callDurationStopwatch = Stopwatch();
-  final ValueNotifier<int> _callDurationNotifier = ValueNotifier<int>(0);
-  final Map<ParticipantId, String> _remoteParticipantUiSignatures = {};
-  int _localCaptionClearGeneration = 0;
 
   // Deepgram integration
   FlutterSoundRecorder? _recorder;
   IOWebSocketChannel? _deepgramChannel;
-  StreamController<typed_data.Uint8List>? _audioStreamController;
+  StreamController<Uint8List>? _audioStreamController;
   bool _recorderOpen = false;
   bool _deepgramStopRequested = false;
   bool _deepgramStartInProgress = false;
-  Future<void> _lifecycleTransitionChain = Future<void>.value();
-  int _lifecycleTransitionId = 0;
 
   // Removed quality monitoring - Daily Adaptive Bitrate handles this
 
@@ -207,14 +197,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   static const int _maxRetryDelayMs = 30000;
   static const int _captionClearDelayMs = 20000; // Increased to 20 seconds
   static const int _remoteVideoGraceMs = 2000;
-  static const int _deepgramFinalizeWaitMs = 250;
-  static const int _deepgramCloseWaitMs = 100;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _deepgramCredential = _configuredDeepgramCredentialFor(widget);
+    _deepgramCredential = _sanitizeDeepgramCredential(widget.deepgramApiKey);
     _initializeWidget();
   }
 
@@ -286,15 +274,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return _sanitizeMeetingToken(_dynamicMeetingToken ?? widget.meetingToken);
   }
 
-  String? _configuredDeepgramCredentialFor(
-    MinimalDailyWidget widgetInstance,
-  ) {
-    return _sanitizeDeepgramCredential(
-      // ignore: deprecated_member_use_from_same_package
-      widgetInstance.deepgramCredential ?? widgetInstance.deepgramApiKey,
-    );
-  }
-
   String? _sanitizeDeepgramCredential(String? value) {
     if (value == null) return null;
     final trimmed = value.trim();
@@ -330,14 +309,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _canUseDeepgram() {
     if (!widget.enableDeepgram) return false;
     if (_sanitizeDeepgramCredential(_deepgramCredential) != null) return true;
-    if (_configuredDeepgramCredentialFor(widget) != null) return true;
+    if (_sanitizeDeepgramCredential(widget.deepgramApiKey) != null) return true;
     return widget.deepgramTokenRefreshCallback != null;
   }
 
   Future<String?> _resolveDeepgramCredential({
     bool forceRefresh = false,
   }) async {
-    final staticCredential = _configuredDeepgramCredentialFor(widget);
+    final staticCredential = _sanitizeDeepgramCredential(widget.deepgramApiKey);
 
     if (!forceRefresh) {
       final cached = _sanitizeDeepgramCredential(_deepgramCredential);
@@ -384,9 +363,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _systemCallMarkedConnected = false;
     _userRequestedEnd = false;
     _remoteLeftNotified = false;
-    _activeRemoteProfileConfigured = false;
-    _prioritySubscribedParticipants.clear();
-    _cancelTrackedTimer(_remoteLeftTimer);
+    _remoteLeftTimer?.cancel();
     _remoteLeftTimer = null;
 
     _updateState(_state.copyWith(
@@ -403,10 +380,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _localVideoController = VideoViewController();
 
       // Setup event subscription
-      await _setupEventSubscription();
+      _setupEventSubscription();
 
       // Join room with FIXED quality settings sequence
       await _joinRoomWithEnhancedSettings();
+
+      // Start Deepgram if configured
+      if (_canUseDeepgram()) {
+        _scheduleDeepgramStart();
+      }
 
       // Quality monitoring removed - Daily Adaptive Bitrate handles this
     } catch (e) {
@@ -431,9 +413,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   /// Setup event subscription with proper error handling
-  Future<void> _setupEventSubscription() async {
-    await _cancelTrackedSubscription(_eventSubscription);
-    _eventSubscription = _trackSubscription(_callClient!.events.listen(
+  void _setupEventSubscription() {
+    _eventSubscription?.cancel();
+    _eventSubscription = _callClient!.events.listen(
       _handleCallEvent,
       onError: (error) {
         if (kDebugMode) print('Event stream error: $error');
@@ -443,7 +425,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         }
       },
       cancelOnError: false,
-    ));
+    );
+    _trackSubscription(_eventSubscription!);
   }
 
   /// Join room with default settings to avoid SDK parsing errors
@@ -478,9 +461,56 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       ),
     );
 
-    await _ensureActiveRemoteSubscriptionProfile();
     await _configureUsername();
   }
+
+  /// Apply quality-optimized settings for better remote video quality
+  Future<void> _enableAdaptiveBitrate() async {
+    try {
+      if (_callClient == null) {
+        if (kDebugMode)
+          print('⚠️ Cannot enable adaptive bitrate - no call client');
+        return;
+      }
+
+      if (kDebugMode) {
+        print(
+            '🚀 Setting HIGH quality video with custom encodings for remote participants...');
+      }
+
+      // CRITICAL: Force HIGH quality for remote participants
+      // This is the main fix - Daily defaults to lower quality
+      await _callClient!.updatePublishing(
+        publishing: PublishingSettingsUpdate.set(
+          camera: CameraPublishingSettingsUpdate.set(
+            isPublishing: BoolUpdate.set(true),
+            sendSettings: VideoSendSettingsUpdate.set(
+              // ALWAYS use HIGH quality - this is the key fix!
+              // This changes bitrate from default 110-520 Kbps to 4-5 Mbps
+              maxQuality: VideoSendSettingsMaxQualityUpdate.high,
+            ),
+          ),
+          microphone: MicrophonePublishingSettingsUpdate.set(
+            isPublishing: BoolUpdate.set(true),
+          ),
+        ),
+      );
+
+      if (kDebugMode) {
+        print('✅ Optimized video settings applied successfully!');
+        print('   - maxQuality: HIGH (balanced for network stability)');
+        print(
+            '   - Expected bitrate: 1.5-2.5 Mbps (stable for most connections)');
+        print('   - Resolution: 720p with adaptive scaling');
+        print('   - Better stability and audio quality!');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Failed to set video quality: $e');
+    }
+  }
+
+  // Quality setting removed - always use auto mode with Daily Adaptive Bitrate
+  // The SDK automatically adjusts quality based on network conditions
 
   /// Configure username with fallback
   Future<void> _configureUsername() async {
@@ -490,6 +520,54 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       if (kDebugMode) print('Username set: $name');
     } catch (e) {
       if (kDebugMode) print('Username configuration failed: $e');
+    }
+  }
+
+  /// Force maximum quality video settings with ultra-high bitrate
+  Future<void> _forceHighQualityVideo() async {
+    try {
+      if (_callClient == null) return;
+
+      if (kDebugMode) {
+        print('🎯 Forcing ULTRA quality video for remote participants...');
+      }
+
+      // Force maximum quality - apply HIGH setting multiple times
+      // First application
+      await _callClient!.updatePublishing(
+        publishing: PublishingSettingsUpdate.set(
+          camera: CameraPublishingSettingsUpdate.set(
+            isPublishing: BoolUpdate.set(true),
+            sendSettings: VideoSendSettingsUpdate.set(
+              // Maximum quality setting
+              maxQuality: VideoSendSettingsMaxQualityUpdate.high,
+            ),
+          ),
+        ),
+      );
+
+      // Small delay to ensure settings take effect
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Second application to ensure it sticks
+      await _callClient!.updatePublishing(
+        publishing: PublishingSettingsUpdate.set(
+          camera: CameraPublishingSettingsUpdate.set(
+            sendSettings: VideoSendSettingsUpdate.set(
+              maxQuality: VideoSendSettingsMaxQualityUpdate.high,
+            ),
+          ),
+        ),
+      );
+
+      if (kDebugMode) {
+        print('✅ Stable quality applied successfully:');
+        print('   - Applied balanced quality settings');
+        print('   - Expected bitrate: 1.5-2.5 Mbps (network-friendly)');
+        print('   - Better audio quality and stability!');
+      }
+    } catch (e) {
+      if (kDebugMode) print('Failed to force ultra quality: $e');
     }
   }
 
@@ -515,8 +593,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         participantJoined: _handleParticipantJoined,
         participantUpdated: _handleParticipantUpdated,
         participantLeft: _handleParticipantLeft,
-        subscriptionsUpdated: _handleSubscriptionsUpdated,
-        subscriptionProfilesUpdated: _handleSubscriptionProfilesUpdated,
         appMessageReceived: _handleAppMessage,
         inputsUpdated: _handleInputsUpdated,
         error: _handleEventError,
@@ -538,8 +614,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           retryCount: 0,
         ));
         _tokenRefreshAttempts = 0;
-        unawaited(_updateLocalVideoTrack());
-        unawaited(_promoteToActiveCallIfReady());
+        _updateLocalVideoTrack();
+        unawaited(_markSessionStarted());
+        unawaited(_markSystemCallConnected());
+        if (_canUseDeepgram() && !_state.isStreamingToDeepgram) {
+          unawaited(
+            _startDeepgramStreamingWithResolvedCredential(forceRefresh: true),
+          );
+        }
         break;
 
       case CallState.left:
@@ -571,11 +653,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Handle participant joined event
   void _handleParticipantJoined(Participant participant) {
     if (!participant.info.isLocal && mounted) {
-      _cancelTrackedTimer(_remoteLeftTimer);
+      _remoteLeftTimer?.cancel();
       _remoteLeftTimer = null;
       _remoteLeftNotified = false;
       _addRemoteParticipant(participant);
-      unawaited(_promoteToActiveCallIfReady());
     }
   }
 
@@ -590,20 +671,17 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// VideoCallPage with no way to exit.
   void _handleParticipantUpdated(Participant participant) {
     if (participant.info.isLocal) {
-      unawaited(_updateLocalVideoTrack());
+      _updateLocalVideoTrack();
     } else {
       // Ignore updates for participants already removed (stale events)
       if (!_state.remoteControllers.containsKey(participant.id)) {
         return;
       }
-      _cancelTrackedTimer(_remoteLeftTimer);
+      _remoteLeftTimer?.cancel();
       _remoteLeftTimer = null;
       _remoteLeftNotified = false;
-      final shouldRefreshUi = _syncRemoteParticipantUiSignature(participant);
-      unawaited(_updateRemoteParticipant(participant));
-      if (shouldRefreshUi) {
-        _updateState(_state.copyWith());
-      }
+      _updateRemoteParticipant(participant);
+      _updateState(_state.copyWith());
       unawaited(_prioritizeRemoteSubscription(participant.id));
     }
   }
@@ -617,13 +695,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (_state.remoteControllers.isNotEmpty) {
       return;
     }
-    _stopDurationTimer();
-    unawaited(_syncDeepgramWithMicrophoneState());
     if (_remoteLeftNotified) {
       return;
     }
-    _cancelTrackedTimer(_remoteLeftTimer);
-    final timer = _createTrackedTimer(const Duration(seconds: 2), () {
+    _remoteLeftTimer?.cancel();
+    final timer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
       if (_state.remoteControllers.isNotEmpty) return;
       _remoteLeftNotified = true;
@@ -631,29 +707,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       widget.participantLeftCallback?.call();
     });
     _remoteLeftTimer = timer;
-  }
-
-  void _handleSubscriptionsUpdated(
-    Map<ParticipantId, SubscriptionSettings> subscriptions,
-  ) {
-    _prioritySubscribedParticipants
-      ..clear()
-      ..addAll(
-        subscriptions.entries
-            .where(
-              (entry) =>
-                  entry.value.profile == SubscriptionProfile.activeRemote,
-            )
-            .map((entry) => entry.key),
-      );
-  }
-
-  void _handleSubscriptionProfilesUpdated(
-    Map<SubscriptionProfile, MediaSubscriptionSettings> profiles,
-  ) {
-    _activeRemoteProfileConfigured = _matchesActiveRemoteProfile(
-      profiles[SubscriptionProfile.activeRemote],
-    );
+    _trackTimer(timer);
   }
 
   /// Handle app messages with validation
@@ -684,7 +738,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       if (payload is String) {
         final trimmed = payload.trim();
         if (trimmed.isEmpty) return null;
-        payload = dart_convert.jsonDecode(trimmed);
+        payload = jsonDecode(trimmed);
         continue;
       }
       break;
@@ -717,16 +771,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Handle inputs updated event
   void _handleInputsUpdated(InputSettings inputs) {
-    unawaited(_updateLocalVideoTrack());
+    _updateLocalVideoTrack();
     _updateState(_state.copyWith(
       cameraEnabled: inputs.camera.isEnabled,
       microphoneEnabled: inputs.microphone.isEnabled,
     ));
-    unawaited(
-      _syncDeepgramWithMicrophoneState(
-        forceRefresh: inputs.microphone.isEnabled,
-      ),
-    );
   }
 
   /// Handle event errors - filter out non-fatal errors
@@ -758,14 +807,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     try {
       // Check if controller already exists to avoid duplicates
       if (_state.remoteControllers.containsKey(participant.id)) {
-        unawaited(_updateRemoteParticipant(participant));
+        _updateRemoteParticipant(participant);
         return;
       }
 
       _remoteJoinTimes[participant.id] = DateTime.now();
       _remoteTrackReady[participant.id] = false;
-      _remoteParticipantUiSignatures[participant.id] =
-          _buildRemoteParticipantUiSignature(participant);
 
       final controller = VideoViewController();
       final controllers = Map<ParticipantId, VideoViewController>.from(
@@ -775,12 +822,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _updateState(_state.copyWith(remoteControllers: controllers));
       unawaited(_prioritizeRemoteSubscription(participant.id));
 
-      unawaited(_updateRemoteParticipant(participant));
+      _updateRemoteParticipant(participant);
 
       // Delay to ensure controller is initialized and video track is set
-      _createTrackedTimer(const Duration(milliseconds: 200), () {
+      Timer(const Duration(milliseconds: 200), () {
         if (mounted) {
-          unawaited(_updateRemoteParticipant(participant));
+          _updateRemoteParticipant(participant);
         }
       });
     } catch (e) {
@@ -788,82 +835,73 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
   }
 
-  bool _syncRemoteParticipantUiSignature(Participant participant) {
-    final nextSignature = _buildRemoteParticipantUiSignature(participant);
-    final previousSignature = _remoteParticipantUiSignatures[participant.id];
-    if (previousSignature == nextSignature) {
-      return false;
-    }
-    _remoteParticipantUiSignatures[participant.id] = nextSignature;
-    return true;
-  }
-
-  String _buildRemoteParticipantUiSignature(Participant participant) {
-    final media = participant.media;
-    final username = participant.info.username ?? '';
-    final cameraState = media?.camera.state.name ?? 'unknown';
-    final screenVideoState = media?.screenVideo.state.name ?? 'unknown';
-    return '$username|$cameraState|$screenVideoState';
-  }
-
   /// Update remote participant video track
-  Future<void> _updateRemoteParticipant(Participant participant) async {
+  void _updateRemoteParticipant(Participant participant) {
     if (!mounted || _disposed) return;
 
     final controller = _state.remoteControllers[participant.id];
     if (controller == null) {
       // Controller might not be created yet, retry
-      _createTrackedTimer(const Duration(milliseconds: 200), () {
+      Timer(const Duration(milliseconds: 200), () {
         if (mounted && _state.remoteControllers.containsKey(participant.id)) {
-          unawaited(_updateRemoteParticipant(participant));
+          _updateRemoteParticipant(participant);
         }
       });
       return;
     }
 
-    final media = participant.media;
-    final track = media?.screenVideo.state != MediaState.off
-        ? media?.screenVideo.track
-        : media?.camera.track;
+    try {
+      final media = participant.media;
+      final track = media?.screenVideo.state != MediaState.off
+          ? media?.screenVideo.track
+          : media?.camera.track;
 
-    await _setVideoTrack(
-      controller,
-      track,
-      debugContext: 'Failed to update remote participant track',
-    );
-
-    final wasReady = _remoteTrackReady[participant.id] ?? false;
-    final isReady = track != null;
-    if (wasReady != isReady) {
-      _remoteTrackReady[participant.id] = isReady;
-      if (mounted) {
-        _updateState(_state.copyWith());
+      controller.setTrack(track);
+      final wasReady = _remoteTrackReady[participant.id] ?? false;
+      final isReady = track != null;
+      if (wasReady != isReady) {
+        _remoteTrackReady[participant.id] = isReady;
+        if (mounted) {
+          _updateState(_state.copyWith());
+        }
+        if (isReady) {
+          unawaited(_markSystemCallConnected());
+        }
       }
-      if (isReady) {
-        unawaited(_promoteToActiveCallIfReady());
-      }
+    } catch (e) {
+      if (kDebugMode) print('Failed to update remote participant track: $e');
     }
   }
 
   Future<void> _prioritizeRemoteSubscription(ParticipantId id) async {
     if (_callClient == null) return;
-    if (_prioritySubscribedParticipants.contains(id) &&
-        _activeRemoteProfileConfigured) {
-      return;
-    }
-
     try {
-      await _ensureActiveRemoteSubscriptionProfile();
       await _callClient!.updateSubscriptions(
         forParticipants: {
           id: SubscriptionSettingsUpdate.set(
-            profile: const SubscriptionProfileUpdate.set(
-              profile: SubscriptionProfile.activeRemote,
+            media: MediaSubscriptionSettingsUpdate.set(
+              camera: VideoSubscriptionSettingsUpdate.set(
+                subscriptionState: SubscriptionStateUpdate.subscribed,
+                receiveSettings: VideoReceiveSettingsUpdate.set(
+                  maxQuality: VideoReceiveSettingsMaxQualityUpdate.high,
+                ),
+              ),
+              screenVideo: VideoSubscriptionSettingsUpdate.set(
+                subscriptionState: SubscriptionStateUpdate.subscribed,
+                receiveSettings: VideoReceiveSettingsUpdate.set(
+                  maxQuality: VideoReceiveSettingsMaxQualityUpdate.high,
+                ),
+              ),
+              microphone: AudioSubscriptionSettingsUpdate.set(
+                subscriptionState: SubscriptionStateUpdate.subscribed,
+              ),
+              screenAudio: AudioSubscriptionSettingsUpdate.set(
+                subscriptionState: SubscriptionStateUpdate.subscribed,
+              ),
             ),
           ),
         },
       );
-      _prioritySubscribedParticipants.add(id);
     } catch (e) {
       if (kDebugMode)
         print('Failed to prioritize remote subscription for $id: $e');
@@ -877,19 +915,18 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     try {
       _remoteJoinTimes.remove(id);
       _remoteTrackReady.remove(id);
-      _remoteCaptionClearGenerations.remove(id);
-      _prioritySubscribedParticipants.remove(id);
-      _remoteParticipantUiSignatures.remove(id);
 
       final controllers = Map<ParticipantId, VideoViewController>.from(
           _state.remoteControllers);
       final controller = controllers.remove(id);
 
-      unawaited(_disposeVideoController(
-        controller,
-        debugContext: 'Failed to dispose remote video controller',
-        delay: const Duration(milliseconds: 100),
-      ));
+      // Clear track before disposing to avoid errors
+      controller?.setTrack(null);
+
+      // Delay disposal to ensure UI updates are complete
+      Timer(const Duration(milliseconds: 100), () {
+        controller?.dispose();
+      });
 
       _updateState(_state.copyWith(remoteControllers: controllers));
 
@@ -904,20 +941,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   /// Update local video track safely
-  Future<void> _updateLocalVideoTrack() async {
+  void _updateLocalVideoTrack() {
     if (_callClient == null || _localVideoController == null || !mounted)
       return;
 
-    final local = _callClient!.participants.local;
-    final track = local.media?.camera.track;
+    try {
+      final local = _callClient!.participants.local;
+      final track = local.media?.camera.track;
 
-    // Update track - VideoViewController doesn't have a track getter
-    // so we always set the track
-    await _setVideoTrack(
-      _localVideoController,
-      track,
-      debugContext: 'Local video track update failed',
-    );
+      // Update track - VideoViewController doesn't have a track getter
+      // so we always set the track
+      _localVideoController!.setTrack(track);
+    } catch (e) {
+      if (kDebugMode) print('Local video track update failed: $e');
+    }
   }
 
   /// Update input settings with quality preservation
@@ -941,129 +978,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         cameraEnabled: camera ?? _state.cameraEnabled,
         microphoneEnabled: microphone ?? _state.microphoneEnabled,
       ));
-      if (microphone != null) {
-        await _syncDeepgramWithMicrophoneState(forceRefresh: microphone);
-      }
     } catch (e) {
       if (kDebugMode) print('Input settings update failed: $e');
     }
-  }
-
-  bool _hasRemoteParticipantPresent() {
-    final remoteParticipants = _callClient?.participants.remote;
-    return remoteParticipants != null && remoteParticipants.isNotEmpty;
-  }
-
-  bool _shouldRunDeepgram() {
-    return mounted &&
-        !_disposed &&
-        _state.connectionState == ConnectionState.connected &&
-        _state.microphoneEnabled &&
-        _hasRemoteParticipantPresent() &&
-        _canUseDeepgram();
-  }
-
-  Future<void> _syncDeepgramWithMicrophoneState({
-    bool forceRefresh = false,
-  }) async {
-    if (_shouldRunDeepgram()) {
-      if (!_state.isStreamingToDeepgram && !_deepgramStartInProgress) {
-        await _startDeepgramStreamingWithResolvedCredential(
-          forceRefresh: forceRefresh,
-        );
-      }
-      return;
-    }
-
-    if (_state.isStreamingToDeepgram ||
-        _deepgramStartInProgress ||
-        _recorder != null ||
-        _deepgramChannel != null) {
-      await _stopDeepgramStreaming();
-    }
-    _clearLocalCaptions();
-  }
-
-  Future<void> _promoteToActiveCallIfReady() async {
-    if (_state.connectionState != ConnectionState.connected) return;
-    if (!_hasRemoteParticipantPresent()) return;
-
-    _startDurationTimer();
-    await _markSessionStarted();
-    await _markSystemCallConnected();
-    await _syncDeepgramWithMicrophoneState(forceRefresh: true);
-  }
-
-  void _invalidateLocalCaptionClear() {
-    _localCaptionClearGeneration += 1;
-  }
-
-  int _nextRemoteCaptionClearGeneration(ParticipantId id) {
-    final nextGeneration = (_remoteCaptionClearGenerations[id] ?? 0) + 1;
-    _remoteCaptionClearGenerations[id] = nextGeneration;
-    return nextGeneration;
-  }
-
-  void _clearLocalCaptions() {
-    _invalidateLocalCaptionClear();
-    if (_state.finalCaptions.isEmpty && _state.partialCaption.isEmpty) {
-      return;
-    }
-    _updateState(_state.copyWith(
-      finalCaptions: const [],
-      partialCaption: '',
-    ));
-  }
-
-  Future<void> _ensureActiveRemoteSubscriptionProfile() async {
-    if (_callClient == null || _activeRemoteProfileConfigured) return;
-
-    try {
-      await _callClient!.updateSubscriptionProfiles(
-        forProfiles: {
-          SubscriptionProfile.activeRemote:
-              const MediaSubscriptionSettingsUpdate.set(
-            camera: VideoSubscriptionSettingsUpdate.set(
-              subscriptionState: SubscriptionStateUpdate.subscribed,
-              receiveSettings: VideoReceiveSettingsUpdate.set(
-                maxQuality: VideoReceiveSettingsMaxQualityUpdate.high,
-              ),
-            ),
-            screenVideo: VideoSubscriptionSettingsUpdate.set(
-              subscriptionState: SubscriptionStateUpdate.subscribed,
-              receiveSettings: VideoReceiveSettingsUpdate.set(
-                maxQuality: VideoReceiveSettingsMaxQualityUpdate.high,
-              ),
-            ),
-            microphone: AudioSubscriptionSettingsUpdate.set(
-              subscriptionState: SubscriptionStateUpdate.subscribed,
-            ),
-            screenAudio: AudioSubscriptionSettingsUpdate.set(
-              subscriptionState: SubscriptionStateUpdate.subscribed,
-            ),
-          ),
-        },
-      );
-      _activeRemoteProfileConfigured = true;
-    } catch (e) {
-      if (kDebugMode) {
-        print('Failed to configure active remote subscription profile: $e');
-      }
-    }
-  }
-
-  bool _matchesActiveRemoteProfile(MediaSubscriptionSettings? settings) {
-    if (settings == null) return false;
-
-    return settings.camera.subscriptionState == SubscriptionState.subscribed &&
-        settings.camera.receiveSettings.maxQuality ==
-            VideoReceiveSettingsMaxQuality.high &&
-        settings.screenVideo.subscriptionState ==
-            SubscriptionState.subscribed &&
-        settings.screenVideo.receiveSettings.maxQuality ==
-            VideoReceiveSettingsMaxQuality.high &&
-        settings.microphone.subscriptionState == SubscriptionState.subscribed &&
-        settings.screenAudio.subscriptionState == SubscriptionState.subscribed;
   }
 
   // All quality monitoring methods removed - Daily Adaptive Bitrate handles everything automatically
@@ -1129,11 +1046,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         return false;
       }
       _dynamicMeetingToken = sanitized;
-      await _cleanup(
-        leaveCall: true,
-        preserveMeetingToken: true,
-        preserveTokenRefreshAttempts: true,
-      );
+      await _cleanup(leaveCall: true);
       await _initializeCall();
       return true;
     } catch (e) {
@@ -1154,11 +1067,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           'Scheduling reconnection attempt ${retryCount + 1}/$_maxRetryAttempts in ${delay.inSeconds}s');
     }
 
-    _createTrackedTimer(delay, () {
+    final timer = Timer(delay, () {
       if (mounted && _state.connectionState != ConnectionState.connected) {
-        unawaited(_performReconnection());
+        _performReconnection();
       }
     });
+    _trackTimer(timer);
 
     _updateState(_state.copyWith(
       connectionState: ConnectionState.reconnecting,
@@ -1179,20 +1093,23 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Future<void> _performReconnection() async {
     if (!mounted || _disposed) return;
 
-    await _cleanup(
-      leaveCall: false,
-      preserveMeetingToken: true,
-      preserveTokenRefreshAttempts: true,
-    );
+    await _cleanup(leaveCall: false);
     await _initializeCall();
+  }
+
+  /// Schedule Deepgram start after connection established
+  void _scheduleDeepgramStart() {
+    final timer = Timer(const Duration(milliseconds: 1000), () {
+      if (mounted && _state.connectionState == ConnectionState.connected) {
+        _startDeepgramStreamingWithResolvedCredential(forceRefresh: true);
+      }
+    });
+    _trackTimer(timer);
   }
 
   Future<void> _startDeepgramStreamingWithResolvedCredential({
     bool forceRefresh = false,
   }) async {
-    if (!_shouldRunDeepgram()) {
-      return;
-    }
     final credential = await _resolveDeepgramCredential(
       forceRefresh: forceRefresh,
     );
@@ -1207,8 +1124,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Future<void> _startDeepgramStreaming(String credential) async {
     if (_state.isStreamingToDeepgram ||
         !mounted ||
-        _deepgramStartInProgress ||
-        !_shouldRunDeepgram()) {
+        _deepgramStartInProgress) {
       return;
     }
 
@@ -1239,21 +1155,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       await _initializeDeepgramWebSocket(credential);
 
       // Setup audio streaming
-      _audioStreamController = StreamController<typed_data.Uint8List>();
+      _audioStreamController = StreamController<Uint8List>();
       _trackController(_audioStreamController!);
 
-      _audioStreamSubscription = _trackSubscription(
-        _audioStreamController!.stream.listen(
-          (data) {
-            if (_deepgramChannel != null) {
-              _deepgramChannel!.sink.add(data);
-            }
-          },
-          onError: (e) {
-            if (kDebugMode) print('Audio stream error: $e');
-          },
-        ),
+      final subscription = _audioStreamController!.stream.listen(
+        (data) {
+          if (_deepgramChannel != null) {
+            _deepgramChannel!.sink.add(data);
+          }
+        },
+        onError: (e) {
+          if (kDebugMode) print('Audio stream error: $e');
+        },
       );
+      _trackSubscription(subscription);
 
       // Start recording
       await _recorder!.startRecorder(
@@ -1304,36 +1219,30 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       connectTimeout: const Duration(seconds: 10),
     );
 
-    await _cancelTrackedSubscription(_deepgramMessageSubscription);
-    _deepgramMessageSubscription = _trackSubscription(
-      _deepgramChannel!.stream.listen(
-        _handleDeepgramMessage,
-        onError: (e) {
-          if (kDebugMode) print('Deepgram WebSocket error: $e');
-          if (!_deepgramStopRequested) {
-            _restartDeepgramConnection();
-          }
-        },
-        onDone: () {
-          if (kDebugMode) print('Deepgram WebSocket closed');
-          if (!_deepgramStopRequested) {
-            _restartDeepgramConnection();
-          }
-        },
-      ),
+    final subscription = _deepgramChannel!.stream.listen(
+      _handleDeepgramMessage,
+      onError: (e) {
+        if (kDebugMode) print('Deepgram WebSocket error: $e');
+        if (!_deepgramStopRequested) {
+          _restartDeepgramConnection();
+        }
+      },
+      onDone: () {
+        if (kDebugMode) print('Deepgram WebSocket closed');
+        if (!_deepgramStopRequested) {
+          _restartDeepgramConnection();
+        }
+      },
     );
+    _trackSubscription(subscription);
   }
 
   /// Handle Deepgram message with proper parsing
   void _handleDeepgramMessage(dynamic message) {
-    if (!mounted ||
-        !_state.microphoneEnabled ||
-        !_hasRemoteParticipantPresent()) {
-      return;
-    }
+    if (!mounted) return;
 
     try {
-      final data = dart_convert.jsonDecode(message);
+      final data = jsonDecode(message);
       final channel = data['channel'] ?? data;
       final alternatives = channel['alternatives'] ?? [];
 
@@ -1356,9 +1265,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Process final transcript
   void _processFinalTranscript(String transcript) {
-    if (!_state.microphoneEnabled || !_hasRemoteParticipantPresent()) {
-      return;
-    }
     final captions = List<Map<String, dynamic>>.from(_state.finalCaptions);
     captions.add({'text': transcript, 'words': []});
 
@@ -1380,20 +1286,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Process partial transcript with debouncing
   void _processPartialTranscript(String transcript) {
-    if (!_state.microphoneEnabled || !_hasRemoteParticipantPresent()) {
-      return;
-    }
     _updateState(_state.copyWith(partialCaption: transcript));
   }
 
   /// Send caption message to other participants
   Future<void> _sendCaptionMessage(String text) async {
-    if (_callClient == null ||
-        text.trim().isEmpty ||
-        !_state.microphoneEnabled ||
-        !_hasRemoteParticipantPresent()) {
-      return;
-    }
+    if (_callClient == null || text.trim().isEmpty) return;
 
     try {
       final message = jsonEncode({'type': 'caption', 'text': text});
@@ -1407,40 +1305,27 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Schedule caption clearing
   void _scheduleCaptionClear(ParticipantId? participantId) {
-    final localGeneration =
-        participantId == null ? ++_localCaptionClearGeneration : null;
-    final remoteGeneration = participantId != null
-        ? _nextRemoteCaptionClearGeneration(participantId)
-        : null;
-
-    _createTrackedTimer(
+    final timer = Timer(
       Duration(milliseconds: _captionClearDelayMs),
       () {
         if (!mounted) return;
 
         if (participantId == null) {
-          if (localGeneration != _localCaptionClearGeneration) {
-            return;
-          }
           // Clear own captions
           _updateState(_state.copyWith(
             finalCaptions: const [],
             partialCaption: '',
           ));
         } else {
-          if (_remoteCaptionClearGenerations[participantId] !=
-              remoteGeneration) {
-            return;
-          }
           // Clear remote captions
           final remoteCaptions =
               Map<ParticipantId, List<String>>.from(_state.remoteCaptions);
           remoteCaptions.remove(participantId);
-          _remoteCaptionClearGenerations.remove(participantId);
           _updateState(_state.copyWith(remoteCaptions: remoteCaptions));
         }
       },
     );
+    _trackTimer(timer);
   }
 
   /// Restart Deepgram connection on failure
@@ -1448,43 +1333,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (!mounted || _disposed || _userRequestedEnd) return;
     if (_state.connectionState != ConnectionState.connected) return;
 
-    _createTrackedTimer(const Duration(seconds: 2), () {
+    final timer = Timer(const Duration(seconds: 2), () async {
       if (mounted) {
-        unawaited(() async {
-          await _stopDeepgramStreaming();
-          await _startDeepgramStreamingWithResolvedCredential(
-            forceRefresh: true,
-          );
-        }());
+        await _stopDeepgramStreaming();
+        await _startDeepgramStreamingWithResolvedCredential(
+          forceRefresh: true,
+        );
       }
     });
-  }
-
-  Future<void> _sendDeepgramControlMessage(String type) async {
-    final channel = _deepgramChannel;
-    if (channel == null) return;
-
-    try {
-      channel.sink.add(dart_convert.jsonEncode({'type': type}));
-    } catch (e) {
-      if (kDebugMode) {
-        print('Failed to send Deepgram $type control message: $e');
-      }
-    }
-  }
-
-  Future<void> _gracefullyCloseDeepgramStream() async {
-    if (_deepgramChannel == null) return;
-
-    await _sendDeepgramControlMessage('Finalize');
-    await Future<void>.delayed(
-      const Duration(milliseconds: _deepgramFinalizeWaitMs),
-    );
-    await _sendDeepgramControlMessage('CloseStream');
-    await Future<void>.delayed(
-      const Duration(milliseconds: _deepgramCloseWaitMs),
-    );
-    await _deepgramChannel?.sink.close();
+    _trackTimer(timer);
   }
 
   /// Stop Deepgram streaming and cleanup resources
@@ -1500,9 +1357,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     try {
       _deepgramStopRequested = true;
 
-      await _cancelTrackedSubscription(_audioStreamSubscription);
-      _audioStreamSubscription = null;
-
       if (_recorder?.isRecording ?? false) {
         await _recorder!.stopRecorder();
       }
@@ -1513,12 +1367,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
       _recorder = null;
 
-      await _gracefullyCloseDeepgramStream();
+      await _deepgramChannel?.sink.close();
       _deepgramChannel = null;
-      await _cancelTrackedSubscription(_deepgramMessageSubscription);
-      _deepgramMessageSubscription = null;
 
-      await _closeTrackedController(_audioStreamController);
+      await _audioStreamController?.close();
       _audioStreamController = null;
       _deepgramStartInProgress = false;
 
@@ -1539,16 +1391,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
-        if (_appInForeground) {
-          _appInForeground = false;
-          _handleAppBackground();
-        }
+        _handleAppBackground();
         break;
       case AppLifecycleState.resumed:
-        if (!_appInForeground) {
-          _appInForeground = true;
-          _handleAppForeground();
-        }
+        _handleAppForeground();
         break;
       default:
         break;
@@ -1560,50 +1406,23 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (_state.connectionState == ConnectionState.connected) {
       _resumeCameraEnabled = _state.cameraEnabled;
       _resumeMicrophoneEnabled = _state.microphoneEnabled;
-      unawaited(_enqueueLifecycleTransition((transitionId) async {
-        if (!_isCurrentLifecycleTransition(transitionId)) return;
-        await _updateInputSettings(camera: false, microphone: false);
-      }));
+      _updateInputSettings(camera: false, microphone: false);
+      _stopDeepgramStreaming();
     }
   }
 
   /// Handle app returning to foreground
   void _handleAppForeground() {
     if (_state.connectionState == ConnectionState.connected) {
-      final resumeCameraEnabled = _resumeCameraEnabled;
-      final resumeMicrophoneEnabled = _resumeMicrophoneEnabled;
-      unawaited(_enqueueLifecycleTransition((transitionId) async {
-        if (!_isCurrentLifecycleTransition(transitionId)) return;
-        await _updateInputSettings(
-          camera: resumeCameraEnabled,
-          microphone: resumeMicrophoneEnabled,
-        );
-        if (!_isCurrentLifecycleTransition(transitionId)) return;
-        await _promoteToActiveCallIfReady();
-      }));
-    }
-  }
+      _updateInputSettings(
+        camera: _resumeCameraEnabled,
+        microphone: _resumeMicrophoneEnabled,
+      );
 
-  Future<void> _enqueueLifecycleTransition(
-    Future<void> Function(int transitionId) action,
-  ) {
-    final transitionId = ++_lifecycleTransitionId;
-    final nextTransition = _lifecycleTransitionChain
-        .catchError((_) {})
-        .then((_) => action(transitionId));
-    _lifecycleTransitionChain = nextTransition.catchError((error) {
-      if (kDebugMode) {
-        print('Lifecycle transition failed: $error');
+      if (_canUseDeepgram() && !_state.isStreamingToDeepgram) {
+        _startDeepgramStreamingWithResolvedCredential(forceRefresh: true);
       }
-    });
-    return nextTransition;
-  }
-
-  bool _isCurrentLifecycleTransition(int transitionId) {
-    return mounted &&
-        !_disposed &&
-        transitionId == _lifecycleTransitionId &&
-        _state.connectionState == ConnectionState.connected;
+    }
   }
 
   /// Update widget when properties change.
@@ -1617,12 +1436,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void didUpdateWidget(MinimalDailyWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    final oldConfiguredDeepgramCredential =
-        _configuredDeepgramCredentialFor(oldWidget);
-    final newConfiguredDeepgramCredential =
-        _configuredDeepgramCredentialFor(widget);
-    if (oldConfiguredDeepgramCredential != newConfiguredDeepgramCredential) {
-      _deepgramCredential = newConfiguredDeepgramCredential;
+    if (oldWidget.deepgramApiKey != widget.deepgramApiKey) {
+      _deepgramCredential = _sanitizeDeepgramCredential(widget.deepgramApiKey);
     }
     if (oldWidget.sessionId != widget.sessionId) {
       _sessionStartedMarked = false;
@@ -1630,6 +1445,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     final oldUrl = oldWidget.roomUrl;
     final newUrl = widget.roomUrl;
+    final oldValid = _isValidRoomUrl(oldUrl);
     final newValid = _isValidRoomUrl(newUrl);
 
     // If we're already connected, connecting, or initializing — only
@@ -1656,8 +1472,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void _updateState(_CallState newState) {
     if (!mounted || _disposed) return;
 
-    if (newState.connectionState == ConnectionState.disconnected ||
-        newState.connectionState == ConnectionState.failed) {
+    // Start/stop duration timer based on connection state changes
+    final wasConnected = _state.connectionState == ConnectionState.connected;
+    final isConnected = newState.connectionState == ConnectionState.connected;
+    if (!wasConnected && isConnected) {
+      _startDurationTimer();
+    } else if (wasConnected && !isConnected) {
       _stopDurationTimer();
     }
 
@@ -1667,44 +1487,21 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   void _startDurationTimer() {
-    if (_callDurationStopwatch.isRunning) return;
-
-    if (_callDurationStopwatch.elapsed == Duration.zero) {
-      _setCallDurationValue(0);
-    } else {
-      _setCallDurationValue(_callDurationStopwatch.elapsed.inSeconds);
-    }
-    _callDurationStopwatch.start();
-
-    if (_durationTimer != null) return;
+    _durationTimer?.cancel();
+    _callDurationSeconds = 0;
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || _disposed) {
-        return;
+      if (mounted && _state.connectionState == ConnectionState.connected) {
+        setState(() {
+          _callDurationSeconds++;
+        });
       }
-      final elapsedSeconds = _callDurationStopwatch.elapsed.inSeconds;
-      _setCallDurationValue(elapsedSeconds);
     });
     _trackTimer(_durationTimer!);
   }
 
-  void _stopDurationTimer({bool reset = false}) {
-    _cancelTrackedTimer(_durationTimer);
+  void _stopDurationTimer() {
+    _durationTimer?.cancel();
     _durationTimer = null;
-    _setCallDurationValue(_callDurationStopwatch.elapsed.inSeconds);
-    _callDurationStopwatch.stop();
-    if (reset) {
-      _callDurationStopwatch.reset();
-      _setCallDurationValue(0);
-    }
-  }
-
-  void _setCallDurationValue(int totalSeconds) {
-    if (_disposed) {
-      return;
-    }
-    if (_callDurationNotifier.value != totalSeconds) {
-      _callDurationNotifier.value = totalSeconds;
-    }
   }
 
   String _formatDuration(int totalSeconds) {
@@ -1729,7 +1526,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return;
     }
     try {
-      await VoIPService().endCurrentCall(sessionId: widget.sessionId?.trim());
+      await VoIPService().endCurrentCall();
     } catch (e) {
       if (kDebugMode) print('Failed to end system call UI: $e');
     }
@@ -1755,15 +1552,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         if (status == 'ended' || status == 'cancelled') return;
 
         final sessionMetadata = data['sessionMetadata'];
-        final connectedAt =
-            sessionMetadata is Map ? sessionMetadata['callConnectedAt'] : null;
-        if (connectedAt != null) return;
+        final connectedAtTimestamp = sessionMetadata is Map
+            ? sessionMetadata['callConnectedAtTimestamp']
+            : null;
+        if (connectedAtTimestamp != null) return;
 
         transaction.update(sessionRef, {
           'startedAt': FieldValue.serverTimestamp(),
-          'sessionMetadata.callConnectedAt': FieldValue.serverTimestamp(),
-          'sessionMetadata.callConnectedSource': 'daily_remote_presence',
-          'sessionMetadata.callConnectedAtTimestamp': FieldValue.delete(),
+          'sessionMetadata.callConnectedAtTimestamp':
+              DateTime.now().millisecondsSinceEpoch,
         });
       });
     } catch (e) {
@@ -1780,8 +1577,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return;
     }
     try {
-      await VoIPService()
-          .markCallConnected(sessionId: widget.sessionId?.trim());
+      await VoIPService().markCallConnected();
       _systemCallMarkedConnected = true;
     } catch (e) {
       if (kDebugMode) print('Failed to mark system call connected: $e');
@@ -1789,89 +1585,18 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   /// Track timer for cleanup
-  Timer _createTrackedTimer(Duration duration, VoidCallback callback) {
-    late final Timer timer;
-    timer = Timer(duration, () {
-      _activeTimers.remove(timer);
-      callback();
-    });
-    _activeTimers.add(timer);
-    return timer;
-  }
-
   void _trackTimer(Timer timer) {
     _activeTimers.add(timer);
   }
 
-  void _cancelTrackedTimer(Timer? timer) {
-    if (timer == null) return;
-    timer.cancel();
-    _activeTimers.remove(timer);
-  }
-
   /// Track subscription for cleanup
-  T _trackSubscription<T extends StreamSubscription>(T subscription) {
+  void _trackSubscription(StreamSubscription subscription) {
     _activeSubscriptions.add(subscription);
-    return subscription;
-  }
-
-  Future<void> _cancelTrackedSubscription(
-    StreamSubscription? subscription,
-  ) async {
-    if (subscription == null) return;
-    try {
-      await subscription.cancel();
-    } finally {
-      _activeSubscriptions.remove(subscription);
-    }
   }
 
   /// Track controller for cleanup
   void _trackController(StreamController controller) {
     _activeControllers.add(controller);
-  }
-
-  Future<void> _closeTrackedController(StreamController? controller) async {
-    if (controller == null) return;
-    try {
-      await controller.close();
-    } finally {
-      _activeControllers.remove(controller);
-    }
-  }
-
-  Future<void> _setVideoTrack(
-    VideoViewController? controller,
-    MediaStreamTrack? track, {
-    required String debugContext,
-  }) async {
-    if (controller == null) return;
-    try {
-      await controller.setTrack(track);
-    } catch (e) {
-      if (kDebugMode) print('$debugContext: $e');
-    }
-  }
-
-  Future<void> _disposeVideoController(
-    VideoViewController? controller, {
-    required String debugContext,
-    Duration delay = Duration.zero,
-  }) async {
-    if (controller == null) return;
-    await _setVideoTrack(
-      controller,
-      null,
-      debugContext: '$debugContext (clear track)',
-    );
-    if (delay > Duration.zero) {
-      await Future<void>.delayed(delay);
-    }
-    try {
-      controller.dispose();
-    } catch (e) {
-      if (kDebugMode) print('$debugContext: $e');
-    }
   }
 
   /// COMPLETE BUILD METHOD REPLACEMENT - This should fix the error
@@ -1882,13 +1607,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return _buildConnectingScreen();
     }
 
-    final showRemoteSurface = _state.remoteControllers.isNotEmpty;
-    final showRemoteVideo = _hasRemoteVideoReady();
-    final showPip = showRemoteVideo &&
-        _localVideoController != null &&
-        _state.cameraEnabled;
-    final primaryVideoModeKey =
-        ValueKey(showRemoteSurface ? 'remote-surface' : 'local-surface');
+    final showPip = _shouldShowPictureInPicture();
 
     return Container(
       width: widget.width ?? double.infinity,
@@ -1898,18 +1617,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         children: [
           // Main video/placeholder layer
           Positioned.fill(
-            child: RepaintBoundary(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                child: KeyedSubtree(
-                  key: primaryVideoModeKey,
-                  child: _buildPrimaryVideo(
-                    showRemoteParticipant: showRemoteSurface,
-                  ),
-                ),
-              ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: _buildPrimaryVideo(),
             ),
           ),
 
@@ -1918,7 +1628,23 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             Positioned(
               top: 55,
               left: 20,
-              child: _buildCallDurationBadge(),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  _formatDuration(_callDurationSeconds),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
             ),
 
           // Picture-in-picture (only after remote video is ready)
@@ -1926,10 +1652,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             Positioned(
               top: 55,
               right: 20,
-              child: SizedBox(
+              child: Container(
                 width: 100,
                 height: 140,
-                child: RepaintBoundary(child: _buildPictureInPicture()),
+                child: _buildPictureInPicture(),
               ),
             ),
 
@@ -1939,7 +1665,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               bottom: 160,
               left: 16,
               right: 16,
-              child: RepaintBoundary(child: _buildCaptionsOverlay()),
+              child: _buildCaptionsOverlay(),
             ),
 
           // Status indicators
@@ -1956,7 +1682,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             bottom: 35,
             left: 0,
             right: 0,
-            child: RepaintBoundary(child: _buildControls()),
+            child: _buildControls(),
           ),
 
           // Error display
@@ -2000,8 +1726,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return false;
   }
 
+  bool _shouldShowPictureInPicture() {
+    return _hasRemoteVideoReady() &&
+        _localVideoController != null &&
+        _state.cameraEnabled;
+  }
+
   String? _statusMessage() {
-    if (_state.remoteControllers.isNotEmpty || _hasRemoteParticipantPresent()) {
+    if (_hasRemoteVideoReady()) {
       return null;
     }
 
@@ -2030,37 +1762,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         : 'Ожидаем подключение студента...';
   }
 
-  Widget _buildPrimaryVideo({bool? showRemoteParticipant}) {
-    if (showRemoteParticipant ?? _state.remoteControllers.isNotEmpty) {
+  Widget _buildPrimaryVideo() {
+    if (_hasRemoteVideoReady()) {
       return _buildRemoteVideo();
     }
     return _buildLocalFullScreen();
-  }
-
-  Widget _buildCallDurationBadge() {
-    return RepaintBoundary(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: ValueListenableBuilder<int>(
-          valueListenable: _callDurationNotifier,
-          builder: (context, totalSeconds, _) {
-            return Text(
-              _formatDuration(totalSeconds),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0.5,
-              ),
-            );
-          },
-        ),
-      ),
-    );
   }
 
   Widget _buildLocalFullScreen() {
@@ -2257,41 +1963,43 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildSpeakerSection(
       String label, List<Map<String, dynamic>> words, bool isMySection) {
     // Create label chip first
-    final labelChip = Container(
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: isMySection
-            ? Colors.white.withValues(alpha: 0.9)
-            : const Color(0xFFB8A4FF).withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.3),
-          width: 0.5,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1A000000),
-            blurRadius: 4,
-            offset: Offset(0, 2),
-            spreadRadius: 0,
+    final labelChip = IntrinsicWidth(
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isMySection
+              ? Colors.white.withOpacity(0.9)
+              : const Color(0xFFB8A4FF).withOpacity(0.9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.3),
+            width: 0.5,
           ),
-        ],
-      ),
-      child: Center(
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isMySection ? Colors.black : Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            shadows: [
-              Shadow(
-                offset: const Offset(0, 1),
-                blurRadius: 2,
-                color: Colors.black.withValues(alpha: 0.3),
-              ),
-            ],
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1A000000),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+              spreadRadius: 0,
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isMySection ? Colors.black : Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              shadows: [
+                Shadow(
+                  offset: const Offset(0, 1),
+                  blurRadius: 2,
+                  color: Colors.black.withOpacity(0.3),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2384,39 +2092,42 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       onTap: () {
         widget.actionCallback?.call(word, fullSentence);
       },
-      child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.3),
-            width: 0.5,
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1A000000),
-              blurRadius: 4,
-              offset: Offset(0, 2),
-              spreadRadius: 0,
+      child: IntrinsicWidth(
+        child: Container(
+          // Removed RepaintBoundary from here
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.3),
+              width: 0.5,
             ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            word,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              shadows: [
-                Shadow(
-                  offset: const Offset(0, 1),
-                  blurRadius: 2,
-                  color: Colors.black.withValues(alpha: 0.3),
-                ),
-              ],
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1A000000),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+                spreadRadius: 0,
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              word,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                shadows: [
+                  Shadow(
+                    offset: const Offset(0, 1),
+                    blurRadius: 2,
+                    color: Colors.black.withOpacity(0.3),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -2469,8 +2180,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       height: 60,
       decoration: BoxDecoration(
         color: isEndCall
-            ? Colors.red.withValues(alpha: 0.9)
-            : Colors.black.withValues(alpha: 0.6),
+            ? Colors.red.withOpacity(0.9)
+            : Colors.black.withOpacity(0.6),
         shape: BoxShape.circle,
       ),
       child: IconButton(
@@ -2488,7 +2199,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.9),
+        color: Colors.orange.withOpacity(0.9),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -2520,7 +2231,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         padding: const EdgeInsets.all(20),
         margin: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.red.withValues(alpha: 0.9),
+          color: Colors.red.withOpacity(0.9),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -2594,28 +2305,23 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   ///
   /// NOTE: _userRequestedEnd is NOT reset here. It is only set by _endCall()
   /// and reset by _initializeCall() when starting a new session.
-  Future<void> _cleanup({
-    bool leaveCall = true,
-    bool preserveMeetingToken = false,
-    bool preserveTokenRefreshAttempts = false,
-  }) async {
+  Future<void> _cleanup({bool leaveCall = true}) async {
     if (kDebugMode) print('Cleaning up resources...');
 
     try {
-      _lifecycleTransitionId += 1;
-
       // 1. Cancel all timers first (stop any pending reconnects, retries, etc.)
-      for (final timer in List<Timer>.from(_activeTimers)) {
-        _cancelTrackedTimer(timer);
+      for (final timer in _activeTimers) {
+        timer.cancel();
       }
-      _cancelTrackedTimer(_remoteLeftTimer);
+      _activeTimers.clear();
+      _remoteLeftTimer?.cancel();
       _remoteLeftTimer = null;
       _remoteLeftNotified = false;
 
       // 2. Cancel event subscription BEFORE leave() so that the
       // CallState.left event does not trigger _scheduleReconnection.
       try {
-        await _cancelTrackedSubscription(_eventSubscription);
+        await _eventSubscription?.cancel();
         _eventSubscription = null;
       } catch (e) {
         if (kDebugMode) print('Error cancelling event subscription: $e');
@@ -2636,28 +2342,28 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
 
       // 5. Cancel all remaining tracked subscriptions
-      for (final subscription in List<StreamSubscription>.from(
-        _activeSubscriptions,
-      )) {
+      for (final subscription in _activeSubscriptions) {
         try {
-          await _cancelTrackedSubscription(subscription);
+          await subscription.cancel();
         } catch (e) {
           if (kDebugMode) print('Error cancelling subscription: $e');
         }
       }
+      _activeSubscriptions.clear();
 
       // 6. Clear video tracks before disposing controllers
-      await _setVideoTrack(
-        _localVideoController,
-        null,
-        debugContext: 'Error clearing local video track',
-      );
+      try {
+        _localVideoController?.setTrack(null);
+      } catch (e) {
+        if (kDebugMode) print('Error clearing local video track: $e');
+      }
+
       for (final controller in _state.remoteControllers.values) {
-        await _setVideoTrack(
-          controller,
-          null,
-          debugContext: 'Error clearing remote video track',
-        );
+        try {
+          controller.setTrack(null);
+        } catch (e) {
+          if (kDebugMode) print('Error clearing remote video track: $e');
+        }
       }
 
       // Dispose video controllers
@@ -2677,19 +2383,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
       _remoteJoinTimes.clear();
       _remoteTrackReady.clear();
-      _remoteCaptionClearGenerations.clear();
-      _remoteParticipantUiSignatures.clear();
-      _prioritySubscribedParticipants.clear();
-      _activeRemoteProfileConfigured = false;
       _systemCallMarkedConnected = false;
-      _invalidateLocalCaptionClear();
-      if (!preserveMeetingToken) {
-        _dynamicMeetingToken = null;
-      }
-      if (!preserveTokenRefreshAttempts) {
-        _tokenRefreshAttempts = 0;
-      }
-      _stopDurationTimer(reset: true);
+      _dynamicMeetingToken = null;
+      _tokenRefreshAttempts = 0;
 
       // 7. Dispose call client last
       try {
@@ -2700,14 +2396,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
 
       // Close all stream controllers
-      for (final controller
-          in List<StreamController>.from(_activeControllers)) {
+      for (final controller in _activeControllers) {
         try {
-          await _closeTrackedController(controller);
+          await controller.close();
         } catch (e) {
           if (kDebugMode) print('Error closing controller: $e');
         }
       }
+      _activeControllers.clear();
 
       // Reset state
       if (mounted && !_disposed) {
@@ -2733,15 +2429,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     unawaited(_endSystemCallUi());
 
     // Synchronous cleanup of timers
-    for (final timer in List<Timer>.from(_activeTimers)) {
-      _cancelTrackedTimer(timer);
+    for (final timer in _activeTimers) {
+      timer.cancel();
     }
-    _cancelTrackedTimer(_remoteLeftTimer);
+    _activeTimers.clear();
+    _remoteLeftTimer?.cancel();
     _remoteLeftTimer = null;
-    _callDurationNotifier.dispose();
 
     // Cancel event subscription synchronously to stop incoming events
-    unawaited(_cancelTrackedSubscription(_eventSubscription));
+    _eventSubscription?.cancel();
     _eventSubscription = null;
 
     // Schedule async cleanup (leave call, dispose client)

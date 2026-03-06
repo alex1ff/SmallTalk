@@ -3,6 +3,62 @@ import 'api_manager.dart';
 export 'api_manager.dart' show ApiCallResponse;
 
 class YandexCall {
+  static const Map<String, String> _languageCodeMap = {
+    'eng': 'en',
+    'rus': 'ru',
+    'spa': 'es',
+    'fra': 'fr',
+    'deu': 'de',
+    'cmn': 'zh',
+    'yue': 'zh',
+    'jpn': 'ja',
+    'kor': 'ko',
+    'ita': 'it',
+    'por': 'pt',
+    'hin': 'hi',
+    'bul': 'bg',
+    'ces': 'cs',
+    'dan': 'da',
+    'nld': 'nl',
+    'fin': 'fi',
+    'hun': 'hu',
+    'ind': 'id',
+    'nor': 'no',
+    'pol': 'pl',
+    'swe': 'sv',
+    'tur': 'tr',
+    'ukr': 'uk',
+    'vie': 'vi',
+    'cat': 'ca',
+    'est': 'et',
+    'ell': 'el',
+    'lav': 'lv',
+    'lit': 'lt',
+    'msa': 'ms',
+    'ron': 'ro',
+    'slk': 'sk',
+    'tha': 'th',
+  };
+
+  static String? normalizeLanguageCode(String? code) {
+    final normalizedCode =
+        (code ?? '').trim().toLowerCase().replaceAll('_', '-');
+    if (normalizedCode.isEmpty) {
+      return null;
+    }
+
+    if (normalizedCode.length == 2 && !normalizedCode.contains('-')) {
+      return normalizedCode;
+    }
+
+    if (normalizedCode.length == 3 && !normalizedCode.contains('-')) {
+      return _languageCodeMap[normalizedCode] ?? normalizedCode;
+    }
+
+    final baseCode = normalizedCode.split('-').first;
+    return _languageCodeMap[baseCode] ?? baseCode;
+  }
+
   static Future<ApiCallResponse> call({
     String? text = '',
     String? lang = '',
@@ -77,7 +133,8 @@ class TatoebaCall {
   };
 
   static String? normalizeLanguageCode(String? code) {
-    final normalizedCode = (code ?? '').trim().toLowerCase().replaceAll('_', '-');
+    final normalizedCode =
+        (code ?? '').trim().toLowerCase().replaceAll('_', '-');
     if (normalizedCode.isEmpty) {
       return null;
     }
@@ -120,8 +177,7 @@ class TatoebaCall {
         'word_count': "10",
         if (normalizedShowTransLang != null)
           'showtrans:lang': normalizedShowTransLang,
-        if (normalizedTransLang != null)
-          'trans:1:lang': normalizedTransLang,
+        if (normalizedTransLang != null) 'trans:1:lang': normalizedTransLang,
       },
       returnBody: true,
       encodeBodyUtf8: false,
