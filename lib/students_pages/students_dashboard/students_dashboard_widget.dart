@@ -40,6 +40,24 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
+  String _formatAvailableMinutes(BuildContext context, double? value) {
+    return formatNumber(
+      value ?? 0.0,
+      formatType: FormatType.custom,
+      format: '#,##0.#',
+      locale: FFLocalizations.of(context).languageCode,
+    );
+  }
+
+  String _formatSmallTalkBalance(BuildContext context, double? value) {
+    return formatNumber(
+      value ?? 0.0,
+      formatType: FormatType.custom,
+      format: '#,##0.##',
+      locale: FFLocalizations.of(context).languageCode,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -356,7 +374,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                     ),
                                     AuthUserStreamWidget(
                                       builder: (context) => Text(
-                                        '~ ${currentUserDocument?.balanceST.minutes.toString()} минут',
+                                        '~ ${_formatAvailableMinutes(context, currentUserDocument?.balanceST.minutes)} минут',
                                         style: FlutterFlowTheme.of(context)
                                             .bodyMedium
                                             .override(
@@ -378,10 +396,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                     children: [
                                       TextSpan(
                                         text: valueOrDefault<String>(
-                                          currentUserDocument
-                                              ?.balanceST
-                                              .smallTalks
-                                              .toString(),
+                                          _formatSmallTalkBalance(
+                                            context,
+                                            currentUserDocument
+                                                ?.balanceST
+                                                .smallTalks,
+                                          ),
                                           '0',
                                         ),
                                         style: FlutterFlowTheme.of(context)

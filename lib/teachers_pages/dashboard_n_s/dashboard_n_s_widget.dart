@@ -11,6 +11,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
+import 'dart:async';
 import 'dashboard_n_s_model.dart';
 export 'dashboard_n_s_model.dart';
 
@@ -33,6 +34,27 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
   late DashboardNSModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
+
+  Map<String, dynamic> _buildTimezoneMetadataUpdate() {
+    final now = DateTime.now();
+    return {
+      'timezoneOffsetMinutes': now.timeZoneOffset.inMinutes,
+      'timezoneName': now.timeZoneName,
+      'timezoneUpdatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  Future<void> _syncTimezoneMetadata() async {
+    if (currentUserReference == null) {
+      return;
+    }
+
+    try {
+      await currentUserReference!.update(_buildTimezoneMetadataUpdate());
+    } catch (error) {
+      debugPrint('DashboardNS: failed to sync timezone metadata: $error');
+    }
+  }
 
   Future<void> _openAddInterBottomSheet({Future Function()? act}) async {
     await showModalBottomSheet(
@@ -81,6 +103,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
 
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
+      unawaited(_syncTimezoneMetadata());
       if (widget.zn == true) {
         await showModalBottomSheet(
           useRootNavigator: true,
@@ -517,15 +540,19 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                               if (newValue) {
                                 if (currentUserDocument!
                                     .availabilityToday.intervals.isNotEmpty) {
-                                  await currentUserReference!
-                                      .update(createUsersRecordData(
+                                  final availabilityUpdate =
+                                      createUsersRecordData(
                                     availabilityToday:
                                         createAvailabilityTodayStruct(
                                       enabled: true,
                                       clearUnsetFields: false,
                                     ),
                                     isInCall: false,
-                                  ));
+                                  );
+                                  availabilityUpdate
+                                      .addAll(_buildTimezoneMetadataUpdate());
+                                  await currentUserReference!
+                                      .update(availabilityUpdate);
                                 } else {
                                   safeSetState(() {
                                     _model.switchValue = false;

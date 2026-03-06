@@ -1,12 +1,14 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/api_requests/api_calls.dart';
 import '/backend/backend.dart';
+import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -45,6 +47,9 @@ class _NewWordWidgetState extends State<NewWordWidget> {
 
     // On component load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
+      final tatoebaTranslationLanguageCode =
+          _preferredTatoebaTranslationLanguageCode(context);
+
       await Future.wait([
         Future(() async {
           _model.worrd = await YandexCall.call(
@@ -59,6 +64,8 @@ class _NewWordWidgetState extends State<NewWordWidget> {
           _model.ssss = await TatoebaCall.call(
             lang: widget.langCode,
             q: widget.word,
+            showTransLang: tatoebaTranslationLanguageCode,
+            transLang: tatoebaTranslationLanguageCode,
           );
 
           safeSetState(() {});
@@ -74,8 +81,144 @@ class _NewWordWidgetState extends State<NewWordWidget> {
     super.dispose();
   }
 
+  YyStruct? _parsedWordResponse() {
+    final jsonBody = _model.worrd?.jsonBody;
+    if (jsonBody is! Map) return null;
+    return YyStruct.maybeFromMap(jsonBody);
+  }
+
+  List<EntryStruct> _dictionaryEntries() {
+    return _parsedWordResponse()?.def.toList() ?? const <EntryStruct>[];
+  }
+
+  EntryStruct? _primaryEntry() {
+    return _dictionaryEntries().firstOrNull;
+  }
+
+  String _primaryTranslationText() {
+    final translationText = _primaryEntry()?.tr.firstOrNull?.text;
+    if (translationText != null && translationText.isNotEmpty) {
+      return translationText;
+    }
+
+    final sourceText = _primaryEntry()?.text;
+    if (sourceText != null && sourceText.isNotEmpty) {
+      return sourceText;
+    }
+
+    return widget.word ?? '';
+  }
+
+  String _preferredTatoebaTranslationLanguageCode(BuildContext context) {
+    final currentUser = currentUserDocument;
+    String? roleBasedLanguageCode;
+
+    if (currentUser?.role == UserRole.native_speaker) {
+      roleBasedLanguageCode = currentUser?.nativeLanguageNS.code;
+    } else if (currentUser?.role == UserRole.student) {
+      roleBasedLanguageCode =
+          currentUser?.preferences.preferredNativeLanguage.code;
+    }
+
+    final fallbackCodes = <String?>[
+      roleBasedLanguageCode,
+      currentUser?.nativeLanguageNS.code,
+      currentUser?.preferences.preferredNativeLanguage.code,
+      FFLocalizations.of(context).languageCode,
+      'eng',
+    ];
+
+    for (final code in fallbackCodes) {
+      final normalized = TatoebaCall.normalizeLanguageCode(code);
+      if (normalized != null && normalized.isNotEmpty) {
+        return normalized;
+      }
+    }
+
+    return 'eng';
+  }
+
+  String _normalizeLanguageCode(String? code) {
+    return (code ?? '').trim().toLowerCase().replaceAll('_', '-');
+  }
+
+  LanguageStruct? _findLanguageByCode(String? code) {
+    final normalizedCode = _normalizeLanguageCode(code);
+    if (normalizedCode.isEmpty) {
+      return null;
+    }
+
+    final normalizedBaseCode = normalizedCode.split('-').first;
+
+    for (final language in FFAppState().languagesList) {
+      final candidateCodes = <String>[
+        language.code,
+        ...language.alternateCodes,
+      ].map(_normalizeLanguageCode).where((value) => value.isNotEmpty);
+
+      final matches = candidateCodes.any((candidateCode) {
+        final candidateBaseCode = candidateCode.split('-').first;
+        return candidateCode == normalizedCode ||
+            candidateCode == normalizedBaseCode ||
+            candidateBaseCode == normalizedCode ||
+            candidateBaseCode == normalizedBaseCode;
+      });
+
+      if (matches) {
+        return language;
+      }
+    }
+
+    return null;
+  }
+
+  Widget _buildLanguageFlag(String? code, {required String fallbackLabel}) {
+    final language = _findLanguageByCode(code);
+    final imageUrl = language?.ss ?? '';
+
+    return Container(
+      width: 50.0,
+      height: 50.0,
+      decoration: BoxDecoration(),
+      child: Align(
+        alignment: AlignmentDirectional(0.0, 0.0),
+        child: imageUrl.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: imageUrl,
+                width: 28.0,
+                height: 28.0,
+                fit: BoxFit.contain,
+                memCacheWidth: 56,
+                memCacheHeight: 56,
+                errorWidget: (context, _, __) => Text(
+                  fallbackLabel,
+                  textAlign: TextAlign.center,
+                  style: FlutterFlowTheme.of(context).bodyMedium.override(
+                        fontFamily: 'sf pro display',
+                        fontSize: 18.0,
+                        letterSpacing: 0.0,
+                        fontWeight: FontWeight.normal,
+                      ),
+                ),
+              )
+            : Text(
+                fallbackLabel,
+                textAlign: TextAlign.center,
+                style: FlutterFlowTheme.of(context).bodyMedium.override(
+                      fontFamily: 'sf pro display',
+                      fontSize: 18.0,
+                      letterSpacing: 0.0,
+                      fontWeight: FontWeight.normal,
+                    ),
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final currentLocaleCode = FFLocalizations.of(context).languageCode;
+
     return Align(
       alignment: AlignmentDirectional(0.0, 1.0),
       child: GestureDetector(
@@ -172,38 +315,9 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                         EdgeInsetsDirectional
                                                             .fromSTEB(6.0, 0.0,
                                                                 0.0, 0.0),
-                                                    child: Container(
-                                                      width: 50.0,
-                                                      height: 50.0,
-                                                      decoration:
-                                                          BoxDecoration(),
-                                                      child: Align(
-                                                        alignment:
-                                                            AlignmentDirectional(
-                                                                0.0, 0.0),
-                                                        child: Text(
-                                                          FFLocalizations.of(
-                                                                  context)
-                                                              .getText(
-                                                            'dciexor0' /* 🇺🇸 */,
-                                                          ),
-                                                          textAlign:
-                                                              TextAlign.center,
-                                                          style: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .bodyMedium
-                                                              .override(
-                                                                fontFamily:
-                                                                    'sf pro display',
-                                                                fontSize: 18.0,
-                                                                letterSpacing:
-                                                                    0.0,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                              ),
-                                                        ),
-                                                      ),
+                                                    child: _buildLanguageFlag(
+                                                      widget.langCode,
+                                                      fallbackLabel: '🌐',
                                                     ),
                                                   ),
                                                   Text(
@@ -242,54 +356,21 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                         EdgeInsetsDirectional
                                                             .fromSTEB(6.0, 0.0,
                                                                 0.0, 0.0),
-                                                    child: Container(
-                                                      width: 50.0,
-                                                      height: 50.0,
-                                                      decoration:
-                                                          BoxDecoration(),
-                                                      child: Align(
-                                                        alignment:
-                                                            AlignmentDirectional(
-                                                                0.0, 0.0),
-                                                        child: Text(
-                                                          FFLocalizations.of(
-                                                                  context)
-                                                              .getText(
-                                                            'p23lw41o' /* 🇷🇺 */,
-                                                          ),
-                                                          textAlign:
-                                                              TextAlign.center,
-                                                          style: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .bodyMedium
-                                                              .override(
-                                                                fontFamily:
-                                                                    'sf pro display',
-                                                                fontSize: 18.0,
-                                                                letterSpacing:
-                                                                    0.0,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                              ),
-                                                        ),
-                                                      ),
+                                                    child: _buildLanguageFlag(
+                                                      currentLocaleCode,
+                                                      fallbackLabel: '🌐',
                                                     ),
                                                   ),
                                                   Builder(
                                                     builder: (context) {
                                                       if (_model.worrd !=
                                                           null) {
+                                                        final translationText =
+                                                            _primaryTranslationText();
                                                         return Text(
-                                                          YyStruct.maybeFromMap(
-                                                                  (_model.worrd
-                                                                          ?.jsonBody ??
-                                                                      ''))!
-                                                              .def
-                                                              .firstOrNull!
-                                                              .tr
-                                                              .firstOrNull!
-                                                              .text,
+                                                          translationText.isNotEmpty
+                                                              ? translationText
+                                                              : (widget.word ?? ''),
                                                           style: FlutterFlowTheme
                                                                   .of(context)
                                                               .bodyMedium
@@ -345,13 +426,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                               Builder(
                                                 builder: (context) {
                                                   final wwww =
-                                                      YyStruct.maybeFromMap((_model
-                                                                      .worrd
-                                                                      ?.jsonBody ??
-                                                                  ''))
-                                                              ?.def
-                                                              .toList() ??
-                                                          [];
+                                                      _dictionaryEntries();
 
                                                   return ListView.separated(
                                                     padding: EdgeInsets.zero,
@@ -917,15 +992,12 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                     ),
                                     child: Builder(
                                       builder: (context) {
+                                        final primaryEntryText =
+                                            _primaryEntry()?.text;
                                         if (containerUserWordsRecordList
                                             .where((e) =>
                                                 e.entry.firstOrNull?.text ==
-                                                YyStruct.maybeFromMap((_model
-                                                            .worrd?.jsonBody ??
-                                                        ''))
-                                                    ?.def
-                                                    .firstOrNull
-                                                    ?.text)
+                                                primaryEntryText)
                                             .toList()
                                             .isNotEmpty) {
                                           return InkWell(
@@ -940,13 +1012,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                       .where((e) =>
                                                           e.entry.firstOrNull
                                                               ?.text ==
-                                                          YyStruct.maybeFromMap(
-                                                                  (_model.worrd
-                                                                          ?.jsonBody ??
-                                                                      ''))
-                                                              ?.def
-                                                              .firstOrNull
-                                                              ?.text)
+                                                          primaryEntryText)
                                                       .toList()
                                                       .firstOrNull!
                                                       .reference
@@ -988,11 +1054,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                   {
                                                     'entry':
                                                         getEntryListFirestoreData(
-                                                      YyStruct.maybeFromMap((_model
-                                                                  .worrd
-                                                                  ?.jsonBody ??
-                                                              ''))
-                                                          ?.def,
+                                                      _parsedWordResponse()?.def,
                                                     ),
                                                     'Sentence':
                                                         getSentenceListFirestoreData(
@@ -1014,11 +1076,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                   {
                                                     'entry':
                                                         getEntryListFirestoreData(
-                                                      YyStruct.maybeFromMap((_model
-                                                                  .worrd
-                                                                  ?.jsonBody ??
-                                                              ''))
-                                                          ?.def,
+                                                      _parsedWordResponse()?.def,
                                                     ),
                                                     'Sentence':
                                                         getSentenceListFirestoreData(

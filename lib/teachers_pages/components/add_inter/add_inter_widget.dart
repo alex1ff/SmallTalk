@@ -30,6 +30,15 @@ class _AddInterWidgetState extends State<AddInterWidget> {
   late StreamSubscription<bool> _keyboardVisibilitySubscription;
   bool _isKeyboardVisible = false;
 
+  Map<String, dynamic> _buildTimezoneMetadataUpdate() {
+    final now = DateTime.now();
+    return {
+      'timezoneOffsetMinutes': now.timeZoneOffset.inMinutes,
+      'timezoneName': now.timeZoneName,
+      'timezoneUpdatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -295,10 +304,8 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                             'bzho8r5y' /* Добавить интервал */,
                           ),
                           action: () async {
-                            await currentUserReference!
-                                .update(createUsersRecordData(
-                              availabilityToday:
-                                  createAvailabilityTodayStruct(
+                            final availabilityUpdate = createUsersRecordData(
+                              availabilityToday: createAvailabilityTodayStruct(
                                 fieldValues: {
                                   'intervals': FieldValue.arrayUnion([
                                     getIntervalsFirestoreData(
@@ -315,7 +322,11 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                                 },
                                 clearUnsetFields: false,
                               ),
-                            ));
+                            );
+                            availabilityUpdate
+                                .addAll(_buildTimezoneMetadataUpdate());
+                            await currentUserReference!
+                                .update(availabilityUpdate);
                             await widget.act?.call();
                             if (mounted) {
                               Navigator.pop(context);

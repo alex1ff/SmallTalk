@@ -31,10 +31,80 @@ class YandexCall {
 }
 
 class TatoebaCall {
+  static const Map<String, String> _languageCodeMap = {
+    'en': 'eng',
+    'ru': 'rus',
+    'es': 'spa',
+    'fr': 'fra',
+    'de': 'deu',
+    'zh': 'cmn',
+    'zh-cn': 'cmn',
+    'zh-hans': 'cmn',
+    'zh-tw': 'cmn',
+    'zh-hk': 'yue',
+    'ja': 'jpn',
+    'ko': 'kor',
+    'ko-kr': 'kor',
+    'it': 'ita',
+    'pt': 'por',
+    'pt-br': 'por',
+    'pt-pt': 'por',
+    'hi': 'hin',
+    'bg': 'bul',
+    'cs': 'ces',
+    'da': 'dan',
+    'nl': 'nld',
+    'nl-be': 'nld',
+    'fi': 'fin',
+    'hu': 'hun',
+    'id': 'ind',
+    'no': 'nor',
+    'pl': 'pol',
+    'sv': 'swe',
+    'tr': 'tur',
+    'uk': 'ukr',
+    'vi': 'vie',
+    'ca': 'cat',
+    'et': 'est',
+    'de-ch': 'deu',
+    'el': 'ell',
+    'lv': 'lav',
+    'lt': 'lit',
+    'ms': 'msa',
+    'ro': 'ron',
+    'sk': 'slk',
+    'th': 'tha',
+  };
+
+  static String? normalizeLanguageCode(String? code) {
+    final normalizedCode = (code ?? '').trim().toLowerCase().replaceAll('_', '-');
+    if (normalizedCode.isEmpty) {
+      return null;
+    }
+
+    if (normalizedCode.length == 3 && !normalizedCode.contains('-')) {
+      return normalizedCode;
+    }
+
+    final mappedCode = _languageCodeMap[normalizedCode];
+    if (mappedCode != null) {
+      return mappedCode;
+    }
+
+    final baseCode = normalizedCode.split('-').first;
+    return _languageCodeMap[baseCode];
+  }
+
   static Future<ApiCallResponse> call({
     String? lang = '',
     String? q = '',
+    String? showTransLang = '',
+    String? transLang = '',
   }) async {
+    final normalizedLang = normalizeLanguageCode(lang);
+    final normalizedShowTransLang = normalizeLanguageCode(showTransLang);
+    final normalizedTransLang = normalizeLanguageCode(transLang);
+
     return ApiManager.instance.makeApiCall(
       callName: 'tatoeba',
       apiUrl: 'https://api.dev.tatoeba.org/unstable/sentences',
@@ -44,12 +114,14 @@ class TatoebaCall {
       },
       params: {
         'q': q,
-        'lang': lang,
+        if (normalizedLang != null) 'lang': normalizedLang,
         'limit': "10",
         'sort': "relevance",
         'word_count': "10",
-        'showtrans:lang': "rus",
-        'trans:1:lang': "rus",
+        if (normalizedShowTransLang != null)
+          'showtrans:lang': normalizedShowTransLang,
+        if (normalizedTransLang != null)
+          'trans:1:lang': normalizedTransLang,
       },
       returnBody: true,
       encodeBodyUtf8: false,
