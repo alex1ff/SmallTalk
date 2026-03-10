@@ -3,6 +3,14 @@ const admin = require("firebase-admin");
 
 const MAX_COMMENT_LENGTH = 1000;
 const RECENT_SESSION_LOOKUP_WINDOW_MS = 1000 * 60 * 60 * 24 * 14;
+const REVIEWABLE_SESSION_STATUSES = new Set([
+  "connected",
+  "connecting",
+  "active",
+  "ended",
+  "cancelled",
+  "completed",
+]);
 
 function normalizeSessionId(rawSessionId) {
   if (typeof rawSessionId !== "string") {
@@ -168,7 +176,7 @@ async function findRecentMutualSessionRef(db, userId, otherUserId) {
     }
 
     const status = String(sessionData.status || "").trim().toLowerCase();
-    if (!["connecting", "active", "ended", "cancelled"].includes(status)) {
+    if (!REVIEWABLE_SESSION_STATUSES.has(status)) {
       continue;
     }
 
@@ -226,10 +234,10 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
   const rating = normalizeRating(data?.rating);
   const comment = normalizeComment(data?.comment);
 
-  if (!requestedSessionId && !requestedSessionPath) {
+  if (!requestedSessionId && !requestedSessionPath && !requestedToUserId) {
     throw new functions.https.HttpsError(
       "invalid-argument",
-      "sessionId or sessionPath is required",
+      "sessionId, sessionPath, or toUserId is required",
     );
   }
 
