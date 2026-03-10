@@ -913,6 +913,9 @@ class VoIPService {
     final callKitIdForSession = _sessionCallKitIds[sessionId];
     if (callKitIdForSession != null) {
       _handledCallKitAcceptIds.remove(callKitIdForSession);
+      if (_lastCallKitId == callKitIdForSession) {
+        _lastCallKitId = null;
+      }
     }
     if (_lastAcceptedSessionId == sessionId) {
       _lastAcceptedSessionId = null;
@@ -985,6 +988,19 @@ class VoIPService {
     }
   }
 
+  bool _hasActiveCallEntries(dynamic calls) {
+    if (calls is Iterable) {
+      return calls.isNotEmpty;
+    }
+    if (calls is Map) {
+      return calls.isNotEmpty;
+    }
+    if (calls is String) {
+      return calls.trim().isNotEmpty && calls.trim() != '[]';
+    }
+    return false;
+  }
+
   /// Завершить текущий активный звонок (программно)
   Future<void> endCurrentCall({String? sessionId}) async {
     try {
@@ -992,17 +1008,25 @@ class VoIPService {
           sessionId != null ? _sessionCallKitIds[sessionId] : _lastCallKitId;
       if (callKitId != null) {
         await FlutterCallkitIncoming.endCall(callKitId);
-        if (sessionId != null) {
-          _sessionCallKitIds.remove(sessionId);
-        }
-        if (_lastCallKitId == callKitId) {
+      }
+
+      final activeCalls = await FlutterCallkitIncoming.activeCalls();
+      if (_hasActiveCallEntries(activeCalls)) {
+        await FlutterCallkitIncoming.endAllCalls();
+      }
+
+      if (sessionId != null) {
+        _clearSessionState(sessionId);
+        if (callKitId != null && _lastCallKitId == callKitId) {
           _lastCallKitId = null;
         }
-        debugPrint('✅ VoIPService: Call ended via CallKit');
-        return;
+      } else {
+        _sessionCallKitIds.clear();
+        _handledCallKitAcceptIds.clear();
+        _lastCallKitId = null;
       }
-      await FlutterCallkitIncoming.endAllCalls();
-      debugPrint('✅ VoIPService: All calls ended');
+
+      debugPrint('✅ VoIPService: System call UI cleared');
     } catch (e) {
       debugPrint('❌ VoIPService: Error ending calls: $e');
     }
@@ -1012,7 +1036,7 @@ class VoIPService {
   Future<bool> hasActiveCalls() async {
     try {
       final calls = await FlutterCallkitIncoming.activeCalls();
-      return calls.isNotEmpty;
+      return _hasActiveCallEntries(calls);
     } catch (e) {
       debugPrint('❌ VoIPService: Error checking active calls: $e');
       return false;
