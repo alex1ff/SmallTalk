@@ -51,6 +51,9 @@ class _CallState {
   final String partialCaption;
   final Map<ParticipantId, List<String>> remoteCaptions;
   final bool isStreamingToDeepgram;
+  final bool isChatOpen;
+  final int unreadChatCount;
+  final List<_ChatMessage> chatMessages;
 
   const _CallState({
     this.connectionState = ConnectionState.disconnected,
@@ -63,6 +66,9 @@ class _CallState {
     this.partialCaption = '',
     this.remoteCaptions = const {},
     this.isStreamingToDeepgram = false,
+    this.isChatOpen = false,
+    this.unreadChatCount = 0,
+    this.chatMessages = const <_ChatMessage>[],
   });
 
   _CallState copyWith({
@@ -76,6 +82,9 @@ class _CallState {
     String? partialCaption,
     Map<ParticipantId, List<String>>? remoteCaptions,
     bool? isStreamingToDeepgram,
+    bool? isChatOpen,
+    int? unreadChatCount,
+    List<_ChatMessage>? chatMessages,
   }) {
     return _CallState(
       connectionState: connectionState ?? this.connectionState,
@@ -89,6 +98,9 @@ class _CallState {
       remoteCaptions: remoteCaptions ?? this.remoteCaptions,
       isStreamingToDeepgram:
           isStreamingToDeepgram ?? this.isStreamingToDeepgram,
+      isChatOpen: isChatOpen ?? this.isChatOpen,
+      unreadChatCount: unreadChatCount ?? this.unreadChatCount,
+      chatMessages: chatMessages ?? this.chatMessages,
     );
   }
 }
@@ -132,6 +144,25 @@ class _CaptionOverlayData {
   final List<_CaptionWordGroup> theirGroups;
 
   bool get isEmpty => myGroups.isEmpty && theirGroups.isEmpty;
+}
+
+@immutable
+class _ChatMessage {
+  const _ChatMessage({
+    required this.id,
+    required this.text,
+    required this.senderName,
+    required this.senderId,
+    required this.sentAt,
+    required this.isLocal,
+  });
+
+  final String id;
+  final String text;
+  final String senderName;
+  final String senderId;
+  final DateTime sentAt;
+  final bool isLocal;
 }
 
 /// Production-ready video calling widget with enhanced quality and resilience
@@ -230,6 +261,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   final ValueNotifier<int> _callDurationNotifier = ValueNotifier<int>(0);
   final Map<ParticipantId, String> _remoteParticipantUiSignatures = {};
   int _localCaptionClearGeneration = 0;
+  final TextEditingController _chatTextController = TextEditingController();
+  final FocusNode _chatFocusNode = FocusNode();
+  final ScrollController _chatScrollController = ScrollController();
 
   // Deepgram integration
   FlutterSoundRecorder? _recorder;
@@ -251,6 +285,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   static const int _remoteVideoGraceMs = 2000;
   static const int _deepgramFinalizeWaitMs = 250;
   static const int _deepgramCloseWaitMs = 100;
+  static const int _maxChatMessages = 200;
+  static const double _chatWideBreakpoint = 720;
   static const Set<String> _captionJoinerWords = <String>{
     'a',
     'an',
@@ -750,6 +786,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       final type = payload['type']?.toString();
       if (type == 'caption') {
         _processCaptionMessage(payload['text']?.toString() ?? '', from);
+      } else if (type == 'chat') {
+        _processChatMessage(payload['text']?.toString() ?? '', from);
       }
     } catch (e) {
       if (kDebugMode) print('Invalid app message: $e');
@@ -796,6 +834,175 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _updateState(_state.copyWith(remoteCaptions: remoteCaptions));
       _scheduleCaptionClear(from);
     }
+  }
+
+  void _processChatMessage(String text, ParticipantId from) {
+    final trimmedText = text.trim();
+    if (trimmedText.isEmpty) return;
+
+    final message = _ChatMessage(
+      id: _buildChatMessageId(
+        senderId: from.id,
+        text: trimmedText,
+      ),
+      text: trimmedText,
+      senderName: _participantDisplayName(from),
+      senderId: from.id,
+      sentAt: DateTime.now(),
+      isLocal: false,
+    );
+
+    _appendChatMessage(
+      message,
+      incrementUnread: !_state.isChatOpen,
+    );
+  }
+
+  String _buildChatMessageId({
+    required String senderId,
+    required String text,
+  }) {
+    return '${DateTime.now().microsecondsSinceEpoch}_${senderId}_${text.hashCode}';
+  }
+
+  String _participantDisplayName(
+    ParticipantId participantId, {
+    String fallback = 'Собеседник',
+  }) {
+    final participant = _callClient?.participants.all[participantId];
+    final username = participant?.info.username?.trim();
+    if (username?.isNotEmpty == true) {
+      return username!;
+    }
+    return fallback;
+  }
+
+  String _localParticipantName() {
+    final localUsername = _callClient?.participants.local.info.username?.trim();
+    if (localUsername?.isNotEmpty == true) {
+      return localUsername!;
+    }
+
+    final widgetUsername = widget.username?.trim();
+    if (widgetUsername?.isNotEmpty == true) {
+      return widgetUsername!;
+    }
+
+    return widget.isStudent == true ? 'Студент' : 'Преподаватель';
+  }
+
+  String _localParticipantId() {
+    final localId = _callClient?.participants.local.id.id;
+    if (localId?.isNotEmpty == true) {
+      return localId!;
+    }
+    return 'local';
+  }
+
+  void _appendChatMessage(
+    _ChatMessage message, {
+    bool incrementUnread = false,
+  }) {
+    final messages = List<_ChatMessage>.from(_state.chatMessages)..add(message);
+    if (messages.length > _maxChatMessages) {
+      messages.removeRange(0, messages.length - _maxChatMessages);
+    }
+
+    _updateState(_state.copyWith(
+      chatMessages: List<_ChatMessage>.unmodifiable(messages),
+      unreadChatCount:
+          incrementUnread ? _state.unreadChatCount + 1 : _state.unreadChatCount,
+    ));
+
+    _scrollChatToBottom(animated: _state.isChatOpen);
+  }
+
+  void _scrollChatToBottom({bool animated = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_chatScrollController.hasClients) return;
+
+      final position = _chatScrollController.position.maxScrollExtent;
+      if (animated) {
+        _chatScrollController.animateTo(
+          position,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+        );
+      } else {
+        _chatScrollController.jumpTo(position);
+      }
+    });
+  }
+
+  void _setChatOpen(bool isOpen) {
+    if (!mounted || _disposed) return;
+
+    if (!isOpen) {
+      _clearChatDraft();
+    }
+
+    _updateState(_state.copyWith(
+      isChatOpen: isOpen,
+      unreadChatCount: isOpen ? 0 : _state.unreadChatCount,
+    ));
+
+    if (isOpen) {
+      _scrollChatToBottom(animated: false);
+    }
+  }
+
+  void _toggleChatOpen() {
+    _setChatOpen(!_state.isChatOpen);
+  }
+
+  void _clearChatDraft() {
+    _chatTextController.clear();
+    _chatFocusNode.unfocus();
+  }
+
+  bool _canSendChatText(String text) {
+    return _state.connectionState == ConnectionState.connected &&
+        _callClient != null &&
+        _hasRemoteParticipantPresent() &&
+        text.trim().isNotEmpty;
+  }
+
+  Future<void> _sendChatMessage() async {
+    final text = _chatTextController.text.trim();
+    if (!_canSendChatText(text) || _callClient == null) {
+      return;
+    }
+
+    final message = _ChatMessage(
+      id: _buildChatMessageId(
+        senderId: _localParticipantId(),
+        text: text,
+      ),
+      text: text,
+      senderName: _localParticipantName(),
+      senderId: _localParticipantId(),
+      sentAt: DateTime.now(),
+      isLocal: true,
+    );
+
+    _appendChatMessage(message);
+    _chatTextController.clear();
+
+    try {
+      final payload = dart_convert.jsonEncode({
+        'type': 'chat',
+        'text': text,
+      });
+      await _callClient!.sendAppMessage(payload, null);
+    } catch (e) {
+      if (kDebugMode) print('Failed to send chat message: $e');
+    }
+  }
+
+  String _formatChatTimestamp(DateTime sentAt) {
+    final hour = sentAt.hour.toString().padLeft(2, '0');
+    final minute = sentAt.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 
   /// Handle inputs updated event
@@ -1032,6 +1239,40 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
   }
 
+  Future<void> _disableLocalInputsForCleanup() async {
+    if (_callClient == null) {
+      _updateState(_state.copyWith(
+        cameraEnabled: false,
+        microphoneEnabled: false,
+      ));
+      return;
+    }
+
+    try {
+      await _callClient!
+          .updateInputs(
+            inputs: const InputSettingsUpdate.set(
+              camera: CameraInputSettingsUpdate.set(
+                isEnabled: BoolUpdate.set(false),
+              ),
+              microphone: MicrophoneInputSettingsUpdate.set(
+                isEnabled: BoolUpdate.set(false),
+              ),
+            ),
+          )
+          .timeout(const Duration(seconds: 2));
+    } catch (e) {
+      if (kDebugMode) {
+        print('Failed to disable local inputs during cleanup: $e');
+      }
+    }
+
+    _updateState(_state.copyWith(
+      cameraEnabled: false,
+      microphoneEnabled: false,
+    ));
+  }
+
   bool _hasRemoteParticipantPresent() {
     final remoteParticipants = _callClient?.participants.remote;
     return remoteParticipants != null && remoteParticipants.isNotEmpty;
@@ -1216,6 +1457,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         leaveCall: true,
         preserveMeetingToken: true,
         preserveTokenRefreshAttempts: true,
+        preserveChatState: true,
       );
       await _initializeCall();
       return true;
@@ -1266,6 +1508,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       leaveCall: false,
       preserveMeetingToken: true,
       preserveTokenRefreshAttempts: true,
+      preserveChatState: true,
     );
     await _initializeCall();
   }
@@ -1965,95 +2208,114 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return _buildConnectingScreen();
     }
 
-    final showRemoteSurface = _state.remoteControllers.isNotEmpty;
-    final showRemoteVideo = _hasRemoteVideoReady();
-    final showPip = showRemoteVideo &&
-        _localVideoController != null &&
-        _state.cameraEnabled;
-    final primaryVideoModeKey =
-        ValueKey(showRemoteSurface ? 'remote-surface' : 'local-surface');
-
     return Container(
       width: widget.width ?? double.infinity,
       height: widget.height ?? double.infinity,
       color: Colors.black,
-      child: Stack(
-        children: [
-          // Main video/placeholder layer
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                child: KeyedSubtree(
-                  key: primaryVideoModeKey,
-                  child: _buildPrimaryVideo(
-                    showRemoteParticipant: showRemoteSurface,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final viewportWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : MediaQuery.sizeOf(context).width;
+          final isWideChat = viewportWidth >= _chatWideBreakpoint;
+          final showRemoteSurface = _state.remoteControllers.isNotEmpty;
+          final showRemoteVideo = _hasRemoteVideoReady();
+          final showPip = showRemoteVideo &&
+              _localVideoController != null &&
+              _state.cameraEnabled &&
+              !(_state.isChatOpen && isWideChat);
+          final primaryVideoModeKey =
+              ValueKey(showRemoteSurface ? 'remote-surface' : 'local-surface');
+
+          return Stack(
+            children: [
+              // Main video/placeholder layer
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child: KeyedSubtree(
+                      key: primaryVideoModeKey,
+                      child: _buildPrimaryVideo(
+                        showRemoteParticipant: showRemoteSurface,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
 
-          // Call duration timer (top-left)
-          if (_state.connectionState == ConnectionState.connected)
-            Positioned(
-              top: 55,
-              left: 20,
-              child: _buildCallDurationBadge(),
-            ),
+              // Call duration timer (top-left)
+              if (_state.connectionState == ConnectionState.connected)
+                Positioned(
+                  top: 55,
+                  left: 20,
+                  child: _buildCallDurationBadge(),
+                ),
 
-          // Picture-in-picture (only after remote video is ready)
-          if (showPip)
-            Positioned(
-              top: 55,
-              right: 20,
-              child: SizedBox(
-                width: 100,
-                height: 140,
-                child: RepaintBoundary(child: _buildPictureInPicture()),
+              // Picture-in-picture (only after remote video is ready)
+              if (showPip)
+                Positioned(
+                  top: 55,
+                  right: 20,
+                  child: SizedBox(
+                    width: 100,
+                    height: 140,
+                    child: RepaintBoundary(child: _buildPictureInPicture()),
+                  ),
+                ),
+
+              // Captions overlay
+              if (_state.connectionState == ConnectionState.connected &&
+                  !_state.isChatOpen)
+                Positioned(
+                  bottom: 160,
+                  left: 16,
+                  right: 16,
+                  child: RepaintBoundary(child: _buildCaptionsOverlay()),
+                ),
+
+              // Chat panel
+              if (_state.connectionState == ConnectionState.connected &&
+                  _state.isChatOpen)
+                _buildAdaptiveChatPanel(
+                  constraints: constraints,
+                  isWideChat: isWideChat,
+                ),
+
+              // Status indicators
+              if (_state.connectionState == ConnectionState.reconnecting)
+                Positioned(
+                  top: 60,
+                  left: 0,
+                  right: 0,
+                  child: _buildReconnectingIndicator(),
+                ),
+
+              // Controls
+              Positioned(
+                bottom: 35,
+                left: 0,
+                right: 0,
+                child: RepaintBoundary(child: _buildControls()),
               ),
-            ),
 
-          // Captions overlay
-          if (_state.connectionState == ConnectionState.connected)
-            Positioned(
-              bottom: 160,
-              left: 16,
-              right: 16,
-              child: RepaintBoundary(child: _buildCaptionsOverlay()),
-            ),
+              // Error display
+              if (_state.error != null &&
+                  _state.retryCount >= _maxRetryAttempts)
+                Positioned.fill(
+                  child: _buildErrorDisplay(),
+                ),
 
-          // Status indicators
-          if (_state.connectionState == ConnectionState.reconnecting)
-            Positioned(
-              top: 60,
-              left: 0,
-              right: 0,
-              child: _buildReconnectingIndicator(),
-            ),
-
-          // Controls
-          Positioned(
-            bottom: 35,
-            left: 0,
-            right: 0,
-            child: RepaintBoundary(child: _buildControls()),
-          ),
-
-          // Error display
-          if (_state.error != null && _state.retryCount >= _maxRetryAttempts)
-            Positioned.fill(
-              child: _buildErrorDisplay(),
-            ),
-
-          // Status overlay (searching/connecting/awaiting remote)
-          if (_statusMessage() != null)
-            Positioned.fill(
-              child: IgnorePointer(child: _buildConnectingOverlay()),
-            ),
-        ],
+              // Status overlay (searching/connecting/awaiting remote)
+              if (_statusMessage() != null)
+                Positioned.fill(
+                  child: IgnorePointer(child: _buildConnectingOverlay()),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2155,10 +2417,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return _buildPlaceholder('Камера выключена');
     }
 
-    return VideoView(
-      controller: _localVideoController!,
-      fit: VideoViewFit.cover,
-    );
+    return _buildMirroredLocalVideoView();
   }
 
   Widget _buildConnectingOverlay() {
@@ -2200,17 +2459,33 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         return _buildPlaceholder('Камера выключена');
       }
 
-      return ClipRRect(
+      return _buildMirroredLocalVideoView(
         borderRadius: BorderRadius.circular(20),
-        child: VideoView(
-          controller: _localVideoController!,
-          fit: VideoViewFit.cover,
-        ),
       );
     } catch (e) {
       if (kDebugMode) print('Error building local video: $e');
       return _buildPlaceholder('Видео недоступно');
     }
+  }
+
+  Widget _buildMirroredLocalVideoView({BorderRadius? borderRadius}) {
+    Widget child = Transform(
+      alignment: Alignment.center,
+      transform: Matrix4.diagonal3Values(-1.0, 1.0, 1.0),
+      child: VideoView(
+        controller: _localVideoController!,
+        fit: VideoViewFit.cover,
+      ),
+    );
+
+    if (borderRadius != null) {
+      child = ClipRRect(
+        borderRadius: borderRadius,
+        child: child,
+      );
+    }
+
+    return child;
   }
 
   /// Build remote video view
@@ -2696,6 +2971,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           isEndCall: false,
         ),
         _buildControlButton(
+          icon:
+              _state.isChatOpen ? Icons.chat_bubble : Icons.chat_bubble_outline,
+          isActive: _state.isChatOpen,
+          onPressed: _toggleChatOpen,
+          isEndCall: false,
+          badgeCount: _state.unreadChatCount,
+        ),
+        _buildControlButton(
           icon: Icons.call_end,
           isActive: true,
           onPressed: _endCall,
@@ -2711,22 +2994,419 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     required bool isActive,
     required VoidCallback onPressed,
     required bool isEndCall,
+    int badgeCount = 0,
   }) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            color: isEndCall
+                ? Colors.red.withValues(alpha: 0.9)
+                : (isActive
+                    ? Colors.black.withValues(alpha: 0.76)
+                    : Colors.black.withValues(alpha: 0.6)),
+            shape: BoxShape.circle,
+            border: isEndCall
+                ? null
+                : Border.all(
+                    color: isActive
+                        ? Colors.white.withValues(alpha: 0.18)
+                        : Colors.white.withValues(alpha: 0.08),
+                    width: 0.8,
+                  ),
+          ),
+          child: IconButton(
+            icon: Icon(icon, color: Colors.white),
+            onPressed: onPressed,
+            iconSize: 24,
+            padding: EdgeInsets.zero,
+          ),
+        ),
+        if (badgeCount > 0)
+          Positioned(
+            top: -2,
+            right: -2,
+            child: _buildUnreadBadge(badgeCount),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildUnreadBadge(int count) {
+    final label = count > 99 ? '99+' : count.toString();
     return Container(
-      // Removed RepaintBoundary from here
-      width: 60,
-      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      constraints: const BoxConstraints(minWidth: 22),
       decoration: BoxDecoration(
-        color: isEndCall
-            ? Colors.red.withValues(alpha: 0.9)
-            : Colors.black.withValues(alpha: 0.6),
-        shape: BoxShape.circle,
+        color: const Color(0xFF2F80ED),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.black, width: 1.2),
       ),
-      child: IconButton(
-        icon: Icon(icon, color: Colors.white),
-        onPressed: onPressed,
-        iconSize: 24,
-        padding: EdgeInsets.zero,
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdaptiveChatPanel({
+    required BoxConstraints constraints,
+    required bool isWideChat,
+  }) {
+    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomOffset = 110.0;
+    final mobilePanelHeight =
+        (constraints.maxHeight * 0.44).clamp(260.0, 360.0).toDouble();
+
+    return Positioned(
+      top: isWideChat ? 20 : null,
+      right: 16,
+      left: isWideChat ? null : 16,
+      width: isWideChat ? 360 : null,
+      height: isWideChat ? null : mobilePanelHeight,
+      bottom: bottomOffset,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.only(bottom: viewInsetsBottom),
+        child: RepaintBoundary(
+          child: _buildChatPanel(isWideChat: isWideChat),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatPanel({
+    required bool isWideChat,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF101216).withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(isWideChat ? 24 : 28),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 1,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 24,
+              offset: Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            _buildChatHeader(),
+            Divider(
+              height: 1,
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+            Expanded(
+              child: _state.chatMessages.isEmpty
+                  ? _buildEmptyChatState()
+                  : _buildChatMessages(),
+            ),
+            _buildChatComposer(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.chat_bubble_outline,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Чат',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  _hasRemoteParticipantPresent()
+                      ? 'Сообщения видны только во время звонка'
+                      : 'Сообщения можно отправлять после подключения собеседника',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.62),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => _setChatOpen(false),
+            icon: const Icon(Icons.close, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyChatState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: const Icon(
+                Icons.chat_bubble_outline,
+                color: Colors.white70,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Сообщения появятся здесь',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _hasRemoteParticipantPresent()
+                  ? 'Напишите первое сообщение собеседнику.'
+                  : 'Дождитесь подключения второго участника, чтобы начать чат.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.68),
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatMessages() {
+    return Scrollbar(
+      controller: _chatScrollController,
+      thumbVisibility: _state.chatMessages.length > 4,
+      child: ListView.separated(
+        controller: _chatScrollController,
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        itemCount: _state.chatMessages.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, index) {
+          final message = _state.chatMessages[index];
+          return _buildChatMessageBubble(message);
+        },
+      ),
+    );
+  }
+
+  Widget _buildChatMessageBubble(_ChatMessage message) {
+    final bubbleColor = message.isLocal
+        ? const Color(0xFF2F80ED)
+        : Colors.white.withValues(alpha: 0.10);
+    final bubbleAlignment =
+        message.isLocal ? Alignment.centerRight : Alignment.centerLeft;
+    final labelColor = Colors.white.withValues(alpha: 0.66);
+
+    return Align(
+      alignment: bubbleAlignment,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 280),
+        child: Column(
+          crossAxisAlignment: message.isLocal
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                message.isLocal ? 'Вы' : message.senderName,
+                style: TextStyle(
+                  color: labelColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: bubbleColor,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  width: 0.8,
+                ),
+              ),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Text(
+                  message.text,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _formatChatTimestamp(message.sentAt),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.46),
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatComposer() {
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: _chatTextController,
+        builder: (context, value, _) {
+          final canSend = _canSendChatText(value.text);
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!_hasRemoteParticipantPresent())
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+                  child: Text(
+                    'Собеседник еще не в звонке. Сообщение можно отправить после подключения.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.56),
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _chatTextController,
+                        focusNode: _chatFocusNode,
+                        minLines: 1,
+                        maxLines: 4,
+                        textInputAction: TextInputAction.send,
+                        keyboardType: TextInputType.multiline,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: _hasRemoteParticipantPresent()
+                              ? 'Написать сообщение'
+                              : 'Ожидаем собеседника...',
+                          hintStyle: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.42),
+                            fontSize: 14,
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                        onSubmitted: (_) {
+                          if (canSend) {
+                            unawaited(_sendChatMessage());
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 42,
+                      height: 42,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: canSend
+                              ? const Color(0xFF2F80ED)
+                              : Colors.white.withValues(alpha: 0.08),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          onPressed: canSend
+                              ? () => unawaited(_sendChatMessage())
+                              : null,
+                          icon: Icon(
+                            Icons.send_rounded,
+                            size: 18,
+                            color: canSend
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.32),
+                          ),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2835,11 +3515,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// 1. Cancel timers (stop pending operations)
   /// 2. Cancel event subscription FIRST (prevents CallState.left from
   ///    triggering _scheduleReconnection during cleanup)
-  /// 3. Stop Deepgram
-  /// 4. Leave call (signal server while connection still alive)
-  /// 5. Cancel remaining subscriptions
-  /// 6. Clear tracks and dispose video controllers
-  /// 7. Dispose CallClient
+  /// 3. Disable local camera/microphone capture
+  /// 4. Stop Deepgram
+  /// 5. Leave call (signal server while connection still alive)
+  /// 6. Cancel remaining subscriptions
+  /// 7. Clear tracks and dispose video controllers
+  /// 8. Dispose CallClient
   ///
   /// NOTE: _userRequestedEnd is NOT reset here. It is only set by _endCall()
   /// and reset by _initializeCall() when starting a new session.
@@ -2847,11 +3528,22 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     bool leaveCall = true,
     bool preserveMeetingToken = false,
     bool preserveTokenRefreshAttempts = false,
+    bool preserveChatState = false,
   }) async {
     if (kDebugMode) print('Cleaning up resources...');
 
+    final preservedChatMessages =
+        preserveChatState ? _state.chatMessages : const <_ChatMessage>[];
+    final preservedUnreadChatCount =
+        preserveChatState ? _state.unreadChatCount : 0;
+    final preservedChatOpen = preserveChatState ? _state.isChatOpen : false;
+
     try {
       _lifecycleTransitionId += 1;
+      _chatFocusNode.unfocus();
+      if (!preserveChatState) {
+        _chatTextController.clear();
+      }
 
       // 1. Cancel all timers first (stop any pending reconnects, retries, etc.)
       for (final timer in List<Timer>.from(_activeTimers)) {
@@ -2870,10 +3562,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         if (kDebugMode) print('Error cancelling event subscription: $e');
       }
 
-      // 3. Stop Deepgram streaming
-      await _stopDeepgramStreaming();
+      // 3. Disable local capture before leaving so iOS releases the
+      // camera/microphone indicator even if leave/dispose completes later.
+      await _disableLocalInputsForCleanup();
 
-      // 4. Leave call while connection is still alive
+      // 4. Stop Deepgram streaming
+      await _stopDeepgramStreaming();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      // 5. Leave call while connection is still alive
       if (_callClient != null && leaveCall) {
         try {
           await _callClient!.leave();
@@ -2884,7 +3581,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         }
       }
 
-      // 5. Cancel all remaining tracked subscriptions
+      // 6. Cancel all remaining tracked subscriptions
       for (final subscription in List<StreamSubscription>.from(
         _activeSubscriptions,
       )) {
@@ -2895,7 +3592,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         }
       }
 
-      // 6. Clear video tracks before disposing controllers
+      // 7. Clear video tracks before disposing controllers
       await _setVideoTrack(
         _localVideoController,
         null,
@@ -2940,7 +3637,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
       _stopDurationTimer(reset: true);
 
-      // 7. Dispose call client last
+      // 8. Dispose call client last
       try {
         await _callClient?.dispose();
         _callClient = null;
@@ -2960,7 +3657,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       // Reset state
       if (mounted && !_disposed) {
-        _updateState(const _CallState());
+        _updateState(_CallState(
+          isChatOpen: preservedChatOpen,
+          unreadChatCount: preservedUnreadChatCount,
+          chatMessages: preservedChatMessages,
+        ));
       }
 
       if (kDebugMode) print('Cleanup completed');
@@ -2988,13 +3689,19 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _cancelTrackedTimer(_remoteLeftTimer);
     _remoteLeftTimer = null;
     _callDurationNotifier.dispose();
+    _chatFocusNode.unfocus();
+    _chatTextController.clear();
 
     // Cancel event subscription synchronously to stop incoming events
     unawaited(_cancelTrackedSubscription(_eventSubscription));
     _eventSubscription = null;
 
     // Schedule async cleanup (leave call, dispose client)
-    _cleanup(leaveCall: true);
+    unawaited(_cleanup(leaveCall: true).whenComplete(() {
+      _chatTextController.dispose();
+      _chatFocusNode.dispose();
+      _chatScrollController.dispose();
+    }));
 
     super.dispose();
   }

@@ -807,6 +807,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
                               final payload = <String, dynamic>{
                                 'sessionId': sessionRef.id,
+                                'sessionPath': sessionRef.path,
                                 'toUserId': toUserRef.id,
                                 'rating': _model.rait,
                               };
