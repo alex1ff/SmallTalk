@@ -22,3 +22,5 @@ const getDeepgramToken = require("./get_deepgram_token.js");
 exports.getDeepgramToken = getDeepgramToken.getDeepgramToken;
 const submitReview = require("./submit_review.js");
 exports.submitReview = submitReview.submitReview;
+const createPaymentSession = require("./create_payment_session.js");
+exports.createPaymentSession = createPaymentSession.createPaymentSession;

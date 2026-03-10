@@ -81,6 +81,11 @@ class TransactionsRecord extends FirestoreRecord {
   double get amount => _amount ?? 0.0;
   bool hasAmount() => _amount != null;
 
+  // "minutesPurchased" field.
+  double? _minutesPurchased;
+  double get minutesPurchased => _minutesPurchased ?? 0.0;
+  bool hasMinutesPurchased() => _minutesPurchased != null;
+
   void _initializeFields() {
     _userId = snapshotData['userId'] as DocumentReference?;
     _createdAt = snapshotData['createdAt'] as DateTime?;
@@ -99,6 +104,7 @@ class TransactionsRecord extends FirestoreRecord {
     _promoCode = snapshotData['promoCode'] as String?;
     _paymentId = snapshotData['paymentId'] as String?;
     _amount = castToType<double>(snapshotData['amount']);
+    _minutesPurchased = castToType<double>(snapshotData['minutesPurchased']);
   }
 
   static CollectionReference get collection =>
@@ -149,6 +155,7 @@ Map<String, dynamic> createTransactionsRecordData({
   String? promoCode,
   String? paymentId,
   double? amount,
+  double? minutesPurchased,
 }) {
   final firestoreData = mapToFirestore(
     <String, dynamic>{
@@ -165,6 +172,7 @@ Map<String, dynamic> createTransactionsRecordData({
       'promoCode': promoCode,
       'paymentId': paymentId,
       'amount': amount,
+      'minutesPurchased': minutesPurchased,
     }.withoutNulls,
   );
 
@@ -189,7 +197,8 @@ class TransactionsRecordDocumentEquality
         e1?.freeMinuteApplied == e2?.freeMinuteApplied &&
         e1?.promoCode == e2?.promoCode &&
         e1?.paymentId == e2?.paymentId &&
-        e1?.amount == e2?.amount;
+        e1?.amount == e2?.amount &&
+        e1?.minutesPurchased == e2?.minutesPurchased;
   }
 
   @override
@@ -206,7 +215,8 @@ class TransactionsRecordDocumentEquality
         e?.freeMinuteApplied,
         e?.promoCode,
         e?.paymentId,
-        e?.amount
+        e?.amount,
+        e?.minutesPurchased
       ]);
 
   @override

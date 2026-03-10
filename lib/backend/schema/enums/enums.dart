@@ -39,6 +39,7 @@ enum StatusTransactions {
   completed,
   pending,
   failed,
+  cancelled,
 }
 
 enum TypeTransactions {
