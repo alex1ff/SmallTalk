@@ -25,6 +25,60 @@ function extractString(value) {
   return null;
 }
 
+function buildProviderErrorInfo(error) {
+  const responseData = error?.response?.data || {};
+  const providerDetails =
+    responseData && typeof responseData.details === "object" ?
+      responseData.details :
+      {};
+
+  const providerCode = extractString(
+    providerDetails.ErrorCode || responseData.errorCode,
+  );
+  const providerMessage =
+    extractString(providerDetails.Details) ||
+    extractString(providerDetails.Message) ||
+    extractString(responseData.details) ||
+    extractString(responseData.error) ||
+    extractString(error?.message);
+
+  let userMessage = "Не удалось создать платеж. Попробуйте еще раз.";
+  let errorCode = "internal";
+
+  if (providerCode === "204") {
+    userMessage =
+      "Платежный сервис отклонил запрос. Проверьте настройки T-Bank.";
+    errorCode = "failed-precondition";
+  } else if (providerMessage) {
+    userMessage = `Не удалось создать платеж: ${providerMessage}`;
+    errorCode = "failed-precondition";
+  }
+
+  return {
+    errorCode,
+    providerCode,
+    providerMessage,
+    responseData,
+    userMessage,
+  };
+}
+
+function buildErrorDetails({
+  userMessage,
+  providerCode = null,
+  providerMessage = null,
+  transactionRefPath = null,
+  reason = null,
+}) {
+  return {
+    userMessage,
+    providerCode,
+    providerMessage,
+    transactionRefPath,
+    reason,
+  };
+}
+
 exports.createPaymentSession = functions.https.onCall(async (data, context) => {
   console.log("💳 createPaymentSession started");
 
@@ -109,10 +163,18 @@ exports.createPaymentSession = functions.https.onCall(async (data, context) => {
     if (!paymentUrl || !paymentId) {
       await transactionRef.update({
         status: "failed",
+        paymentInitErrorMessage:
+          "Payment session was created without payment URL or payment ID",
+        paymentInitFailedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
       throw new functions.https.HttpsError(
         "internal",
         "Payment session was created without payment URL or payment ID",
+        buildErrorDetails({
+          userMessage: "Не удалось открыть оплату. Попробуйте еще раз.",
+          transactionRefPath: transactionRef.path,
+          reason: "missing_payment_url_or_id",
+        }),
       );
     }
 
@@ -134,18 +196,21 @@ exports.createPaymentSession = functions.https.onCall(async (data, context) => {
       transactionRefPath: transactionRef.path,
     };
   } catch (error) {
+    const providerError = buildProviderErrorInfo(error);
+
     console.error("❌ createPaymentSession failed", {
       uid,
       packageId,
       transactionId: transactionRef.id,
-      error:
-        error?.response?.data ||
-        error?.message ||
-        error,
+      error: providerError.responseData || error?.message || error,
     });
 
     await transactionRef.update({
       status: "failed",
+      paymentInitErrorCode: providerError.providerCode,
+      paymentInitErrorMessage:
+        providerError.providerMessage || "Unable to create payment session",
+      paymentInitFailedAt: admin.firestore.FieldValue.serverTimestamp(),
     }).catch((updateError) => {
       console.error("❌ Failed to mark transaction as failed", updateError);
     });
@@ -155,8 +220,15 @@ exports.createPaymentSession = functions.https.onCall(async (data, context) => {
     }
 
     throw new functions.https.HttpsError(
-      "internal",
-      "Unable to create payment session",
+      providerError.errorCode,
+      providerError.userMessage,
+      buildErrorDetails({
+        userMessage: providerError.userMessage,
+        providerCode: providerError.providerCode,
+        providerMessage: providerError.providerMessage,
+        transactionRefPath: transactionRef.path,
+        reason: "init_payment_failed",
+      }),
     );
   }
 });

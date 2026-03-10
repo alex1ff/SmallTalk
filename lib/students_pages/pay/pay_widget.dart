@@ -86,6 +86,74 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  String? _normalizeVisibleErrorMessage(String? rawMessage) {
+    final normalized = rawMessage?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+
+    final lowerCased = normalized.toLowerCase();
+    const genericMessages = {
+      'internal',
+      'internal error',
+      'unknown',
+      'failed-precondition',
+      'firebase_functions/internal',
+    };
+
+    if (genericMessages.contains(lowerCased)) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  String? _extractMessageFromFunctionsDetails(dynamic details) {
+    if (details is String) {
+      return _normalizeVisibleErrorMessage(details);
+    }
+
+    if (details is Map) {
+      for (final key in const [
+        'userMessage',
+        'message',
+        'providerMessage',
+        'details',
+        'error',
+      ]) {
+        final candidate = _normalizeVisibleErrorMessage(
+          details[key]?.toString(),
+        );
+        if (candidate != null) {
+          return candidate;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  String _resolvePaymentErrorMessage(FirebaseFunctionsException error) {
+    final detailsMessage = _extractMessageFromFunctionsDetails(error.details);
+    if (detailsMessage != null) {
+      return detailsMessage;
+    }
+
+    final directMessage = _normalizeVisibleErrorMessage(error.message);
+    if (directMessage != null) {
+      return directMessage;
+    }
+
+    switch (error.code) {
+      case 'failed-precondition':
+        return 'Не удалось создать платеж. Проверьте настройки оплаты и попробуйте еще раз.';
+      case 'unauthenticated':
+        return 'Нужно заново войти в аккаунт, чтобы создать платеж.';
+      default:
+        return 'Не удалось создать платеж. Попробуйте еще раз.';
+    }
+  }
+
   Future<void> _handlePayPressed() async {
     if (_isCreatingPaymentSession) {
       return;
@@ -127,7 +195,7 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
       if (mounted) {
         showSnackbar(
           context,
-          error.message ?? 'Не удалось создать платеж. Попробуйте еще раз.',
+          _resolvePaymentErrorMessage(error),
         );
       }
     } catch (_) {

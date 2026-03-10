@@ -72,6 +72,9 @@ class _PayWebWiewWidgetState extends State<PayWebWiewWidget> {
       return;
     }
 
+    final paymentInitErrorMessage =
+        record.snapshotData['paymentInitErrorMessage']?.toString().trim();
+
     if (record.status == StatusTransactions.completed &&
         !_didNavigateAfterSuccess) {
       _didNavigateAfterSuccess = true;
@@ -95,7 +98,9 @@ class _PayWebWiewWidgetState extends State<PayWebWiewWidget> {
     safeSetState(() {
       _transactionRecord = record;
       if (record.status == StatusTransactions.failed) {
-        _failureMessage = 'Платеж не прошел. Попробуйте еще раз.';
+        _failureMessage = paymentInitErrorMessage?.isNotEmpty == true
+            ? paymentInitErrorMessage
+            : 'Платеж не прошел. Попробуйте еще раз.';
       } else if (record.status == StatusTransactions.cancelled) {
         _failureMessage = 'Оплата была отменена.';
       } else {
