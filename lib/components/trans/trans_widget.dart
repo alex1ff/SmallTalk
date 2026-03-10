@@ -21,6 +21,95 @@ class TransWidget extends StatefulWidget {
 class _TransWidgetState extends State<TransWidget> {
   late TransModel _model;
 
+  bool get _isPurchase => widget.trans?.type == TypeTransactions.purchase;
+
+  bool get _isPositiveTransaction {
+    if (_isPurchase) {
+      return widget.trans?.status == StatusTransactions.completed;
+    }
+
+    return (widget.trans?.type == TypeTransactions.bonus) ||
+        (widget.trans?.type == TypeTransactions.earning) ||
+        (widget.trans?.type == TypeTransactions.promocode);
+  }
+
+  bool get _isPendingPurchase =>
+      _isPurchase && widget.trans?.status == StatusTransactions.pending;
+
+  Color _leadingBackgroundColor(BuildContext context) {
+    if (_isPositiveTransaction) {
+      return Color(0x4F42FF00);
+    }
+    if (_isPendingPurchase) {
+      return FlutterFlowTheme.of(context).secondaryBackground;
+    }
+    return Color(0x40ED5154);
+  }
+
+  Color _leadingIconColor(BuildContext context) {
+    if (_isPositiveTransaction) {
+      return Color(0xFF02D623);
+    }
+    if (_isPendingPurchase) {
+      return FlutterFlowTheme.of(context).secondaryText;
+    }
+    return FlutterFlowTheme.of(context).error;
+  }
+
+  Color _amountColor(BuildContext context) {
+    if (_isPositiveTransaction) {
+      return Color(0xFF02D623);
+    }
+    if (_isPendingPurchase) {
+      return FlutterFlowTheme.of(context).secondaryText;
+    }
+    return FlutterFlowTheme.of(context).primaryText;
+  }
+
+  String _amountLabel() {
+    if ((widget.trans?.type == TypeTransactions.purchase) ||
+        (widget.trans?.type == TypeTransactions.bonus) ||
+        (widget.trans?.type == TypeTransactions.promocode)) {
+      return '+${widget.trans?.amountST.toString()} ST';
+    } else if (widget.trans?.type == TypeTransactions.call_charge) {
+      return '-${widget.trans?.amountST.toString()} ST';
+    } else if (widget.trans?.type == TypeTransactions.earning) {
+      return '+${widget.trans?.amount.toString()} ₽';
+    } else if (widget.trans?.type == TypeTransactions.withdrawal) {
+      return '-${widget.trans?.amount.toString()} ₽';
+    } else {
+      return ' ';
+    }
+  }
+
+  String _purchaseSubtitle(BuildContext context) {
+    if (widget.trans?.status == StatusTransactions.completed) {
+      return '${FFLocalizations.of(context).getVariableText(
+        ruText: 'Оплачено:',
+        enText: 'Paid:',
+      )}${widget.trans?.amount.toString()} ₽';
+    }
+
+    if (widget.trans?.status == StatusTransactions.failed) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Платеж не прошел',
+        enText: 'Payment failed',
+      );
+    }
+
+    if (widget.trans?.status == StatusTransactions.cancelled) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Оплата отменена',
+        enText: 'Payment cancelled',
+      );
+    }
+
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Ожидаем оплату',
+      enText: 'Waiting for payment',
+    );
+  }
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -62,22 +151,12 @@ class _TransWidgetState extends State<TransWidget> {
               width: 52.0,
               height: 52.0,
               decoration: BoxDecoration(
-                color: (widget.trans?.type == TypeTransactions.purchase) ||
-                        (widget.trans?.type == TypeTransactions.bonus) ||
-                        (widget.trans?.type == TypeTransactions.earning) ||
-                        (widget.trans?.type == TypeTransactions.promocode)
-                    ? Color(0x4F42FF00)
-                    : Color(0x40ED5154),
+                color: _leadingBackgroundColor(context),
                 borderRadius: BorderRadius.circular(16.0),
               ),
               child: Icon(
                 FFIcons.kcoinsStacked01,
-                color: (widget.trans?.type == TypeTransactions.purchase) ||
-                        (widget.trans?.type == TypeTransactions.bonus) ||
-                        (widget.trans?.type == TypeTransactions.earning) ||
-                        (widget.trans?.type == TypeTransactions.promocode)
-                    ? Color(0xFF02D623)
-                    : FlutterFlowTheme.of(context).error,
+                color: _leadingIconColor(context),
                 size: 20.0,
               ),
             ),
@@ -144,11 +223,14 @@ class _TransWidgetState extends State<TransWidget> {
                       padding:
                           EdgeInsetsDirectional.fromSTEB(0.0, 4.0, 0.0, 0.0),
                       child: Text(
-                        dateTimeFormat(
-                          "d MMMM",
-                          widget.trans!.createdAt!,
-                          locale: FFLocalizations.of(context).languageCode,
-                        ),
+                        widget.trans?.createdAt != null
+                            ? dateTimeFormat(
+                                "d MMMM",
+                                widget.trans!.createdAt!,
+                                locale:
+                                    FFLocalizations.of(context).languageCode,
+                              )
+                            : '...',
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
                               fontFamily: 'sf pro display',
                               color: FlutterFlowTheme.of(context).secondaryText,
@@ -169,36 +251,10 @@ class _TransWidgetState extends State<TransWidget> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    () {
-                      if ((widget.trans?.type == TypeTransactions.purchase) ||
-                          (widget.trans?.type == TypeTransactions.bonus) ||
-                          (widget.trans?.type == TypeTransactions.promocode)) {
-                        return '+${widget.trans?.amountST.toString()} ST';
-                      } else if (widget.trans?.type ==
-                          TypeTransactions.call_charge) {
-                        return '-${widget.trans?.amountST.toString()} ST';
-                      } else if (widget.trans?.type ==
-                          TypeTransactions.earning) {
-                        return '+${widget.trans?.amount.toString()} ₽';
-                      } else if (widget.trans?.type ==
-                          TypeTransactions.withdrawal) {
-                        return '-${widget.trans?.amount.toString()} ₽';
-                      } else {
-                        return ' ';
-                      }
-                    }(),
+                    _amountLabel(),
                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'sf pro display',
-                          color: (widget.trans?.type ==
-                                      TypeTransactions.purchase) ||
-                                  (widget.trans?.type ==
-                                      TypeTransactions.bonus) ||
-                                  (widget.trans?.type ==
-                                      TypeTransactions.earning) ||
-                                  (widget.trans?.type ==
-                                      TypeTransactions.promocode)
-                              ? Color(0xFF02D623)
-                              : FlutterFlowTheme.of(context).primaryText,
+                          color: _amountColor(context),
                           fontSize: 15.0,
                           letterSpacing: 0.0,
                           fontWeight: FontWeight.normal,
@@ -209,10 +265,7 @@ class _TransWidgetState extends State<TransWidget> {
                     child: Text(
                       () {
                         if (widget.trans?.type == TypeTransactions.purchase) {
-                          return '${FFLocalizations.of(context).getVariableText(
-                            ruText: 'Оплачено:',
-                            enText: 'Paid:',
-                          )}${widget.trans?.amount.toString()} ₽';
+                          return _purchaseSubtitle(context);
                         } else if ((widget.trans?.type ==
                                 TypeTransactions.call_charge) ||
                             (widget.trans?.type == TypeTransactions.earning)) {
@@ -239,8 +292,10 @@ class _TransWidgetState extends State<TransWidget> {
                                 ruText: 'Выплачено',
                                 enText: 'Paid out',
                               );
-                            } else if (widget.trans?.status ==
-                                StatusTransactions.failed) {
+                            } else if ((widget.trans?.status ==
+                                    StatusTransactions.failed) ||
+                                (widget.trans?.status ==
+                                    StatusTransactions.cancelled)) {
                               return FFLocalizations.of(context)
                                   .getVariableText(
                                 ruText: 'Отклонено',

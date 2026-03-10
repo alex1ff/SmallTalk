@@ -1,5 +1,6 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/celebration_s_t/celebration_s_t_widget.dart';
+import '/authorization/components/celebration_top_up/celebration_top_up_widget.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -22,10 +23,13 @@ class StudentsDashboardWidget extends StatefulWidget {
     super.key,
     bool? zn,
     this.done,
-  }) : this.zn = zn ?? false;
+    bool? topUpSuccess,
+  })  : this.zn = zn ?? false,
+        this.topUpSuccess = topUpSuccess ?? false;
 
   final bool zn;
   final bool? done;
+  final bool topUpSuccess;
 
   static String routeName = 'Students_Dashboard';
   static String routePath = '/studentsDashboard';
@@ -65,7 +69,28 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
-      if (widget.zn) {
+      if (widget.topUpSuccess) {
+        await showModalBottomSheet(
+          useRootNavigator: true,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          context: context,
+          builder: (context) {
+            return WebViewAware(
+              child: GestureDetector(
+                onTap: () {
+                  FocusScope.of(context).unfocus();
+                  FocusManager.instance.primaryFocus?.unfocus();
+                },
+                child: Padding(
+                  padding: MediaQuery.viewInsetsOf(context),
+                  child: CelebrationTopUpWidget(),
+                ),
+              ),
+            );
+          },
+        ).then((value) => safeSetState(() {}));
+      } else if (widget.zn) {
         await showModalBottomSheet(
           useRootNavigator: true,
           isScrollControlled: true,
@@ -81,7 +106,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                 child: Padding(
                   padding: MediaQuery.viewInsetsOf(context),
                   child: CelebrationSTWidget(
-                    done: widget.done!,
+                    done: widget.done ?? false,
                   ),
                 ),
               ),
@@ -399,8 +424,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                           _formatSmallTalkBalance(
                                             context,
                                             currentUserDocument
-                                                ?.balanceST
-                                                .smallTalks,
+                                                ?.balanceST.smallTalks,
                                           ),
                                           '0',
                                         ),
@@ -443,8 +467,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   ),
                                 ),
                                 Padding(
-                                  padding:
-                                      EdgeInsetsDirectional.fromSTEB(0, 22, 0, 0),
+                                  padding: EdgeInsetsDirectional.fromSTEB(
+                                      0, 22, 0, 0),
                                   child: Container(
                                     height: 45,
                                     decoration: BoxDecoration(
@@ -462,17 +486,19 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                 EdgeInsetsDirectional.fromSTEB(
                                                     16, 0, 12, 0),
                                             child: Text(
-                                              FFLocalizations.of(context).getText(
+                                              FFLocalizations.of(context)
+                                                  .getText(
                                                 'nes89ax1' /* Пополнить */,
                                               ),
-                                              style: FlutterFlowTheme.of(context)
+                                              style: FlutterFlowTheme.of(
+                                                      context)
                                                   .bodyMedium
                                                   .override(
-                                                    fontFamily: 'sf pro display',
-                                                    color:
-                                                        FlutterFlowTheme.of(
-                                                                context)
-                                                            .primaryText,
+                                                    fontFamily:
+                                                        'sf pro display',
+                                                    color: FlutterFlowTheme.of(
+                                                            context)
+                                                        .primaryText,
                                                     fontSize: 16,
                                                     letterSpacing: 0.0,
                                                     fontWeight: FontWeight.w500,
@@ -576,10 +602,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   hoverColor: Colors.transparent,
                                   highlightColor: Colors.transparent,
                                   onTap: () async {
-                                    final balance =
-                                        currentUserDocument
-                                            ?.balanceST
-                                            .smallTalks ??
+                                    final balance = currentUserDocument
+                                            ?.balanceST.smallTalks ??
                                         0.0;
                                     if (balance <= 0) {
                                       await showModalBottomSheet(
@@ -606,8 +630,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                             ),
                                           );
                                         },
-                                      ).then(
-                                          (value) => safeSetState(() {}));
+                                      ).then((value) => safeSetState(() {}));
                                       return;
                                     }
 

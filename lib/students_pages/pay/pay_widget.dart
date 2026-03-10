@@ -11,6 +11,7 @@ import 'dart:async';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
 import 'package:collection/collection.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,6 +34,7 @@ class PayWidget extends StatefulWidget {
 class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
   late PayModel _model;
   late Future<List<PackagesRecord>> _packagesFuture;
+  bool _isCreatingPaymentSession = false;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -82,6 +84,77 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
     _model.dispose();
 
     super.dispose();
+  }
+
+  Future<void> _handlePayPressed() async {
+    if (_isCreatingPaymentSession) {
+      return;
+    }
+
+    final selectedPackage = _model.tarifDoc;
+    if (selectedPackage == null) {
+      if (animationsMap['columnOnActionTriggerAnimation'] != null) {
+        animationsMap['columnOnActionTriggerAnimation']!
+            .controller
+            .forward(from: 0.0);
+      }
+      HapticFeedback.mediumImpact();
+      return;
+    }
+
+    safeSetState(() => _isCreatingPaymentSession = true);
+
+    var paymentUrl = '';
+    var transactionRefPath = '';
+
+    try {
+      final response = await FirebaseFunctions.instance
+          .httpsCallable('createPaymentSession')
+          .call({
+        'packageId': selectedPackage.reference.id,
+      });
+      final responseData =
+          Map<String, dynamic>.from((response.data as Map?) ?? const {});
+
+      paymentUrl = (responseData['paymentUrl']?.toString() ?? '').trim();
+      transactionRefPath =
+          (responseData['transactionRefPath']?.toString() ?? '').trim();
+
+      if (paymentUrl.isEmpty || transactionRefPath.isEmpty) {
+        throw Exception('Payment session response is incomplete');
+      }
+    } on FirebaseFunctionsException catch (error) {
+      if (mounted) {
+        showSnackbar(
+          context,
+          error.message ?? 'Не удалось создать платеж. Попробуйте еще раз.',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        showSnackbar(
+          context,
+          'Не удалось создать платеж. Попробуйте еще раз.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        safeSetState(() => _isCreatingPaymentSession = false);
+      }
+    }
+
+    if (!mounted || paymentUrl.isEmpty || transactionRefPath.isEmpty) {
+      return;
+    }
+
+    context.pushNamed(
+      PayWebWiewWidget.routeName,
+      queryParameters: {
+        'paymentUrl': serializeParam(paymentUrl, ParamType.String),
+        'transactionRefPath':
+            serializeParam(transactionRefPath, ParamType.String),
+      }.withoutNulls,
+    );
   }
 
   @override
@@ -1083,86 +1156,94 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                     hoverColor: Colors.transparent,
                     highlightColor: Colors.transparent,
                     onTap: () async {
-                      if (_model.tarifDoc != null) {
-                        context.pushNamed(PayWebWiewWidget.routeName);
-                      } else {
-                        if (animationsMap['columnOnActionTriggerAnimation'] !=
-                            null) {
-                          animationsMap['columnOnActionTriggerAnimation']!
-                              .controller
-                              .forward(from: 0.0);
-                        }
-                        HapticFeedback.mediumImpact();
-                      }
+                      await _handlePayPressed();
                     },
-                    child: Container(
-                      width: double.infinity,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).primaryText,
-                        borderRadius: BorderRadius.circular(50),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(2),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.max,
-                          children: [
-                            Expanded(
-                              child: Padding(
-                                padding:
-                                    EdgeInsetsDirectional.fromSTEB(16, 0, 0, 0),
-                                child: Text(
-                                  FFLocalizations.of(context).getText(
-                                    '5visqusd' /* Оплатить */,
+                    child: Opacity(
+                      opacity: _isCreatingPaymentSession ? 0.9 : 1.0,
+                      child: Container(
+                        width: double.infinity,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          color: FlutterFlowTheme.of(context).primaryText,
+                          borderRadius: BorderRadius.circular(50),
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.all(2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.max,
+                            children: [
+                              Expanded(
+                                child: Padding(
+                                  padding: EdgeInsetsDirectional.fromSTEB(
+                                      16, 0, 0, 0),
+                                  child: Text(
+                                    _isCreatingPaymentSession
+                                        ? 'Создаем оплату...'
+                                        : FFLocalizations.of(context).getText(
+                                            '5visqusd' /* Оплатить */,
+                                          ),
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'Cool',
+                                          color: FlutterFlowTheme.of(context)
+                                              .primaryBackground,
+                                          fontSize: 20,
+                                          letterSpacing: 0.0,
+                                          fontWeight: FontWeight.normal,
+                                        ),
                                   ),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'Cool',
-                                        color: FlutterFlowTheme.of(context)
-                                            .primaryBackground,
-                                        fontSize: 20,
-                                        letterSpacing: 0.0,
-                                        fontWeight: FontWeight.normal,
-                                      ),
                                 ),
                               ),
-                            ),
-                            if (_model.tarifDoc != null)
-                              Padding(
-                                padding:
-                                    EdgeInsetsDirectional.fromSTEB(0, 0, 12, 0),
-                                child: Text(
-                                  '${_model.tarifDoc!.price.toString()}₽',
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryText,
-                                        fontSize: 15,
-                                        letterSpacing: 0.0,
-                                      ),
+                              if (_model.tarifDoc != null &&
+                                  !_isCreatingPaymentSession)
+                                Padding(
+                                  padding: EdgeInsetsDirectional.fromSTEB(
+                                      0, 0, 12, 0),
+                                  child: Text(
+                                    '${_model.tarifDoc!.price.toString()}₽',
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'sf pro display',
+                                          color: FlutterFlowTheme.of(context)
+                                              .secondaryText,
+                                          fontSize: 15,
+                                          letterSpacing: 0.0,
+                                        ),
+                                  ),
+                                ),
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  color: FlutterFlowTheme.of(context)
+                                      .primaryBackground,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Align(
+                                  alignment: AlignmentDirectional(0, 0),
+                                  child: _isCreatingPaymentSession
+                                      ? SizedBox(
+                                          width: 20.0,
+                                          height: 20.0,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.2,
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                              Colors.black,
+                                            ),
+                                          ),
+                                        )
+                                      : Icon(
+                                          FFIcons.karrowRight,
+                                          color: Colors.black,
+                                          size: 20,
+                                        ),
                                 ),
                               ),
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: FlutterFlowTheme.of(context)
-                                    .primaryBackground,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Align(
-                                alignment: AlignmentDirectional(0, 0),
-                                child: Icon(
-                                  FFIcons.karrowRight,
-                                  color: Colors.black,
-                                  size: 20,
-                                ),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
