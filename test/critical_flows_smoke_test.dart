@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:integration_test/integration_test.dart';
 import 'package:small_talk/auth/base_auth_user_provider.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 
@@ -65,6 +64,13 @@ Future<_Harness> _pumpRouter(
   WidgetTester tester, {
   required bool loggedIn,
 }) async {
+  tester.view.physicalSize = const Size(1280, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+
   final notifier = AppStateNotifier.instance;
   notifier.initialUser = null;
   notifier.clearRedirectLocation();
@@ -86,7 +92,7 @@ Future<_Harness> _pumpRouter(
 }
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
     currentUser = null;

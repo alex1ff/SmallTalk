@@ -12,6 +12,7 @@ import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '/shared_pages/review_flow/review_submission_helper.dart';
 
 import 'call_summary_model.dart';
 export 'call_summary_model.dart';
@@ -121,32 +122,6 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     }
 
     return false;
-  }
-
-  String _reviewErrorMessage(
-    BuildContext context,
-    FirebaseFunctionsException error,
-  ) {
-    switch (error.code) {
-      case 'not-found':
-        return FFLocalizations.of(context).getVariableText(
-          ruText:
-              'Не удалось найти сессию для отзыва. Попробуйте еще раз через несколько секунд.',
-          enText:
-              'We could not find the session for this review. Please try again in a few seconds.',
-        );
-      case 'permission-denied':
-        return FFLocalizations.of(context).getVariableText(
-          ruText: 'Не удалось отправить отзыв для этого звонка.',
-          enText: 'Unable to submit a review for this call.',
-        );
-      default:
-        return error.message ??
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'Не удалось отправить отзыв. Попробуйте снова.',
-              enText: 'Failed to submit review. Please try again.',
-            );
-    }
   }
 
   @override
@@ -462,18 +437,11 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   decoration: InputDecoration(
                                     isDense: false,
                                     hintText: valueOrDefault<String>(
-                                      () {
-                                        if (_model.rait <= 3) {
-                                          return 'Расскажтите, что пошло не так';
-                                        } else if (_model.rait == 4) {
-                                          return 'Расскажтите, что могло бы быть лучше';
-                                        } else if (_model.rait == 5) {
-                                          return 'Расскажтите, что понравилось';
-                                        } else {
-                                          return 'Отзыв на собеседника';
-                                        }
-                                      }(),
-                                      'Отзыв на собеседника',
+                                      reviewCommentHintText(
+                                        context,
+                                        _model.rait,
+                                      ),
+                                      reviewCommentHintText(context, 0),
                                     ),
                                     hintStyle: FlutterFlowTheme.of(context)
                                         .bodyMedium
@@ -834,27 +802,20 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   return;
                                 }
 
-                                final payload = <String, dynamic>{
-                                  'sessionId': sessionRef.id,
-                                  'sessionPath': sessionRef.path,
-                                  'toUserId': toUserRef.id,
-                                  'rating': _model.rait,
-                                };
-                                final reviewComment =
-                                    _model.aboutMeTextController.text.trim();
-                                if (reviewComment.isNotEmpty) {
-                                  payload['comment'] = reviewComment;
-                                }
-
                                 try {
-                                  await FirebaseFunctions.instance
-                                      .httpsCallable('submitReview')
-                                      .call(payload);
+                                  await submitSessionReview(
+                                    sessionRef: sessionRef,
+                                    toUserRef: toUserRef,
+                                    rating: _model.rait,
+                                    isTeacher: currentUserDocument?.role ==
+                                        UserRole.native_speaker,
+                                    comment: _model.aboutMeTextController.text,
+                                  );
                                 } on FirebaseFunctionsException catch (e) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                        _reviewErrorMessage(context, e),
+                                        reviewErrorMessage(context, e),
                                       ),
                                     ),
                                   );
@@ -863,13 +824,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                        FFLocalizations.of(context)
-                                            .getVariableText(
-                                          ruText:
-                                              'Не удалось отправить отзыв. Попробуйте снова.',
-                                          enText:
-                                              'Failed to submit review. Please try again.',
-                                        ),
+                                        unexpectedReviewErrorMessage(context),
                                       ),
                                     ),
                                   );

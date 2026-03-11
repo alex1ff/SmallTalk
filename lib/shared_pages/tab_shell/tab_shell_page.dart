@@ -24,13 +24,6 @@ class TabShellPage extends StatefulWidget {
 }
 
 class _TabShellPageState extends State<TabShellPage> {
-  static const _tabPaths = {
-    '/dashboardNS',
-    '/studentsDashboard',
-    '/profile',
-    '/words',
-  };
-
   GoRouteInformationProvider? _provider;
   GoRouterDelegate? _delegate;
   String _lastRoutePath = '';
@@ -104,14 +97,22 @@ class _TabShellPageState extends State<TabShellPage> {
 
   bool get _isTeacher => currentUserDocument?.role == UserRole.native_speaker;
 
+  List<String> get _tabPathsOrdered => _isTeacher
+      ? [
+          DashboardNSWidget.routePath,
+          ProfileWidget.routePath,
+          MyCallsWidget.routePath,
+        ]
+      : [
+          StudentsDashboardWidget.routePath,
+          WordsWidget.routePath,
+          ProfileWidget.routePath,
+          MyCallsWidget.routePath,
+        ];
+
   int _indexCurrentPage(String currentPath) {
-    if (currentPath == ProfileWidget.routePath) {
-      return 2;
-    }
-    if (currentPath == WordsWidget.routePath) {
-      return 3;
-    }
-    return 1;
+    final index = _tabPathsOrdered.indexOf(currentPath);
+    return index >= 0 ? index : 0;
   }
 
   String _platformBranch() {
@@ -126,9 +127,10 @@ class _TabShellPageState extends State<TabShellPage> {
 
   @override
   Widget build(BuildContext context) {
-    final currentPath = _normalizePath(_provider?.value.uri.path ?? widget.state.uri.path);
+    final currentPath =
+        _normalizePath(_provider?.value.uri.path ?? widget.state.uri.path);
     _lastRoutePath = currentPath;
-    final showNavBar = _tabPaths.contains(currentPath);
+    final showNavBar = _tabPathsOrdered.contains(currentPath);
     final indexCurrentPage = _indexCurrentPage(currentPath);
 
     if (kDebugMode) {
@@ -145,9 +147,8 @@ class _TabShellPageState extends State<TabShellPage> {
       backgroundColor: Colors.transparent,
       extendBody: true,
       body: widget.child,
-      bottomNavigationBar: showNavBar
-          ? NavBarWidget(indexCurrentPage: indexCurrentPage)
-          : null,
+      bottomNavigationBar:
+          showNavBar ? NavBarWidget(indexCurrentPage: indexCurrentPage) : null,
     );
   }
 }

@@ -893,17 +893,6 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                       FFButtonWidget(
                         onPressed: () async {
                           if (_model.selectedCard != null) {
-                            await WithdrawalRequestsRecord.collection
-                                .doc()
-                                .set(createWithdrawalRequestsRecordData(
-                                  userId: currentUserReference,
-                                  currency: 'RUB',
-                                  status: StatusTransactions.pending,
-                                  createdAt: getCurrentTimestamp,
-                                  amount: valueOrDefault(
-                                      currentUserDocument?.balanceNS, 0.0),
-                                ));
-
                             await TransactionsRecord.collection
                                 .doc()
                                 .set(createTransactionsRecordData(

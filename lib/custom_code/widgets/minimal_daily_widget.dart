@@ -1,4 +1,5 @@
 // Automatic FlutterFlow imports
+import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/structs/index.dart';
 import '/backend/schema/enums/enums.dart';
@@ -47,9 +48,8 @@ class _CallState {
   final String? error;
   final int retryCount;
   final Map<ParticipantId, VideoViewController> remoteControllers;
-  final List<Map<String, dynamic>> finalCaptions;
-  final String partialCaption;
-  final Map<ParticipantId, List<String>> remoteCaptions;
+  final _ActiveCaption? localCaption;
+  final Map<ParticipantId, _ActiveCaption> remoteCaptions;
   final bool isStreamingToDeepgram;
   final bool isChatOpen;
   final int unreadChatCount;
@@ -62,8 +62,7 @@ class _CallState {
     this.error,
     this.retryCount = 0,
     this.remoteControllers = const {},
-    this.finalCaptions = const [],
-    this.partialCaption = '',
+    this.localCaption,
     this.remoteCaptions = const {},
     this.isStreamingToDeepgram = false,
     this.isChatOpen = false,
@@ -78,9 +77,9 @@ class _CallState {
     String? error,
     int? retryCount,
     Map<ParticipantId, VideoViewController>? remoteControllers,
-    List<Map<String, dynamic>>? finalCaptions,
-    String? partialCaption,
-    Map<ParticipantId, List<String>>? remoteCaptions,
+    _ActiveCaption? localCaption,
+    bool clearLocalCaption = false,
+    Map<ParticipantId, _ActiveCaption>? remoteCaptions,
     bool? isStreamingToDeepgram,
     bool? isChatOpen,
     int? unreadChatCount,
@@ -93,8 +92,8 @@ class _CallState {
       error: error ?? this.error,
       retryCount: retryCount ?? this.retryCount,
       remoteControllers: remoteControllers ?? this.remoteControllers,
-      finalCaptions: finalCaptions ?? this.finalCaptions,
-      partialCaption: partialCaption ?? this.partialCaption,
+      localCaption:
+          clearLocalCaption ? null : (localCaption ?? this.localCaption),
       remoteCaptions: remoteCaptions ?? this.remoteCaptions,
       isStreamingToDeepgram:
           isStreamingToDeepgram ?? this.isStreamingToDeepgram,
@@ -106,44 +105,166 @@ class _CallState {
 }
 
 @immutable
-class _CaptionWord {
-  const _CaptionWord({
-    required this.displayText,
-    required this.lookupText,
-  });
+enum _CaptionPhase {
+  interim,
+  finalCaption;
 
-  final String displayText;
-  final String lookupText;
+  String get wireValue => this == _CaptionPhase.interim ? 'interim' : 'final';
+
+  double get opacity => this == _CaptionPhase.interim ? 0.78 : 1.0;
+
+  static _CaptionPhase? fromWire(String? value) {
+    switch (value?.trim().toLowerCase()) {
+      case 'interim':
+        return _CaptionPhase.interim;
+      case 'final':
+        return _CaptionPhase.finalCaption;
+      default:
+        return null;
+    }
+  }
 }
 
 @immutable
-class _CaptionWordGroup {
-  const _CaptionWordGroup({
-    required this.words,
-    required this.fullSentence,
-    required this.lookupText,
-    required this.isMyWord,
+class _ActiveCaption {
+  const _ActiveCaption({
+    required this.utteranceId,
+    required this.revision,
+    required this.speakerId,
+    required this.text,
+    required this.phase,
+    required this.startedAt,
+    required this.lastUpdateAt,
+    this.expiresAt,
+    this.isFadingOut = false,
   });
 
-  final List<_CaptionWord> words;
-  final String fullSentence;
-  final String lookupText;
-  final bool isMyWord;
+  final int utteranceId;
+  final int revision;
+  final String speakerId;
+  final String text;
+  final _CaptionPhase phase;
+  final DateTime startedAt;
+  final DateTime lastUpdateAt;
+  final DateTime? expiresAt;
+  final bool isFadingOut;
 
-  bool get isPhrase => words.length > 1;
+  _ActiveCaption copyWith({
+    int? utteranceId,
+    int? revision,
+    String? speakerId,
+    String? text,
+    _CaptionPhase? phase,
+    DateTime? startedAt,
+    DateTime? lastUpdateAt,
+    DateTime? expiresAt,
+    bool clearExpiresAt = false,
+    bool? isFadingOut,
+  }) {
+    return _ActiveCaption(
+      utteranceId: utteranceId ?? this.utteranceId,
+      revision: revision ?? this.revision,
+      speakerId: speakerId ?? this.speakerId,
+      text: text ?? this.text,
+      phase: phase ?? this.phase,
+      startedAt: startedAt ?? this.startedAt,
+      lastUpdateAt: lastUpdateAt ?? this.lastUpdateAt,
+      expiresAt: clearExpiresAt ? null : (expiresAt ?? this.expiresAt),
+      isFadingOut: isFadingOut ?? this.isFadingOut,
+    );
+  }
 }
 
 @immutable
-class _CaptionOverlayData {
-  const _CaptionOverlayData({
-    this.myGroups = const <_CaptionWordGroup>[],
-    this.theirGroups = const <_CaptionWordGroup>[],
+class _CaptionUpdate {
+  const _CaptionUpdate({
+    required this.utteranceId,
+    required this.revision,
+    required this.text,
+    required this.phase,
+    required this.startedAt,
+    required this.lastUpdateAt,
   });
 
-  final List<_CaptionWordGroup> myGroups;
-  final List<_CaptionWordGroup> theirGroups;
+  final int utteranceId;
+  final int revision;
+  final String text;
+  final _CaptionPhase phase;
+  final DateTime startedAt;
+  final DateTime lastUpdateAt;
+}
 
-  bool get isEmpty => myGroups.isEmpty && theirGroups.isEmpty;
+@immutable
+class _OutgoingCaptionMessage {
+  const _OutgoingCaptionMessage({
+    required this.utteranceId,
+    required this.revision,
+    required this.text,
+    required this.phase,
+  });
+
+  final int utteranceId;
+  final int revision;
+  final String text;
+  final _CaptionPhase phase;
+
+  String get signature =>
+      '$utteranceId|$revision|${phase.wireValue}|${text.trim()}';
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'type': 'caption',
+        'utteranceId': utteranceId,
+        'revision': revision,
+        'phase': phase.wireValue,
+        'text': text,
+      };
+}
+
+@immutable
+class _CaptionLogEntry {
+  const _CaptionLogEntry({
+    required this.logId,
+    required this.speakerId,
+    required this.speakerName,
+    required this.speakerRole,
+    required this.utteranceId,
+    required this.text,
+    required this.language,
+    required this.source,
+    required this.capturedAtClient,
+    this.confidence,
+  });
+
+  final String logId;
+  final String speakerId;
+  final String speakerName;
+  final String speakerRole;
+  final int utteranceId;
+  final String text;
+  final String language;
+  final String source;
+  final DateTime capturedAtClient;
+  final double? confidence;
+
+  Map<String, dynamic> toFirestoreData({
+    required String writerId,
+  }) {
+    return mapToFirestore(
+      <String, dynamic>{
+        'speakerId': speakerId,
+        'speakerName': speakerName,
+        'speakerRole': speakerRole,
+        'utteranceId': utteranceId,
+        'text': text,
+        'language': language,
+        'source': source,
+        'capturedAtClient': capturedAtClient,
+        'createdAtServer': FieldValue.serverTimestamp(),
+        'writerId': writerId,
+        'confidence': confidence,
+      }.withoutNulls,
+    );
+  }
 }
 
 @immutable
@@ -163,6 +284,21 @@ class _ChatMessage {
   final String senderId;
   final DateTime sentAt;
   final bool isLocal;
+}
+
+@immutable
+class _CallCheckpointNotice {
+  const _CallCheckpointNotice({
+    required this.minutes,
+    required this.title,
+    required this.subtitle,
+    required this.accentColor,
+  });
+
+  final int minutes;
+  final String title;
+  final String subtitle;
+  final Color accentColor;
 }
 
 /// Production-ready video calling widget with enhanced quality and resilience
@@ -236,6 +372,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   final Map<ParticipantId, DateTime> _remoteJoinTimes = {};
   final Map<ParticipantId, bool> _remoteTrackReady = {};
   final Map<ParticipantId, int> _remoteCaptionClearGenerations = {};
+  final Map<ParticipantId, int> _remoteLegacyCaptionCounters = {};
   final Set<ParticipantId> _prioritySubscribedParticipants = {};
   bool _activeRemoteProfileConfigured = false;
 
@@ -259,11 +396,33 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Timer? _durationTimer;
   final Stopwatch _callDurationStopwatch = Stopwatch();
   final ValueNotifier<int> _callDurationNotifier = ValueNotifier<int>(0);
+  Timer? _callCheckpointNoticeTimer;
+  final ValueNotifier<_CallCheckpointNotice?> _callCheckpointNoticeNotifier =
+      ValueNotifier<_CallCheckpointNotice?>(null);
+  final Set<int> _shownCallCheckpointMinutes = <int>{};
   final Map<ParticipantId, String> _remoteParticipantUiSignatures = {};
   int _localCaptionClearGeneration = 0;
+  int _localCaptionUtteranceId = 0;
+  int _localCaptionRevision = 0;
+  bool _localUtteranceOpen = false;
+  String _localCommittedCaptionText = '';
+  String _localCurrentCaptionText = '';
+  DateTime? _localCaptionStartedAt;
   final TextEditingController _chatTextController = TextEditingController();
   final FocusNode _chatFocusNode = FocusNode();
   final ScrollController _chatScrollController = ScrollController();
+  Timer? _localCaptionUiThrottleTimer;
+  Timer? _remoteCaptionSendThrottleTimer;
+  Timer? _localUtteranceEndTimer;
+  Timer? _captionLogFlushTimer;
+  _CaptionUpdate? _pendingLocalCaptionUpdate;
+  _OutgoingCaptionMessage? _pendingOutgoingCaptionMessage;
+  String? _lastSentCaptionSignature;
+  final Map<String, _CaptionLogEntry> _pendingCaptionLogEntries =
+      <String, _CaptionLogEntry>{};
+  final Set<String> _persistedCaptionLogIds = <String>{};
+  Future<void> _captionLogFlushChain = Future<void>.value();
+  double? _localCaptionConfidence;
 
   // Deepgram integration
   FlutterSoundRecorder? _recorder;
@@ -281,53 +440,38 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   static const int _maxRetryAttempts = 5;
   static const int _baseRetryDelayMs = 1000;
   static const int _maxRetryDelayMs = 30000;
-  static const int _captionClearDelayMs = 20000; // Increased to 20 seconds
+  static const int _captionUiThrottleMs = 120;
+  static const int _captionSendThrottleMs = 200;
+  static const int _captionFadeDurationMs = 220;
+  static const int _captionUtteranceEndFallbackMs = 300;
+  static const int _captionHoldBaseMs = 1800;
+  static const int _captionHoldPerCharacterMs = 45;
+  static const int _captionHoldMinMs = 2500;
+  static const int _captionHoldMaxMs = 5500;
+  static const int _captionMaxVisibleCharacters = 72;
+  static const int _captionLogFlushDebounceMs = 1000;
+  static const int _captionLogBatchThreshold = 8;
   static const int _remoteVideoGraceMs = 2000;
   static const int _deepgramFinalizeWaitMs = 250;
   static const int _deepgramCloseWaitMs = 100;
   static const int _maxChatMessages = 200;
+  static const int _callCheckpointNoticeDurationMs = 4000;
   static const double _chatWideBreakpoint = 720;
-  static const Set<String> _captionJoinerWords = <String>{
-    'a',
-    'an',
-    'and',
-    'as',
-    'at',
-    'be',
-    'but',
-    'by',
-    'for',
-    'from',
-    'if',
-    'in',
-    'into',
-    'is',
-    'it',
-    'of',
-    'on',
-    'or',
-    'the',
-    'to',
-    'up',
-    'with',
-    'и',
-    'или',
-    'к',
-    'ко',
-    'на',
-    'не',
-    'но',
-    'о',
-    'об',
-    'по',
-    'под',
-    'при',
-    'с',
-    'со',
-    'у',
-    'в',
-    'во',
-  };
+  static const List<_CallCheckpointNotice> _callCheckpointNotices =
+      <_CallCheckpointNotice>[
+    _CallCheckpointNotice(
+      minutes: 5,
+      title: 'Прошло 5 минут',
+      subtitle: 'Продолжай, если тебе комфортно.',
+      accentColor: Color(0xFFA0BBFF),
+    ),
+    _CallCheckpointNotice(
+      minutes: 10,
+      title: 'Прошло 10 минут',
+      subtitle: 'Можно завершить звонок, когда будешь готов(а).',
+      accentColor: Color(0xFFE88CD4),
+    ),
+  ];
 
   @override
   void initState() {
@@ -785,7 +929,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       final type = payload['type']?.toString();
       if (type == 'caption') {
-        _processCaptionMessage(payload['text']?.toString() ?? '', from);
+        _processCaptionMessage(payload, from);
       } else if (type == 'chat') {
         _processChatMessage(payload['text']?.toString() ?? '', from);
       }
@@ -818,22 +962,93 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return null;
   }
 
-  /// Process caption message with deduplication
-  void _processCaptionMessage(String text, ParticipantId from) {
-    if (text.trim().isEmpty) return;
+  /// Process caption message with revision-aware ordering.
+  void _processCaptionMessage(
+      Map<String, dynamic> payload, ParticipantId from) {
+    final text = _normalizeCaptionText(payload['text']?.toString() ?? '');
+    final current = _state.remoteCaptions[from];
+    final rawUtteranceId = _readInt(payload['utteranceId']);
+    final rawRevision = _readInt(payload['revision']);
+    final phase = _CaptionPhase.fromWire(payload['phase']?.toString()) ??
+        _CaptionPhase.finalCaption;
 
-    final remoteCaptions =
-        Map<ParticipantId, List<String>>.from(_state.remoteCaptions);
-    final captions = remoteCaptions.putIfAbsent(from, () => []);
+    int utteranceId;
+    int revision;
 
-    // Add with deduplication
-    if (captions.isEmpty || captions.last != text) {
-      captions.add(text);
-      if (captions.length > 10) captions.removeAt(0);
-
-      _updateState(_state.copyWith(remoteCaptions: remoteCaptions));
-      _scheduleCaptionClear(from);
+    if (rawUtteranceId == null || rawRevision == null) {
+      if (text.isEmpty) return;
+      if (current != null &&
+          current.phase == _CaptionPhase.finalCaption &&
+          current.text == text &&
+          !current.isFadingOut) {
+        return;
+      }
+      utteranceId = _nextLegacyRemoteUtteranceId(from, current);
+      revision = 1;
+    } else {
+      utteranceId = rawUtteranceId;
+      revision = rawRevision;
+      if (text.isEmpty) return;
+      final previousCounter = _remoteLegacyCaptionCounters[from] ?? 0;
+      if (utteranceId > previousCounter) {
+        _remoteLegacyCaptionCounters[from] = utteranceId;
+      }
     }
+
+    if (current != null) {
+      if (utteranceId < current.utteranceId) {
+        return;
+      }
+      if (utteranceId == current.utteranceId && revision <= current.revision) {
+        return;
+      }
+    }
+
+    _upsertRemoteCaption(
+      participantId: from,
+      utteranceId: utteranceId,
+      revision: revision,
+      text: text,
+      phase: phase,
+    );
+
+    if (rawUtteranceId == null &&
+        rawRevision == null &&
+        phase == _CaptionPhase.finalCaption) {
+      _enqueueLegacyRemoteCaptionLog(
+        from,
+        utteranceId: utteranceId,
+        text: text,
+      );
+    }
+  }
+
+  int _nextLegacyRemoteUtteranceId(
+    ParticipantId participantId,
+    _ActiveCaption? current,
+  ) {
+    final nextUtteranceId = math.max(
+      (_remoteLegacyCaptionCounters[participantId] ?? 0) + 1,
+      (current?.utteranceId ?? 0) + 1,
+    );
+    _remoteLegacyCaptionCounters[participantId] = nextUtteranceId;
+    return nextUtteranceId;
+  }
+
+  int? _readInt(dynamic value) {
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value.trim());
+    return null;
+  }
+
+  double? _readDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value.trim());
+    }
+    return null;
   }
 
   void _processChatMessage(String text, ParticipantId from) {
@@ -1168,6 +1383,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _remoteJoinTimes.remove(id);
       _remoteTrackReady.remove(id);
       _remoteCaptionClearGenerations.remove(id);
+      _remoteLegacyCaptionCounters.remove(id);
       _prioritySubscribedParticipants.remove(id);
       _remoteParticipantUiSignatures.remove(id);
 
@@ -1184,10 +1400,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _updateState(_state.copyWith(remoteControllers: controllers));
 
       // Also clear any captions from this participant
-      final remoteCaptions =
-          Map<ParticipantId, List<String>>.from(_state.remoteCaptions);
-      remoteCaptions.remove(id);
-      _updateState(_state.copyWith(remoteCaptions: remoteCaptions));
+      _clearRemoteCaption(id);
     } catch (e) {
       if (kDebugMode) print('Failed to remove participant: $e');
     }
@@ -1233,6 +1446,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       ));
       if (microphone != null) {
         await _syncDeepgramWithMicrophoneState(forceRefresh: microphone);
+        if (microphone == false) {
+          await _flushPendingCaptionLogs(force: true);
+        }
       }
     } catch (e) {
       if (kDebugMode) print('Input settings update failed: $e');
@@ -1330,13 +1546,26 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   void _clearLocalCaptions() {
     _invalidateLocalCaptionClear();
-    if (_state.finalCaptions.isEmpty && _state.partialCaption.isEmpty) {
+    _cancelTrackedTimer(_localCaptionUiThrottleTimer);
+    _localCaptionUiThrottleTimer = null;
+    _cancelTrackedTimer(_remoteCaptionSendThrottleTimer);
+    _remoteCaptionSendThrottleTimer = null;
+    _cancelTrackedTimer(_localUtteranceEndTimer);
+    _localUtteranceEndTimer = null;
+    _pendingLocalCaptionUpdate = null;
+    _pendingOutgoingCaptionMessage = null;
+    _lastSentCaptionSignature = null;
+    _localUtteranceOpen = false;
+    _localCommittedCaptionText = '';
+    _localCurrentCaptionText = '';
+    _localCaptionConfidence = null;
+    _localCaptionRevision = 0;
+    _localCaptionStartedAt = null;
+
+    if (_state.localCaption == null) {
       return;
     }
-    _updateState(_state.copyWith(
-      finalCaptions: const [],
-      partialCaption: '',
-    ));
+    _updateState(_state.copyWith(clearLocalCaption: true));
   }
 
   Future<void> _ensureActiveRemoteSubscriptionProfile() async {
@@ -1612,10 +1841,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       'smart_format': 'true',
       'punctuate': 'true',
       'utterances': 'true',
-      'diarize': 'true',
       'interim_results': 'true',
       'vad_events': 'true',
       'endpointing': '500',
+      'utterance_end_ms': '1000',
     });
 
     final wsUrl = uri.toString().replaceFirst('https://', 'wss://');
@@ -1660,113 +1889,750 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     try {
       final data = dart_convert.jsonDecode(message);
-      final channel = data['channel'] ?? data;
-      final alternatives = channel['alternatives'] ?? [];
+      final type = data['type']?.toString();
 
-      if (alternatives.isEmpty) return;
-
-      final transcript = alternatives[0]['transcript'] ?? '';
-      final isFinal = data['is_final'] == true || data['speech_final'] == true;
-
-      if (transcript.trim().isEmpty) return;
-
-      if (isFinal) {
-        _processFinalTranscript(transcript);
-      } else {
-        _processPartialTranscript(transcript);
+      if (type == 'UtteranceEnd') {
+        _handleDeepgramUtteranceEnd();
+        return;
       }
+
+      final channel = data['channel'];
+      final alternatives =
+          channel is Map<String, dynamic> ? channel['alternatives'] : null;
+
+      if (alternatives is! List || alternatives.isEmpty) return;
+
+      final firstAlternative = alternatives.first;
+      if (firstAlternative is! Map) return;
+
+      final transcript = _normalizeCaptionText(
+        firstAlternative['transcript']?.toString() ?? '',
+      );
+      final isFinalSegment = data['is_final'] == true;
+      final speechFinal =
+          data['speech_final'] == true || data['speech_finalized'] == true;
+      final confidence = _readDouble(firstAlternative['confidence']);
+
+      if (transcript.isEmpty) {
+        if (speechFinal) {
+          _emitFinalUpdateForCurrentLocalCaption();
+        }
+        return;
+      }
+
+      _cancelLocalUtteranceEndFallback();
+      _handleDeepgramTranscript(
+        transcript: transcript,
+        isFinalSegment: isFinalSegment,
+        speechFinal: speechFinal,
+        confidence: confidence,
+      );
     } catch (e) {
       if (kDebugMode) print('Failed to process Deepgram message: $e');
     }
   }
 
-  /// Process final transcript
-  void _processFinalTranscript(String transcript) {
+  void _handleDeepgramTranscript({
+    required String transcript,
+    required bool isFinalSegment,
+    required bool speechFinal,
+    double? confidence,
+  }) {
     if (!_state.microphoneEnabled || !_hasRemoteParticipantPresent()) {
       return;
     }
-    final captions = List<Map<String, dynamic>>.from(_state.finalCaptions);
-    captions.add({'text': transcript, 'words': []});
 
-    if (captions.length > 5) {
-      captions.removeRange(0, captions.length - 5);
+    _ensureLocalCaptionUtteranceStarted();
+    if (confidence != null && (isFinalSegment || speechFinal)) {
+      _localCaptionConfidence = confidence;
     }
 
-    _updateState(_state.copyWith(
-      finalCaptions: captions,
-      partialCaption: '',
-    ));
+    if (isFinalSegment) {
+      _localCommittedCaptionText = _mergeCaptionSegments(
+        _localCommittedCaptionText,
+        transcript,
+      );
+    }
 
-    // Send caption to other participants
-    _sendCaptionMessage(transcript);
+    final now = DateTime.now();
+    final displayText = isFinalSegment
+        ? _localCommittedCaptionText
+        : _mergeCaptionSegments(_localCommittedCaptionText, transcript);
 
-    // Schedule caption clear
-    _scheduleCaptionClear(null);
+    _localCurrentCaptionText = displayText;
+
+    final update = _CaptionUpdate(
+      utteranceId: _localCaptionUtteranceId,
+      revision: _nextLocalCaptionRevision(),
+      text: displayText,
+      phase: speechFinal ? _CaptionPhase.finalCaption : _CaptionPhase.interim,
+      startedAt: _localCaptionStartedAt ?? now,
+      lastUpdateAt: now,
+    );
+
+    _queueLocalCaptionUpdate(update, immediate: speechFinal);
+    _queueOutgoingCaptionMessage(
+      _OutgoingCaptionMessage(
+        utteranceId: update.utteranceId,
+        revision: update.revision,
+        text: update.text,
+        phase: update.phase,
+      ),
+      immediate: speechFinal,
+    );
+
+    if (speechFinal) {
+      _enqueueLocalFinalCaptionLog(update);
+      _finalizeLocalUtterance(fallbackText: displayText);
+    }
   }
 
-  /// Process partial transcript with debouncing
-  void _processPartialTranscript(String transcript) {
-    if (!_state.microphoneEnabled || !_hasRemoteParticipantPresent()) {
+  void _handleDeepgramUtteranceEnd() {
+    if (!_localUtteranceOpen || _localCurrentCaptionText.isEmpty) {
       return;
     }
-    _updateState(_state.copyWith(partialCaption: transcript));
+
+    _cancelTrackedTimer(_localUtteranceEndTimer);
+    final utteranceId = _localCaptionUtteranceId;
+    final revisionAtSignal = _localCaptionRevision;
+
+    _localUtteranceEndTimer = _createTrackedTimer(
+      const Duration(milliseconds: _captionUtteranceEndFallbackMs),
+      () {
+        _localUtteranceEndTimer = null;
+        if (!_localUtteranceOpen ||
+            utteranceId != _localCaptionUtteranceId ||
+            revisionAtSignal != _localCaptionRevision) {
+          return;
+        }
+        _emitFinalUpdateForCurrentLocalCaption();
+      },
+    );
+  }
+
+  void _ensureLocalCaptionUtteranceStarted() {
+    if (_localUtteranceOpen) {
+      return;
+    }
+
+    _localUtteranceOpen = true;
+    _localCaptionUtteranceId += 1;
+    _localCaptionRevision = 0;
+    _localCommittedCaptionText = '';
+    _localCurrentCaptionText = '';
+    _localCaptionStartedAt = DateTime.now();
+    _localCaptionConfidence = null;
+  }
+
+  int _nextLocalCaptionRevision() {
+    _localCaptionRevision += 1;
+    return _localCaptionRevision;
+  }
+
+  void _cancelLocalUtteranceEndFallback() {
+    _cancelTrackedTimer(_localUtteranceEndTimer);
+    _localUtteranceEndTimer = null;
+  }
+
+  void _finalizeLocalUtterance({
+    required String fallbackText,
+  }) {
+    final finalText = _normalizeCaptionText(fallbackText);
+    if (finalText.isEmpty) {
+      return;
+    }
+
+    _cancelLocalUtteranceEndFallback();
+    _localUtteranceOpen = false;
+    _localCommittedCaptionText = '';
+    _localCurrentCaptionText = finalText;
+    _scheduleCaptionFadeAndClear(
+      utteranceId: _localCaptionUtteranceId,
+      holdMs: _holdDurationForCaption(finalText),
+    );
+  }
+
+  bool _emitFinalUpdateForCurrentLocalCaption() {
+    final finalText = _normalizeCaptionText(_localCurrentCaptionText);
+    if (!_localUtteranceOpen || finalText.isEmpty) {
+      return false;
+    }
+
+    final now = DateTime.now();
+    final update = _CaptionUpdate(
+      utteranceId: _localCaptionUtteranceId,
+      revision: _nextLocalCaptionRevision(),
+      text: finalText,
+      phase: _CaptionPhase.finalCaption,
+      startedAt: _localCaptionStartedAt ?? now,
+      lastUpdateAt: now,
+    );
+    _queueLocalCaptionUpdate(update, immediate: true);
+    _queueOutgoingCaptionMessage(
+      _OutgoingCaptionMessage(
+        utteranceId: update.utteranceId,
+        revision: update.revision,
+        text: update.text,
+        phase: update.phase,
+      ),
+      immediate: true,
+    );
+    _enqueueLocalFinalCaptionLog(update);
+    _finalizeLocalUtterance(fallbackText: finalText);
+    return true;
+  }
+
+  void _queueLocalCaptionUpdate(
+    _CaptionUpdate update, {
+    required bool immediate,
+  }) {
+    _pendingLocalCaptionUpdate = update;
+
+    if (immediate) {
+      _cancelTrackedTimer(_localCaptionUiThrottleTimer);
+      _localCaptionUiThrottleTimer = null;
+      _flushLocalCaptionUpdate();
+      return;
+    }
+
+    if (_localCaptionUiThrottleTimer != null) {
+      return;
+    }
+
+    _localCaptionUiThrottleTimer = _createTrackedTimer(
+      const Duration(milliseconds: _captionUiThrottleMs),
+      () {
+        _localCaptionUiThrottleTimer = null;
+        _flushLocalCaptionUpdate();
+      },
+    );
+  }
+
+  void _flushLocalCaptionUpdate() {
+    final update = _pendingLocalCaptionUpdate;
+    _pendingLocalCaptionUpdate = null;
+    if (update == null || !mounted || _disposed) {
+      return;
+    }
+
+    final current = _state.localCaption;
+    if (current != null &&
+        current.utteranceId == update.utteranceId &&
+        current.revision >= update.revision) {
+      return;
+    }
+
+    _invalidateLocalCaptionClear();
+    _updateState(_state.copyWith(
+      localCaption: _ActiveCaption(
+        utteranceId: update.utteranceId,
+        revision: update.revision,
+        speakerId: _localParticipantId(),
+        text: update.text,
+        phase: update.phase,
+        startedAt: update.startedAt,
+        lastUpdateAt: update.lastUpdateAt,
+      ),
+    ));
+  }
+
+  void _enqueueLocalFinalCaptionLog(_CaptionUpdate update) {
+    if (update.phase != _CaptionPhase.finalCaption) {
+      return;
+    }
+
+    final writerId = _captionLogWriterId();
+    if (writerId == null) {
+      return;
+    }
+
+    final normalizedText = _normalizeCaptionText(update.text);
+    if (normalizedText.isEmpty) {
+      return;
+    }
+
+    final entry = _CaptionLogEntry(
+      logId: _captionLogDocumentId(
+        speakerId: writerId,
+        utteranceId: update.utteranceId,
+      ),
+      speakerId: writerId,
+      speakerName: _localParticipantName(),
+      speakerRole: _localCaptionSpeakerRole(),
+      utteranceId: update.utteranceId,
+      text: normalizedText,
+      language: widget.deepgramLanguage.trim(),
+      source: 'local_deepgram_final',
+      capturedAtClient: update.lastUpdateAt,
+      confidence: _localCaptionConfidence,
+    );
+
+    _enqueueCaptionLogEntry(entry);
+  }
+
+  void _enqueueLegacyRemoteCaptionLog(
+    ParticipantId participantId, {
+    required int utteranceId,
+    required String text,
+  }) {
+    final writerId = _captionLogWriterId();
+    if (writerId == null) {
+      return;
+    }
+
+    final normalizedText = _normalizeCaptionText(text);
+    if (normalizedText.isEmpty) {
+      return;
+    }
+
+    final speakerId = participantId.id.trim().isNotEmpty
+        ? participantId.id.trim()
+        : 'remote_$utteranceId';
+    final entry = _CaptionLogEntry(
+      logId: _captionLogDocumentId(
+        speakerId: speakerId,
+        utteranceId: utteranceId,
+      ),
+      speakerId: speakerId,
+      speakerName: _participantDisplayName(participantId),
+      speakerRole: _remoteCaptionSpeakerRole(),
+      utteranceId: utteranceId,
+      text: normalizedText,
+      language: widget.deepgramLanguage.trim(),
+      source: 'peer_legacy_final',
+      capturedAtClient: DateTime.now(),
+    );
+
+    _enqueueCaptionLogEntry(entry);
+  }
+
+  void _enqueueCaptionLogEntry(_CaptionLogEntry entry) {
+    if (!_canPersistCaptionLogs()) {
+      return;
+    }
+
+    if (_persistedCaptionLogIds.contains(entry.logId)) {
+      return;
+    }
+
+    _pendingCaptionLogEntries[entry.logId] = entry;
+
+    if (_pendingCaptionLogEntries.length >= _captionLogBatchThreshold) {
+      _cancelTrackedTimer(_captionLogFlushTimer);
+      _captionLogFlushTimer = null;
+      unawaited(_flushPendingCaptionLogs(force: true));
+      return;
+    }
+
+    if (_captionLogFlushTimer != null) {
+      return;
+    }
+
+    _captionLogFlushTimer = _createTrackedTimer(
+      const Duration(milliseconds: _captionLogFlushDebounceMs),
+      () {
+        _captionLogFlushTimer = null;
+        unawaited(_flushPendingCaptionLogs(force: true));
+      },
+    );
+  }
+
+  Future<void> _flushPendingCaptionLogs({
+    bool force = false,
+  }) {
+    if (force) {
+      _cancelTrackedTimer(_captionLogFlushTimer);
+      _captionLogFlushTimer = null;
+    }
+
+    final flushFuture =
+        _captionLogFlushChain.catchError((_) {}).then((_) async {
+      if (_pendingCaptionLogEntries.isEmpty) {
+        return;
+      }
+
+      final sessionRef = _captionLogSessionRef();
+      final writerId = _captionLogWriterId();
+      if (sessionRef == null || writerId == null) {
+        return;
+      }
+
+      final entries = List<_CaptionLogEntry>.from(
+        _pendingCaptionLogEntries.values,
+      );
+      final batch = FirebaseFirestore.instance.batch();
+
+      for (final entry in entries) {
+        batch.set(
+          CaptionLogsRecord.createDoc(sessionRef, id: entry.logId),
+          entry.toFirestoreData(writerId: writerId),
+          SetOptions(merge: true),
+        );
+      }
+
+      await batch.commit();
+
+      for (final entry in entries) {
+        _pendingCaptionLogEntries.remove(entry.logId);
+        _persistedCaptionLogIds.add(entry.logId);
+      }
+    }).catchError((Object error) {
+      if (kDebugMode) {
+        print('Failed to flush caption logs: $error');
+      }
+      if (_pendingCaptionLogEntries.isNotEmpty &&
+          _captionLogFlushTimer == null &&
+          !_disposed) {
+        _captionLogFlushTimer = _createTrackedTimer(
+          const Duration(milliseconds: _captionLogFlushDebounceMs),
+          () {
+            _captionLogFlushTimer = null;
+            unawaited(_flushPendingCaptionLogs(force: true));
+          },
+        );
+      }
+    });
+
+    _captionLogFlushChain = flushFuture.catchError((_) {});
+    return flushFuture;
+  }
+
+  void _queueOutgoingCaptionMessage(
+    _OutgoingCaptionMessage message, {
+    required bool immediate,
+  }) {
+    _pendingOutgoingCaptionMessage = message;
+
+    if (immediate) {
+      _cancelTrackedTimer(_remoteCaptionSendThrottleTimer);
+      _remoteCaptionSendThrottleTimer = null;
+      unawaited(_flushOutgoingCaptionMessage());
+      return;
+    }
+
+    if (_remoteCaptionSendThrottleTimer != null) {
+      return;
+    }
+
+    _remoteCaptionSendThrottleTimer = _createTrackedTimer(
+      const Duration(milliseconds: _captionSendThrottleMs),
+      () {
+        _remoteCaptionSendThrottleTimer = null;
+        unawaited(_flushOutgoingCaptionMessage());
+      },
+    );
+  }
+
+  Future<void> _flushOutgoingCaptionMessage() async {
+    final message = _pendingOutgoingCaptionMessage;
+    _pendingOutgoingCaptionMessage = null;
+    if (message == null) {
+      return;
+    }
+
+    if (message.signature == _lastSentCaptionSignature) {
+      return;
+    }
+
+    final didSend = await _sendCaptionMessage(message);
+    if (didSend) {
+      _lastSentCaptionSignature = message.signature;
+    }
   }
 
   /// Send caption message to other participants
-  Future<void> _sendCaptionMessage(String text) async {
+  Future<bool> _sendCaptionMessage(_OutgoingCaptionMessage message) async {
     if (_callClient == null ||
-        text.trim().isEmpty ||
+        message.text.trim().isEmpty ||
         !_state.microphoneEnabled ||
         !_hasRemoteParticipantPresent()) {
-      return;
+      return false;
     }
 
     try {
-      final message = jsonEncode({'type': 'caption', 'text': text});
-      await _callClient!.sendAppMessage(message, null);
+      await _callClient!.sendAppMessage(
+        dart_convert.jsonEncode(message.toJson()),
+        null,
+      );
 
-      if (kDebugMode) print('Caption sent: $text');
+      if (kDebugMode) {
+        print(
+          'Caption sent: ${message.phase.wireValue} #${message.utteranceId}.${message.revision}',
+        );
+      }
+      return true;
     } catch (e) {
       if (kDebugMode) print('Failed to send caption: $e');
+      return false;
     }
   }
 
-  /// Schedule caption clearing
-  void _scheduleCaptionClear(ParticipantId? participantId) {
-    final localGeneration =
-        participantId == null ? ++_localCaptionClearGeneration : null;
-    final remoteGeneration = participantId != null
-        ? _nextRemoteCaptionClearGeneration(participantId)
-        : null;
+  void _upsertRemoteCaption({
+    required ParticipantId participantId,
+    required int utteranceId,
+    required int revision,
+    required String text,
+    required _CaptionPhase phase,
+  }) {
+    final now = DateTime.now();
+    final current = _state.remoteCaptions[participantId];
+    if (current != null &&
+        current.utteranceId == utteranceId &&
+        current.phase == _CaptionPhase.finalCaption &&
+        phase == _CaptionPhase.interim) {
+      return;
+    }
+
+    final nextGeneration = _nextRemoteCaptionClearGeneration(participantId);
+    final nextCaption = _ActiveCaption(
+      utteranceId: utteranceId,
+      revision: revision,
+      speakerId: participantId.id,
+      text: text,
+      phase: phase,
+      startedAt: current != null && current.utteranceId == utteranceId
+          ? current.startedAt
+          : now,
+      lastUpdateAt: now,
+    );
+
+    final remoteCaptions = Map<ParticipantId, _ActiveCaption>.from(
+      _state.remoteCaptions,
+    );
+    remoteCaptions[participantId] = nextCaption;
+    _updateState(_state.copyWith(
+      remoteCaptions: Map<ParticipantId, _ActiveCaption>.unmodifiable(
+        remoteCaptions,
+      ),
+    ));
+
+    if (phase == _CaptionPhase.finalCaption) {
+      _scheduleCaptionFadeAndClear(
+        participantId: participantId,
+        utteranceId: utteranceId,
+        holdMs: _holdDurationForCaption(text),
+        expectedGeneration: nextGeneration,
+      );
+    }
+  }
+
+  void _scheduleCaptionFadeAndClear({
+    ParticipantId? participantId,
+    required int utteranceId,
+    required int holdMs,
+    int? expectedGeneration,
+  }) {
+    final lifecycleGeneration = participantId == null
+        ? _localCaptionClearGeneration
+        : (expectedGeneration ?? _remoteCaptionClearGenerations[participantId]);
+    final expiresAt = DateTime.now().add(
+      Duration(milliseconds: holdMs + _captionFadeDurationMs),
+    );
+
+    if (participantId == null) {
+      final current = _state.localCaption;
+      if (current == null || current.utteranceId != utteranceId) {
+        return;
+      }
+      _updateState(_state.copyWith(
+        localCaption:
+            current.copyWith(expiresAt: expiresAt, isFadingOut: false),
+      ));
+    } else {
+      final current = _state.remoteCaptions[participantId];
+      if (current == null || current.utteranceId != utteranceId) {
+        return;
+      }
+      final remoteCaptions = Map<ParticipantId, _ActiveCaption>.from(
+        _state.remoteCaptions,
+      );
+      remoteCaptions[participantId] = current.copyWith(
+        expiresAt: expiresAt,
+        isFadingOut: false,
+      );
+      _updateState(_state.copyWith(
+        remoteCaptions: Map<ParticipantId, _ActiveCaption>.unmodifiable(
+          remoteCaptions,
+        ),
+      ));
+    }
+
+    _createTrackedTimer(Duration(milliseconds: holdMs), () {
+      if (!mounted) return;
+      if (participantId == null) {
+        final current = _state.localCaption;
+        if (current == null ||
+            current.utteranceId != utteranceId ||
+            lifecycleGeneration != _localCaptionClearGeneration) {
+          return;
+        }
+        _updateState(_state.copyWith(
+          localCaption: current.copyWith(
+            isFadingOut: true,
+            expiresAt: expiresAt,
+          ),
+        ));
+      } else {
+        final current = _state.remoteCaptions[participantId];
+        if (current == null ||
+            current.utteranceId != utteranceId ||
+            _remoteCaptionClearGenerations[participantId] !=
+                lifecycleGeneration) {
+          return;
+        }
+        final remoteCaptions = Map<ParticipantId, _ActiveCaption>.from(
+          _state.remoteCaptions,
+        );
+        remoteCaptions[participantId] = current.copyWith(
+          isFadingOut: true,
+          expiresAt: expiresAt,
+        );
+        _updateState(_state.copyWith(
+          remoteCaptions: Map<ParticipantId, _ActiveCaption>.unmodifiable(
+            remoteCaptions,
+          ),
+        ));
+      }
+    });
 
     _createTrackedTimer(
-      Duration(milliseconds: _captionClearDelayMs),
+      Duration(milliseconds: holdMs + _captionFadeDurationMs),
       () {
         if (!mounted) return;
-
         if (participantId == null) {
-          if (localGeneration != _localCaptionClearGeneration) {
+          final current = _state.localCaption;
+          if (current == null ||
+              current.utteranceId != utteranceId ||
+              lifecycleGeneration != _localCaptionClearGeneration) {
             return;
           }
-          // Clear own captions
-          _updateState(_state.copyWith(
-            finalCaptions: const [],
-            partialCaption: '',
-          ));
+          _clearLocalCaptions();
         } else {
-          if (_remoteCaptionClearGenerations[participantId] !=
-              remoteGeneration) {
+          final current = _state.remoteCaptions[participantId];
+          if (current == null ||
+              current.utteranceId != utteranceId ||
+              _remoteCaptionClearGenerations[participantId] !=
+                  lifecycleGeneration) {
             return;
           }
-          // Clear remote captions
-          final remoteCaptions =
-              Map<ParticipantId, List<String>>.from(_state.remoteCaptions);
-          remoteCaptions.remove(participantId);
-          _remoteCaptionClearGenerations.remove(participantId);
-          _updateState(_state.copyWith(remoteCaptions: remoteCaptions));
+          _clearRemoteCaption(participantId);
         }
       },
     );
+  }
+
+  void _clearRemoteCaption(ParticipantId participantId) {
+    final currentRemoteCaptions = _state.remoteCaptions;
+    if (!currentRemoteCaptions.containsKey(participantId)) {
+      _remoteCaptionClearGenerations.remove(participantId);
+      return;
+    }
+
+    final remoteCaptions = Map<ParticipantId, _ActiveCaption>.from(
+      currentRemoteCaptions,
+    );
+    remoteCaptions.remove(participantId);
+    _remoteCaptionClearGenerations.remove(participantId);
+    _updateState(_state.copyWith(
+      remoteCaptions: Map<ParticipantId, _ActiveCaption>.unmodifiable(
+        remoteCaptions,
+      ),
+    ));
+  }
+
+  int _holdDurationForCaption(String text) {
+    final rawDuration = _captionHoldBaseMs +
+        (_normalizeCaptionText(text).length * _captionHoldPerCharacterMs);
+    return math.max(
+      _captionHoldMinMs,
+      math.min(rawDuration, _captionHoldMaxMs),
+    );
+  }
+
+  String _normalizeCaptionText(String rawText) {
+    return rawText.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  bool _canPersistCaptionLogs() {
+    return _captionLogSessionRef() != null && _captionLogWriterId() != null;
+  }
+
+  DocumentReference? _captionLogSessionRef() {
+    final sessionId = widget.sessionId?.trim();
+    if (sessionId == null || sessionId.isEmpty) {
+      return null;
+    }
+
+    return VideoSessionsRecord.collection.doc(sessionId);
+  }
+
+  String? _captionLogWriterId() {
+    final writerId = currentUserUid.trim();
+    if (writerId.isEmpty) {
+      return null;
+    }
+    return writerId;
+  }
+
+  String _captionLogDocumentId({
+    required String speakerId,
+    required int utteranceId,
+  }) {
+    final normalizedSpeakerId =
+        speakerId.trim().replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
+    return '${normalizedSpeakerId}_$utteranceId';
+  }
+
+  String _localCaptionSpeakerRole() {
+    return widget.isStudent == true ? 'student' : 'tutor';
+  }
+
+  String _remoteCaptionSpeakerRole() {
+    return widget.isStudent == true ? 'tutor' : 'student';
+  }
+
+  String _mergeCaptionSegments(String committed, String segment) {
+    final normalizedCommitted = _normalizeCaptionText(committed);
+    final normalizedSegment = _normalizeCaptionText(segment);
+    if (normalizedCommitted.isEmpty) return normalizedSegment;
+    if (normalizedSegment.isEmpty) return normalizedCommitted;
+    if (normalizedSegment.startsWith(normalizedCommitted)) {
+      return normalizedSegment;
+    }
+    if (normalizedCommitted.endsWith(normalizedSegment)) {
+      return normalizedCommitted;
+    }
+
+    final committedWords = normalizedCommitted.split(' ');
+    final segmentWords = normalizedSegment.split(' ');
+    final maxOverlap = math.min(committedWords.length, segmentWords.length);
+
+    for (var overlap = maxOverlap; overlap > 0; overlap--) {
+      final committedSuffix =
+          committedWords.sublist(committedWords.length - overlap);
+      final segmentPrefix = segmentWords.sublist(0, overlap);
+      if (_wordListsEqual(committedSuffix, segmentPrefix)) {
+        return <String>[
+          ...committedWords,
+          ...segmentWords.sublist(overlap),
+        ].join(' ');
+      }
+    }
+
+    return '$normalizedCommitted $normalizedSegment';
+  }
+
+  bool _wordListsEqual(List<String> left, List<String> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+
+    for (var i = 0; i < left.length; i++) {
+      if (left[i].toLowerCase() != right[i].toLowerCase()) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Restart Deepgram connection on failure
@@ -1848,10 +2714,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _audioStreamController = null;
       _deepgramStartInProgress = false;
 
-      _updateState(_state.copyWith(
-        isStreamingToDeepgram: false,
-        partialCaption: '',
-      ));
+      _updateState(_state.copyWith(isStreamingToDeepgram: false));
+      _clearLocalCaptions();
     } catch (e) {
       if (kDebugMode) print('Error stopping Deepgram: $e');
     }
@@ -1952,6 +2816,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
     if (oldWidget.sessionId != widget.sessionId) {
       _sessionStartedMarked = false;
+      _resetCallCheckpointNotice(clearHistory: true);
+      _pendingCaptionLogEntries.clear();
+      _persistedCaptionLogIds.clear();
+      _cancelTrackedTimer(_captionLogFlushTimer);
+      _captionLogFlushTimer = null;
     }
 
     final oldUrl = oldWidget.roomUrl;
@@ -1985,6 +2854,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (newState.connectionState == ConnectionState.disconnected ||
         newState.connectionState == ConnectionState.failed) {
       _stopDurationTimer();
+      _resetCallCheckpointNotice();
     }
 
     setState(() {
@@ -2031,12 +2901,63 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (_callDurationNotifier.value != totalSeconds) {
       _callDurationNotifier.value = totalSeconds;
     }
+    _maybeShowCallCheckpointNotice(totalSeconds);
   }
 
   String _formatDuration(int totalSeconds) {
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  void _maybeShowCallCheckpointNotice(int totalSeconds) {
+    if (widget.isStudent != true) {
+      return;
+    }
+
+    for (final notice in _callCheckpointNotices) {
+      final thresholdSeconds = notice.minutes * 60;
+      if (totalSeconds >= thresholdSeconds &&
+          !_shownCallCheckpointMinutes.contains(notice.minutes)) {
+        _shownCallCheckpointMinutes.add(notice.minutes);
+        _showCallCheckpointNotice(notice);
+      }
+    }
+  }
+
+  void _showCallCheckpointNotice(_CallCheckpointNotice notice) {
+    if (_disposed) {
+      return;
+    }
+
+    _cancelTrackedTimer(_callCheckpointNoticeTimer);
+    _callCheckpointNoticeTimer = null;
+
+    if (_callCheckpointNoticeNotifier.value?.minutes != notice.minutes) {
+      _callCheckpointNoticeNotifier.value = notice;
+    }
+
+    _callCheckpointNoticeTimer = _createTrackedTimer(
+      const Duration(milliseconds: _callCheckpointNoticeDurationMs),
+      () {
+        if (!_disposed) {
+          _callCheckpointNoticeNotifier.value = null;
+        }
+        _callCheckpointNoticeTimer = null;
+      },
+    );
+  }
+
+  void _resetCallCheckpointNotice({bool clearHistory = false}) {
+    _cancelTrackedTimer(_callCheckpointNoticeTimer);
+    _callCheckpointNoticeTimer = null;
+
+    if (!_disposed && _callCheckpointNoticeNotifier.value != null) {
+      _callCheckpointNoticeNotifier.value = null;
+    }
+    if (clearHistory) {
+      _shownCallCheckpointMinutes.clear();
+    }
   }
 
   /// Handle errors uniformly
@@ -2254,6 +3175,19 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                   child: _buildCallDurationBadge(),
                 ),
 
+              if (_state.connectionState == ConnectionState.connected &&
+                  widget.isStudent == true)
+                Positioned(
+                  top: 48,
+                  left: 16,
+                  right: 16,
+                  child: IgnorePointer(
+                    child: _buildCallCheckpointNoticeOverlay(
+                      viewportWidth: viewportWidth,
+                    ),
+                  ),
+                ),
+
               // Picture-in-picture (only after remote video is ready)
               if (showPip)
                 Positioned(
@@ -2403,6 +3337,121 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCallCheckpointNoticeOverlay({
+    required double viewportWidth,
+  }) {
+    final maxWidth = math.min(360.0, math.max(0.0, viewportWidth - 32));
+
+    return ValueListenableBuilder<_CallCheckpointNotice?>(
+      valueListenable: _callCheckpointNoticeNotifier,
+      builder: (context, notice, _) {
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 240),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) {
+            final offsetAnimation = Tween<Offset>(
+              begin: const Offset(0, -0.12),
+              end: Offset.zero,
+            ).animate(animation);
+
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: offsetAnimation,
+                child: child,
+              ),
+            );
+          },
+          child: notice == null
+              ? const SizedBox.shrink(key: ValueKey('checkpoint-hidden'))
+              : Center(
+                  key: ValueKey('checkpoint-${notice.minutes}'),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxWidth),
+                    child: _buildCallCheckpointNoticeCard(notice),
+                  ),
+                ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCallCheckpointNoticeCard(_CallCheckpointNotice notice) {
+    final accentColor = notice.accentColor;
+
+    return RepaintBoundary(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: accentColor.withValues(alpha: 0.46),
+            width: 1.1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.22),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.schedule_rounded,
+                color: accentColor,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    notice.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    notice.subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.78),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -2573,379 +3622,191 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Build captions overlay with speaker separation
   Widget _buildCaptionsOverlay() {
-    final overlayData = _getCaptionOverlayData();
-    if (overlayData.isEmpty) return const SizedBox.shrink();
+    final remoteEntry = _latestRemoteCaptionEntry();
+    final localCaption = _state.localCaption;
+    if (remoteEntry == null && localCaption == null) {
+      return const SizedBox.shrink();
+    }
 
-    // Get remote participant name
-    String participantName = 'Собеседник';
-    if (_state.remoteControllers.isNotEmpty) {
-      final participantId = _state.remoteControllers.keys.first;
-      final participant = _callClient?.participants.remote[participantId];
-      if (participant != null &&
-          participant.info.username?.isNotEmpty == true) {
-        participantName = participant.info.username ?? 'Собеседник';
+    final overlayChildren = <Widget>[];
+    if (remoteEntry != null) {
+      overlayChildren.add(
+        _buildCaptionCard(
+          label: _participantDisplayName(remoteEntry.key),
+          caption: remoteEntry.value,
+          isLocal: false,
+        ),
+      );
+    }
+    if (localCaption != null) {
+      if (overlayChildren.isNotEmpty) {
+        overlayChildren.add(const SizedBox(height: 12));
       }
+      overlayChildren.add(
+        _buildCaptionCard(
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Вы',
+            enText: 'You',
+          ),
+          caption: localCaption,
+          isLocal: true,
+        ),
+      );
     }
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 230),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (overlayData.myGroups.isNotEmpty) ...[
-              _buildSpeakerSection('Вы', overlayData.myGroups, true),
-              const SizedBox(height: 12),
-            ],
-            if (overlayData.theirGroups.isNotEmpty)
-              _buildSpeakerSection(
-                participantName,
-                overlayData.theirGroups,
-                false,
-              ),
+      constraints: const BoxConstraints(maxHeight: 180),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: overlayChildren,
+      ),
+    );
+  }
+
+  MapEntry<ParticipantId, _ActiveCaption>? _latestRemoteCaptionEntry() {
+    if (_state.remoteCaptions.isEmpty) {
+      return null;
+    }
+
+    final sortedEntries = _state.remoteCaptions.entries.toList()
+      ..sort(
+        (left, right) =>
+            right.value.lastUpdateAt.compareTo(left.value.lastUpdateAt),
+      );
+    return sortedEntries.first;
+  }
+
+  Widget _buildCaptionCard({
+    required String label,
+    required _ActiveCaption caption,
+    required bool isLocal,
+  }) {
+    final labelColor = isLocal
+        ? Colors.white.withValues(alpha: 0.94)
+        : const Color(0xFFB8A4FF).withValues(alpha: 0.96);
+    final labelTextColor = isLocal ? Colors.black : Colors.white;
+    final panelColor = isLocal
+        ? Colors.black.withValues(alpha: 0.72)
+        : const Color(0xFF24143E).withValues(alpha: 0.78);
+    final panelBorderColor = isLocal
+        ? Colors.white.withValues(alpha: 0.18)
+        : const Color(0xFFDACBFF).withValues(alpha: 0.26);
+    final displayText = _truncateCaptionForOverlay(caption.text);
+
+    Widget panel = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: panelColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: panelBorderColor, width: 0.9),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.24),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Text(
+        displayText,
+        maxLines: 2,
+        overflow: TextOverflow.fade,
+        softWrap: true,
+        style: TextStyle(
+          color: isLocal ? Colors.white : const Color(0xFFF9F3FF),
+          fontSize: 18,
+          height: 1.18,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.1,
+          shadows: [
+            Shadow(
+              offset: const Offset(0, 1),
+              blurRadius: 4,
+              color: Colors.black.withValues(alpha: 0.52),
+            ),
           ],
         ),
       ),
     );
-  }
 
-  /// Build speaker section with label and words
-  Widget _buildSpeakerSection(
-      String label, List<_CaptionWordGroup> groups, bool isMySection) {
-    final labelColor = isMySection
-        ? Colors.white.withValues(alpha: 0.92)
-        : const Color(0xFFB8A4FF).withValues(alpha: 0.92);
-    final labelTextColor = isMySection ? Colors.black : Colors.white;
-    final panelColor = isMySection
-        ? Colors.black.withValues(alpha: 0.42)
-        : const Color(0xFF24143E).withValues(alpha: 0.58);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: labelColor,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.24),
-              width: 0.5,
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x1A000000),
-                blurRadius: 4,
-                offset: Offset(0, 2),
+    if (widget.actionCallback != null) {
+      panel = Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onLongPress: () {
+            final normalizedText = _normalizeCaptionText(caption.text);
+            if (normalizedText.isEmpty) {
+              return;
+            }
+            unawaited(
+              widget.actionCallback?.call(
+                normalizedText,
+                normalizedText,
+                normalizedText,
               ),
-            ],
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: labelTextColor,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+            );
+          },
+          child: panel,
         ),
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: panelColor,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.16),
-              width: 0.8,
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x24000000),
-                blurRadius: 12,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final group in groups)
-                _buildCaptionGroup(group, isMySection),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+      );
+    }
 
-  Widget _buildCaptionGroup(_CaptionWordGroup group, bool isMySection) {
-    final phraseColor = isMySection
-        ? Colors.white.withValues(alpha: 0.10)
-        : const Color(0xFFB8A4FF).withValues(alpha: 0.20);
-
-    return Container(
-      padding: group.isPhrase
-          ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
-          : EdgeInsets.zero,
-      decoration: BoxDecoration(
-        color: group.isPhrase ? phraseColor : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        border: group.isPhrase
-            ? Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
-                width: 0.5,
-              )
-            : null,
-      ),
-      child: Row(
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: _captionFadeDurationMs),
+      curve: Curves.easeOutCubic,
+      opacity: caption.isFadingOut ? 0.0 : caption.phase.opacity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (var index = 0; index < group.words.length; index++) ...[
-            _buildCaptionWord(
-              wordData: group.words[index],
-              group: group,
-              isMySection: isMySection,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: labelColor,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.24),
+                width: 0.5,
+              ),
             ),
-            if (index != group.words.length - 1) const SizedBox(width: 4),
-          ],
+            child: Text(
+              label,
+              style: TextStyle(
+                color: labelTextColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          panel,
         ],
       ),
     );
   }
 
-  /// Get all caption groups with caching
-  _CaptionOverlayData _cachedCaptionOverlayData = const _CaptionOverlayData();
-  String _lastCaptionState = '';
-
-  _CaptionOverlayData _getCaptionOverlayData() {
-    final currentState = _captionCacheSignature();
-
-    if (currentState == _lastCaptionState) {
-      return _cachedCaptionOverlayData;
+  String _truncateCaptionForOverlay(String rawText) {
+    final normalizedText = _normalizeCaptionText(rawText);
+    if (normalizedText.length <= _captionMaxVisibleCharacters) {
+      return normalizedText;
     }
 
-    final myGroups = _buildCaptionGroups(_getCurrentCaption(), isMyWord: true);
-    final remoteGroups = <_CaptionWordGroup>[];
+    final words = normalizedText.split(' ');
+    while (words.length > 1 &&
+        words.join(' ').length > _captionMaxVisibleCharacters) {
+      words.removeAt(0);
+    }
 
-    _state.remoteCaptions.forEach((_, captions) {
-      if (captions.isEmpty) return;
-      remoteGroups.addAll(
-        _buildCaptionGroups(captions.last, isMyWord: false),
+    final clippedText = words.join(' ').trim();
+    if (clippedText.isEmpty || clippedText == normalizedText) {
+      return normalizedText.substring(
+        math.max(0, normalizedText.length - _captionMaxVisibleCharacters),
       );
-    });
-
-    _cachedCaptionOverlayData = _CaptionOverlayData(
-      myGroups: myGroups,
-      theirGroups: List<_CaptionWordGroup>.unmodifiable(remoteGroups),
-    );
-    _lastCaptionState = currentState;
-    return _cachedCaptionOverlayData;
-  }
-
-  String _captionCacheSignature() {
-    final buffer = StringBuffer(_getCurrentCaption());
-    final participantIds = _state.remoteCaptions.keys.toList()
-      ..sort((a, b) => a.toString().compareTo(b.toString()));
-    for (final participantId in participantIds) {
-      final captions = _state.remoteCaptions[participantId] ?? const <String>[];
-      buffer
-        ..write('|')
-        ..write(participantId)
-        ..write(':');
-      if (captions.isNotEmpty) {
-        buffer.write(captions.last);
-      }
     }
-    return buffer.toString();
-  }
-
-  List<_CaptionWordGroup> _buildCaptionGroups(
-    String caption, {
-    required bool isMyWord,
-  }) {
-    final normalizedCaption = caption.trim();
-    if (normalizedCaption.isEmpty) {
-      return const <_CaptionWordGroup>[];
-    }
-
-    final groups = <_CaptionWordGroup>[];
-    final pendingWords = <_CaptionWord>[];
-    final rawTokens = normalizedCaption.split(RegExp(r'\s+'));
-
-    for (final rawToken in rawTokens) {
-      final captionWord = _createCaptionWord(rawToken);
-      if (captionWord == null) continue;
-
-      pendingWords.add(captionWord);
-      final shouldAttachForward =
-          _shouldAttachToNextWord(captionWord.lookupText) &&
-              pendingWords.length < 3;
-      if (shouldAttachForward) {
-        continue;
-      }
-
-      groups.add(
-        _createCaptionWordGroup(
-          words: pendingWords,
-          fullSentence: normalizedCaption,
-          isMyWord: isMyWord,
-        ),
-      );
-      pendingWords.clear();
-    }
-
-    if (pendingWords.isNotEmpty) {
-      final trailingJoiners = pendingWords
-          .every((word) => _shouldAttachToNextWord(word.lookupText));
-      if (trailingJoiners && groups.isNotEmpty) {
-        final mergedWords = <_CaptionWord>[
-          ...groups.last.words,
-          ...pendingWords,
-        ];
-        groups[groups.length - 1] = _createCaptionWordGroup(
-          words: mergedWords,
-          fullSentence: normalizedCaption,
-          isMyWord: isMyWord,
-        );
-      } else {
-        groups.add(
-          _createCaptionWordGroup(
-            words: pendingWords,
-            fullSentence: normalizedCaption,
-            isMyWord: isMyWord,
-          ),
-        );
-      }
-    }
-
-    return List<_CaptionWordGroup>.unmodifiable(groups);
-  }
-
-  _CaptionWordGroup _createCaptionWordGroup({
-    required List<_CaptionWord> words,
-    required String fullSentence,
-    required bool isMyWord,
-  }) {
-    final immutableWords = List<_CaptionWord>.unmodifiable(words);
-    final lookupText = immutableWords
-        .map((word) => word.lookupText)
-        .where((word) => word.isNotEmpty)
-        .join(' ');
-    return _CaptionWordGroup(
-      words: immutableWords,
-      fullSentence: fullSentence,
-      lookupText: lookupText,
-      isMyWord: isMyWord,
-    );
-  }
-
-  _CaptionWord? _createCaptionWord(String rawToken) {
-    final displayText = rawToken.trim();
-    if (displayText.isEmpty) {
-      return null;
-    }
-
-    final lookupText = _cleanCaptionLookupText(displayText);
-    if (lookupText.isEmpty) {
-      return null;
-    }
-
-    return _CaptionWord(
-      displayText: displayText,
-      lookupText: lookupText,
-    );
-  }
-
-  bool _shouldAttachToNextWord(String lookupText) {
-    final normalized = lookupText.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return false;
-    }
-
-    return normalized.length <= 2 || _captionJoinerWords.contains(normalized);
-  }
-
-  String _cleanCaptionLookupText(String rawText) {
-    return rawText
-        .trim()
-        .replaceAll(
-          RegExp(r"^[^0-9A-Za-zА-Яа-яЁёÀ-ÖØ-öø-ÿ'-]+"),
-          '',
-        )
-        .replaceAll(
-          RegExp(r"[^0-9A-Za-zА-Яа-яЁёÀ-ÖØ-öø-ÿ'-]+$"),
-          '',
-        );
-  }
-
-  String _resolveLookupText(_CaptionWord wordData, _CaptionWordGroup group) {
-    if (group.isPhrase && _shouldAttachToNextWord(wordData.lookupText)) {
-      return group.lookupText;
-    }
-    return wordData.lookupText;
-  }
-
-  Widget _buildCaptionWord({
-    required _CaptionWord wordData,
-    required _CaptionWordGroup group,
-    required bool isMySection,
-  }) {
-    final selectedText = _resolveLookupText(wordData, group);
-    final contextText =
-        group.lookupText.isNotEmpty ? group.lookupText : group.fullSentence;
-    final textColor = isMySection ? Colors.white : const Color(0xFFF8F2FF);
-    final fontWeight = group.isPhrase ? FontWeight.w700 : FontWeight.w600;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: selectedText.isEmpty
-            ? null
-            : () {
-                widget.actionCallback?.call(
-                  selectedText,
-                  group.fullSentence,
-                  contextText,
-                );
-              },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-          child: Text(
-            wordData.displayText,
-            style: TextStyle(
-              color: textColor,
-              fontSize: 18,
-              height: 1.15,
-              fontWeight: fontWeight,
-              letterSpacing: 0.1,
-              shadows: [
-                Shadow(
-                  offset: const Offset(0, 1),
-                  blurRadius: 4,
-                  color: Colors.black.withValues(alpha: 0.55),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Get current caption text
-  String _getCurrentCaption() {
-    if (_state.partialCaption.isNotEmpty) {
-      return _state.partialCaption;
-    } else if (_state.finalCaptions.isNotEmpty) {
-      return _state.finalCaptions.last['text'] as String;
-    }
-    return '';
+    return '…$clippedText';
   }
 
   /// Build controls overlay
@@ -3569,6 +4430,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       // 4. Stop Deepgram streaming
       await _stopDeepgramStreaming();
       await Future<void>.delayed(const Duration(milliseconds: 100));
+      await _flushPendingCaptionLogs(force: true);
 
       // 5. Leave call while connection is still alive
       if (_callClient != null && leaveCall) {
@@ -3624,6 +4486,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _remoteJoinTimes.clear();
       _remoteTrackReady.clear();
       _remoteCaptionClearGenerations.clear();
+      _remoteLegacyCaptionCounters.clear();
       _remoteParticipantUiSignatures.clear();
       _prioritySubscribedParticipants.clear();
       _activeRemoteProfileConfigured = false;
@@ -3636,6 +4499,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _tokenRefreshAttempts = 0;
       }
       _stopDurationTimer(reset: true);
+      _resetCallCheckpointNotice();
 
       // 8. Dispose call client last
       try {
@@ -3688,7 +4552,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
     _cancelTrackedTimer(_remoteLeftTimer);
     _remoteLeftTimer = null;
+    _resetCallCheckpointNotice(clearHistory: true);
     _callDurationNotifier.dispose();
+    _callCheckpointNoticeNotifier.dispose();
     _chatFocusNode.unfocus();
     _chatTextController.clear();
 

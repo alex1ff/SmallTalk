@@ -128,6 +128,26 @@ class VideoSessionsRecord extends FirestoreRecord {
   int get earnings => _earnings ?? 0;
   bool hasEarnings() => _earnings != null;
 
+  // "studentHasReviewed" field.
+  bool? _studentHasReviewed;
+  bool get studentHasReviewed => _studentHasReviewed ?? false;
+  bool hasStudentHasReviewed() => _studentHasReviewed != null;
+
+  // "tutorHasReviewed" field.
+  bool? _tutorHasReviewed;
+  bool get tutorHasReviewed => _tutorHasReviewed ?? false;
+  bool hasTutorHasReviewed() => _tutorHasReviewed != null;
+
+  // "studentReviewRef" field.
+  DocumentReference? _studentReviewRef;
+  DocumentReference? get studentReviewRef => _studentReviewRef;
+  bool hasStudentReviewRef() => _studentReviewRef != null;
+
+  // "tutorReviewRef" field.
+  DocumentReference? _tutorReviewRef;
+  DocumentReference? get tutorReviewRef => _tutorReviewRef;
+  bool hasTutorReviewRef() => _tutorReviewRef != null;
+
   void _initializeFields() {
     _language = snapshotData['language'] as String?;
     _createdAt = snapshotData['createdAt'] as DateTime?;
@@ -154,6 +174,10 @@ class VideoSessionsRecord extends FirestoreRecord {
     _version = snapshotData['version'] as String?;
     _platform = snapshotData['platform'] as String?;
     _earnings = castToType<int>(snapshotData['earnings']);
+    _studentHasReviewed = snapshotData['studentHasReviewed'] as bool?;
+    _tutorHasReviewed = snapshotData['tutorHasReviewed'] as bool?;
+    _studentReviewRef = snapshotData['studentReviewRef'] as DocumentReference?;
+    _tutorReviewRef = snapshotData['tutorReviewRef'] as DocumentReference?;
   }
 
   static CollectionReference get collection =>
@@ -210,6 +234,10 @@ Map<String, dynamic> createVideoSessionsRecordData({
   String? version,
   String? platform,
   int? earnings,
+  bool? studentHasReviewed,
+  bool? tutorHasReviewed,
+  DocumentReference? studentReviewRef,
+  DocumentReference? tutorReviewRef,
 }) {
   final firestoreData = mapToFirestore(
     <String, dynamic>{
@@ -232,6 +260,10 @@ Map<String, dynamic> createVideoSessionsRecordData({
       'version': version,
       'platform': platform,
       'earnings': earnings,
+      'studentHasReviewed': studentHasReviewed,
+      'tutorHasReviewed': tutorHasReviewed,
+      'studentReviewRef': studentReviewRef,
+      'tutorReviewRef': tutorReviewRef,
     }.withoutNulls,
   );
 
@@ -271,7 +303,11 @@ class VideoSessionsRecordDocumentEquality
         e1?.tutorInfo == e2?.tutorInfo &&
         e1?.version == e2?.version &&
         e1?.platform == e2?.platform &&
-        e1?.earnings == e2?.earnings;
+        e1?.earnings == e2?.earnings &&
+        e1?.studentHasReviewed == e2?.studentHasReviewed &&
+        e1?.tutorHasReviewed == e2?.tutorHasReviewed &&
+        e1?.studentReviewRef == e2?.studentReviewRef &&
+        e1?.tutorReviewRef == e2?.tutorReviewRef;
   }
 
   @override
@@ -296,7 +332,11 @@ class VideoSessionsRecordDocumentEquality
         e?.tutorInfo,
         e?.version,
         e?.platform,
-        e?.earnings
+        e?.earnings,
+        e?.studentHasReviewed,
+        e?.tutorHasReviewed,
+        e?.studentReviewRef,
+        e?.tutorReviewRef
       ]);
 
   @override
