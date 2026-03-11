@@ -31,8 +31,19 @@ class AddInterWidget extends StatefulWidget {
 class _AddInterWidgetState extends State<AddInterWidget> {
   static const int _minuteStep = 5;
   static const int _defaultDurationMinutes = 60;
+  static const int _durationAdjustmentStepMinutes = 15;
   static const int _lastMinuteOfDay = (24 * 60) - _minuteStep;
   static const int _latestStartMinute = _lastMinuteOfDay - _minuteStep;
+  static const List<int> _durationPresetMinutes = [
+    15,
+    30,
+    45,
+    60,
+    90,
+    120,
+    180,
+    240,
+  ];
 
   late AddInterModel _model;
   _IntervalField _activeField = _IntervalField.start;
@@ -173,6 +184,9 @@ class _AddInterWidgetState extends State<AddInterWidget> {
 
   int get _durationMinutes => _selectedEndMinutes - _selectedStartMinutes;
 
+  int get _maxAvailableDurationMinutes =>
+      _lastMinuteOfDay - _selectedStartMinutes;
+
   List<int> _availableSlotsFor(_IntervalField field) {
     if (field == _IntervalField.start) {
       return [
@@ -241,6 +255,26 @@ class _AddInterWidgetState extends State<AddInterWidget> {
     });
   }
 
+  void _updateDuration(int nextDurationMinutes) {
+    final validDuration = _clampMinutes(
+      nextDurationMinutes,
+      min: _minuteStep,
+      max: _maxAvailableDurationMinutes,
+    );
+    final startMinutes = _selectedStartMinutes;
+
+    setState(() {
+      _setInterval(
+        start: _minutesToDateTime(startMinutes),
+        end: _minutesToDateTime(startMinutes + validDuration),
+      );
+    });
+  }
+
+  void _changeDurationBy(int deltaMinutes) {
+    _updateDuration(_durationMinutes + deltaMinutes);
+  }
+
   String _formatDuration(int totalMinutes) {
     final hours = totalMinutes ~/ 60;
     final minutes = totalMinutes % 60;
@@ -252,6 +286,84 @@ class _AddInterWidgetState extends State<AddInterWidget> {
       return '$hours ч';
     }
     return '$minutes мин';
+  }
+
+  Widget _buildDurationChip({
+    required int minutes,
+    required bool isSelected,
+    required bool isEnabled,
+  }) {
+    return Opacity(
+      opacity: isEnabled ? 1.0 : 0.45,
+      child: InkWell(
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        onTap: isEnabled ? () => _updateDuration(minutes) : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? const Color(0xFFF7EEF6)
+                : FlutterFlowTheme.of(context).primaryBackground,
+            borderRadius: BorderRadius.circular(18.0),
+            border: Border.all(
+              color: isSelected
+                  ? FlutterFlowTheme.of(context).primaryText
+                  : const Color(0xFFE6E6EB),
+              width: isSelected ? 1.5 : 1.0,
+            ),
+          ),
+          child: Text(
+            _formatDuration(minutes),
+            style: FlutterFlowTheme.of(context).bodyMedium.override(
+                  fontFamily: 'sf pro display',
+                  fontSize: 14.0,
+                  letterSpacing: 0.0,
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDurationAdjustButton({
+    required IconData icon,
+    required VoidCallback? onTap,
+  }) {
+    final isEnabled = onTap != null;
+
+    return InkWell(
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18.0),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        width: 42.0,
+        height: 42.0,
+        decoration: BoxDecoration(
+          color: isEnabled
+              ? FlutterFlowTheme.of(context).primaryBackground
+              : const Color(0xFFF5F5F8),
+          borderRadius: BorderRadius.circular(18.0),
+          border: Border.all(
+            color:
+                isEnabled ? const Color(0xFFE6E6EB) : const Color(0xFFEDEEF2),
+          ),
+        ),
+        child: Icon(
+          icon,
+          color: isEnabled
+              ? FlutterFlowTheme.of(context).primaryText
+              : FlutterFlowTheme.of(context).secondaryText,
+          size: 18.0,
+        ),
+      ),
+    );
   }
 
   Future<void> _saveInterval() async {
@@ -352,6 +464,8 @@ class _AddInterWidgetState extends State<AddInterWidget> {
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
     final previewText = '${_model.timeStart} - ${_model.timeEnd}';
     final pickerOptions = _availableSlotsFor(_activeField);
+    final canDecreaseDuration = _durationMinutes > _minuteStep;
+    final canIncreaseDuration = _durationMinutes < _maxAvailableDurationMinutes;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -495,10 +609,83 @@ class _AddInterWidgetState extends State<AddInterWidget> {
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(16.0, 18.0, 16.0, 0.0),
+                child: Row(
+                  children: [
+                    Text(
+                      'Длительность',
+                      style: FlutterFlowTheme.of(context).bodyMedium.override(
+                            fontFamily: 'sf pro display',
+                            fontSize: 16.0,
+                            letterSpacing: 0.0,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const Spacer(),
+                    _buildDurationAdjustButton(
+                      icon: Icons.remove_rounded,
+                      onTap: canDecreaseDuration
+                          ? () => _changeDurationBy(
+                                -_durationAdjustmentStepMinutes,
+                              )
+                          : null,
+                    ),
+                    const SizedBox(width: 10.0),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14.0,
+                        vertical: 10.0,
+                      ),
+                      decoration: BoxDecoration(
+                        color: FlutterFlowTheme.of(context).primaryBackground,
+                        borderRadius: BorderRadius.circular(18.0),
+                        border: Border.all(
+                          color: const Color(0xFFE6E6EB),
+                        ),
+                      ),
+                      child: Text(
+                        _formatDuration(_durationMinutes),
+                        style: FlutterFlowTheme.of(context).bodyMedium.override(
+                              fontFamily: 'sf pro display',
+                              fontSize: 15.0,
+                              letterSpacing: 0.0,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(width: 10.0),
+                    _buildDurationAdjustButton(
+                      icon: Icons.add_rounded,
+                      onTap: canIncreaseDuration
+                          ? () => _changeDurationBy(
+                                _durationAdjustmentStepMinutes,
+                              )
+                          : null,
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(16.0, 12.0, 16.0, 0.0),
+                child: Wrap(
+                  spacing: 8.0,
+                  runSpacing: 8.0,
+                  children: [
+                    for (final durationMinutes in _durationPresetMinutes)
+                      _buildDurationChip(
+                        minutes: durationMinutes,
+                        isSelected: _durationMinutes == durationMinutes,
+                        isEnabled:
+                            durationMinutes <= _maxAvailableDurationMinutes,
+                      ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(16.0, 18.0, 16.0, 0.0),
                 child: Text(
                   _activeField == _IntervalField.start
-                      ? 'Сдвиг начала сохраняет текущую длительность интервала.'
-                      : 'Конец можно выбрать только после времени начала.',
+                      ? 'Сдвиг начала сохраняет текущую длительность. Ниже её можно быстро менять.'
+                      : 'Конец можно выбрать вручную или скорректировать длительность кнопками выше.',
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'sf pro display',
                         color: FlutterFlowTheme.of(context).secondaryText,

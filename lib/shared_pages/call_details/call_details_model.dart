@@ -13,6 +13,8 @@ class CallDetailsModel extends FlutterFlowModel<CallDetailsWidget> {
 
   DocumentReference? reviewRefOverride;
 
+  bool areCaptionLogsExpanded = false;
+
   /// State fields for stateful widgets in this page.
 
   FocusNode? reviewCommentFocusNode;

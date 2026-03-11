@@ -24,6 +24,8 @@ class CountryCardWidget extends StatefulWidget {
 class _CountryCardWidgetState extends State<CountryCardWidget> {
   late CountryCardModel _model;
 
+  bool get _hasFlag => (widget.lang?.flag ?? '').trim().isNotEmpty;
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -76,18 +78,22 @@ class _CountryCardWidgetState extends State<CountryCardWidget> {
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),
-                  child: Text(
-                    valueOrDefault<String>(
-                      widget.lang?.flag,
-                      '-',
-                    ),
-                    textAlign: TextAlign.center,
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          fontSize: 22.0,
-                          letterSpacing: 0.0,
+                  child: _hasFlag
+                      ? Text(
+                          widget.lang!.flag,
+                          textAlign: TextAlign.center,
+                          style:
+                              FlutterFlowTheme.of(context).bodyMedium.override(
+                                    fontFamily: 'sf pro display',
+                                    fontSize: 22.0,
+                                    letterSpacing: 0.0,
+                                  ),
+                        )
+                      : Icon(
+                          Icons.public_outlined,
+                          color: FlutterFlowTheme.of(context).secondaryText,
+                          size: 24.0,
                         ),
-                  ),
                 ),
               ),
               Expanded(

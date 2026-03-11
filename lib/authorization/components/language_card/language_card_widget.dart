@@ -25,6 +25,8 @@ class LanguageCardWidget extends StatefulWidget {
 class _LanguageCardWidgetState extends State<LanguageCardWidget> {
   late LanguageCardModel _model;
 
+  bool get _hasLanguageImage => (widget.lang?.ss ?? '').trim().isNotEmpty;
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -77,14 +79,20 @@ class _LanguageCardWidgetState extends State<LanguageCardWidget> {
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),
-                  child: CachedNetworkImage(
-                    imageUrl: widget.lang!.ss,
-                    width: 25.0,
-                    height: 25.0,
-                    fit: BoxFit.contain,
-                    memCacheWidth: 50,
-                    memCacheHeight: 50,
-                  ),
+                  child: _hasLanguageImage
+                      ? CachedNetworkImage(
+                          imageUrl: widget.lang!.ss,
+                          width: 25.0,
+                          height: 25.0,
+                          fit: BoxFit.contain,
+                          memCacheWidth: 50,
+                          memCacheHeight: 50,
+                        )
+                      : Icon(
+                          Icons.language_rounded,
+                          color: FlutterFlowTheme.of(context).secondaryText,
+                          size: 24.0,
+                        ),
                 ),
               ),
               Expanded(

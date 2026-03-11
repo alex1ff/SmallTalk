@@ -10,12 +10,16 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
 import '/shared_pages/review_flow/review_submission_helper.dart';
+import '/students_pages/components/new_word/new_word_widget.dart';
+import '/students_pages/components/woed/woed_widget.dart';
 import '/students_pages/components/fav/fav_widget.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:easy_debounce/easy_debounce.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:webviewx_plus/webviewx_plus.dart';
 import 'call_details_model.dart';
 export 'call_details_model.dart';
 
@@ -35,6 +39,9 @@ class CallDetailsWidget extends StatefulWidget {
 }
 
 class _CallDetailsWidgetState extends State<CallDetailsWidget> {
+  static const int _collapsedCaptionLogsVisibleCount = 5;
+  static const double _collapsedCaptionLogPeekFactor = 0.6;
+
   late CallDetailsModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
@@ -293,13 +300,98 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     );
   }
 
+  String? _normalizeDictionaryLookupText(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  Future<UserWordsRecord?> _existingDictionaryWord(String word) async {
+    final userRef = currentUserReference;
+    final normalizedWord = _normalizeDictionaryLookupText(word);
+    if (userRef == null || normalizedWord == null) {
+      return null;
+    }
+
+    final userWords = await queryUserWordsRecordOnce(parent: userRef);
+    for (final userWord in userWords) {
+      final entryText = _normalizeDictionaryLookupText(
+        userWord.entry.firstOrNull?.text,
+      );
+      if (entryText == normalizedWord) {
+        return userWord;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _openCaptionLogWordSheet(
+    BuildContext context, {
+    required VideoSessionsRecord session,
+    required CaptionLogsRecord log,
+    required String word,
+  }) async {
+    final selectedWord = word.trim();
+    if (selectedWord.isEmpty) {
+      return;
+    }
+
+    final existingWord = await _existingDictionaryWord(selectedWord);
+    if (!mounted) {
+      return;
+    }
+
+    await showModalBottomSheet(
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      context: context,
+      builder: (context) {
+        return WebViewAware(
+          child: GestureDetector(
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
+            child: Padding(
+              padding: MediaQuery.viewInsetsOf(context),
+              child: existingWord != null
+                  ? WoedWidget(
+                      word: existingWord,
+                    )
+                  : NewWordWidget(
+                      word: selectedWord,
+                      langCode: session.language,
+                      sentence: log.text,
+                    ),
+            ),
+          ),
+        );
+      },
+    ).then((value) => safeSetState(() {}));
+  }
+
   Widget _buildCaptionLogItem(
     BuildContext context,
+    VideoSessionsRecord session,
     CaptionLogsRecord log,
   ) {
     final timestampLabel = _captionLogTimestampLabel(context, log);
+    final textStyle = FlutterFlowTheme.of(context)
+        .bodyMedium
+        .override(
+          fontFamily: 'sf pro display',
+          fontSize: 15.0,
+          letterSpacing: 0.0,
+        )
+        .copyWith(height: 1.35);
 
     return Container(
+      key: ValueKey(log.reference.path),
       width: double.infinity,
       decoration: BoxDecoration(
         color: FlutterFlowTheme.of(context).secondaryBackground,
@@ -361,20 +453,151 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               ],
             ),
             const SizedBox(height: 10.0),
-            Text(
-              log.text,
-              style: FlutterFlowTheme.of(context)
-                  .bodyMedium
-                  .override(
-                    fontFamily: 'sf pro display',
-                    fontSize: 15.0,
-                    letterSpacing: 0.0,
-                  )
-                  .copyWith(height: 1.35),
+            _InteractiveCaptionLogText(
+              text: log.text,
+              style: textStyle,
+              onWordTap: (word) => _openCaptionLogWordSheet(
+                context,
+                session: session,
+                log: log,
+                word: word,
+              ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  void _setCaptionLogsExpanded(bool isExpanded) {
+    if (_model.areCaptionLogsExpanded == isExpanded) {
+      return;
+    }
+
+    _model.areCaptionLogsExpanded = isExpanded;
+    safeSetState(() {});
+  }
+
+  String _captionLogsToggleLabel(
+    BuildContext context, {
+    required bool isExpanded,
+  }) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: isExpanded ? 'Скрыть все' : 'Показать все',
+      enText: isExpanded ? 'Hide all' : 'Show all',
+    );
+  }
+
+  Widget _buildCaptionLogsToggleButton(
+    BuildContext context, {
+    required bool isExpanded,
+  }) {
+    final theme = FlutterFlowTheme.of(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999.0),
+        onTap: () => _setCaptionLogsExpanded(!isExpanded),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: theme.primaryBackground.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(999.0),
+            border: Border.all(
+              color: theme.primaryText.withValues(alpha: 0.08),
+              width: 1.0,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                blurRadius: 16.0,
+                color: Color(0x1A000000),
+                offset: Offset(0.0, 6.0),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 10.0,
+            ),
+            child: Text(
+              _captionLogsToggleLabel(
+                context,
+                isExpanded: isExpanded,
+              ),
+              style: theme.bodyMedium.override(
+                fontFamily: 'sf pro display',
+                fontSize: 14.0,
+                letterSpacing: 0.0,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCaptionLogsItemsColumn(
+    BuildContext context,
+    VideoSessionsRecord session,
+    List<CaptionLogsRecord> logs,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < logs.length; index++) ...[
+          _buildCaptionLogItem(context, session, logs[index]),
+          if (index < logs.length - 1) const SizedBox(height: 12.0),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCollapsedCaptionLogPeek(
+    BuildContext context,
+    VideoSessionsRecord session,
+    CaptionLogsRecord log,
+  ) {
+    final backgroundColor = FlutterFlowTheme.of(context).primaryBackground;
+
+    return Stack(
+      alignment: Alignment.bottomCenter,
+      children: [
+        ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: _collapsedCaptionLogPeekFactor,
+            child: _buildCaptionLogItem(context, session, log),
+          ),
+        ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    backgroundColor.withValues(alpha: 0.0),
+                    backgroundColor.withValues(alpha: 0.76),
+                    backgroundColor,
+                  ],
+                  stops: const [0.0, 0.68, 1.0],
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 12.0,
+          child: _buildCaptionLogsToggleButton(
+            context,
+            isExpanded: false,
+          ),
+        ),
+      ],
     );
   }
 
@@ -430,6 +653,8 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         final logs = _sortedCaptionLogs(
           _captionLogsFromSnapshot(querySnapshot),
         );
+        final canCollapse = logs.length > _collapsedCaptionLogsVisibleCount;
+        final isExpanded = canCollapse && _model.areCaptionLogsExpanded;
 
         return _buildCaptionLogsCardShell(
           context,
@@ -442,15 +667,51 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                         'Subtitle logs for this call are not available yet.',
                   ),
                 )
-              : ListView.separated(
-                  padding: EdgeInsets.zero,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: logs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12.0),
-                  itemBuilder: (context, index) =>
-                      _buildCaptionLogItem(context, logs[index]),
-                ),
+              : isExpanded
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildCaptionLogsItemsColumn(
+                          context,
+                          session,
+                          logs,
+                        ),
+                        if (canCollapse) ...[
+                          const SizedBox(height: 12.0),
+                          Align(
+                            alignment: Alignment.center,
+                            child: _buildCaptionLogsToggleButton(
+                              context,
+                              isExpanded: true,
+                            ),
+                          ),
+                        ],
+                      ],
+                    )
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildCaptionLogsItemsColumn(
+                          context,
+                          session,
+                          canCollapse
+                              ? logs
+                                  .take(_collapsedCaptionLogsVisibleCount)
+                                  .toList()
+                              : logs,
+                        ),
+                        if (canCollapse) ...[
+                          const SizedBox(height: 12.0),
+                          _buildCollapsedCaptionLogPeek(
+                            context,
+                            session,
+                            logs[_collapsedCaptionLogsVisibleCount],
+                          ),
+                        ],
+                      ],
+                    ),
         );
       },
     );
@@ -607,11 +868,14 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     return Row(
       mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           child: Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
             style: FlutterFlowTheme.of(context).bodyMedium.override(
                   fontFamily: 'sf pro display',
                   color: FlutterFlowTheme.of(context).secondaryText,
@@ -629,6 +893,9 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   Widget _buildValueText(BuildContext context, String value) {
     return Text(
       value,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      softWrap: false,
       textAlign: TextAlign.end,
       style: FlutterFlowTheme.of(context).bodyMedium.override(
             fontFamily: 'sf pro display',
@@ -710,44 +977,48 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildInfoRow(
-                context,
-                label: FFLocalizations.of(context).getVariableText(
-                  ruText: 'Дата и время',
-                  enText: 'Date and time',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Center(
+                child: _buildInfoRow(
+                  context,
+                  label: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Дата и время',
+                    enText: 'Date and time',
+                  ),
+                  value: _buildValueText(context, startedAtLabel),
                 ),
-                value: _buildValueText(context, startedAtLabel),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12.0),
-                child: Divider(height: 1.0),
-              ),
-              _buildInfoRow(
-                context,
-                label: FFLocalizations.of(context).getVariableText(
-                  ruText: 'Длительность',
-                  enText: 'Duration',
+            ),
+            const Divider(height: 1.0),
+            Expanded(
+              child: Center(
+                child: _buildInfoRow(
+                  context,
+                  label: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Длительность',
+                    enText: 'Duration',
+                  ),
+                  value: _buildValueText(context, durationLabel),
                 ),
-                value: _buildValueText(context, durationLabel),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12.0),
-                child: Divider(height: 1.0),
-              ),
-              _buildInfoRow(
-                context,
-                label: FFLocalizations.of(context).getVariableText(
-                  ruText: isTeacher ? 'Заработок' : 'Стоимость',
-                  enText: isTeacher ? 'Earnings' : 'Cost',
+            ),
+            const Divider(height: 1.0),
+            Expanded(
+              child: Center(
+                child: _buildInfoRow(
+                  context,
+                  label: FFLocalizations.of(context).getVariableText(
+                    ruText: isTeacher ? 'Заработок' : 'Стоимость',
+                    enText: isTeacher ? 'Earnings' : 'Cost',
+                  ),
+                  value: _buildAmountValue(context, session),
                 ),
-                value: _buildAmountValue(context, session),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1172,6 +1443,16 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              if (tutorReference != null) ...[
+                                SizedBox(
+                                  height: 177.5,
+                                  child: FavWidget(
+                                    nsUser: tutorReference,
+                                    enableNavigation: !isTeacher,
+                                  ),
+                                ),
+                                const SizedBox(width: 6.0),
+                              ],
                               Expanded(
                                 child: _buildCallInfoCard(
                                   context,
@@ -1180,16 +1461,6 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                                   durationLabel: durationLabel,
                                 ),
                               ),
-                              if (tutorReference != null) ...[
-                                const SizedBox(width: 6.0),
-                                SizedBox(
-                                  height: 177.5,
-                                  child: FavWidget(
-                                    nsUser: tutorReference,
-                                    enableNavigation: !isTeacher,
-                                  ),
-                                ),
-                              ],
                             ],
                           ),
                           if (sessionLanguage != null) ...[
@@ -1233,6 +1504,103 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
             },
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _InteractiveCaptionLogText extends StatefulWidget {
+  const _InteractiveCaptionLogText({
+    required this.text,
+    required this.style,
+    required this.onWordTap,
+  });
+
+  final String text;
+  final TextStyle style;
+  final Future<void> Function(String word) onWordTap;
+
+  @override
+  State<_InteractiveCaptionLogText> createState() =>
+      _InteractiveCaptionLogTextState();
+}
+
+class _InteractiveCaptionLogTextState
+    extends State<_InteractiveCaptionLogText> {
+  static final RegExp _wordPattern = RegExp(
+    r"[A-Za-zА-Яа-яЁёÀ-ÖØ-öø-ÿ0-9]+(?:['’`-][A-Za-zА-Яа-яЁёÀ-ÖØ-öø-ÿ0-9]+)*",
+  );
+
+  final List<TapGestureRecognizer> _recognizers = <TapGestureRecognizer>[];
+
+  @override
+  void dispose() {
+    _disposeRecognizers();
+    super.dispose();
+  }
+
+  void _disposeRecognizers() {
+    for (final recognizer in _recognizers) {
+      recognizer.dispose();
+    }
+    _recognizers.clear();
+  }
+
+  List<InlineSpan> _buildSpans() {
+    _disposeRecognizers();
+
+    final spans = <InlineSpan>[];
+    var currentIndex = 0;
+    final matches = _wordPattern.allMatches(widget.text);
+
+    for (final match in matches) {
+      if (match.start > currentIndex) {
+        spans.add(
+          TextSpan(
+            text: widget.text.substring(currentIndex, match.start),
+          ),
+        );
+      }
+
+      final word = match.group(0);
+      if (word != null && word.isNotEmpty) {
+        final recognizer = TapGestureRecognizer()
+          ..onTap = () {
+            widget.onWordTap(word);
+          };
+        _recognizers.add(recognizer);
+        spans.add(
+          TextSpan(
+            text: word,
+            recognizer: recognizer,
+          ),
+        );
+      }
+
+      currentIndex = match.end;
+    }
+
+    if (currentIndex < widget.text.length) {
+      spans.add(
+        TextSpan(
+          text: widget.text.substring(currentIndex),
+        ),
+      );
+    }
+
+    if (spans.isEmpty) {
+      spans.add(TextSpan(text: widget.text));
+    }
+
+    return spans;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text.rich(
+      TextSpan(
+        style: widget.style,
+        children: _buildSpans(),
       ),
     );
   }
