@@ -1,4 +1,3 @@
-import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -23,7 +22,28 @@ class ReviewCardWidget extends StatefulWidget {
 
 class _ReviewCardWidgetState extends State<ReviewCardWidget> {
   late ReviewCardModel _model;
-  late Future<UsersRecord> _userFuture;
+  late Future<UsersRecord?> _userFuture;
+
+  Future<UsersRecord?> _createUserFuture() async {
+    final authorRef = widget.rewDoc?.fromUserId;
+    if (authorRef == null) {
+      return null;
+    }
+
+    return UsersRecord.getDocumentOnce(authorRef);
+  }
+
+  String _reviewAuthorName(BuildContext context, UsersRecord? user) {
+    final displayName = user?.displayName.trim();
+    if (displayName != null && displayName.isNotEmpty) {
+      return displayName;
+    }
+
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Пользователь',
+      enText: 'User',
+    );
+  }
 
   @override
   void setState(VoidCallback callback) {
@@ -35,7 +55,15 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => ReviewCardModel());
-    _userFuture = UsersRecord.getDocumentOnce(widget.rewDoc!.fromUserId!);
+    _userFuture = _createUserFuture();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReviewCardWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.rewDoc?.fromUserId != widget.rewDoc?.fromUserId) {
+      _userFuture = _createUserFuture();
+    }
   }
 
   @override
@@ -64,11 +92,10 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: FutureBuilder<UsersRecord>(
+                  child: FutureBuilder<UsersRecord?>(
                     future: _userFuture,
                     builder: (context, snapshot) {
-                      // Customize what your widget looks like when it's loading.
-                      if (!snapshot.hasData) {
+                      if (snapshot.connectionState != ConnectionState.done) {
                         return Center(
                           child: SizedBox(
                             width: 50.0,
@@ -81,7 +108,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                         );
                       }
 
-                      final containerUsersRecord = snapshot.data!;
+                      final containerUsersRecord = snapshot.data;
 
                       return Container(
                         decoration: BoxDecoration(),
@@ -96,7 +123,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                                 shape: BoxShape.circle,
                               ),
                               child: CachedNetworkImage(
-                                imageUrl: containerUsersRecord.photoUrl,
+                                imageUrl: containerUsersRecord?.photoUrl ?? '',
                                 fit: BoxFit.cover,
                                 memCacheWidth: 90,
                                 memCacheHeight: 90,
@@ -111,21 +138,22 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    AuthUserStreamWidget(
-                                      builder: (context) => Text(
-                                        currentUserDisplayName,
-                                        maxLines: 1,
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color: Colors.black,
-                                              fontSize: 15.0,
-                                              letterSpacing: 0.0,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                        overflow: TextOverflow.ellipsis,
+                                    Text(
+                                      _reviewAuthorName(
+                                        context,
+                                        containerUsersRecord,
                                       ),
+                                      maxLines: 1,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: Colors.black,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                     Text(
                                       dateTimeFormat(

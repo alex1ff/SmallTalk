@@ -152,6 +152,19 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             ),
           ),
           FFRoute(
+            name: CallDetailsWidget.routeName,
+            path: CallDetailsWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => CallDetailsWidget(
+              videoDocRef: params.getParam(
+                'videoDocRef',
+                ParamType.DocumentReference,
+                isList: false,
+                collectionNamePath: ['videoSessions'],
+              ),
+            ),
+          ),
+          FFRoute(
             name: VideoCallPageWidget.routeName,
             path: VideoCallPageWidget.routePath,
             requireAuth: true,
@@ -325,6 +338,13 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
               requireAuth: true,
               noTransition: true,
               builder: (context, params) => WordsWidget(),
+            ),
+            FFRoute(
+              name: MyCallsWidget.routeName,
+              path: MyCallsWidget.routePath,
+              requireAuth: true,
+              noTransition: true,
+              builder: (context, params) => MyCallsWidget(),
             ),
           ].map((r) => r.toRoute(appStateNotifier)).toList(),
         ),

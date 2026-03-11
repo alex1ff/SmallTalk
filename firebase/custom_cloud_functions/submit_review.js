@@ -3,6 +3,10 @@ const admin = require("firebase-admin");
 
 const MAX_COMMENT_LENGTH = 1000;
 const RECENT_SESSION_LOOKUP_WINDOW_MS = 1000 * 60 * 60 * 24 * 14;
+const STUDENT_REVIEW_FLAG_FIELD = "studentHasReviewed";
+const TUTOR_REVIEW_FLAG_FIELD = "tutorHasReviewed";
+const STUDENT_REVIEW_REF_FIELD = "studentReviewRef";
+const TUTOR_REVIEW_REF_FIELD = "tutorReviewRef";
 const REVIEWABLE_SESSION_STATUSES = new Set([
   "connected",
   "connecting",
@@ -219,6 +223,22 @@ async function resolveSessionRef({
   return await findRecentMutualSessionRef(db, userId, requestedToUserId);
 }
 
+function buildReviewSessionUpdate({isStudent, isTutor, reviewRef}) {
+  if (isStudent) {
+    return {
+      [STUDENT_REVIEW_FLAG_FIELD]: true,
+      [STUDENT_REVIEW_REF_FIELD]: reviewRef,
+    };
+  }
+  if (isTutor) {
+    return {
+      [TUTOR_REVIEW_FLAG_FIELD]: true,
+      [TUTOR_REVIEW_REF_FIELD]: reviewRef,
+    };
+  }
+  return {};
+}
+
 exports.submitReview = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -274,7 +294,9 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
         );
       }
 
-      const targetUserId = isStudent ? sessionData.tutorId : sessionData.studentId;
+      const targetUserId = isStudent ?
+        sessionData.tutorId :
+        sessionData.studentId;
       if (!targetUserId || typeof targetUserId !== "string") {
         throw new functions.https.HttpsError(
           "failed-precondition",
@@ -300,7 +322,10 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
 
       const targetUserSnap = await transaction.get(targetUserRef);
       if (!targetUserSnap.exists) {
-        throw new functions.https.HttpsError("not-found", "Target user not found");
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Target user not found",
+        );
       }
 
       const reviewSnap = await transaction.get(reviewRef);
@@ -308,11 +333,18 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
       const targetRating = targetUserData.rating || {};
       const currentTotal = Number(targetRating.totalReviews || 0);
       const currentAverage = Number(targetRating.average || 0);
+      const reviewSessionUpdate = buildReviewSessionUpdate({
+        isStudent,
+        isTutor,
+        reviewRef,
+      });
 
       if (reviewSnap.exists) {
+        transaction.set(resolvedSessionRef, reviewSessionUpdate, {merge: true});
         return {
           reviewStatus: "already_submitted",
           reviewId,
+          reviewPath: reviewRef.path,
           toUserId: targetUserId,
           average: currentAverage,
           totalReviews: currentTotal,
@@ -336,6 +368,7 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
       }
 
       transaction.set(reviewRef, reviewData);
+      transaction.set(resolvedSessionRef, reviewSessionUpdate, {merge: true});
       transaction.set(targetUserRef, {
         rating: {
           average: newAverage,
@@ -346,6 +379,7 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
       return {
         reviewStatus: "created",
         reviewId,
+        reviewPath: reviewRef.path,
         toUserId: targetUserId,
         average: newAverage,
         totalReviews: newTotal,

@@ -6,7 +6,7 @@ import '/index.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform;
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'nav_bar_model.dart';
 export 'nav_bar_model.dart';
@@ -15,7 +15,7 @@ class NavBarWidget extends StatefulWidget {
   const NavBarWidget({
     super.key,
     int? indexCurrentPage,
-  }) : this.indexCurrentPage = indexCurrentPage ?? 1;
+  }) : this.indexCurrentPage = indexCurrentPage ?? 0;
 
   final int indexCurrentPage;
 
@@ -24,31 +24,6 @@ class NavBarWidget extends StatefulWidget {
 }
 
 class _NavBarWidgetState extends State<NavBarWidget> {
-  static const List<AdaptiveNavigationDestination> _teacherDestinations = [
-    AdaptiveNavigationDestination(
-      icon: 'house.fill',
-      label: 'Главная',
-    ),
-    AdaptiveNavigationDestination(
-      icon: 'person.fill',
-      label: 'Профиль',
-    ),
-  ];
-  static const List<AdaptiveNavigationDestination> _studentDestinations = [
-    AdaptiveNavigationDestination(
-      icon: 'house.fill',
-      label: 'Главная',
-    ),
-    AdaptiveNavigationDestination(
-      icon: 'book.fill',
-      label: 'Словарь',
-    ),
-    AdaptiveNavigationDestination(
-      icon: 'person.fill',
-      label: 'Профиль',
-    ),
-  ];
-
   late NavBarModel _model;
 
   @override
@@ -71,21 +46,70 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
   bool get _isTeacher => currentUserDocument?.role == UserRole.native_speaker;
 
-  /// Maps the page-level index (1 = Home, 2 = Profile, 3 = Dictionary)
-  /// to the 0-based tab bar index.
   int get _selectedIndex {
+    final maxIndex = _isTeacher ? 2 : 3;
+    return widget.indexCurrentPage.clamp(0, maxIndex).toInt();
+  }
+
+  List<AdaptiveNavigationDestination> _adaptiveDestinations(
+    BuildContext context,
+  ) {
     if (_isTeacher) {
-      return widget.indexCurrentPage == 2 ? 1 : 0;
-    } else {
-      switch (widget.indexCurrentPage) {
-        case 3:
-          return 1;
-        case 2:
-          return 2;
-        default:
-          return 0;
-      }
+      return [
+        AdaptiveNavigationDestination(
+          icon: 'house.fill',
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Главная',
+            enText: 'Home',
+          ),
+        ),
+        AdaptiveNavigationDestination(
+          icon: 'person.fill',
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Профиль',
+            enText: 'Profile',
+          ),
+        ),
+        AdaptiveNavigationDestination(
+          icon: 'phone.fill',
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Мои звонки',
+            enText: 'My calls',
+          ),
+        ),
+      ];
     }
+
+    return [
+      AdaptiveNavigationDestination(
+        icon: 'house.fill',
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Главная',
+          enText: 'Home',
+        ),
+      ),
+      AdaptiveNavigationDestination(
+        icon: 'book.fill',
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Словарь',
+          enText: 'Words',
+        ),
+      ),
+      AdaptiveNavigationDestination(
+        icon: 'person.fill',
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Профиль',
+          enText: 'Profile',
+        ),
+      ),
+      AdaptiveNavigationDestination(
+        icon: 'phone.fill',
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Мои звонки',
+          enText: 'My calls',
+        ),
+      ),
+    ];
   }
 
   void _onTap(int index) {
@@ -100,15 +124,21 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   void _handleTeacherTap(int index) {
     switch (index) {
       case 0:
-        if (widget.indexCurrentPage == 1) return;
+        if (_selectedIndex == 0) return;
         context.goNamed(
           DashboardNSWidget.routeName,
         );
         return;
       case 1:
-        if (widget.indexCurrentPage == 2) return;
+        if (_selectedIndex == 1) return;
         context.goNamed(
           ProfileWidget.routeName,
+        );
+        return;
+      case 2:
+        if (_selectedIndex == 2) return;
+        context.goNamed(
+          MyCallsWidget.routeName,
         );
         return;
     }
@@ -117,7 +147,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   void _handleStudentTap(int index) {
     switch (index) {
       case 0:
-        if (widget.indexCurrentPage == 1) return;
+        if (_selectedIndex == 0) return;
         context.goNamed(
           StudentsDashboardWidget.routeName,
           queryParameters: {
@@ -126,21 +156,25 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         );
         return;
       case 1:
-        if (widget.indexCurrentPage == 3) return;
+        if (_selectedIndex == 1) return;
         context.goNamed(
           WordsWidget.routeName,
         );
         return;
       case 2:
-        if (widget.indexCurrentPage == 2) return;
+        if (_selectedIndex == 2) return;
         context.goNamed(
           ProfileWidget.routeName,
         );
         return;
+      case 3:
+        if (_selectedIndex == 3) return;
+        context.goNamed(
+          MyCallsWidget.routeName,
+        );
+        return;
     }
   }
-
-  // ──────────────────── Build ────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -155,11 +189,8 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     return _buildCupertinoTabBar(context);
   }
 
-  // ─────── iOS 26+ — native Liquid Glass tab bar ───────
-
   Widget _buildNativeIOS26TabBar() {
-    final destinations = _isTeacher ? _teacherDestinations : _studentDestinations;
-
+    final destinations = _adaptiveDestinations(context);
     final bottomPadding = MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
 
     return RepaintBoundary(
@@ -177,8 +208,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     );
   }
 
-  // ─────── iOS < 26 — CupertinoTabBar ───────
-
   Widget _buildCupertinoTabBar(BuildContext context) {
     final items = _isTeacher
         ? [
@@ -189,6 +218,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
             BottomNavigationBarItem(
               icon: Icon(FFIcons.kuser03),
               label: FFLocalizations.of(context).getText('j96epnpj'),
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(FFIcons.kphone),
+              label: FFLocalizations.of(context).getVariableText(
+                ruText: 'Мои звонки',
+                enText: 'My calls',
+              ),
             ),
           ]
         : [
@@ -204,6 +240,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
               icon: Icon(FFIcons.kuser03),
               label: FFLocalizations.of(context).getText('04sylp8f'),
             ),
+            BottomNavigationBarItem(
+              icon: Icon(FFIcons.kphone),
+              label: FFLocalizations.of(context).getVariableText(
+                ruText: 'Мои звонки',
+                enText: 'My calls',
+              ),
+            ),
           ];
 
     return CupertinoTabBar(
@@ -214,8 +257,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       items: items,
     );
   }
-
-  // ─────── Android / other — Material NavigationBar ───────
 
   Widget _buildMaterialNavBar(BuildContext context) {
     final destinations = _isTeacher
@@ -231,6 +272,15 @@ class _NavBarWidgetState extends State<NavBarWidget> {
               selectedIcon:
                   Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
               label: FFLocalizations.of(context).getText('j96epnpj'),
+            ),
+            NavigationDestination(
+              icon: Icon(FFIcons.kphone),
+              selectedIcon:
+                  Icon(FFIcons.kphone, color: const Color(0xFF008BFF)),
+              label: FFLocalizations.of(context).getVariableText(
+                ruText: 'Мои звонки',
+                enText: 'My calls',
+              ),
             ),
           ]
         : [
@@ -251,6 +301,15 @@ class _NavBarWidgetState extends State<NavBarWidget> {
               selectedIcon:
                   Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
               label: FFLocalizations.of(context).getText('04sylp8f'),
+            ),
+            NavigationDestination(
+              icon: Icon(FFIcons.kphone),
+              selectedIcon:
+                  Icon(FFIcons.kphone, color: const Color(0xFF008BFF)),
+              label: FFLocalizations.of(context).getVariableText(
+                ruText: 'Мои звонки',
+                enText: 'My calls',
+              ),
             ),
           ];
 

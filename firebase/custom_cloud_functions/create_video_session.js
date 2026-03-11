@@ -9,6 +9,10 @@ const { evaluateTutorAvailabilityWindow } = require("./availability");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const STUDENT_REVIEW_FLAG_FIELD = "studentHasReviewed";
+const TUTOR_REVIEW_FLAG_FIELD = "tutorHasReviewed";
+const STUDENT_REVIEW_REF_FIELD = "studentReviewRef";
+const TUTOR_REVIEW_REF_FIELD = "tutorReviewRef";
 const matchDebugSampleRateRaw = Number.parseFloat(
   process.env.MATCH_DEBUG_SAMPLE_RATE || "0.1",
 );
@@ -594,6 +598,10 @@ exports.createVideoSession = functions
         startedAt: null,
         endedAt: null,
         duration: null,
+        [STUDENT_REVIEW_FLAG_FIELD]: false,
+        [TUTOR_REVIEW_FLAG_FIELD]: false,
+        [STUDENT_REVIEW_REF_FIELD]: null,
+        [TUTOR_REVIEW_REF_FIELD]: null,
         tutorInfo: directTutorInfo,
 
         // Метаданные для отладки

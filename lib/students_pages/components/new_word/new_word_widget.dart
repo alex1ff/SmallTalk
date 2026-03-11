@@ -38,6 +38,9 @@ class NewWordWidget extends StatefulWidget {
 class _NewWordWidgetState extends State<NewWordWidget> {
   late NewWordModel _model;
 
+  bool get _canManageDictionary =>
+      currentUserDocument?.role == UserRole.student;
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -1198,160 +1201,163 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                 },
                               ),
                             ),
-                            StreamBuilder<List<UserWordsRecord>>(
-                              stream: queryUserWordsRecord(
-                                parent: currentUserReference,
-                              ),
-                              builder: (context, snapshot) {
-                                // Customize what your widget looks like when it's loading.
-                                if (!snapshot.hasData) {
-                                  return Center(
-                                    child: SizedBox(
-                                      width: 50.0,
-                                      height: 50.0,
-                                      child: SpinKitCircle(
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondary,
-                                        size: 50.0,
-                                      ),
-                                    ),
-                                  );
-                                }
-                                List<UserWordsRecord>
-                                    containerUserWordsRecordList =
-                                    snapshot.data!;
-
-                                return Container(
-                                  width: 60.0,
-                                  height: 60.0,
-                                  decoration: BoxDecoration(
-                                    color: FlutterFlowTheme.of(context)
-                                        .primaryBackground,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        blurRadius: 7.0,
-                                        color: Color(0x0D2C2C2C),
-                                        offset: Offset(
-                                          0.0,
-                                          2.0,
+                            if (_canManageDictionary)
+                              StreamBuilder<List<UserWordsRecord>>(
+                                stream: queryUserWordsRecord(
+                                  parent: currentUserReference,
+                                ),
+                                builder: (context, snapshot) {
+                                  // Customize what your widget looks like when it's loading.
+                                  if (!snapshot.hasData) {
+                                    return Center(
+                                      child: SizedBox(
+                                        width: 50.0,
+                                        height: 50.0,
+                                        child: SpinKitCircle(
+                                          color: FlutterFlowTheme.of(context)
+                                              .secondary,
+                                          size: 50.0,
                                         ),
-                                      )
-                                    ],
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Builder(
-                                    builder: (context) {
-                                      final primaryEntryText =
-                                          _primaryEntry()?.text;
-                                      if (containerUserWordsRecordList
-                                          .where((e) =>
-                                              e.entry.firstOrNull?.text ==
-                                              primaryEntryText)
-                                          .toList()
-                                          .isNotEmpty) {
-                                        return InkWell(
-                                          splashColor: Colors.transparent,
-                                          focusColor: Colors.transparent,
-                                          hoverColor: Colors.transparent,
-                                          highlightColor: Colors.transparent,
-                                          onTap: () async {
-                                            unawaited(
-                                              () async {
-                                                await containerUserWordsRecordList
-                                                    .where((e) =>
-                                                        e.entry.firstOrNull
-                                                            ?.text ==
-                                                        primaryEntryText)
-                                                    .toList()
-                                                    .firstOrNull!
-                                                    .reference
-                                                    .delete();
-                                              }(),
-                                            );
-                                          },
-                                          child: Container(
-                                            width: double.infinity,
+                                      ),
+                                    );
+                                  }
+                                  List<UserWordsRecord>
+                                      containerUserWordsRecordList =
+                                      snapshot.data!;
+
+                                  return Container(
+                                    width: 60.0,
+                                    height: 60.0,
+                                    decoration: BoxDecoration(
+                                      color: FlutterFlowTheme.of(context)
+                                          .primaryBackground,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          blurRadius: 7.0,
+                                          color: Color(0x0D2C2C2C),
+                                          offset: Offset(
+                                            0.0,
+                                            2.0,
+                                          ),
+                                        )
+                                      ],
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Builder(
+                                      builder: (context) {
+                                        final primaryEntryText =
+                                            _primaryEntry()?.text;
+                                        if (containerUserWordsRecordList
+                                            .where((e) =>
+                                                e.entry.firstOrNull?.text ==
+                                                primaryEntryText)
+                                            .toList()
+                                            .isNotEmpty) {
+                                          return InkWell(
+                                            splashColor: Colors.transparent,
+                                            focusColor: Colors.transparent,
+                                            hoverColor: Colors.transparent,
+                                            highlightColor: Colors.transparent,
+                                            onTap: () async {
+                                              unawaited(
+                                                () async {
+                                                  await containerUserWordsRecordList
+                                                      .where((e) =>
+                                                          e.entry.firstOrNull
+                                                              ?.text ==
+                                                          primaryEntryText)
+                                                      .toList()
+                                                      .firstOrNull!
+                                                      .reference
+                                                      .delete();
+                                                }(),
+                                              );
+                                            },
+                                            child: Container(
+                                              width: double.infinity,
+                                              child: Stack(
+                                                alignment: AlignmentDirectional(
+                                                    0.0, 0.0),
+                                                children: [
+                                                  Icon(
+                                                    FFIcons.kstar012,
+                                                    color: Colors.black,
+                                                    size: 24.0,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        } else {
+                                          return InkWell(
+                                            splashColor: Colors.transparent,
+                                            focusColor: Colors.transparent,
+                                            hoverColor: Colors.transparent,
+                                            highlightColor: Colors.transparent,
+                                            onTap: () async {
+                                              final sentencesToSave =
+                                                  _sentencesToSave();
+                                              var userWordsRecordReference =
+                                                  UserWordsRecord.createDoc(
+                                                      currentUserReference!);
+                                              await userWordsRecordReference.set({
+                                                ...createUserWordsRecordData(
+                                                  addedAt: getCurrentTimestamp,
+                                                ),
+                                                ...mapToFirestore(
+                                                  {
+                                                    'entry':
+                                                        getEntryListFirestoreData(
+                                                      _parsedWordResponse()
+                                                          ?.def,
+                                                    ),
+                                                    'Sentence':
+                                                        getSentenceListFirestoreData(
+                                                      sentencesToSave,
+                                                    ),
+                                                  },
+                                                ),
+                                              });
+                                              _model.erweerw = UserWordsRecord
+                                                  .getDocumentFromData({
+                                                ...createUserWordsRecordData(
+                                                  addedAt: getCurrentTimestamp,
+                                                ),
+                                                ...mapToFirestore(
+                                                  {
+                                                    'entry':
+                                                        getEntryListFirestoreData(
+                                                      _parsedWordResponse()
+                                                          ?.def,
+                                                    ),
+                                                    'Sentence':
+                                                        getSentenceListFirestoreData(
+                                                      sentencesToSave,
+                                                    ),
+                                                  },
+                                                ),
+                                              }, userWordsRecordReference);
+
+                                              safeSetState(() {});
+                                            },
                                             child: Stack(
-                                              alignment: AlignmentDirectional(
-                                                  0.0, 0.0),
+                                              alignment:
+                                                  AlignmentDirectional(0.0, 0.0),
                                               children: [
                                                 Icon(
-                                                  FFIcons.kstar012,
+                                                  FFIcons.kstar01,
                                                   color: Colors.black,
                                                   size: 24.0,
                                                 ),
                                               ],
                                             ),
-                                          ),
-                                        );
-                                      } else {
-                                        return InkWell(
-                                          splashColor: Colors.transparent,
-                                          focusColor: Colors.transparent,
-                                          hoverColor: Colors.transparent,
-                                          highlightColor: Colors.transparent,
-                                          onTap: () async {
-                                            final sentencesToSave =
-                                                _sentencesToSave();
-                                            var userWordsRecordReference =
-                                                UserWordsRecord.createDoc(
-                                                    currentUserReference!);
-                                            await userWordsRecordReference.set({
-                                              ...createUserWordsRecordData(
-                                                addedAt: getCurrentTimestamp,
-                                              ),
-                                              ...mapToFirestore(
-                                                {
-                                                  'entry':
-                                                      getEntryListFirestoreData(
-                                                    _parsedWordResponse()?.def,
-                                                  ),
-                                                  'Sentence':
-                                                      getSentenceListFirestoreData(
-                                                    sentencesToSave,
-                                                  ),
-                                                },
-                                              ),
-                                            });
-                                            _model.erweerw = UserWordsRecord
-                                                .getDocumentFromData({
-                                              ...createUserWordsRecordData(
-                                                addedAt: getCurrentTimestamp,
-                                              ),
-                                              ...mapToFirestore(
-                                                {
-                                                  'entry':
-                                                      getEntryListFirestoreData(
-                                                    _parsedWordResponse()?.def,
-                                                  ),
-                                                  'Sentence':
-                                                      getSentenceListFirestoreData(
-                                                    sentencesToSave,
-                                                  ),
-                                                },
-                                              ),
-                                            }, userWordsRecordReference);
-
-                                            safeSetState(() {});
-                                          },
-                                          child: Stack(
-                                            alignment:
-                                                AlignmentDirectional(0.0, 0.0),
-                                            children: [
-                                              Icon(
-                                                FFIcons.kstar01,
-                                                color: Colors.black,
-                                                size: 24.0,
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  ),
-                                );
-                              },
-                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
                             Container(
                               decoration: BoxDecoration(
                                 boxShadow: [

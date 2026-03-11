@@ -40,6 +40,7 @@ enum StatusTransactions {
   pending,
   failed,
   cancelled,
+  declined,
 }
 
 enum TypeTransactions {

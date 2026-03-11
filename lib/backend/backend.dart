@@ -7,12 +7,12 @@ import 'schema/util/firestore_util.dart';
 
 import 'schema/users_record.dart';
 import 'schema/video_sessions_record.dart';
+import 'schema/caption_logs_record.dart';
 import 'schema/user_words_record.dart';
 import 'schema/notifications_record.dart';
 import 'schema/transactions_record.dart';
 import 'schema/promo_codes_record.dart';
 import 'schema/reviews_record.dart';
-import 'schema/withdrawal_requests_record.dart';
 import 'schema/packages_record.dart';
 import 'schema/rewiews_of_the_app_record.dart';
 import 'schema/avatars_record.dart';
@@ -28,12 +28,12 @@ export 'schema/util/schema_util.dart';
 
 export 'schema/users_record.dart';
 export 'schema/video_sessions_record.dart';
+export 'schema/caption_logs_record.dart';
 export 'schema/user_words_record.dart';
 export 'schema/notifications_record.dart';
 export 'schema/transactions_record.dart';
 export 'schema/promo_codes_record.dart';
 export 'schema/reviews_record.dart';
-export 'schema/withdrawal_requests_record.dart';
 export 'schema/packages_record.dart';
 export 'schema/rewiews_of_the_app_record.dart';
 export 'schema/avatars_record.dart';
@@ -109,6 +109,46 @@ Future<List<VideoSessionsRecord>> queryVideoSessionsRecordOnce({
     queryCollectionOnce(
       VideoSessionsRecord.collection,
       VideoSessionsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+/// Functions to query CaptionLogsRecords (as a Stream and as a Future).
+Future<int> queryCaptionLogsRecordCount({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      CaptionLogsRecord.collection(parent),
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<CaptionLogsRecord>> queryCaptionLogsRecord({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      CaptionLogsRecord.collection(parent),
+      CaptionLogsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<CaptionLogsRecord>> queryCaptionLogsRecordOnce({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      CaptionLogsRecord.collection(parent),
+      CaptionLogsRecord.fromSnapshot,
       queryBuilder: queryBuilder,
       limit: limit,
       singleRecord: singleRecord,
@@ -297,43 +337,6 @@ Future<List<ReviewsRecord>> queryReviewsRecordOnce({
     queryCollectionOnce(
       ReviewsRecord.collection,
       ReviewsRecord.fromSnapshot,
-      queryBuilder: queryBuilder,
-      limit: limit,
-      singleRecord: singleRecord,
-    );
-
-/// Functions to query WithdrawalRequestsRecords (as a Stream and as a Future).
-Future<int> queryWithdrawalRequestsRecordCount({
-  Query Function(Query)? queryBuilder,
-  int limit = -1,
-}) =>
-    queryCollectionCount(
-      WithdrawalRequestsRecord.collection,
-      queryBuilder: queryBuilder,
-      limit: limit,
-    );
-
-Stream<List<WithdrawalRequestsRecord>> queryWithdrawalRequestsRecord({
-  Query Function(Query)? queryBuilder,
-  int limit = -1,
-  bool singleRecord = false,
-}) =>
-    queryCollection(
-      WithdrawalRequestsRecord.collection,
-      WithdrawalRequestsRecord.fromSnapshot,
-      queryBuilder: queryBuilder,
-      limit: limit,
-      singleRecord: singleRecord,
-    );
-
-Future<List<WithdrawalRequestsRecord>> queryWithdrawalRequestsRecordOnce({
-  Query Function(Query)? queryBuilder,
-  int limit = -1,
-  bool singleRecord = false,
-}) =>
-    queryCollectionOnce(
-      WithdrawalRequestsRecord.collection,
-      WithdrawalRequestsRecord.fromSnapshot,
       queryBuilder: queryBuilder,
       limit: limit,
       singleRecord: singleRecord,

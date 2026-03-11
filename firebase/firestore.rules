@@ -25,6 +25,10 @@ service cloud.firestore {
       );
     }
 
+    function videoSessionData(sessionId) {
+      return get(/databases/$(database)/documents/videoSessions/$(sessionId)).data;
+    }
+
     function isPromoCodeRedeemUpdate() {
       return isSignedIn() &&
         request.resource.data.diff(resource.data).changedKeys().hasOnly([
@@ -56,6 +60,17 @@ service cloud.firestore {
       allow read: if isSessionParticipant(resource.data);
       allow update: if isSessionParticipant(resource.data);
       allow delete: if false;
+
+      match /captionLogs/{logId} {
+        allow read: if isSessionParticipant(videoSessionData(sessionId));
+        allow create, update: if isSessionParticipant(videoSessionData(sessionId)) &&
+          request.resource.data.writerId == request.auth.uid &&
+          (
+            request.resource.data.speakerId == request.auth.uid ||
+            request.resource.data.source == 'peer_legacy_final'
+          );
+        allow delete: if false;
+      }
     }
 
     match /users/{userId}/userWords/{wordId} {
@@ -88,12 +103,6 @@ service cloud.firestore {
         request.resource.data.rating >= 1 &&
         request.resource.data.rating <= 5;
       allow read: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    match /withdrawalRequests/{withdrawalRequestId} {
-      allow create: if isOwnerRef(request.resource.data.userId);
-      allow read: if isOwnerRef(resource.data.userId);
       allow update, delete: if false;
     }
 

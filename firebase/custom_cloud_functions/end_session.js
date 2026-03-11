@@ -120,6 +120,9 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         ? Math.max(0, Math.floor((requestTimestamp - startTime) / 1000))
         : 0;
       const tutorDurationMinutes = parseFloat((duration / 60).toFixed(4));
+      const analyticsDurationMinutes = parseFloat(
+        tutorDurationMinutes.toFixed(1),
+      );
       const tutorEarning = parseFloat(
         (tutorDurationMinutes * TUTOR_RATE_PER_MINUTE).toFixed(2),
       );
@@ -226,6 +229,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         endedAt: requestTimestamp,
         amountST,
         freeMinuteApplied,
+        analyticsDurationMinutes,
         tutorDurationMinutes,
         tutorEarning,
         formattedDuration,
@@ -299,9 +303,8 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     backgroundTasks.push(
       db.collection("analytics").doc("summary").set({
         totalCalls: admin.firestore.FieldValue.increment(1),
-        totalTransactions: admin.firestore.FieldValue.increment(tutorRef ? 2 : 1),
         totalDurationMinutes: admin.firestore.FieldValue.increment(
-          txResult.tutorDurationMinutes,
+          txResult.analyticsDurationMinutes,
         ),
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true }).catch((e) => console.error("❌ Analytics summary failed:", e))

@@ -14,6 +14,8 @@ export '/shared_pages/profile/profile_widget.dart' show ProfileWidget;
 export '/students_pages/words/words_widget.dart' show WordsWidget;
 export '/shared_pages/call_summary/call_summary_widget.dart'
     show CallSummaryWidget;
+export '/shared_pages/call_details/call_details_widget.dart'
+    show CallDetailsWidget;
 export '/shared_pages/video_call_page/video_call_page_widget.dart'
     show VideoCallPageWidget;
 export '/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart'
@@ -35,3 +37,4 @@ export '/students_pages/pay_web_wiew/pay_web_wiew_widget.dart'
 export '/shared_pages/black_list/black_list_widget.dart' show BlackListWidget;
 export '/teachers_pages/my_rew_n_s/my_rew_n_s_widget.dart' show MyRewNSWidget;
 export '/students_pages/favorite/favorite_widget.dart' show FavoriteWidget;
+export '/shared_pages/my_calls/my_calls_widget.dart' show MyCallsWidget;
