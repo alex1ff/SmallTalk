@@ -1,6 +1,8 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/button/button_widget.dart';
+import '/components/empty/empty_widget.dart';
 import '/components/trans/trans_widget.dart';
 import '/flutter_flow/flutter_flow_animations.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
@@ -1097,6 +1099,15 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                           }())
                                       .toList();
 
+                                  if (list.isEmpty) {
+                                    return Center(
+                                      child: EmptyWidget(
+                                        txt:
+                                            'По выбранному типу операций пока ничего нет. Попробуйте другой фильтр.',
+                                      ),
+                                    );
+                                  }
+
                                   return Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children:
@@ -1218,103 +1229,34 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                 ),
                 child: Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(6, 12, 6, 35),
-                  child: InkWell(
-                    splashColor: Colors.transparent,
-                    focusColor: Colors.transparent,
-                    hoverColor: Colors.transparent,
-                    highlightColor: Colors.transparent,
-                    onTap: () async {
+                  child: ButtonWidget(
+                    text: FFLocalizations.of(context).getText(
+                      '5visqusd' /* Оплатить */,
+                    ),
+                    loadingText: FFLocalizations.of(context).getVariableText(
+                      ruText: 'Создаем оплату...',
+                      enText: 'Creating payment...',
+                    ),
+                    busyStyle: ButtonBusyStyle.spinner,
+                    keyboardAwarePadding: false,
+                    padding: EdgeInsets.zero,
+                    trailingContent: _model.tarifDoc != null
+                        ? Text(
+                            '${_model.tarifDoc!.price.toString()}₽',
+                            style: FlutterFlowTheme.of(context)
+                                .bodyMedium
+                                .override(
+                                  fontFamily: 'sf pro display',
+                                  color: FlutterFlowTheme.of(context)
+                                      .secondaryText,
+                                  fontSize: 15,
+                                  letterSpacing: 0.0,
+                                ),
+                          )
+                        : null,
+                    action: () async {
                       await _handlePayPressed();
                     },
-                    child: Opacity(
-                      opacity: _isCreatingPaymentSession ? 0.9 : 1.0,
-                      child: Container(
-                        width: double.infinity,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          borderRadius: BorderRadius.circular(50),
-                        ),
-                        child: Padding(
-                          padding: EdgeInsets.all(2),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.max,
-                            children: [
-                              Expanded(
-                                child: Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      16, 0, 0, 0),
-                                  child: Text(
-                                    _isCreatingPaymentSession
-                                        ? 'Создаем оплату...'
-                                        : FFLocalizations.of(context).getText(
-                                            '5visqusd' /* Оплатить */,
-                                          ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'Cool',
-                                          color: FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                          fontSize: 20,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
-                                        ),
-                                  ),
-                                ),
-                              ),
-                              if (_model.tarifDoc != null &&
-                                  !_isCreatingPaymentSession)
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      0, 0, 12, 0),
-                                  child: Text(
-                                    '${_model.tarifDoc!.price.toString()}₽',
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: FlutterFlowTheme.of(context)
-                                              .secondaryText,
-                                          fontSize: 15,
-                                          letterSpacing: 0.0,
-                                        ),
-                                  ),
-                                ),
-                              Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  color: FlutterFlowTheme.of(context)
-                                      .primaryBackground,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Align(
-                                  alignment: AlignmentDirectional(0, 0),
-                                  child: _isCreatingPaymentSession
-                                      ? SizedBox(
-                                          width: 20.0,
-                                          height: 20.0,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2.2,
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                              Colors.black,
-                                            ),
-                                          ),
-                                        )
-                                      : Icon(
-                                          FFIcons.karrowRight,
-                                          color: Colors.black,
-                                          size: 20,
-                                        ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
                   ),
                 ),
               ),

@@ -174,7 +174,6 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         "ST",
       );
 
-      const idempotencyKey = `end_session:${sessionId}`;
       transaction.update(sessionRef, {
         status: "ended",
         endedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -183,22 +182,6 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         freeMinuteApplied: freeMinuteApplied,
         tutorNavigationTriggered: false,
         studentNavigationTriggered: false,
-        sessionMetadata: {
-          ...sessionData.sessionMetadata,
-          endedBy: endedBy,
-          endedByRole: endedByRole,
-          endReason: endReason || "manual",
-          endedAtTimestamp: requestTimestamp,
-          finalDuration: duration,
-          billing: {
-            idempotencyKey,
-            amountST,
-            tutorEarning,
-            freeMinuteApplied,
-            processedBy: userId,
-            processedAtTimestamp: requestTimestamp,
-          },
-        },
       });
 
       if (sessionData.tutorId) {

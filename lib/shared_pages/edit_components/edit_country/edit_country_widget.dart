@@ -5,11 +5,9 @@ import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'edit_country_model.dart';
 export 'edit_country_model.dart';
 
@@ -32,9 +30,6 @@ class EditCountryWidget extends StatefulWidget {
 class _EditCountryWidgetState extends State<EditCountryWidget> {
   late EditCountryModel _model;
 
-  late StreamSubscription<bool> _keyboardVisibilitySubscription;
-  bool _isKeyboardVisible = false;
-
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -51,29 +46,18 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
       _model.selected = widget.selecte;
       safeSetState(() {});
     });
-
-    if (!isWeb) {
-      _keyboardVisibilitySubscription =
-          KeyboardVisibilityController().onChange.listen((bool visible) {
-        safeSetState(() {
-          _isKeyboardVisible = visible;
-        });
-      });
-    }
   }
 
   @override
   void dispose() {
     _model.maybeDispose();
-
-    if (!isWeb) {
-      _keyboardVisibilitySubscription.cancel();
-    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
       child: Column(
@@ -150,8 +134,11 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
                       .addToStart(SizedBox(height: 16.0)),
                 ),
               ),
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 0.0),
+              AnimatedPadding(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    0.0, 0.0, 6.0, keyboardVisible ? 6.0 : 35.0),
                 child: Row(
                   mainAxisSize: MainAxisSize.max,
                   children: [
@@ -163,20 +150,25 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
                           text: FFLocalizations.of(context).getText(
                             'z2pbajmj' /* Сохранить */,
                           ),
+                          keyboardAwarePadding: false,
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              6.0, 0.0, 6.0, 0.0),
+                          loadingText:
+                              FFLocalizations.of(context).getVariableText(
+                            ruText: 'Сохраняем...',
+                            enText: 'Saving...',
+                          ),
+                          busyStyle: ButtonBusyStyle.spinner,
                           action: () async {
                             if (_model.selected !=
                                 currentUserDocument?.countryNS) {
-                              unawaited(
-                                () async {
-                                  await currentUserReference!
-                                      .update(createUsersRecordData(
-                                    countryNS: updateCountryStruct(
-                                      _model.selected,
-                                      clearUnsetFields: false,
-                                    ),
-                                  ));
-                                }(),
-                              );
+                              await currentUserReference!
+                                  .update(createUsersRecordData(
+                                countryNS: updateCountryStruct(
+                                  _model.selected,
+                                  clearUnsetFields: false,
+                                ),
+                              ));
                               await widget.action?.call(
                                 _model.selected!,
                               );
@@ -186,48 +178,33 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
                         ),
                       ),
                     ),
-                    Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(
-                          0.0,
-                          0.0,
-                          0.0,
-                          valueOrDefault<double>(
-                            (isWeb
-                                    ? MediaQuery.viewInsetsOf(context).bottom >
-                                        0
-                                    : _isKeyboardVisible)
-                                ? 6.0
-                                : 35.0,
-                            6.0,
-                          )),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          boxShadow: [
-                            BoxShadow(
-                              blurRadius: 7.0,
-                              color: Color(0x0D2C2C2C),
-                              offset: Offset(
-                                0.0,
-                                2.0,
-                              ),
-                            )
-                          ],
-                          shape: BoxShape.circle,
+                    Container(
+                      decoration: BoxDecoration(
+                        boxShadow: [
+                          BoxShadow(
+                            blurRadius: 7.0,
+                            color: Color(0x0D2C2C2C),
+                            offset: Offset(
+                              0.0,
+                              2.0,
+                            ),
+                          )
+                        ],
+                        shape: BoxShape.circle,
+                      ),
+                      child: FlutterFlowIconButton(
+                        borderRadius: 50.0,
+                        buttonSize: 60.0,
+                        fillColor:
+                            FlutterFlowTheme.of(context).primaryBackground,
+                        icon: Icon(
+                          Icons.close_sharp,
+                          color: FlutterFlowTheme.of(context).error,
+                          size: 20.0,
                         ),
-                        child: FlutterFlowIconButton(
-                          borderRadius: 50.0,
-                          buttonSize: 60.0,
-                          fillColor:
-                              FlutterFlowTheme.of(context).primaryBackground,
-                          icon: Icon(
-                            Icons.close_sharp,
-                            color: FlutterFlowTheme.of(context).error,
-                            size: 20.0,
-                          ),
-                          onPressed: () async {
-                            Navigator.pop(context);
-                          },
-                        ),
+                        onPressed: () async {
+                          Navigator.pop(context);
+                        },
                       ),
                     ),
                   ],

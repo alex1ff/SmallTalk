@@ -291,6 +291,11 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                     text: FFLocalizations.of(context).getText(
                       '4rn5krnl' /* Отправить */,
                     ),
+                    loadingText: FFLocalizations.of(context).getVariableText(
+                      ruText: 'Отправляем...',
+                      enText: 'Sending...',
+                    ),
+                    busyStyle: ButtonBusyStyle.spinner,
                     action: () async {
                       if (functions
                           .isValidEmail(_model.emailTextController.text)) {

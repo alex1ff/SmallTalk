@@ -1,6 +1,7 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/button/button_widget.dart';
 import '/components/pop/pop_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -501,7 +502,8 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                     borderRadius: BorderRadius.circular(26.0),
                   ),
                   child: Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(4.0, 4.0, 16.0, 4.0),
+                    padding:
+                        EdgeInsetsDirectional.fromSTEB(4.0, 4.0, 16.0, 4.0),
                     child: Row(
                       mainAxisSize: MainAxisSize.max,
                       mainAxisAlignment: MainAxisAlignment.start,
@@ -526,8 +528,8 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                         ),
                         Expanded(
                           child: Padding(
-                            padding:
-                                EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 0.0, 0.0),
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                10.0, 0.0, 0.0, 0.0),
                             child: Text(
                               'Войти как Native Speaker',
                               style: FlutterFlowTheme.of(context)
@@ -557,166 +559,94 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(0.0, 16.0, 0.0, 8.0),
-                child: Stack(
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      height: 60.0,
-                      decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).primaryText,
-                        borderRadius: BorderRadius.circular(100.0),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(2.0),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.max,
-                          children: [
-                            Expanded(
-                              child: Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    16.0, 0.0, 0.0, 0.0),
-                                child: Text(
-                                  FFLocalizations.of(context).getText(
-                                    'ohbb27ah' /* Далее */,
-                                  ),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'Cool',
-                                        color: FlutterFlowTheme.of(context)
-                                            .primaryBackground,
-                                        fontSize: 20.0,
-                                        letterSpacing: 0.0,
-                                      ),
-                                ),
-                              ),
+                child: ButtonWidget(
+                  text: FFLocalizations.of(context).getText(
+                    'ohbb27ah' /* Далее */,
+                  ),
+                  loadingText: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Создаем аккаунт...',
+                    enText: 'Creating account...',
+                  ),
+                  busyStyle: ButtonBusyStyle.spinner,
+                  keyboardAwarePadding: false,
+                  padding: EdgeInsets.zero,
+                  action: () async {
+                    if (functions
+                        .isValidEmail(_model.emailTextController.text)) {
+                      GoRouter.of(context).prepareAuthEvent();
+
+                      final user = await authManager.createAccountWithEmail(
+                        context,
+                        _model.emailTextController.text,
+                        _model.passTextController.text,
+                      );
+                      if (user == null) {
+                        return;
+                      }
+
+                      if (_model.switchValue == true) {
+                        await UsersRecord.collection
+                            .doc(user.uid)
+                            .update(createUsersRecordData(
+                              role: UserRole.native_speaker,
+                            ));
+
+                        context.goNamedAuth(
+                          AcquaintanceNSWidget.routeName,
+                          context.mounted,
+                          queryParameters: {
+                            'index': serializeParam(
+                              0,
+                              ParamType.int,
                             ),
-                            Container(
-                              width: 56.0,
-                              height: 56.0,
-                              decoration: BoxDecoration(
-                                color: FlutterFlowTheme.of(context)
-                                    .primaryBackground,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Align(
-                                alignment: AlignmentDirectional(0.0, 0.0),
-                                child: Icon(
-                                  FFIcons.karrowRight,
-                                  color: Colors.black,
-                                  size: 20.0,
+                          }.withoutNulls,
+                        );
+                      } else {
+                        await UsersRecord.collection
+                            .doc(user.uid)
+                            .update(createUsersRecordData(
+                              role: UserRole.student,
+                              balanceST: updateBalanceStruct(
+                                BalanceStruct(
+                                  smallTalks: 1,
+                                  minutes: 10,
                                 ),
+                                clearUnsetFields: false,
+                                create: true,
                               ),
+                            ));
+
+                        await TransactionsRecord.collection
+                            .doc()
+                            .set(createTransactionsRecordData(
+                              userId: currentUserReference,
+                              createdAt: getCurrentTimestamp,
+                              type: TypeTransactions.bonus,
+                              status: StatusTransactions.completed,
+                              amountST: 1.0,
+                            ));
+
+                        context.goNamedAuth(
+                          AcquaintanceSTUDENTWidget.routeName,
+                          context.mounted,
+                          queryParameters: {
+                            'index': serializeParam(
+                              0,
+                              ParamType.int,
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    FFButtonWidget(
-                      onPressed: () async {
-                        if (functions
-                            .isValidEmail(_model.emailTextController.text)) {
-                          GoRouter.of(context).prepareAuthEvent();
-
-                          final user = await authManager.createAccountWithEmail(
-                            context,
-                            _model.emailTextController.text,
-                            _model.passTextController.text,
-                          );
-                          if (user == null) {
-                            return;
-                          }
-
-                          if (_model.switchValue == true) {
-                            await UsersRecord.collection
-                                .doc(user.uid)
-                                .update(createUsersRecordData(
-                                  role: UserRole.native_speaker,
-                                ));
-
-                            context.goNamedAuth(
-                              AcquaintanceNSWidget.routeName,
-                              context.mounted,
-                              queryParameters: {
-                                'index': serializeParam(
-                                  0,
-                                  ParamType.int,
-                                ),
-                              }.withoutNulls,
-                            );
-                          } else {
-                            await UsersRecord.collection
-                                .doc(user.uid)
-                                .update(createUsersRecordData(
-                                  role: UserRole.student,
-                                  balanceST: updateBalanceStruct(
-                                    BalanceStruct(
-                                      smallTalks: 1,
-                                      minutes: 10,
-                                    ),
-                                    clearUnsetFields: false,
-                                    create: true,
-                                  ),
-                                ));
-
-                            unawaited(
-                              () async {
-                                await TransactionsRecord.collection
-                                    .doc()
-                                    .set(createTransactionsRecordData(
-                                      userId: currentUserReference,
-                                      createdAt: getCurrentTimestamp,
-                                      type: TypeTransactions.bonus,
-                                      status: StatusTransactions.completed,
-                                      amountST: 1.0,
-                                    ));
-                              }(),
-                            );
-
-                            context.goNamedAuth(
-                              AcquaintanceSTUDENTWidget.routeName,
-                              context.mounted,
-                              queryParameters: {
-                                'index': serializeParam(
-                                  0,
-                                  ParamType.int,
-                                ),
-                              }.withoutNulls,
-                            );
-                          }
-                        } else {
-                          await actions.showTopNotification(
-                            context,
-                            'Неверный e-mail',
-                            '',
-                            true,
-                          );
-                          return;
-                        }
-                      },
-                      text: FFLocalizations.of(context).getText(
-                        'p8z1gi45' /*   */,
-                      ),
-                      options: FFButtonOptions(
-                        width: double.infinity,
-                        height: 60.0,
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
-                        iconPadding:
-                            EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
-                        color: Colors.transparent,
-                        textStyle:
-                            FlutterFlowTheme.of(context).titleSmall.override(
-                                  fontFamily: 'sf pro display',
-                                  color: Colors.white,
-                                  letterSpacing: 0.0,
-                                ),
-                        elevation: 0.0,
-                        borderRadius: BorderRadius.circular(50.0),
-                      ),
-                      showLoadingIndicator: false,
-                    ),
-                  ],
+                          }.withoutNulls,
+                        );
+                      }
+                    } else {
+                      await actions.showTopNotification(
+                        context,
+                        'Неверный e-mail',
+                        '',
+                        true,
+                      );
+                      return;
+                    }
+                  },
                 ),
               ),
               Expanded(
@@ -806,7 +736,8 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                         shape: BoxShape.circle,
                                       ),
                                       child: Align(
-                                        alignment: AlignmentDirectional(0.0, 0.0),
+                                        alignment:
+                                            AlignmentDirectional(0.0, 0.0),
                                         child: Icon(
                                           Icons.apple,
                                           color: FlutterFlowTheme.of(context)
@@ -826,8 +757,9 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                             .bodyMedium
                                             .override(
                                               fontFamily: 'sf pro display',
-                                              color: FlutterFlowTheme.of(context)
-                                                  .primaryText,
+                                              color:
+                                                  FlutterFlowTheme.of(context)
+                                                      .primaryText,
                                               fontSize: 16.0,
                                               letterSpacing: 0.0,
                                               fontWeight: FontWeight.normal,
@@ -854,8 +786,8 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                   }
 
                                   GoRouter.of(context).prepareAuthEvent();
-                                  final user =
-                                      await authManager.signInWithApple(context);
+                                  final user = await authManager
+                                      .signInWithApple(context);
                                   if (user == null) {
                                     return;
                                   }
@@ -964,7 +896,8 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                         shape: BoxShape.circle,
                                       ),
                                       child: Align(
-                                        alignment: AlignmentDirectional(0.0, 0.0),
+                                        alignment:
+                                            AlignmentDirectional(0.0, 0.0),
                                         child: FaIcon(
                                           FontAwesomeIcons.google,
                                           color: FlutterFlowTheme.of(context)
@@ -984,8 +917,9 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                             .bodyMedium
                                             .override(
                                               fontFamily: 'sf pro display',
-                                              color: FlutterFlowTheme.of(context)
-                                                  .primaryText,
+                                              color:
+                                                  FlutterFlowTheme.of(context)
+                                                      .primaryText,
                                               fontSize: 16.0,
                                               letterSpacing: 0.0,
                                               fontWeight: FontWeight.normal,
@@ -998,8 +932,8 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                               FFButtonWidget(
                                 onPressed: () async {
                                   GoRouter.of(context).prepareAuthEvent();
-                                  final user =
-                                      await authManager.signInWithGoogle(context);
+                                  final user = await authManager
+                                      .signInWithGoogle(context);
                                   if (user == null) {
                                     return;
                                   }

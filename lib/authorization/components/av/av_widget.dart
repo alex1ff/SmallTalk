@@ -3,12 +3,10 @@ import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'av_model.dart';
 export 'av_model.dart';
 
@@ -29,9 +27,6 @@ class AvWidget extends StatefulWidget {
 class _AvWidgetState extends State<AvWidget> {
   late AvModel _model;
 
-  late StreamSubscription<bool> _keyboardVisibilitySubscription;
-  bool _isKeyboardVisible = false;
-
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -42,29 +37,18 @@ class _AvWidgetState extends State<AvWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => AvModel());
-
-    if (!isWeb) {
-      _keyboardVisibilitySubscription =
-          KeyboardVisibilityController().onChange.listen((bool visible) {
-        safeSetState(() {
-          _isKeyboardVisible = visible;
-        });
-      });
-    }
   }
 
   @override
   void dispose() {
     _model.maybeDispose();
-
-    if (!isWeb) {
-      _keyboardVisibilitySubscription.cancel();
-    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return Stack(
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
@@ -163,9 +147,11 @@ class _AvWidgetState extends State<AvWidget> {
                         );
                       },
                     ),
-                    Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 0.0),
+                    AnimatedPadding(
+                      duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeOutCubic,
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          0.0, 0.0, 6.0, keyboardVisible ? 6.0 : 35.0),
                       child: Row(
                         mainAxisSize: MainAxisSize.max,
                         children: [
@@ -177,64 +163,52 @@ class _AvWidgetState extends State<AvWidget> {
                                 text: FFLocalizations.of(context).getText(
                                   'v5m8e59n' /* Сохранить */,
                                 ),
+                                keyboardAwarePadding: false,
+                                padding: EdgeInsetsDirectional.fromSTEB(
+                                    6.0, 0.0, 6.0, 0.0),
+                                loadingText:
+                                    FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Сохраняем...',
+                                  enText: 'Saving...',
+                                ),
+                                busyStyle: ButtonBusyStyle.spinner,
                                 action: () async {
-                                  unawaited(
-                                    () async {
-                                      await widget.ation?.call(
-                                        widget.avatarDoc!.images
-                                            .elementAtOrNull(
-                                                _model.carouselCurrentIndex)!,
-                                      );
-                                    }(),
+                                  await widget.ation?.call(
+                                    widget.avatarDoc!.images.elementAtOrNull(
+                                        _model.carouselCurrentIndex)!,
                                   );
                                   Navigator.pop(context);
                                 },
                               ),
                             ),
                           ),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0,
-                                0.0,
-                                0.0,
-                                valueOrDefault<double>(
-                                  (isWeb
-                                          ? MediaQuery.viewInsetsOf(context)
-                                                  .bottom >
-                                              0
-                                          : _isKeyboardVisible)
-                                      ? 6.0
-                                      : 35.0,
-                                  6.0,
-                                )),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                boxShadow: [
-                                  BoxShadow(
-                                    blurRadius: 7.0,
-                                    color: Color(0x0D2C2C2C),
-                                    offset: Offset(
-                                      0.0,
-                                      2.0,
-                                    ),
-                                  )
-                                ],
-                                shape: BoxShape.circle,
+                          Container(
+                            decoration: BoxDecoration(
+                              boxShadow: [
+                                BoxShadow(
+                                  blurRadius: 7.0,
+                                  color: Color(0x0D2C2C2C),
+                                  offset: Offset(
+                                    0.0,
+                                    2.0,
+                                  ),
+                                )
+                              ],
+                              shape: BoxShape.circle,
+                            ),
+                            child: FlutterFlowIconButton(
+                              borderRadius: 50.0,
+                              buttonSize: 60.0,
+                              fillColor: FlutterFlowTheme.of(context)
+                                  .primaryBackground,
+                              icon: Icon(
+                                Icons.close_sharp,
+                                color: FlutterFlowTheme.of(context).error,
+                                size: 20.0,
                               ),
-                              child: FlutterFlowIconButton(
-                                borderRadius: 50.0,
-                                buttonSize: 60.0,
-                                fillColor: FlutterFlowTheme.of(context)
-                                    .primaryBackground,
-                                icon: Icon(
-                                  Icons.close_sharp,
-                                  color: FlutterFlowTheme.of(context).error,
-                                  size: 20.0,
-                                ),
-                                onPressed: () async {
-                                  Navigator.pop(context);
-                                },
-                              ),
+                              onPressed: () async {
+                                Navigator.pop(context);
+                              },
                             ),
                           ),
                         ],

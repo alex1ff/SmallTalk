@@ -5,7 +5,6 @@ import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import 'dart:async';
 import '/index.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:easy_debounce/easy_debounce.dart';
@@ -40,6 +39,8 @@ class CallSummaryWidget extends StatefulWidget {
 }
 
 class _CallSummaryWidgetState extends State<CallSummaryWidget> {
+  static const _ctaAnimationDuration = Duration(milliseconds: 180);
+
   late CallSummaryModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
@@ -52,6 +53,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
     _model.aboutMeTextController ??= TextEditingController();
     _model.aboutMeFocusNode ??= FocusNode();
+    _model.aboutMeFocusNode!.addListener(() => safeSetState(() {}));
   }
 
   @override
@@ -127,6 +129,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
   @override
   Widget build(BuildContext context) {
     final isKeyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final isComposerActive =
+        (_model.aboutMeFocusNode?.hasFocus ?? false) || isKeyboardVisible;
 
     return GestureDetector(
       onTap: () {
@@ -766,114 +770,152 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               ),
                             ),
                           ].addToStart(SizedBox(height: 115)).addToEnd(
-                                SizedBox(height: isKeyboardVisible ? 24 : 120),
+                                const SizedBox(height: 120),
                               ),
                         ),
                       ),
                     ),
-                    if (!isKeyboardVisible)
-                      Align(
+                    SizedBox(
+                      height: 120.0,
+                      child: Align(
                         alignment: AlignmentDirectional(0, 1),
-                        child: wrapWithModel(
-                          model: _model.buttonModel,
-                          updateCallback: () => safeSetState(() {}),
-                          child: ButtonWidget(
-                            text: FFLocalizations.of(context).getText(
-                              'duynuhus' /* Готово */,
+                        child: AnimatedPadding(
+                          duration: _ctaAnimationDuration,
+                          curve: Curves.easeOutCubic,
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                            0.0,
+                            0.0,
+                            0.0,
+                            isComposerActive ? 24.0 : 0.0,
+                          ),
+                          child: IgnorePointer(
+                            ignoring: isComposerActive,
+                            child: AnimatedOpacity(
+                              duration: _ctaAnimationDuration,
+                              curve: Curves.easeOutCubic,
+                              opacity: isComposerActive ? 0.0 : 1.0,
+                              child: AnimatedSlide(
+                                duration: _ctaAnimationDuration,
+                                curve: Curves.easeOutCubic,
+                                offset: isComposerActive
+                                    ? const Offset(0.0, 0.24)
+                                    : Offset.zero,
+                                child: wrapWithModel(
+                                  model: _model.buttonModel,
+                                  updateCallback: () => safeSetState(() {}),
+                                  child: ButtonWidget(
+                                    text: FFLocalizations.of(context).getText(
+                                      'duynuhus' /* Готово */,
+                                    ),
+                                    loadingText: FFLocalizations.of(context)
+                                        .getVariableText(
+                                      ruText: 'Сохраняем...',
+                                      enText: 'Saving...',
+                                    ),
+                                    busyStyle: ButtonBusyStyle.spinner,
+                                    keyboardAwarePadding: false,
+                                    padding:
+                                        const EdgeInsetsDirectional.fromSTEB(
+                                            6.0, 0.0, 6.0, 35.0),
+                                    action: () async {
+                                      if (_model.rait != 0) {
+                                        final sessionRef = widget.sessionID;
+                                        final toUserRef = widget.userRef;
+                                        if (sessionRef == null ||
+                                            toUserRef == null) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                FFLocalizations.of(context)
+                                                    .getVariableText(
+                                                  ruText:
+                                                      'Не удалось отправить отзыв: отсутствуют данные сессии.',
+                                                  enText:
+                                                      'Unable to submit review: missing session data.',
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                          return;
+                                        }
+
+                                        try {
+                                          await submitSessionReview(
+                                            sessionRef: sessionRef,
+                                            toUserRef: toUserRef,
+                                            rating: _model.rait,
+                                            isTeacher:
+                                                currentUserDocument?.role ==
+                                                    UserRole.native_speaker,
+                                            comment: _model
+                                                .aboutMeTextController.text,
+                                          );
+                                        } on FirebaseFunctionsException catch (e) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                reviewErrorMessage(context, e),
+                                              ),
+                                            ),
+                                          );
+                                          return;
+                                        } catch (_) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                unexpectedReviewErrorMessage(
+                                                    context),
+                                              ),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                      }
+                                      if (effectiveFav) {
+                                        await currentUserReference!.update({
+                                          ...mapToFirestore(
+                                            {
+                                              'favoriteNativeSpeakers':
+                                                  FieldValue.arrayUnion(
+                                                      [widget.userRef]),
+                                            },
+                                          ),
+                                        });
+                                      } else if (effectiveBlack) {
+                                        await currentUserReference!.update({
+                                          ...mapToFirestore(
+                                            {
+                                              'favoriteNativeSpeakers':
+                                                  FieldValue.arrayRemove(
+                                                      [widget.userRef]),
+                                              'blockedUsers':
+                                                  FieldValue.arrayUnion(
+                                                      [widget.userRef]),
+                                            },
+                                          ),
+                                        });
+                                      }
+
+                                      if (currentUserDocument?.role ==
+                                          UserRole.student) {
+                                        context.goNamed(
+                                            StudentsDashboardWidget.routeName);
+                                      } else {
+                                        context.goNamed(
+                                            DashboardNSWidget.routeName);
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ),
                             ),
-                            action: () async {
-                              if (_model.rait != 0) {
-                                final sessionRef = widget.sessionID;
-                                final toUserRef = widget.userRef;
-                                if (sessionRef == null || toUserRef == null) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        FFLocalizations.of(context)
-                                            .getVariableText(
-                                          ruText:
-                                              'Не удалось отправить отзыв: отсутствуют данные сессии.',
-                                          enText:
-                                              'Unable to submit review: missing session data.',
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                try {
-                                  await submitSessionReview(
-                                    sessionRef: sessionRef,
-                                    toUserRef: toUserRef,
-                                    rating: _model.rait,
-                                    isTeacher: currentUserDocument?.role ==
-                                        UserRole.native_speaker,
-                                    comment: _model.aboutMeTextController.text,
-                                  );
-                                } on FirebaseFunctionsException catch (e) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        reviewErrorMessage(context, e),
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                } catch (_) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        unexpectedReviewErrorMessage(context),
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-                              }
-                              if (effectiveFav) {
-                                unawaited(
-                                  () async {
-                                    await currentUserReference!.update({
-                                      ...mapToFirestore(
-                                        {
-                                          'favoriteNativeSpeakers':
-                                              FieldValue.arrayUnion(
-                                                  [widget.userRef]),
-                                        },
-                                      ),
-                                    });
-                                  }(),
-                                );
-                              } else if (effectiveBlack) {
-                                unawaited(
-                                  () async {
-                                    await currentUserReference!.update({
-                                      ...mapToFirestore(
-                                        {
-                                          'favoriteNativeSpeakers':
-                                              FieldValue.arrayRemove(
-                                                  [widget.userRef]),
-                                          'blockedUsers': FieldValue.arrayUnion(
-                                              [widget.userRef]),
-                                        },
-                                      ),
-                                    });
-                                  }(),
-                                );
-                              }
-
-                              if (currentUserDocument?.role ==
-                                  UserRole.student) {
-                                context
-                                    .goNamed(StudentsDashboardWidget.routeName);
-                              } else {
-                                context.goNamed(DashboardNSWidget.routeName);
-                              }
-                            },
                           ),
                         ),
                       ),
+                    ),
                     Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(

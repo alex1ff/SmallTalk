@@ -1,15 +1,16 @@
 import '/auth/firebase_auth/auth_util.dart';
+import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/button/button_widget.dart';
 import '/components/review_card/review_card_widget.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/index.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
 import '/shared_pages/review_flow/review_submission_helper.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '/students_pages/components/fav/fav_widget.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
@@ -70,7 +71,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   }
 
   Future<List<TransactionsRecord>>? _ensureTransactionsFuture() {
-    if (_isTeacher || currentUserReference == null) {
+    if (currentUserReference == null) {
       return null;
     }
 
@@ -80,6 +81,35 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         isEqualTo: currentUserReference,
       ),
     );
+  }
+
+  String _normalizeLanguageCode(String? code) {
+    return (code ?? '').trim().toLowerCase().replaceAll('_', '-');
+  }
+
+  LanguageStruct? _findLanguageByCode(String? code) {
+    final normalizedCode = _normalizeLanguageCode(code);
+    if (normalizedCode.isEmpty) {
+      return null;
+    }
+
+    final fallbackCodes = <String>{
+      normalizedCode,
+      normalizedCode.split('-').first,
+    };
+
+    for (final language in FFAppState().languagesList) {
+      final normalizedCandidates = <String>{
+        _normalizeLanguageCode(language.code),
+        ...language.alternateCodes.map(_normalizeLanguageCode),
+      }..removeWhere((value) => value.isEmpty);
+
+      if (normalizedCandidates.any(fallbackCodes.contains)) {
+        return language;
+      }
+    }
+
+    return null;
   }
 
   void _showSnackBar(BuildContext context, String message) {
@@ -129,6 +159,68 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
 
   DateTime? _captionLogTimestamp(CaptionLogsRecord log) {
     return log.capturedAtClient ?? log.createdAtServer;
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _captionLogsStream(
+    VideoSessionsRecord session,
+  ) {
+    return session.reference.collection('captionLogs').snapshots();
+  }
+
+  List<CaptionLogsRecord> _captionLogsFromSnapshot(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    final logs = <CaptionLogsRecord>[];
+    for (final doc in snapshot.docs) {
+      try {
+        logs.add(
+          CaptionLogsRecord.getDocumentFromData(
+            doc.data(),
+            doc.reference,
+          ),
+        );
+      } catch (error) {
+        debugPrint(
+          'Failed to parse caption log ${doc.reference.path}: $error',
+        );
+      }
+    }
+    return logs;
+  }
+
+  Widget _buildCaptionLogsCardShell(
+    BuildContext context, {
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).primaryBackground,
+        borderRadius: BorderRadius.circular(26.0),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildCaptionLogsMessage(
+    BuildContext context, {
+    required String message,
+  }) {
+    return Text(
+      message,
+      style: FlutterFlowTheme.of(context)
+          .bodyMedium
+          .override(
+            fontFamily: 'sf pro display',
+            color: FlutterFlowTheme.of(context).secondaryText,
+            fontSize: 14.0,
+            letterSpacing: 0.0,
+          )
+          .copyWith(height: 1.4),
+    );
   }
 
   String _captionLogSpeakerFallback(
@@ -290,61 +382,75 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     BuildContext context,
     VideoSessionsRecord session,
   ) {
-    return StreamBuilder<List<CaptionLogsRecord>>(
-      stream: queryCaptionLogsRecord(parent: session.reference),
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _captionLogsStream(session),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryBackground,
-              borderRadius: BorderRadius.circular(26.0),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: _buildLoadingState(context),
+        if (snapshot.hasError) {
+          debugPrint(
+            'Caption logs stream failed for ${session.reference.path}: ${snapshot.error}',
+          );
+          return _buildCaptionLogsCardShell(
+            context,
+            child: _buildCaptionLogsMessage(
+              context,
+              message: FFLocalizations.of(context).getVariableText(
+                ruText:
+                    'Не удалось загрузить логи субтитров. Попробуйте открыть страницу еще раз.',
+                enText:
+                    'Unable to load subtitle logs right now. Please try opening the page again.',
+              ),
             ),
           );
         }
 
-        final logs = _sortedCaptionLogs(snapshot.data!);
+        final querySnapshot = snapshot.data;
+        if (querySnapshot == null) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return _buildCaptionLogsCardShell(
+              context,
+              child: Padding(
+                padding: const EdgeInsets.all(4.0),
+                child: _buildLoadingState(context),
+              ),
+            );
+          }
 
-        return Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: FlutterFlowTheme.of(context).primaryBackground,
-            borderRadius: BorderRadius.circular(26.0),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: logs.isEmpty
-                ? Text(
-                    FFLocalizations.of(context).getVariableText(
-                      ruText:
-                          'Логи субтитров для этого звонка пока недоступны.',
-                      enText:
-                          'Subtitle logs for this call are not available yet.',
-                    ),
-                    style: FlutterFlowTheme.of(context)
-                        .bodyMedium
-                        .override(
-                          fontFamily: 'sf pro display',
-                          color: FlutterFlowTheme.of(context).secondaryText,
-                          fontSize: 14.0,
-                          letterSpacing: 0.0,
-                        )
-                        .copyWith(height: 1.4),
-                  )
-                : ListView.separated(
-                    padding: EdgeInsets.zero,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: logs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12.0),
-                    itemBuilder: (context, index) =>
-                        _buildCaptionLogItem(context, logs[index]),
+          return _buildCaptionLogsCardShell(
+            context,
+            child: _buildCaptionLogsMessage(
+              context,
+              message: FFLocalizations.of(context).getVariableText(
+                ruText: 'Логи субтитров для этого звонка пока недоступны.',
+                enText: 'Subtitle logs for this call are not available yet.',
+              ),
+            ),
+          );
+        }
+
+        final logs = _sortedCaptionLogs(
+          _captionLogsFromSnapshot(querySnapshot),
+        );
+
+        return _buildCaptionLogsCardShell(
+          context,
+          child: logs.isEmpty
+              ? _buildCaptionLogsMessage(
+                  context,
+                  message: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Логи субтитров для этого звонка пока недоступны.',
+                    enText:
+                        'Subtitle logs for this call are not available yet.',
                   ),
-          ),
+                )
+              : ListView.separated(
+                  padding: EdgeInsets.zero,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: logs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12.0),
+                  itemBuilder: (context, index) =>
+                      _buildCaptionLogItem(context, logs[index]),
+                ),
         );
       },
     );
@@ -422,31 +528,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     );
   }
 
-  String _companionName(BuildContext context, VideoSessionsRecord session) {
-    final isTeacher = _isTeacherForSession(session);
-    final rawName =
-        (isTeacher ? session.studentInfo.name : session.tutorInfo.name).trim();
-    if (rawName.isNotEmpty) {
-      return rawName;
-    }
-
-    return FFLocalizations.of(context).getVariableText(
-      ruText: isTeacher ? 'Студент' : 'Преподаватель',
-      enText: isTeacher ? 'Student' : 'Tutor',
-    );
-  }
-
-  String _companionPhoto(VideoSessionsRecord session) {
-    final isTeacher = _isTeacherForSession(session);
-    return (isTeacher ? session.studentInfo.photo : session.tutorInfo.photo)
-        .trim();
-  }
-
   DocumentReference? _tutorReference(VideoSessionsRecord session) {
-    if (_isTeacherForSession(session)) {
-      return null;
-    }
-
     final tutorId = session.tutorId.trim();
     if (tutorId.isEmpty) {
       return null;
@@ -466,121 +548,55 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     return functions.stringToRef(targetId);
   }
 
-  Widget _buildAvatar(BuildContext context, VideoSessionsRecord session) {
-    final photoUrl = _companionPhoto(session);
-    final displayName = _companionName(context, session);
-
-    return Container(
-      width: 52.0,
-      height: 52.0,
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).secondaryBackground,
-        borderRadius: BorderRadius.circular(22.0),
-      ),
-      child: photoUrl.isNotEmpty
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(22.0),
-              child: CachedNetworkImage(
-                fadeInDuration: Duration.zero,
-                fadeOutDuration: Duration.zero,
-                imageUrl: photoUrl,
-                width: 52.0,
-                height: 52.0,
-                fit: BoxFit.cover,
-                memCacheWidth: 104,
-                memCacheHeight: 104,
-              ),
-            )
-          : Center(
-              child: Text(
-                displayName.characters.first.toUpperCase(),
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'Cool',
-                      fontSize: 20.0,
-                      letterSpacing: 0.0,
-                    ),
-              ),
-            ),
-    );
-  }
-
-  Widget _buildParticipantCard(
-    BuildContext context,
-    VideoSessionsRecord session,
-  ) {
-    final tutorReference = _tutorReference(session);
-    final canNavigate = tutorReference != null;
-
-    final card = Container(
-      width: double.infinity,
-      height: 60.0,
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(4.0),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          children: [
-            _buildAvatar(context, session),
-            Expanded(
-              child: Padding(
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 0.0, 0.0),
-                child: Text(
-                  _companionName(context, session),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'sf pro display',
-                        fontSize: 16.0,
-                        letterSpacing: 0.0,
-                      ),
-                ),
-              ),
-            ),
-            if (canNavigate)
-              Container(
-                width: 52.0,
-                height: 52.0,
-                decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
-                  borderRadius: BorderRadius.circular(20.0),
-                ),
-                child: Icon(
-                  FFIcons.kchevronRight,
-                  color: FlutterFlowTheme.of(context).primaryText,
-                  size: 18.0,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-
-    if (!canNavigate) {
-      return card;
+  bool _transactionMatchesCurrentSession(
+    TransactionsRecord transaction, {
+    required bool preferReferenceMatch,
+  }) {
+    final sessionRef = widget.videoDocRef;
+    if (sessionRef == null) {
+      return false;
     }
 
-    return InkWell(
-      splashColor: Colors.transparent,
-      focusColor: Colors.transparent,
-      hoverColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      onTap: () async {
-        context.pushNamed(
-          NativeSpeakerPageWidget.routeName,
-          queryParameters: {
-            'nsUserDocRef': serializeParam(
-              tutorReference,
-              ParamType.DocumentReference,
-            ),
-          }.withoutNulls,
-        );
-      },
-      child: card,
-    );
+    if (preferReferenceMatch) {
+      return transaction.sessionDocRef?.path == sessionRef.path;
+    }
+
+    final transactionSessionId =
+        (transaction.snapshotData['sessionId']?.toString() ?? '').trim();
+    return transactionSessionId.isNotEmpty &&
+        transactionSessionId == sessionRef.id;
+  }
+
+  TransactionsRecord? _callTransactionForSession(
+    List<TransactionsRecord> transactions, {
+    required bool isTeacher,
+  }) {
+    final targetType =
+        isTeacher ? TypeTransactions.earning : TypeTransactions.call_charge;
+    TransactionsRecord? fallbackMatch;
+
+    for (final transaction in transactions) {
+      if (transaction.type != targetType) {
+        continue;
+      }
+
+      if (_transactionMatchesCurrentSession(
+        transaction,
+        preferReferenceMatch: true,
+      )) {
+        return transaction;
+      }
+
+      if (fallbackMatch == null &&
+          _transactionMatchesCurrentSession(
+            transaction,
+            preferReferenceMatch: false,
+          )) {
+        fallbackMatch = transaction;
+      }
+    }
+
+    return fallbackMatch;
   }
 
   Widget _buildInfoRow(
@@ -623,35 +639,35 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     );
   }
 
-  String _studentCostLabel(List<TransactionsRecord> transactions) {
-    if (widget.videoDocRef == null) {
+  String _formatRubTransactionAmount(double? amount) {
+    if (amount == null) {
       return '-';
     }
 
-    TransactionsRecord? match;
-    for (final transaction in transactions) {
-      if (transaction.type == TypeTransactions.call_charge &&
-          transaction.sessionDocRef?.path == widget.videoDocRef!.path) {
-        match = transaction;
-        break;
-      }
-    }
+    return '${NumberFormat('0.##').format(amount)} ₽';
+  }
 
-    if (match == null || !match.hasAmountST()) {
+  String _amountLabelForTransaction(
+    TransactionsRecord? transaction, {
+    required bool isTeacher,
+  }) {
+    if (transaction == null) {
       return '-';
     }
 
-    return formatStAmount(match.amountST);
+    if (isTeacher) {
+      return transaction.hasAmount()
+          ? _formatRubTransactionAmount(transaction.amount)
+          : '-';
+    }
+
+    return transaction.hasAmountST()
+        ? formatStAmount(transaction.amountST)
+        : '-';
   }
 
   Widget _buildAmountValue(BuildContext context, VideoSessionsRecord session) {
-    if (_isTeacherForSession(session)) {
-      return _buildValueText(
-        context,
-        session.hasEarnings() ? formatRubAmount(session.earnings) : '-',
-      );
-    }
-
+    final isTeacher = _isTeacherForSession(session);
     final transactionsFuture = _ensureTransactionsFuture();
     if (transactionsFuture == null) {
       return _buildValueText(context, '-');
@@ -666,9 +682,106 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
 
         return _buildValueText(
           context,
-          _studentCostLabel(snapshot.data!),
+          _amountLabelForTransaction(
+            _callTransactionForSession(
+              snapshot.data!,
+              isTeacher: isTeacher,
+            ),
+            isTeacher: isTeacher,
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildCallInfoCard(
+    BuildContext context,
+    VideoSessionsRecord session, {
+    required String startedAtLabel,
+    required String durationLabel,
+  }) {
+    final isTeacher = _isTeacherForSession(session);
+
+    return Container(
+      height: 177.5,
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).primaryBackground,
+        borderRadius: BorderRadius.circular(26.0),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildInfoRow(
+                context,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Дата и время',
+                  enText: 'Date and time',
+                ),
+                value: _buildValueText(context, startedAtLabel),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12.0),
+                child: Divider(height: 1.0),
+              ),
+              _buildInfoRow(
+                context,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Длительность',
+                  enText: 'Duration',
+                ),
+                value: _buildValueText(context, durationLabel),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12.0),
+                child: Divider(height: 1.0),
+              ),
+              _buildInfoRow(
+                context,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: isTeacher ? 'Заработок' : 'Стоимость',
+                  enText: isTeacher ? 'Earnings' : 'Cost',
+                ),
+                value: _buildAmountValue(context, session),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLanguageSection(
+    BuildContext context, {
+    required LanguageStruct language,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
+          child: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Язык',
+              enText: 'Language',
+            ),
+            style: FlutterFlowTheme.of(context).bodyMedium.override(
+                  fontFamily: 'Cool',
+                  fontSize: 24.0,
+                  letterSpacing: 0.0,
+                  fontWeight: FontWeight.normal,
+                ),
+          ),
+        ),
+        const SizedBox(height: 10.0),
+        LanguageCardWidget(
+          lang: language,
+          currentSelected: null,
+          callbackAction: (_) async {},
+        ),
+      ],
     );
   }
 
@@ -774,203 +887,128 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     BuildContext context,
     VideoSessionsRecord session,
   ) {
-    return Opacity(
-      opacity: _model.isSubmittingReview ? 0.75 : 1.0,
-      child: InkWell(
-        splashColor: Colors.transparent,
-        focusColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-        onTap: _model.isSubmittingReview
-            ? null
-            : () async {
-                await _submitReview(context, session);
-              },
-        child: Container(
-          height: 60.0,
-          decoration: BoxDecoration(
-            color: FlutterFlowTheme.of(context).primaryText,
-            borderRadius: BorderRadius.circular(50.0),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(2.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.max,
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsetsDirectional.fromSTEB(
-                        16.0, 0.0, 0.0, 0.0),
-                    child: Text(
-                      FFLocalizations.of(context).getVariableText(
-                        ruText: _model.isSubmittingReview
-                            ? 'Отправляем отзыв...'
-                            : 'Оставить отзыв',
-                        enText: _model.isSubmittingReview
-                            ? 'Sending review...'
-                            : 'Submit review',
-                      ),
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'Cool',
-                            color:
-                                FlutterFlowTheme.of(context).primaryBackground,
-                            fontSize: 20.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.normal,
-                          ),
-                    ),
-                  ),
-                ),
-                Container(
-                  width: 56.0,
-                  height: 56.0,
-                  decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primaryBackground,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Align(
-                    alignment: const AlignmentDirectional(0.0, 0.0),
-                    child: _model.isSubmittingReview
-                        ? SizedBox(
-                            width: 20.0,
-                            height: 20.0,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                FlutterFlowTheme.of(context).primaryText,
-                              ),
-                            ),
-                          )
-                        : const Icon(
-                            FFIcons.karrowRight,
-                            color: Colors.black,
-                            size: 20.0,
-                          ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+    return ButtonWidget(
+      text: FFLocalizations.of(context).getVariableText(
+        ruText: 'Оставить отзыв',
+        enText: 'Submit review',
       ),
+      loadingText: FFLocalizations.of(context).getVariableText(
+        ruText: 'Отправляем отзыв...',
+        enText: 'Sending review...',
+      ),
+      busyStyle: ButtonBusyStyle.spinner,
+      keyboardAwarePadding: false,
+      padding: EdgeInsets.zero,
+      action: () async {
+        await _submitReview(context, session);
+      },
     );
   }
 
   Widget _buildReviewForm(BuildContext context, VideoSessionsRecord session) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: FlutterFlowTheme.of(context).secondaryBackground,
-                borderRadius: BorderRadius.circular(26.0),
-              ),
-              alignment: const AlignmentDirectional(0.0, 0.0),
-              child: Padding(
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(8.0, 28.0, 8.0, 28.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                    5,
-                    (index) => _buildReviewStarButton(context, index + 1),
-                  ),
-                ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: FlutterFlowTheme.of(context).primaryBackground,
+            borderRadius: BorderRadius.circular(26.0),
+          ),
+          alignment: const AlignmentDirectional(0.0, 0.0),
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(8.0, 28.0, 8.0, 28.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                5,
+                (index) => _buildReviewStarButton(context, index + 1),
               ),
             ),
-            const SizedBox(height: 12.0),
-            TextFormField(
-              controller: _model.reviewCommentTextController,
-              focusNode: _model.reviewCommentFocusNode,
-              onChanged: (_) => EasyDebounce.debounce(
-                '_model.reviewCommentTextController',
-                Duration.zero,
-                () => safeSetState(() {}),
+          ),
+        ),
+        const SizedBox(height: 12.0),
+        TextFormField(
+          controller: _model.reviewCommentTextController,
+          focusNode: _model.reviewCommentFocusNode,
+          onChanged: (_) => EasyDebounce.debounce(
+            '_model.reviewCommentTextController',
+            Duration.zero,
+            () => safeSetState(() {}),
+          ),
+          autofocus: false,
+          textCapitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.done,
+          obscureText: false,
+          decoration: InputDecoration(
+            isDense: false,
+            hintText: reviewCommentHintText(context, _model.rating),
+            hintStyle: FlutterFlowTheme.of(context).bodyMedium.override(
+                  fontFamily: 'sf pro display',
+                  color: FlutterFlowTheme.of(context).secondaryText,
+                  fontSize: 16.0,
+                  letterSpacing: 0.0,
+                ),
+            enabledBorder: OutlineInputBorder(
+              borderSide: const BorderSide(
+                color: Color(0x00000000),
+                width: 1.0,
               ),
-              autofocus: false,
-              textCapitalization: TextCapitalization.sentences,
-              textInputAction: TextInputAction.done,
-              obscureText: false,
-              decoration: InputDecoration(
-                isDense: false,
-                hintText: reviewCommentHintText(context, _model.rating),
-                hintStyle: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'sf pro display',
-                      color: FlutterFlowTheme.of(context).secondaryText,
-                      fontSize: 16.0,
-                      letterSpacing: 0.0,
-                    ),
-                enabledBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(
-                    color: Color(0x00000000),
-                    width: 1.0,
-                  ),
-                  borderRadius: BorderRadius.circular(26.0),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(
-                    color: Color(0x00000000),
-                    width: 1.0,
-                  ),
-                  borderRadius: BorderRadius.circular(26.0),
-                ),
-                errorBorder: OutlineInputBorder(
-                  borderSide: BorderSide(
-                    color: FlutterFlowTheme.of(context).error,
-                    width: 1.0,
-                  ),
-                  borderRadius: BorderRadius.circular(26.0),
-                ),
-                focusedErrorBorder: OutlineInputBorder(
-                  borderSide: BorderSide(
-                    color: FlutterFlowTheme.of(context).error,
-                    width: 1.0,
-                  ),
-                  borderRadius: BorderRadius.circular(26.0),
-                ),
-                filled: true,
-                fillColor: FlutterFlowTheme.of(context).secondaryBackground,
-                contentPadding: const EdgeInsets.all(16.0),
-                hoverColor: FlutterFlowTheme.of(context).secondaryBackground,
-              ),
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'sf pro display',
-                    fontSize: 16.0,
-                    letterSpacing: 0.0,
-                  ),
-              maxLines: 12,
-              minLines: 2,
-              cursorColor: FlutterFlowTheme.of(context).primaryText,
-              enableInteractiveSelection: true,
-              validator: _model.reviewCommentTextControllerValidator
-                  .asValidator(context),
-              inputFormatters: [
-                if (!isAndroid && !isiOS)
-                  TextInputFormatter.withFunction((oldValue, newValue) {
-                    return TextEditingValue(
-                      selection: newValue.selection,
-                      text: newValue.text.toCapitalization(
-                        TextCapitalization.sentences,
-                      ),
-                    );
-                  }),
-              ],
+              borderRadius: BorderRadius.circular(26.0),
             ),
-            const SizedBox(height: 14.0),
-            _buildReviewSubmitButton(context, session),
+            focusedBorder: OutlineInputBorder(
+              borderSide: const BorderSide(
+                color: Color(0x00000000),
+                width: 1.0,
+              ),
+              borderRadius: BorderRadius.circular(26.0),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderSide: BorderSide(
+                color: FlutterFlowTheme.of(context).error,
+                width: 1.0,
+              ),
+              borderRadius: BorderRadius.circular(26.0),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderSide: BorderSide(
+                color: FlutterFlowTheme.of(context).error,
+                width: 1.0,
+              ),
+              borderRadius: BorderRadius.circular(26.0),
+            ),
+            filled: true,
+            fillColor: FlutterFlowTheme.of(context).primaryBackground,
+            contentPadding: const EdgeInsets.all(16.0),
+            hoverColor: FlutterFlowTheme.of(context).primaryBackground,
+          ),
+          style: FlutterFlowTheme.of(context).bodyMedium.override(
+                fontFamily: 'sf pro display',
+                fontSize: 16.0,
+                letterSpacing: 0.0,
+              ),
+          maxLines: 12,
+          minLines: 2,
+          cursorColor: FlutterFlowTheme.of(context).primaryText,
+          enableInteractiveSelection: true,
+          validator:
+              _model.reviewCommentTextControllerValidator.asValidator(context),
+          inputFormatters: [
+            if (!isAndroid && !isiOS)
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                return TextEditingValue(
+                  selection: newValue.selection,
+                  text: newValue.text.toCapitalization(
+                    TextCapitalization.sentences,
+                  ),
+                );
+              }),
           ],
         ),
-      ),
+        const SizedBox(height: 14.0),
+        _buildReviewSubmitButton(context, session),
+      ],
     );
   }
 
@@ -1113,6 +1151,8 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
 
               final session = snapshot.data!;
               final isTeacher = _isTeacherForSession(session);
+              final tutorReference = _tutorReference(session);
+              final sessionLanguage = _findLanguageByCode(session.language);
               final startedAtLabel = formatSessionStartedAt(context, session);
               final durationLabel = formatDurationLabel(
                 context,
@@ -1129,64 +1169,36 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const SizedBox(height: 115.0),
-                          _buildParticipantCard(context, session),
-                          const SizedBox(height: 12.0),
-                          Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: FlutterFlowTheme.of(context)
-                                  .primaryBackground,
-                              borderRadius: BorderRadius.circular(26.0),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _buildInfoRow(
-                                    context,
-                                    label: FFLocalizations.of(context)
-                                        .getVariableText(
-                                      ruText: 'Дата и время',
-                                      enText: 'Date and time',
-                                    ),
-                                    value: _buildValueText(
-                                        context, startedAtLabel),
-                                  ),
-                                  const Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(vertical: 12.0),
-                                    child: Divider(height: 1.0),
-                                  ),
-                                  _buildInfoRow(
-                                    context,
-                                    label: FFLocalizations.of(context)
-                                        .getVariableText(
-                                      ruText: 'Длительность',
-                                      enText: 'Duration',
-                                    ),
-                                    value:
-                                        _buildValueText(context, durationLabel),
-                                  ),
-                                  const Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(vertical: 12.0),
-                                    child: Divider(height: 1.0),
-                                  ),
-                                  _buildInfoRow(
-                                    context,
-                                    label: FFLocalizations.of(context)
-                                        .getVariableText(
-                                      ruText:
-                                          isTeacher ? 'Заработок' : 'Стоимость',
-                                      enText: isTeacher ? 'Earnings' : 'Cost',
-                                    ),
-                                    value: _buildAmountValue(context, session),
-                                  ),
-                                ],
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: _buildCallInfoCard(
+                                  context,
+                                  session,
+                                  startedAtLabel: startedAtLabel,
+                                  durationLabel: durationLabel,
+                                ),
                               ),
-                            ),
+                              if (tutorReference != null) ...[
+                                const SizedBox(width: 6.0),
+                                SizedBox(
+                                  height: 177.5,
+                                  child: FavWidget(
+                                    nsUser: tutorReference,
+                                    enableNavigation: !isTeacher,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
+                          if (sessionLanguage != null) ...[
+                            const SizedBox(height: 24.0),
+                            _buildLanguageSection(
+                              context,
+                              language: sessionLanguage,
+                            ),
+                          ],
                           const SizedBox(height: 24.0),
                           Padding(
                             padding: const EdgeInsetsDirectional.fromSTEB(

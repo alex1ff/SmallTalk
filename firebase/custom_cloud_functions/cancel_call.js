@@ -64,7 +64,6 @@ exports.cancelCall = functions
     console.log("🔄 Updating session status to cancelled...");
 
     const dailyRoomName = sessionData.dailyRoomName;
-    const cancelProcessedAtMs = Date.now();
 
     // Обновляем статус сессии на отменен
     await admin
@@ -77,16 +76,11 @@ exports.cancelCall = functions
         cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
         cancelledBy: studentId,
         cancelReason: "cancelled_by_student",
+        currentTutorId: admin.firestore.FieldValue.delete(),
+        acceptingTutorId: admin.firestore.FieldValue.delete(),
+        acceptingAt: admin.firestore.FieldValue.delete(),
         tutorNavigationTriggered: false,
         studentNavigationTriggered: false,
-        sessionMetadata: {
-          ...sessionData.sessionMetadata,
-          cancelledBy: studentId,
-          cancelledAt: cancelProcessedAtMs,
-          cancelReason: "cancelled_by_student",
-          cancelRequestProcessedAt: cancelProcessedAtMs,
-          cancelSource: "cancel_call_callable",
-        },
       });
 
     if (dailyRoomName) {
@@ -158,64 +152,3 @@ exports.cancelCall = functions
     throw new functions.https.HttpsError("internal", error.message);
   }
   });
-
-// ОТПРАВКА УВЕДОМЛЕНИЯ СЛЕДУЮЩЕМУ ПРЕПОДАВАТЕЛЮ
-async function sendNotificationToNextTutor(sessionId, sessionData) {
-  try {
-    const availableTutors = sessionData.availableTutors || [];
-    const triedTutors = sessionData.triedTutors || [];
-
-    console.log("🎯 Available tutors:", availableTutors);
-    console.log("❌ Tried tutors:", triedTutors);
-
-    // Находим следующего преподавателя
-    const nextTutor = availableTutors.find(
-      (tutorId) => !triedTutors.includes(tutorId),
-    );
-
-    if (!nextTutor) {
-      console.log("❌ No more tutors available");
-      // Обновляем статус сессии
-      await admin
-        .firestore()
-        .collection("videoSessions")
-        .doc(sessionId)
-        .update({
-          status: "no_tutors_available",
-          sessionMetadata: {
-            ...sessionData.sessionMetadata,
-            noTutorsReason: "All available tutors have been tried",
-          },
-        });
-      return;
-    }
-
-    console.log("📨 Sending notification to tutor:", nextTutor);
-
-    // Обновляем текущего преподавателя в сессии
-    await admin.firestore().collection("videoSessions").doc(sessionId).update({
-      currentTutorId: nextTutor,
-    });
-
-    // Создаем уведомление
-    const expiresAt = new Date();
-    expiresAt.setSeconds(expiresAt.getSeconds() + 45); // 45 секунд на ответ
-
-    const notificationData = {
-      recipientId: nextTutor,
-      sessionId: sessionId, // Изменено с callRequestId
-      type: "incoming_call",
-      status: "sent",
-      title: "Входящий звонок",
-      message: `${sessionData.studentInfo.name} хочет попрактиковать ${sessionData.language}`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-      studentInfo: sessionData.studentInfo,
-    };
-
-    await admin.firestore().collection("notifications").add(notificationData);
-    console.log("✅ Notification sent to tutor:", nextTutor);
-  } catch (error) {
-    console.error("❌ Error sending notification to tutor:", error);
-  }
-}

@@ -521,7 +521,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                       mainAxisAlignment: MainAxisAlignment.start,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Builder(
+                        AuthUserStreamWidget(
                           builder: (context) {
                             if (currentUserDocument?.role == UserRole.student) {
                               return InkWell(

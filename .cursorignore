@@ -1,0 +1,11 @@
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+ios/Flutter/ephemeral/
+ios/Pods/
+android/.gradle/
+firebase/**/node_modules/
+**/node_modules/
+.npm-cache/
+*.log
