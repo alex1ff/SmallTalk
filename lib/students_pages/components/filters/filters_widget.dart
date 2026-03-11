@@ -25,6 +25,54 @@ class FiltersWidget extends StatefulWidget {
 class _FiltersWidgetState extends State<FiltersWidget> {
   late FiltersModel _model;
 
+  bool _hasValue(String? value) => value != null && value.trim().isNotEmpty;
+
+  bool _hasLanguageData(LanguageStruct? language) {
+    if (language == null) return false;
+    return _hasValue(language.code) ||
+        _hasValue(language.nameRu) ||
+        _hasValue(language.nameEn) ||
+        _hasValue(language.ss);
+  }
+
+  bool _hasCountryData(CountryStruct? country) {
+    if (country == null) return false;
+    return _hasValue(country.code) ||
+        _hasValue(country.nameRu) ||
+        _hasValue(country.nameEn) ||
+        _hasValue(country.flag);
+  }
+
+  LanguageStruct _languageOrPlaceholder(
+    LanguageStruct? language, {
+    required String ruText,
+    required String enText,
+  }) {
+    if (_hasLanguageData(language)) {
+      return language!;
+    }
+
+    return LanguageStruct(
+      nameRu: ruText,
+      nameEn: enText,
+    );
+  }
+
+  CountryStruct _countryOrPlaceholder(
+    CountryStruct? country, {
+    required String ruText,
+    required String enText,
+  }) {
+    if (_hasCountryData(country)) {
+      return country!;
+    }
+
+    return CountryStruct(
+      nameRu: ruText,
+      nameEn: enText,
+    );
+  }
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -132,7 +180,11 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                               model: _model.languageCardModel1,
                               updateCallback: () => safeSetState(() {}),
                               child: LanguageCardWidget(
-                                lang: currentUserDocument!.learningLanguage,
+                                lang: _languageOrPlaceholder(
+                                  currentUserDocument?.learningLanguage,
+                                  ruText: 'Язык изучения не выбран.',
+                                  enText: 'Learning language is not selected.',
+                                ),
                                 callbackAction: (selectedLangData) async {
                                   await showModalBottomSheet(
                                     isScrollControlled: true,
@@ -193,8 +245,13 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                               model: _model.languageCardModel2,
                               updateCallback: () => safeSetState(() {}),
                               child: LanguageCardWidget(
-                                lang: currentUserDocument!
-                                    .preferences.preferredNativeLanguage,
+                                lang: _languageOrPlaceholder(
+                                  currentUserDocument
+                                      ?.preferences.preferredNativeLanguage,
+                                  ruText: 'Язык собеседника не выбран.',
+                                  enText:
+                                      'Interlocutor language is not selected.',
+                                ),
                                 callbackAction: (selectedLangData) async {
                                   await showModalBottomSheet(
                                     isScrollControlled: true,
@@ -260,17 +317,13 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                               model: _model.countryCardModel,
                               updateCallback: () => safeSetState(() {}),
                               child: CountryCardWidget(
-                                lang: currentUserDocument
-                                            ?.preferences.preferredLocation !=
-                                        null
-                                    ? currentUserDocument!
-                                        .preferences.preferredLocation
-                                    : CountryStruct(
-                                        nameRu:
-                                            'Страна собеседника не выбрана.',
-                                        nameEn:
-                                            'Interlocutor country is not selected.',
-                                      ),
+                                lang: _countryOrPlaceholder(
+                                  currentUserDocument
+                                      ?.preferences.preferredLocation,
+                                  ruText: 'Страна собеседника не выбрана.',
+                                  enText:
+                                      'Interlocutor country is not selected.',
+                                ),
                                 callbackAction: (selectedLangData) async {
                                   await showModalBottomSheet(
                                     isScrollControlled: true,

@@ -40,6 +40,50 @@ int compareSessionsByStartedAtDesc(
   return bStartedAt.compareTo(aStartedAt);
 }
 
+String _sessionTimeLabel(BuildContext context, DateTime startedAtLocal) {
+  final locale = FFLocalizations.of(context).languageCode;
+  return DateFormat.jm(locale).format(startedAtLocal);
+}
+
+int _sessionDifferenceInDays(DateTime startedAtLocal) {
+  final now = DateTime.now();
+  final startedDay = DateTime(
+    startedAtLocal.year,
+    startedAtLocal.month,
+    startedAtLocal.day,
+  );
+  final today = DateTime(now.year, now.month, now.day);
+  return today.difference(startedDay).inDays;
+}
+
+String _sessionRelativeDateLabel(
+  BuildContext context,
+  DateTime startedAtLocal,
+) {
+  final locale = FFLocalizations.of(context).languageCode;
+  final differenceInDays = _sessionDifferenceInDays(startedAtLocal);
+
+  if (differenceInDays == 0) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Сегодня',
+      enText: 'Today',
+    );
+  }
+
+  if (differenceInDays == 1) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Вчера',
+      enText: 'Yesterday',
+    );
+  }
+
+  if (differenceInDays > 1 && differenceInDays < 7) {
+    return DateFormat.EEEE(locale).format(startedAtLocal);
+  }
+
+  return DateFormat('M/d/yy').format(startedAtLocal);
+}
+
 String formatSessionStartedAt(
   BuildContext context,
   VideoSessionsRecord session,
@@ -49,19 +93,31 @@ String formatSessionStartedAt(
     return '-';
   }
 
-  final locale = FFLocalizations.of(context).languageCode;
-  final dateLabel = dateTimeFormat(
-    'd MMMM',
-    startedAt,
-    locale: locale,
-  );
-  final timeLabel = dateTimeFormat(
-    'Hm',
-    startedAt,
-    locale: locale,
-  );
+  final startedAtLocal = startedAt.toLocal();
+  final dateLabel = _sessionRelativeDateLabel(context, startedAtLocal);
+  final timeLabel = _sessionTimeLabel(context, startedAtLocal);
 
   return '$dateLabel, $timeLabel';
+}
+
+String formatSessionStartedAtForCard(
+  BuildContext context,
+  VideoSessionsRecord session,
+) {
+  final startedAt = resolveSessionStartedAt(session);
+  if (startedAt == null) {
+    return '-';
+  }
+
+  final startedAtLocal = startedAt.toLocal();
+  final dateLabel = _sessionRelativeDateLabel(context, startedAtLocal);
+  final timeLabel = _sessionTimeLabel(context, startedAtLocal);
+
+  if (_sessionDifferenceInDays(startedAtLocal) == 0) {
+    return '$dateLabel, $timeLabel';
+  }
+
+  return dateLabel;
 }
 
 String formatDurationLabel(BuildContext context, int totalSeconds) {

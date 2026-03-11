@@ -203,38 +203,7 @@ class _CallHistoryCard extends StatelessWidget {
   final bool isTeacher;
 
   String _formatStartedAtForCard(BuildContext context) {
-    final startedAt = resolveSessionStartedAt(session);
-    if (startedAt == null) {
-      return '-';
-    }
-
-    final locale = FFLocalizations.of(context).languageCode;
-    final startedAtLocal = startedAt.toLocal();
-    final now = DateTime.now();
-    final startedDay = DateTime(
-      startedAtLocal.year,
-      startedAtLocal.month,
-      startedAtLocal.day,
-    );
-    final today = DateTime(now.year, now.month, now.day);
-    final differenceInDays = today.difference(startedDay).inDays;
-
-    if (differenceInDays == 0) {
-      return DateFormat.jm(locale).format(startedAtLocal);
-    }
-
-    if (differenceInDays == 1) {
-      return FFLocalizations.of(context).getVariableText(
-        ruText: 'Вчера',
-        enText: 'Yesterday',
-      );
-    }
-
-    if (differenceInDays > 1 && differenceInDays < 7) {
-      return DateFormat.EEEE(locale).format(startedAtLocal);
-    }
-
-    return DateFormat('M/d/yy').format(startedAtLocal);
+    return formatSessionStartedAtForCard(context, session);
   }
 
   String _displayName(BuildContext context) {

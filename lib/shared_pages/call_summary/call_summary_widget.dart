@@ -126,6 +126,27 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     return false;
   }
 
+  void _navigateToHome() {
+    if (!mounted) {
+      return;
+    }
+
+    if (currentUserDocument?.role == UserRole.native_speaker) {
+      context.goNamed(DashboardNSWidget.routeName);
+      return;
+    }
+
+    context.goNamed(
+      StudentsDashboardWidget.routeName,
+      queryParameters: {
+        'zn': serializeParam(
+          false,
+          ParamType.bool,
+        ),
+      }.withoutNulls,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isKeyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
@@ -775,10 +796,10 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                         ),
                       ),
                     ),
-                    SizedBox(
-                      height: 120.0,
-                      child: Align(
-                        alignment: AlignmentDirectional(0, 1),
+                    Align(
+                      alignment: AlignmentDirectional(0, 1),
+                      child: SizedBox(
+                        height: 120.0,
                         child: AnimatedPadding(
                           duration: _ctaAnimationDuration,
                           curve: Curves.easeOutCubic,
@@ -899,14 +920,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                         });
                                       }
 
-                                      if (currentUserDocument?.role ==
-                                          UserRole.student) {
-                                        context.goNamed(
-                                            StudentsDashboardWidget.routeName);
-                                      } else {
-                                        context.goNamed(
-                                            DashboardNSWidget.routeName);
-                                      }
+                                      _navigateToHome();
                                     },
                                   ),
                                 ),
@@ -989,15 +1003,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   hoverColor: Colors.transparent,
                                   highlightColor: Colors.transparent,
                                   onTap: () async {
-                                    context.goNamed(
-                                      StudentsDashboardWidget.routeName,
-                                      queryParameters: {
-                                        'zn': serializeParam(
-                                          false,
-                                          ParamType.bool,
-                                        ),
-                                      }.withoutNulls,
-                                    );
+                                    _navigateToHome();
                                   },
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
