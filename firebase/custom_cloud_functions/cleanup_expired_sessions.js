@@ -11,7 +11,7 @@ exports.cleanupExpiredSessions = functions
   .runWith({ secrets: dailySecrets })
   .pubsub
   .schedule("every 5 minutes")
-  .onRun(async (context) => {
+  .onRun(async () => {
     console.log("🧹 Cleaning up expired sessions...");
 
     try {
@@ -59,13 +59,6 @@ exports.cleanupExpiredSessions = functions
           duration: duration,
           tutorNavigationTriggered: false,
           studentNavigationTriggered: false,
-          sessionMetadata: {
-            ...sessionData.sessionMetadata,
-            endReason: "expired",
-            autoEnded: true,
-            endedAtTimestamp: Date.now(),
-            finalDuration: duration,
-          },
         });
 
         // Добавляем преподавателя для освобождения
@@ -111,4 +104,3 @@ exports.cleanupExpiredSessions = functions
       return null;
     }
   });
-

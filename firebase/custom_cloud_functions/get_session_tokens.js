@@ -8,6 +8,7 @@ const {
 } = require("./daily_room");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const PRECREATED_ROOM_VALIDATION_WINDOW_MS = 60 * 1000;
 
 exports.getSessionTokens = functions
   .runWith({ secrets: dailySecrets })
@@ -66,14 +67,11 @@ exports.getSessionTokens = functions
       derivedName,
     });
     roomName = derivedName;
-    try {
-      await sessionDoc.ref.update({
-        dailyRoomName: roomName,
-        "sessionMetadata.roomNameFixedAt": Date.now(),
-      });
-    } catch (e) {
+    sessionDoc.ref.update({
+      dailyRoomName: roomName,
+    }).catch((e) => {
       console.error("⚠️ Failed to update corrected room name:", e.message);
-    }
+    });
   }
   if (!roomName) {
     throw new functions.https.HttpsError(
@@ -82,8 +80,16 @@ exports.getSessionTokens = functions
     );
   }
 
-  const existingRoom = await getDailyRoom(roomName);
-  if (!existingRoom) {
+  const roomCreatedAtMs = Number(sessionData.sessionMetadata?.roomCreatedAt || 0);
+  const roomAgeMs = roomCreatedAtMs > 0 ? Date.now() - roomCreatedAtMs : Infinity;
+  let shouldCreateRoom = false;
+  if (roomAgeMs > PRECREATED_ROOM_VALIDATION_WINDOW_MS) {
+    const existingRoom = await getDailyRoom(roomName);
+    shouldCreateRoom = !existingRoom;
+  } else {
+    console.log("⚡ Skipping room validation - room is fresh (" + roomAgeMs + "ms old)");
+  }
+  if (shouldCreateRoom) {
     const dailyRoom = await createDailyRoom({
       language: sessionData.language || "en",
       studentId: sessionData.studentId,
@@ -94,12 +100,12 @@ exports.getSessionTokens = functions
     });
     roomUrl = dailyRoom.url;
     roomName = dailyRoom.name;
+    const recoveredRoomCreatedAt = Date.now();
     try {
       await sessionDoc.ref.update({
         dailyRoomUrl: roomUrl,
         dailyRoomName: roomName,
-        "sessionMetadata.roomRecoveredAt": Date.now(),
-        "sessionMetadata.roomPrecreated": false,
+        "sessionMetadata.roomCreatedAt": recoveredRoomCreatedAt,
       });
     } catch (e) {
       console.error("⚠️ Failed to update recovered room info:", e.message);

@@ -1,6 +1,7 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
+import '/components/button/button_widget.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_card/review_card_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
@@ -124,8 +125,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
       return true;
     }
 
-    final timezoneOffsetMinutes =
-        _normalizeOffsetMinutes(tutorRecord.snapshotData['timezoneOffsetMinutes']);
+    final timezoneOffsetMinutes = _normalizeOffsetMinutes(
+        tutorRecord.snapshotData['timezoneOffsetMinutes']);
     if (timezoneOffsetMinutes == null) {
       return true;
     }
@@ -710,143 +711,76 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         ),
         child: Padding(
           padding: EdgeInsetsDirectional.fromSTEB(6.0, 12.0, 6.0, 35.0),
-          child: Stack(
-            children: [
-              Container(
-                width: double.infinity,
-                height: 60.0,
-                decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).primaryText,
-                  borderRadius: BorderRadius.circular(50.0),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(2.0),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.max,
-                    children: [
-                      Expanded(
+          child: ButtonWidget(
+            text: FFLocalizations.of(context).getText(
+              '2sabsnp2' /* Начать small talk */,
+            ),
+            loadingText: FFLocalizations.of(context).getVariableText(
+              ruText: 'Подключаем...',
+              enText: 'Connecting...',
+            ),
+            busyStyle: ButtonBusyStyle.spinner,
+            keyboardAwarePadding: false,
+            padding: EdgeInsets.zero,
+            action: () async {
+              final balance = currentUserDocument?.balanceST.smallTalks ?? 0.0;
+              if (balance <= 0) {
+                await showModalBottomSheet(
+                  useRootNavigator: true,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  context: context,
+                  builder: (context) {
+                    return WebViewAware(
+                      child: GestureDetector(
+                        onTap: () {
+                          FocusScope.of(context).unfocus();
+                          FocusManager.instance.primaryFocus?.unfocus();
+                        },
                         child: Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              16.0, 0.0, 0.0, 0.0),
-                          child: Text(
-                            FFLocalizations.of(context).getText(
-                              '2sabsnp2' /* Начать small talk */,
-                            ),
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'Cool',
-                                  color: FlutterFlowTheme.of(context)
-                                      .primaryBackground,
-                                  fontSize: 20.0,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.normal,
-                                ),
-                          ),
+                          padding: MediaQuery.viewInsetsOf(context),
+                          child: NoBalanceWidget(),
                         ),
                       ),
-                      Container(
-                        width: 56.0,
-                        height: 56.0,
-                        decoration: BoxDecoration(
-                          color: FlutterFlowTheme.of(context).primaryBackground,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Align(
-                          alignment: AlignmentDirectional(0.0, 0.0),
-                          child: Icon(
-                            FFIcons.karrowRight,
-                            color: Colors.black,
-                            size: 20.0,
-                          ),
-                        ),
-                      ),
-                    ],
+                    );
+                  },
+                ).then((value) => safeSetState(() {}));
+                return;
+              }
+
+              if (!(await getPermissionStatus(cameraPermission))) {
+                await requestPermission(cameraPermission);
+              }
+              if (!(await getPermissionStatus(microphonePermission))) {
+                await requestPermission(microphonePermission);
+              }
+
+              final hasCameraPermission =
+                  await getPermissionStatus(cameraPermission);
+              final hasMicrophonePermission =
+                  await getPermissionStatus(microphonePermission);
+              if (!hasCameraPermission || !hasMicrophonePermission) {
+                return;
+              }
+
+              final targetTutorId = widget.nsUserDocRef?.id;
+              if (targetTutorId == null || targetTutorId.isEmpty) {
+                debugPrint(
+                    'NativeSpeakerPage: missing target tutor id for direct call');
+                return;
+              }
+
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => WaitingForTeacherPageWidget(
+                    targetTutorId: targetTutorId,
+                  ),
+                  settings: RouteSettings(
+                    name: WaitingForTeacherPageWidget.routeName,
                   ),
                 ),
-              ),
-              FFButtonWidget(
-                onPressed: () async {
-                  final balance =
-                      currentUserDocument?.balanceST.smallTalks ?? 0.0;
-                  if (balance <= 0) {
-                    await showModalBottomSheet(
-                      useRootNavigator: true,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      context: context,
-                      builder: (context) {
-                        return WebViewAware(
-                          child: GestureDetector(
-                            onTap: () {
-                              FocusScope.of(context).unfocus();
-                              FocusManager.instance.primaryFocus?.unfocus();
-                            },
-                            child: Padding(
-                              padding: MediaQuery.viewInsetsOf(context),
-                              child: NoBalanceWidget(),
-                            ),
-                          ),
-                        );
-                      },
-                    ).then((value) => safeSetState(() {}));
-                    return;
-                  }
-
-                  if (!(await getPermissionStatus(cameraPermission))) {
-                    await requestPermission(cameraPermission);
-                  }
-                  if (!(await getPermissionStatus(microphonePermission))) {
-                    await requestPermission(microphonePermission);
-                  }
-
-                  final hasCameraPermission =
-                      await getPermissionStatus(cameraPermission);
-                  final hasMicrophonePermission =
-                      await getPermissionStatus(microphonePermission);
-                  if (!hasCameraPermission || !hasMicrophonePermission) {
-                    return;
-                  }
-
-                  final targetTutorId = widget.nsUserDocRef?.id;
-                  if (targetTutorId == null || targetTutorId.isEmpty) {
-                    debugPrint(
-                        'NativeSpeakerPage: missing target tutor id for direct call');
-                    return;
-                  }
-
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => WaitingForTeacherPageWidget(
-                        targetTutorId: targetTutorId,
-                      ),
-                      settings: RouteSettings(
-                        name: WaitingForTeacherPageWidget.routeName,
-                      ),
-                    ),
-                  );
-                },
-                text: FFLocalizations.of(context).getText(
-                  '1b1w4r9j' /*  */,
-                ),
-                options: FFButtonOptions(
-                  width: double.infinity,
-                  height: 60.0,
-                  padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
-                  iconPadding:
-                      EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
-                  color: Color(0x00E88CD4),
-                  textStyle: FlutterFlowTheme.of(context).titleSmall.override(
-                        fontFamily: 'sf pro display',
-                        color: Colors.white,
-                        letterSpacing: 0.0,
-                      ),
-                  elevation: 0.0,
-                  borderRadius: BorderRadius.circular(60.0),
-                ),
-                showLoadingIndicator: false,
-              ),
-            ],
+              );
+            },
           ),
         ),
       ),
@@ -1704,6 +1638,15 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                   ? true
                                   : (e.rating == _model.rate))
                               .toList();
+
+                          if (rew.isEmpty) {
+                            return Center(
+                              child: EmptyWidget(
+                                txt:
+                                    'По выбранному рейтингу пока ничего нет. Попробуйте другую оценку.',
+                              ),
+                            );
+                          }
 
                           return ListView.separated(
                             padding: EdgeInsets.zero,

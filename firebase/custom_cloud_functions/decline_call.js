@@ -108,12 +108,7 @@ exports.declineCall = functions
         .doc(sessionId)
         .update({
           triedTutors: triedTutors,
-          currentTutorId: null,
-          sessionMetadata: {
-            ...sessionData.sessionMetadata,
-            lastDeclinedBy: tutorId,
-            lastDeclinedAt: Date.now(),
-          },
+          currentTutorId: admin.firestore.FieldValue.delete(),
         });
 
       console.log("🔔 Marking notification as declined...");
@@ -288,10 +283,6 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
         .doc(sessionId)
         .update({
           status: "no_tutors_available",
-          sessionMetadata: {
-            ...sessionData.sessionMetadata,
-            noTutorsReason: "All available tutors have been tried",
-          },
         });
       return;
     }

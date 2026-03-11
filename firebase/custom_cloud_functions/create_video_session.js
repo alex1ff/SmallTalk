@@ -3,7 +3,6 @@ const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
 const {
   createDailyRoom,
-  createMeetingToken,
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
 
@@ -11,8 +10,6 @@ const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const STUDENT_REVIEW_FLAG_FIELD = "studentHasReviewed";
 const TUTOR_REVIEW_FLAG_FIELD = "tutorHasReviewed";
-const STUDENT_REVIEW_REF_FIELD = "studentReviewRef";
-const TUTOR_REVIEW_REF_FIELD = "tutorReviewRef";
 const matchDebugSampleRateRaw = Number.parseFloat(
   process.env.MATCH_DEBUG_SAMPLE_RATE || "0.1",
 );
@@ -57,6 +54,12 @@ exports.createVideoSession = functions
       }
 
       const normalizedLanguage = String(language).trim().toLowerCase();
+      const normalizedPreferredNativeLanguage =
+        typeof preferredNativeLanguage === "string"
+          ? preferredNativeLanguage.trim().toLowerCase()
+          : "";
+      const normalizedPreferredCountry =
+        typeof preferredCountry === "string" ? preferredCountry.trim() : "";
       const directTutorId =
         typeof rawDirectTutorId === "string" ? rawDirectTutorId.trim() : "";
       const isDirectTutorCall = directTutorId.length > 0;
@@ -88,8 +91,8 @@ exports.createVideoSession = functions
         requestedLanguage: normalizedLanguage,
         matchMode: isDirectTutorCall ? "direct" : "filtered",
         directTutorId: isDirectTutorCall ? directTutorId : null,
-        preferredNativeLanguage: preferredNativeLanguage || "any",
-        preferredCountry: preferredCountry || "any",
+        preferredNativeLanguage: normalizedPreferredNativeLanguage || "any",
+        preferredCountry: normalizedPreferredCountry || "any",
       });
 
       const studentDoc = await admin
@@ -246,9 +249,26 @@ exports.createVideoSession = functions
         const tutorBaseQuery = admin
           .firestore()
           .collection("users")
-          .where("role", "in", tutorRoles);
+          .where("role", "in", tutorRoles)
+          .where("language_instruction_NS.code", "==", normalizedLanguage);
 
-        tutorsQuery = await tutorBaseQuery.get().catch((queryError) => {
+        let narrowedTutorQuery = tutorBaseQuery;
+        if (normalizedPreferredNativeLanguage) {
+          narrowedTutorQuery = narrowedTutorQuery.where(
+            "native_language_NS.code",
+            "==",
+            normalizedPreferredNativeLanguage,
+          );
+        }
+        if (normalizedPreferredCountry) {
+          narrowedTutorQuery = narrowedTutorQuery.where(
+            "Country_NS.code",
+            "==",
+            normalizedPreferredCountry,
+          );
+        }
+
+        tutorsQuery = await narrowedTutorQuery.get().catch((queryError) => {
           console.error(
             "❌ Tutor query failed (no collection-scan fallback):",
             queryError.message,
@@ -365,7 +385,7 @@ exports.createVideoSession = functions
 
           // Проверяем соответствие нативному языку (если указан)
           let nativeLanguageMatch = false;
-          if (preferredNativeLanguage) {
+          if (normalizedPreferredNativeLanguage) {
             // Получаем код нативного языка преподавателя
             const tutorNativeLanguage = tutorData.native_language_NS;
 
@@ -373,10 +393,8 @@ exports.createVideoSession = functions
               const nativeLanguageCode = String(tutorNativeLanguage.code || "")
                 .trim()
                 .toLowerCase();
-              const preferredNative = String(preferredNativeLanguage)
-                .trim()
-                .toLowerCase();
-              nativeLanguageMatch = nativeLanguageCode === preferredNative;
+              nativeLanguageMatch =
+                nativeLanguageCode === normalizedPreferredNativeLanguage;
               if (!nativeLanguageMatch) {
                 tutorFilterStats.nativeLanguageMismatch += 1;
                 addTutorSample({
@@ -401,13 +419,13 @@ exports.createVideoSession = functions
 
           // Проверяем соответствие локации/стране (если указана)
           let countryMatch = false;
-          if (preferredCountry) {
+          if (normalizedPreferredCountry) {
             // Получаем код страны преподавателя
             const tutorCountry = tutorData.Country_NS;
 
             if (tutorCountry && typeof tutorCountry === "object") {
               const countryCode = tutorCountry.code;
-              countryMatch = countryCode === preferredCountry;
+              countryMatch = countryCode === normalizedPreferredCountry;
               if (!countryMatch) {
                 tutorFilterStats.countryMismatch += 1;
                 addTutorSample({
@@ -468,10 +486,10 @@ exports.createVideoSession = functions
         directTutorId: isDirectTutorCall ? directTutorId : null,
         preferredNativeLanguage: isDirectTutorCall
           ? "skipped_for_direct_call"
-          : (preferredNativeLanguage || "any"),
+          : (normalizedPreferredNativeLanguage || "any"),
         preferredCountry: isDirectTutorCall
           ? "skipped_for_direct_call"
-          : (preferredCountry || "any"),
+          : (normalizedPreferredCountry || "any"),
         totalTutorsQueried,
         totalCandidatesChecked: tutorFilterStats.totalCandidates,
         matchedTutors: tutorFilterStats.matched,
@@ -501,8 +519,8 @@ exports.createVideoSession = functions
           requestedLanguage: normalizedLanguage,
           matchMode: isDirectTutorCall ? "direct" : "filtered",
           directTutorId: isDirectTutorCall ? directTutorId : null,
-          preferredNativeLanguage: preferredNativeLanguage || "any",
-          preferredCountry: preferredCountry || "any",
+          preferredNativeLanguage: normalizedPreferredNativeLanguage || "any",
+          preferredCountry: normalizedPreferredCountry || "any",
         });
         return {
           status: "no_tutors_available",
@@ -533,9 +551,7 @@ exports.createVideoSession = functions
 
       let precreatedRoomUrl = null;
       let precreatedRoomName = null;
-      let precreatedMeetingToken = null;
       let precreatedRoomCreatedAt = null;
-      let precreatedRoomOk = false;
 
       try {
         const dailyRoom = await createDailyRoom({
@@ -550,19 +566,10 @@ exports.createVideoSession = functions
         precreatedRoomUrl = dailyRoom.url;
         precreatedRoomName = dailyRoom.name;
         precreatedRoomCreatedAt = Date.now();
-        precreatedMeetingToken = await createMeetingToken({
-          roomName: dailyRoom.name,
-          expSeconds: 60 * 60,
-          isOwner: true,
-          userId: studentId,
-          userName: studentData.display_name || "Student",
-        });
-        precreatedRoomOk = !!(precreatedRoomUrl && precreatedMeetingToken);
 
         console.log("✅ Precreated Daily room for session", {
           roomName: precreatedRoomName,
           roomUrl: precreatedRoomUrl,
-          hasToken: !!precreatedMeetingToken,
         });
       } catch (roomError) {
         console.error("⚠️ Failed to precreate Daily room:", roomError.message);
@@ -570,7 +577,6 @@ exports.createVideoSession = functions
 
       const sessionData = {
         studentId,
-        tutorId: null,
         language,
         status: "searching",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -583,7 +589,6 @@ exports.createVideoSession = functions
         },
 
         // Для поиска
-        currentTutorId: null,
         triedTutors: [],
         availableTutors, // Уже отсортированный массив
         studentInfo: {
@@ -591,40 +596,24 @@ exports.createVideoSession = functions
           photo: studentData.photo_url || null,
         },
 
-        // Активная сессия (пока null)
-        dailyRoomUrl: precreatedRoomUrl,
-        dailyRoomName: precreatedRoomName,
-        acceptedAt: null,
-        startedAt: null,
-        endedAt: null,
-        duration: null,
         [STUDENT_REVIEW_FLAG_FIELD]: false,
         [TUTOR_REVIEW_FLAG_FIELD]: false,
-        [STUDENT_REVIEW_REF_FIELD]: null,
-        [TUTOR_REVIEW_REF_FIELD]: null,
-        tutorInfo: directTutorInfo,
-
-        // Метаданные для отладки
-        sessionMetadata: {
-          matchMode: isDirectTutorCall ? "direct" : "filtered",
-          directTutorId: isDirectTutorCall ? directTutorId : null,
-          totalTutorsFound: totalTutorsQueried,
-          filteredTutorsCount: availableTutors.length,
-          studentBlockedCount: studentBlockedIds.length,
-          filtersApplied: {
-            language: language,
-            nativeLanguage: isDirectTutorCall
-              ? "skipped_for_direct_call"
-              : (preferredNativeLanguage || "any"),
-            country: isDirectTutorCall
-              ? "skipped_for_direct_call"
-              : (preferredCountry || "any"),
-            blocklistEnabled: true,
-          },
-          roomPrecreated: precreatedRoomOk,
-          roomCreatedAt: precreatedRoomCreatedAt,
-        },
       };
+
+      if (precreatedRoomUrl) {
+        sessionData.dailyRoomUrl = precreatedRoomUrl;
+      }
+      if (precreatedRoomName) {
+        sessionData.dailyRoomName = precreatedRoomName;
+      }
+      if (directTutorInfo) {
+        sessionData.tutorInfo = directTutorInfo;
+      }
+      if (precreatedRoomCreatedAt) {
+        sessionData.sessionMetadata = {
+          roomCreatedAt: precreatedRoomCreatedAt,
+        };
+      }
 
       const sessionRef = await admin
         .firestore()
@@ -795,12 +784,6 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
         if (!nextTutor) {
           transaction.update(sessionRef, {
             status: "no_tutors_available",
-            sessionMetadata: {
-              ...(freshSessionData.sessionMetadata || {}),
-              noTutorsReason: "All available tutors have been tried",
-              finalizedAt: Date.now(),
-              skipReason: "no_available_tutors",
-            },
           });
           return {
             shouldNotify: false,
@@ -810,11 +793,6 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
 
         transaction.update(sessionRef, {
           currentTutorId: nextTutor,
-          sessionMetadata: {
-            ...(freshSessionData.sessionMetadata || {}),
-            lastNotifiedTutorId: nextTutor,
-            lastNotifiedAt: Date.now(),
-          },
         });
 
         return {

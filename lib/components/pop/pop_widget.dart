@@ -44,11 +44,19 @@ class _PopWidgetState extends State<PopWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final header = widget.header?.trim() ?? '';
+    final text = widget.text?.trim() ?? '';
+    final hasHeader = header.isNotEmpty;
+    final hasText = text.isNotEmpty;
+    final primaryText = hasHeader ? header : text;
+    final secondaryText = hasHeader && hasText ? text : null;
+    final cardBorderRadius = BorderRadius.circular(24.0);
+
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(20.0, 0.0, 20.0, 0.0),
       child: Container(
         width: double.infinity,
-        height: 60.0,
+        constraints: BoxConstraints(minHeight: 60.0),
         decoration: BoxDecoration(
           color: FlutterFlowTheme.of(context).primaryBackground,
           boxShadow: [
@@ -62,98 +70,104 @@ class _PopWidgetState extends State<PopWidget> {
               spreadRadius: 0.0,
             )
           ],
-          borderRadius: BorderRadius.circular(16.0),
+          borderRadius: cardBorderRadius,
           border: Border.all(
             color: FlutterFlowTheme.of(context).secondaryBackground,
           ),
         ),
-        child: Padding(
-          padding: EdgeInsets.all(4.0),
-          child: Row(
-            mainAxisSize: MainAxisSize.max,
-            children: [
-              Container(
-                width: 52.0,
-                height: 52.0,
-                decoration: BoxDecoration(
-                  color: Color(0xFFF2F2F7),
-                  borderRadius: BorderRadius.circular(12.0),
-                ),
-                child: Builder(
-                  builder: (context) {
-                    if (widget.isError ?? false) {
-                      return Icon(
-                        FFIcons.kalertHexagon,
-                        color: FlutterFlowTheme.of(context).error,
-                        size: 24.0,
-                      );
-                    } else {
-                      return Align(
-                        alignment: AlignmentDirectional(0.0, 0.0),
-                        child: Container(
-                          width: 25.0,
-                          height: 25.0,
-                          decoration: BoxDecoration(
-                            color: FlutterFlowTheme.of(context).success,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            FFIcons.kcheck,
-                            color: FlutterFlowTheme.of(context).primaryText,
-                            size: 14.0,
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                ),
-              ),
-              Flexible(
-                child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(12.0, 9.0, 12.0, 9.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        valueOrDefault<String>(
-                          widget.header,
-                          '-',
-                        ),
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'Cool',
+        child: ClipRRect(
+          borderRadius: cardBorderRadius,
+          child: Padding(
+            padding: EdgeInsets.all(4.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                Container(
+                  width: 52.0,
+                  height: 52.0,
+                  decoration: BoxDecoration(
+                    color: Color(0xFFF2F2F7),
+                    borderRadius: BorderRadius.circular(18.0),
+                  ),
+                  child: Builder(
+                    builder: (context) {
+                      if (widget.isError ?? false) {
+                        return Icon(
+                          FFIcons.kalertHexagon,
+                          color: FlutterFlowTheme.of(context).error,
+                          size: 24.0,
+                        );
+                      } else {
+                        return Align(
+                          alignment: AlignmentDirectional(0.0, 0.0),
+                          child: Container(
+                            width: 25.0,
+                            height: 25.0,
+                            decoration: BoxDecoration(
+                              color: FlutterFlowTheme.of(context).success,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              FFIcons.kcheck,
                               color: FlutterFlowTheme.of(context).primaryText,
-                              fontSize: 16.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FontWeight.normal,
+                              size: 14.0,
                             ),
-                      ),
-                      if (widget.text != null && widget.text != '')
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 3.0, 0.0, 0.0),
-                          child: Text(
-                            valueOrDefault<String>(
-                              widget.text,
-                              '-',
-                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+                Flexible(
+                  child: Padding(
+                    padding:
+                        EdgeInsetsDirectional.fromSTEB(12.0, 9.0, 12.0, 9.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (primaryText.isNotEmpty)
+                          Text(
+                            primaryText,
+                            maxLines: secondaryText != null ? 1 : 2,
+                            overflow: TextOverflow.ellipsis,
                             style: FlutterFlowTheme.of(context)
                                 .bodyMedium
                                 .override(
-                                  fontFamily: 'sf pro display',
-                                  color: FlutterFlowTheme.of(context)
-                                      .secondaryText,
-                                  fontSize: 13.0,
+                                  fontFamily: 'Cool',
+                                  color:
+                                      FlutterFlowTheme.of(context).primaryText,
+                                  fontSize: 16.0,
                                   letterSpacing: 0.0,
                                   fontWeight: FontWeight.normal,
                                 ),
                           ),
-                        ),
-                    ],
+                        if (secondaryText != null)
+                          Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                0.0, 3.0, 0.0, 0.0),
+                            child: Text(
+                              secondaryText,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
+                                    fontFamily: 'sf pro display',
+                                    color: FlutterFlowTheme.of(context)
+                                        .secondaryText,
+                                    fontSize: 13.0,
+                                    letterSpacing: 0.0,
+                                    fontWeight: FontWeight.normal,
+                                  ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

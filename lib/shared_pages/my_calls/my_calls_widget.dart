@@ -202,6 +202,41 @@ class _CallHistoryCard extends StatelessWidget {
   final VideoSessionsRecord session;
   final bool isTeacher;
 
+  String _formatStartedAtForCard(BuildContext context) {
+    final startedAt = resolveSessionStartedAt(session);
+    if (startedAt == null) {
+      return '-';
+    }
+
+    final locale = FFLocalizations.of(context).languageCode;
+    final startedAtLocal = startedAt.toLocal();
+    final now = DateTime.now();
+    final startedDay = DateTime(
+      startedAtLocal.year,
+      startedAtLocal.month,
+      startedAtLocal.day,
+    );
+    final today = DateTime(now.year, now.month, now.day);
+    final differenceInDays = today.difference(startedDay).inDays;
+
+    if (differenceInDays == 0) {
+      return DateFormat.jm(locale).format(startedAtLocal);
+    }
+
+    if (differenceInDays == 1) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Вчера',
+        enText: 'Yesterday',
+      );
+    }
+
+    if (differenceInDays > 1 && differenceInDays < 7) {
+      return DateFormat.EEEE(locale).format(startedAtLocal);
+    }
+
+    return DateFormat('M/d/yy').format(startedAtLocal);
+  }
+
   String _displayName(BuildContext context) {
     final rawName =
         (isTeacher ? session.studentInfo.name : session.tutorInfo.name).trim();
@@ -262,7 +297,7 @@ class _CallHistoryCard extends StatelessWidget {
       context,
       resolveSessionDurationSeconds(session),
     );
-    final startedAtLabel = formatSessionStartedAt(context, session);
+    final startedAtLabel = _formatStartedAtForCard(context);
 
     return InkWell(
       splashColor: Colors.transparent,
@@ -282,7 +317,7 @@ class _CallHistoryCard extends StatelessWidget {
       },
       child: Container(
         width: double.infinity,
-        height: 72.0,
+        height: 60.0,
         decoration: BoxDecoration(
           color: FlutterFlowTheme.of(context).primaryBackground,
           borderRadius: BorderRadius.circular(26.0),
@@ -314,7 +349,7 @@ class _CallHistoryCard extends StatelessWidget {
                       ),
                       Padding(
                         padding: const EdgeInsetsDirectional.fromSTEB(
-                            0.0, 4.0, 0.0, 0.0),
+                            0.0, 2.0, 0.0, 0.0),
                         child: Text(
                           '$startedAtLabel • $durationLabel',
                           maxLines: 1,
@@ -332,6 +367,15 @@ class _CallHistoryCard extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+              ),
+              Padding(
+                padding:
+                    const EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: FlutterFlowTheme.of(context).secondaryText,
+                  size: 20.0,
                 ),
               ),
             ],

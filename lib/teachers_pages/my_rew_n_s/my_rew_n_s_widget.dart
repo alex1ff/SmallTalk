@@ -1037,6 +1037,15 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                       : (_model.rate == e.rating))
                                   .toList();
 
+                              if (rew.isEmpty) {
+                                return Center(
+                                  child: EmptyWidget(
+                                    txt:
+                                        'По выбранному рейтингу пока ничего нет. Попробуйте другую оценку.',
+                                  ),
+                                );
+                              }
+
                               return ListView.separated(
                                 padding: EdgeInsets.zero,
                                 primary: false,

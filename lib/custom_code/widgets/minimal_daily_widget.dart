@@ -2260,6 +2260,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       final entries = List<_CaptionLogEntry>.from(
         _pendingCaptionLogEntries.values,
       );
+      if (kDebugMode) {
+        print(
+          'Flushing ${entries.length} caption logs for ${sessionRef.path}',
+        );
+      }
       final batch = FirebaseFirestore.instance.batch();
 
       for (final entry in entries) {
@@ -2278,7 +2283,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
     }).catchError((Object error) {
       if (kDebugMode) {
-        print('Failed to flush caption logs: $error');
+        final sessionPath = _captionLogSessionRef()?.path ?? 'unknown-session';
+        print(
+          'Failed to flush ${_pendingCaptionLogEntries.length} caption logs for $sessionPath: $error',
+        );
       }
       if (_pendingCaptionLogEntries.isNotEmpty &&
           _captionLogFlushTimer == null &&
@@ -3009,8 +3017,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         transaction.update(sessionRef, {
           'startedAt': FieldValue.serverTimestamp(),
           'sessionMetadata.callConnectedAt': FieldValue.serverTimestamp(),
-          'sessionMetadata.callConnectedSource': 'daily_remote_presence',
-          'sessionMetadata.callConnectedAtTimestamp': FieldValue.delete(),
         });
       });
     } catch (e) {
@@ -3693,8 +3699,23 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         ? Colors.white.withValues(alpha: 0.18)
         : const Color(0xFFDACBFF).withValues(alpha: 0.26);
     final displayText = _truncateCaptionForOverlay(caption.text);
+    final fullText = _normalizeCaptionText(caption.text);
+    final textStyle = TextStyle(
+      color: isLocal ? Colors.white : const Color(0xFFF9F3FF),
+      fontSize: 18,
+      height: 1.18,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.1,
+      shadows: [
+        Shadow(
+          offset: const Offset(0, 1),
+          blurRadius: 4,
+          color: Colors.black.withValues(alpha: 0.52),
+        ),
+      ],
+    );
 
-    Widget panel = Container(
+    final panel = Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -3709,50 +3730,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           ),
         ],
       ),
-      child: Text(
-        displayText,
-        maxLines: 2,
-        overflow: TextOverflow.fade,
-        softWrap: true,
-        style: TextStyle(
-          color: isLocal ? Colors.white : const Color(0xFFF9F3FF),
-          fontSize: 18,
-          height: 1.18,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.1,
-          shadows: [
-            Shadow(
-              offset: const Offset(0, 1),
-              blurRadius: 4,
-              color: Colors.black.withValues(alpha: 0.52),
-            ),
-          ],
-        ),
+      child: _buildCaptionPanelText(
+        displayText: displayText,
+        fullText: fullText,
+        textStyle: textStyle,
       ),
     );
-
-    if (widget.actionCallback != null) {
-      panel = Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onLongPress: () {
-            final normalizedText = _normalizeCaptionText(caption.text);
-            if (normalizedText.isEmpty) {
-              return;
-            }
-            unawaited(
-              widget.actionCallback?.call(
-                normalizedText,
-                normalizedText,
-                normalizedText,
-              ),
-            );
-          },
-          child: panel,
-        ),
-      );
-    }
 
     return AnimatedOpacity(
       duration: const Duration(milliseconds: _captionFadeDurationMs),
@@ -3786,6 +3769,104 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         ],
       ),
     );
+  }
+
+  Widget _buildCaptionPanelText({
+    required String displayText,
+    required String fullText,
+    required TextStyle textStyle,
+  }) {
+    if (widget.actionCallback == null) {
+      return Text(
+        displayText,
+        maxLines: 2,
+        overflow: TextOverflow.fade,
+        softWrap: true,
+        style: textStyle,
+      );
+    }
+
+    final spans = <InlineSpan>[];
+    for (final token in _splitCaptionDisplayTokens(displayText)) {
+      final normalizedWord = _normalizeCaptionLookupWord(token);
+      if (normalizedWord.isEmpty) {
+        spans.add(TextSpan(text: token, style: textStyle));
+        continue;
+      }
+
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                unawaited(
+                  widget.actionCallback?.call(
+                    normalizedWord,
+                    fullText,
+                    fullText,
+                  ),
+                );
+              },
+              child: Text(
+                token,
+                style: textStyle,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return RichText(
+      maxLines: 2,
+      overflow: TextOverflow.fade,
+      softWrap: true,
+      text: TextSpan(
+        style: textStyle,
+        children: spans,
+      ),
+    );
+  }
+
+  List<String> _splitCaptionDisplayTokens(String text) {
+    return RegExp(r'\s+|[^\s]+')
+        .allMatches(text)
+        .map((match) => match.group(0) ?? '')
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  String _normalizeCaptionLookupWord(String rawToken) {
+    final trimmedToken = rawToken.trim();
+    if (trimmedToken.isEmpty) {
+      return '';
+    }
+
+    final runes = trimmedToken.runes.toList(growable: false);
+    var start = 0;
+    var end = runes.length - 1;
+
+    while (start <= end && !_isCaptionLookupRune(runes[start])) {
+      start += 1;
+    }
+    while (end >= start && !_isCaptionLookupRune(runes[end])) {
+      end -= 1;
+    }
+
+    if (start > end) {
+      return '';
+    }
+
+    return String.fromCharCodes(runes.sublist(start, end + 1));
+  }
+
+  bool _isCaptionLookupRune(int rune) {
+    final character = String.fromCharCode(rune);
+    return RegExp(r'[0-9A-Za-z\u00C0-\u024F\u0400-\u04FF]').hasMatch(character);
   }
 
   String _truncateCaptionForOverlay(String rawText) {

@@ -12,9 +12,11 @@ class FavWidget extends StatefulWidget {
   const FavWidget({
     super.key,
     required this.nsUser,
+    this.enableNavigation = true,
   });
 
   final DocumentReference? nsUser;
+  final bool enableNavigation;
 
   @override
   State<FavWidget> createState() => _FavWidgetState();
@@ -64,23 +66,26 @@ class _FavWidgetState extends State<FavWidget> {
         }
 
         final containerUsersRecord = snapshot.data!;
+        final hasReviews = containerUsersRecord.rating.totalReviews > 0;
 
         return InkWell(
           splashColor: Colors.transparent,
           focusColor: Colors.transparent,
           hoverColor: Colors.transparent,
           highlightColor: Colors.transparent,
-          onTap: () async {
-            context.pushNamed(
-              NativeSpeakerPageWidget.routeName,
-              queryParameters: {
-                'nsUserDocRef': serializeParam(
-                  containerUsersRecord.reference,
-                  ParamType.DocumentReference,
-                ),
-              }.withoutNulls,
-            );
-          },
+          onTap: widget.enableNavigation
+              ? () async {
+                  context.pushNamed(
+                    NativeSpeakerPageWidget.routeName,
+                    queryParameters: {
+                      'nsUserDocRef': serializeParam(
+                        containerUsersRecord.reference,
+                        ParamType.DocumentReference,
+                      ),
+                    }.withoutNulls,
+                  );
+                }
+              : null,
           child: Container(
             width: 140.0,
             decoration: BoxDecoration(
@@ -117,42 +122,44 @@ class _FavWidgetState extends State<FavWidget> {
                           ),
                         ),
                       ),
-                      Container(
-                        width: 55.0,
-                        height: 25.0,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24.0),
-                        ),
-                        child: Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              6.0, 0.0, 6.0, 0.0),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.max,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                FFIcons.kstar012,
-                                color: Color(0xFFFFC100),
-                                size: 13.0,
-                              ),
-                              Text(
-                                valueOrDefault<String>(
-                                  containerUsersRecord.rating.average
-                                      .toString(),
-                                  '0.0',
+                      if (hasReviews)
+                        Container(
+                          width: 55.0,
+                          height: 25.0,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24.0),
+                          ),
+                          child: Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                6.0, 0.0, 6.0, 0.0),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.max,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  FFIcons.kstar012,
+                                  color: Color(0xFFFFC100),
+                                  size: 13.0,
                                 ),
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'sf pro display',
-                                      letterSpacing: 0.0,
-                                    ),
-                              ),
-                            ].divide(SizedBox(width: 3.0)),
+                                Text(
+                                  formatNumber(
+                                    containerUsersRecord.rating.average,
+                                    formatType: FormatType.custom,
+                                    format: '0.0',
+                                    locale: '',
+                                  ),
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        letterSpacing: 0.0,
+                                      ),
+                                ),
+                              ].divide(SizedBox(width: 3.0)),
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                   Padding(

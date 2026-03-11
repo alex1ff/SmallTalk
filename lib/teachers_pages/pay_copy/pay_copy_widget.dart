@@ -1,13 +1,13 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/button/button_widget.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/trans/trans_widget.dart';
 import '/flutter_flow/flutter_flow_animations.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/flutter_flow/flutter_flow_widgets.dart';
 import '/teachers_pages/components/add_card/add_card_widget.dart';
 import '/teachers_pages/components/edit_card/edit_card_widget.dart';
 import '/custom_code/actions/index.dart' as actions;
@@ -781,175 +781,97 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                 ),
                 child: Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(6, 12, 6, 35),
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          borderRadius: BorderRadius.circular(50),
-                        ),
-                        child: Padding(
-                          padding: EdgeInsets.all(2),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.max,
-                            children: [
-                              Expanded(
-                                child: Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      16, 0, 0, 0),
-                                  child: Text(
-                                    FFLocalizations.of(context).getText(
-                                      'djp5cokc' /* Вывести */,
-                                    ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'Cool',
-                                          color: FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                          fontSize: 20,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
-                                        ),
-                                  ),
-                                ),
-                              ),
-                              Padding(
-                                padding:
-                                    EdgeInsetsDirectional.fromSTEB(0, 0, 12, 0),
-                                child: RichText(
-                                  textScaler: MediaQuery.of(context).textScaler,
-                                  text: TextSpan(
-                                    children: [
-                                      TextSpan(
-                                        text: formatNumber(
-                                          valueOrDefault(
-                                              currentUserDocument?.balanceNS,
-                                              0.0),
-                                          formatType: FormatType.decimal,
-                                          decimalType: DecimalType.automatic,
-                                        ),
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .primaryBackground,
-                                              fontSize: 18,
-                                              letterSpacing: 0.0,
-                                              fontWeight: FontWeight.normal,
-                                            ),
-                                      ),
-                                      TextSpan(
-                                        text:
-                                            FFLocalizations.of(context).getText(
-                                          'lv5jpiff' /* ₽ */,
-                                        ),
-                                        style: TextStyle(
-                                          fontFamily: 'Cool',
-                                          color: FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                          fontSize: 16,
-                                        ),
-                                      )
-                                    ],
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'Cool',
-                                          color: FlutterFlowTheme.of(context)
-                                              .primaryText,
-                                          fontSize: 18,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
-                                        ),
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
+                  child: ButtonWidget(
+                    text: FFLocalizations.of(context).getText(
+                      'djp5cokc' /* Вывести */,
+                    ),
+                    loadingText: FFLocalizations.of(context).getVariableText(
+                      ruText: 'Отправляем заявку...',
+                      enText: 'Submitting request...',
+                    ),
+                    busyStyle: ButtonBusyStyle.spinner,
+                    keyboardAwarePadding: false,
+                    padding: EdgeInsets.zero,
+                    trailingContent: RichText(
+                      textScaler: MediaQuery.of(context).textScaler,
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: formatNumber(
+                              valueOrDefault(
+                                  currentUserDocument?.balanceNS, 0.0),
+                              formatType: FormatType.decimal,
+                              decimalType: DecimalType.automatic,
+                            ),
+                            style: FlutterFlowTheme.of(context)
+                                .bodyMedium
+                                .override(
+                                  fontFamily: 'sf pro display',
                                   color: FlutterFlowTheme.of(context)
                                       .primaryBackground,
-                                  shape: BoxShape.circle,
+                                  fontSize: 18,
+                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.normal,
                                 ),
-                                child: Align(
-                                  alignment: AlignmentDirectional(0, 0),
-                                  child: Icon(
-                                    FFIcons.karrowRight,
-                                    color: Colors.black,
-                                    size: 20,
-                                  ),
-                                ),
-                              ),
-                            ],
                           ),
-                        ),
+                          TextSpan(
+                            text: FFLocalizations.of(context).getText(
+                              'lv5jpiff' /* ₽ */,
+                            ),
+                            style: TextStyle(
+                              fontFamily: 'Cool',
+                              color: FlutterFlowTheme.of(context)
+                                  .primaryBackground,
+                              fontSize: 16,
+                            ),
+                          )
+                        ],
+                        style: FlutterFlowTheme.of(context).bodyMedium.override(
+                              fontFamily: 'Cool',
+                              color: FlutterFlowTheme.of(context).primaryText,
+                              fontSize: 18,
+                              letterSpacing: 0.0,
+                              fontWeight: FontWeight.normal,
+                            ),
                       ),
-                      FFButtonWidget(
-                        onPressed: () async {
-                          if (_model.selectedCard != null) {
-                            await TransactionsRecord.collection
-                                .doc()
-                                .set(createTransactionsRecordData(
-                                  userId: currentUserReference,
-                                  createdAt: getCurrentTimestamp,
-                                  type: TypeTransactions.withdrawal,
-                                  status: StatusTransactions.pending,
-                                  amount: valueOrDefault(
-                                      currentUserDocument?.balanceNS, 0.0),
-                                ));
+                    ),
+                    action: () async {
+                      if (_model.selectedCard != null) {
+                        await TransactionsRecord.collection
+                            .doc()
+                            .set(createTransactionsRecordData(
+                              userId: currentUserReference,
+                              createdAt: getCurrentTimestamp,
+                              type: TypeTransactions.withdrawal,
+                              status: StatusTransactions.pending,
+                              amount: valueOrDefault(
+                                  currentUserDocument?.balanceNS, 0.0),
+                            ));
 
-                            await currentUserReference!.update({
-                              ...mapToFirestore(
-                                {
-                                  'balance_NS': FieldValue.delete(),
-                                },
-                              ),
-                            });
-                            await actions.showTopNotification(
-                              context,
-                              'Заявка на вывод создана!',
-                              '',
-                              false,
-                            );
-                          } else {
-                            if (animationsMap[
-                                    'containerOnActionTriggerAnimation'] !=
-                                null) {
-                              animationsMap[
-                                      'containerOnActionTriggerAnimation']!
-                                  .controller
-                                  .forward(from: 0.0);
-                            }
-                            HapticFeedback.mediumImpact();
-                          }
-                        },
-                        text: FFLocalizations.of(context).getText(
-                          'bpvnxnx6' /*  */,
-                        ),
-                        options: FFButtonOptions(
-                          width: double.infinity,
-                          height: 60,
-                          padding: EdgeInsetsDirectional.fromSTEB(16, 0, 16, 0),
-                          iconPadding:
-                              EdgeInsetsDirectional.fromSTEB(0, 0, 0, 0),
-                          color: Color(0x00E88CD4),
-                          textStyle:
-                              FlutterFlowTheme.of(context).titleSmall.override(
-                                    fontFamily: 'sf pro display',
-                                    color: Colors.white,
-                                    letterSpacing: 0.0,
-                                  ),
-                          elevation: 0,
-                          borderRadius: BorderRadius.circular(60),
-                        ),
-                      ),
-                    ],
+                        await currentUserReference!.update({
+                          ...mapToFirestore(
+                            {
+                              'balance_NS': FieldValue.delete(),
+                            },
+                          ),
+                        });
+                        await actions.showTopNotification(
+                          context,
+                          'Заявка на вывод создана!',
+                          '',
+                          false,
+                        );
+                      } else {
+                        if (animationsMap[
+                                'containerOnActionTriggerAnimation'] !=
+                            null) {
+                          animationsMap['containerOnActionTriggerAnimation']!
+                              .controller
+                              .forward(from: 0.0);
+                        }
+                        HapticFeedback.mediumImpact();
+                      }
+                    },
                   ),
                 ),
               ),

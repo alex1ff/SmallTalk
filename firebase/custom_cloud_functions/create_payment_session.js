@@ -121,17 +121,16 @@ exports.createPaymentSession = functions.https.onCall(async (data, context) => {
   }
 
   const transactionRef = db.collection("transactions").doc();
-  await transactionRef.set({
+  const baseTransactionData = {
     userId: userRef,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     type: "purchase",
-    status: "pending",
     packageDocRef: packageRef,
     amount: amountRubles,
     amount_ST: amountSmallTalks,
     minutesPurchased: minutesPurchased,
     paymentId: null,
-  });
+  };
 
   try {
     const amountInKopeks = Math.round(amountRubles * 100);
@@ -161,7 +160,8 @@ exports.createPaymentSession = functions.https.onCall(async (data, context) => {
       extractString(responseData.PaymentId);
 
     if (!paymentUrl || !paymentId) {
-      await transactionRef.update({
+      await transactionRef.set({
+        ...baseTransactionData,
         status: "failed",
         paymentInitErrorMessage:
           "Payment session was created without payment URL or payment ID",
@@ -178,7 +178,9 @@ exports.createPaymentSession = functions.https.onCall(async (data, context) => {
       );
     }
 
-    await transactionRef.update({
+    await transactionRef.set({
+      ...baseTransactionData,
+      status: "pending",
       paymentId: paymentId,
     });
 
@@ -205,7 +207,8 @@ exports.createPaymentSession = functions.https.onCall(async (data, context) => {
       error: providerError.responseData || error?.message || error,
     });
 
-    await transactionRef.update({
+    await transactionRef.set({
+      ...baseTransactionData,
       status: "failed",
       paymentInitErrorCode: providerError.providerCode,
       paymentInitErrorMessage:

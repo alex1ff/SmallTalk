@@ -7,7 +7,7 @@ const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 exports.processExpiredNotifications = functions
   .runWith({ secrets: apnsSecrets })
   .pubsub.schedule("every 1 minutes")
-  .onRun(async (context) => {
+  .onRun(async () => {
     console.log("⏰ Processing expired notifications (updated version)...");
     const now = admin.firestore.Timestamp.now();
 
@@ -120,13 +120,7 @@ async function processExpiredSession(sessionId) {
 
         transaction.update(sessionRef, {
           triedTutors: triedTutors,
-          currentTutorId: null,
-          sessionMetadata: {
-            ...(freshSessionData.sessionMetadata || {}),
-            lastTimeoutBy: currentTutorId,
-            lastTimeoutAt: Date.now(),
-            timeoutProcessedAt: Date.now(),
-          },
+          currentTutorId: admin.firestore.FieldValue.delete(),
         });
 
         return {
@@ -312,12 +306,6 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
         if (!nextTutor) {
           transaction.update(sessionRef, {
             status: "no_tutors_available",
-            sessionMetadata: {
-              ...(freshSessionData.sessionMetadata || {}),
-              noTutorsReason: "All tutors tried without response",
-              finalizedAt: Date.now(),
-              skipReason: "no_available_tutors",
-            },
           });
           return {
             shouldNotify: false,
@@ -327,11 +315,6 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
 
         transaction.update(sessionRef, {
           currentTutorId: nextTutor,
-          sessionMetadata: {
-            ...(freshSessionData.sessionMetadata || {}),
-            lastNotifiedTutorId: nextTutor,
-            lastNotifiedAt: Date.now(),
-          },
         });
 
         return {

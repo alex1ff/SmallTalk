@@ -26,7 +26,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
-import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'acquaintance_s_t_u_d_e_n_t_model.dart';
@@ -52,8 +51,6 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
   late AcquaintanceSTUDENTModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
-  late StreamSubscription<bool> _keyboardVisibilitySubscription;
-  bool _isKeyboardVisible = false;
 
   @override
   void initState() {
@@ -67,15 +64,6 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
       await requestPermission(microphonePermission);
     });
 
-    if (!isWeb) {
-      _keyboardVisibilitySubscription =
-          KeyboardVisibilityController().onChange.listen((bool visible) {
-        safeSetState(() {
-          _isKeyboardVisible = visible;
-        });
-      });
-    }
-
     _model.nameTextController ??= TextEditingController();
     _model.nameFocusNode ??= FocusNode();
   }
@@ -83,15 +71,13 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
   @override
   void dispose() {
     _model.dispose();
-
-    if (!isWeb) {
-      _keyboardVisibilitySubscription.cancel();
-    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -252,10 +238,9 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                               preferences:
                                                   updatePreferencesStruct(
                                                 PreferencesStruct(
-                                                  preferredNativeLanguage:
-                                                      _model.langNS ??
-                                                          _model
-                                                              .selectedLangLearn,
+                                                  preferredNativeLanguage: _model
+                                                          .langNS ??
+                                                      _model.selectedLangLearn,
                                                   preferredLocation:
                                                       _model.counntryNS,
                                                 ),
@@ -300,10 +285,9 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                               preferences:
                                                   updatePreferencesStruct(
                                                 PreferencesStruct(
-                                                  preferredNativeLanguage:
-                                                      _model.langNS ??
-                                                          _model
-                                                              .selectedLangLearn,
+                                                  preferredNativeLanguage: _model
+                                                          .langNS ??
+                                                      _model.selectedLangLearn,
                                                   preferredLocation:
                                                       _model.counntryNS,
                                                 ),
@@ -2693,11 +2677,8 @@ Native */
                                               AlignmentDirectional(0.0, 0.0),
                                           child: Builder(
                                             builder: (context) {
-                                              if (_model.avatarPhooto !=
-                                                      null &&
-                                                  (_model
-                                                          .avatarPhooto
-                                                          ?.bytes
+                                              if (_model.avatarPhooto != null &&
+                                                  (_model.avatarPhooto?.bytes
                                                           ?.isNotEmpty ??
                                                       false)) {
                                                 return ClipRRect(
@@ -2724,10 +2705,9 @@ Native */
                                                       width: 45.0,
                                                       height: 45.0,
                                                       decoration: BoxDecoration(
-                                                        color:
-                                                            FlutterFlowTheme.of(
-                                                                    context)
-                                                                .secondaryBackground,
+                                                        color: FlutterFlowTheme
+                                                                .of(context)
+                                                            .secondaryBackground,
                                                         borderRadius:
                                                             BorderRadius
                                                                 .circular(20.0),
@@ -2744,8 +2724,11 @@ Native */
                                                     Padding(
                                                       padding:
                                                           EdgeInsetsDirectional
-                                                              .fromSTEB(12.0,
-                                                                  0.0, 0.0, 0.0),
+                                                              .fromSTEB(
+                                                                  12.0,
+                                                                  0.0,
+                                                                  0.0,
+                                                                  0.0),
                                                       child: AutoSizeText(
                                                         FFLocalizations.of(
                                                                 context)
@@ -2949,21 +2932,11 @@ Native */
                   child: Builder(
                     builder: (context) {
                       if (_model.pageViewCurrentIndex != 4) {
-                        return Padding(
+                        return AnimatedPadding(
+                          duration: const Duration(milliseconds: 160),
+                          curve: Curves.easeOutCubic,
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              0.0,
-                              0.0,
-                              0.0,
-                              valueOrDefault<double>(
-                                (isWeb
-                                        ? MediaQuery.viewInsetsOf(context)
-                                                .bottom >
-                                            0
-                                        : _isKeyboardVisible)
-                                    ? 8.0
-                                    : 35.0,
-                                0.0,
-                              )),
+                              0.0, 0.0, 0.0, keyboardVisible ? 8.0 : 35.0),
                           child: Container(
                             height: 60.0,
                             decoration: BoxDecoration(

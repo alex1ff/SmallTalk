@@ -11,7 +11,6 @@ import '/flutter_flow/custom_functions.dart' as functions;
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'edit_name_model.dart';
 export 'edit_name_model.dart';
 
@@ -30,9 +29,6 @@ class EditNameWidget extends StatefulWidget {
 class _EditNameWidgetState extends State<EditNameWidget> {
   late EditNameModel _model;
 
-  late StreamSubscription<bool> _keyboardVisibilitySubscription;
-  bool _isKeyboardVisible = false;
-
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -44,15 +40,6 @@ class _EditNameWidgetState extends State<EditNameWidget> {
     super.initState();
     _model = createModel(context, () => EditNameModel());
 
-    if (!isWeb) {
-      _keyboardVisibilitySubscription =
-          KeyboardVisibilityController().onChange.listen((bool visible) {
-        safeSetState(() {
-          _isKeyboardVisible = visible;
-        });
-      });
-    }
-
     _model.nameTextController ??=
         TextEditingController(text: currentUserDisplayName);
     _model.nameFocusNode ??= FocusNode();
@@ -62,15 +49,13 @@ class _EditNameWidgetState extends State<EditNameWidget> {
   @override
   void dispose() {
     _model.maybeDispose();
-
-    if (!isWeb) {
-      _keyboardVisibilitySubscription.cancel();
-    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.start,
@@ -257,8 +242,11 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                   ),
                 ),
               ),
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 0.0),
+              AnimatedPadding(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    0.0, 0.0, 6.0, keyboardVisible ? 6.0 : 35.0),
                 child: Row(
                   mainAxisSize: MainAxisSize.max,
                   children: [
@@ -270,6 +258,15 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                           text: FFLocalizations.of(context).getText(
                             'p3ygumv3' /* Сохранить */,
                           ),
+                          keyboardAwarePadding: false,
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              6.0, 0.0, 6.0, 0.0),
+                          loadingText:
+                              FFLocalizations.of(context).getVariableText(
+                            ruText: 'Сохраняем...',
+                            enText: 'Saving...',
+                          ),
+                          busyStyle: ButtonBusyStyle.spinner,
                           action: () async {
                             if (_model.nameTextController.text != '') {
                               if (functions.isValidName(
@@ -278,15 +275,10 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                                     currentUserDisplayName) {
                                   Navigator.pop(context);
                                 } else {
-                                  unawaited(
-                                    () async {
-                                      await currentUserReference!
-                                          .update(createUsersRecordData(
-                                        displayName:
-                                            _model.nameTextController.text,
-                                      ));
-                                    }(),
-                                  );
+                                  await currentUserReference!
+                                      .update(createUsersRecordData(
+                                    displayName: _model.nameTextController.text,
+                                  ));
                                   await widget.action?.call(
                                     _model.nameTextController.text,
                                   );
@@ -320,48 +312,33 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                         ),
                       ),
                     ),
-                    Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(
-                          0.0,
-                          0.0,
-                          0.0,
-                          valueOrDefault<double>(
-                            (isWeb
-                                    ? MediaQuery.viewInsetsOf(context).bottom >
-                                        0
-                                    : _isKeyboardVisible)
-                                ? 6.0
-                                : 35.0,
-                            6.0,
-                          )),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          boxShadow: [
-                            BoxShadow(
-                              blurRadius: 7.0,
-                              color: Color(0x0D2C2C2C),
-                              offset: Offset(
-                                0.0,
-                                2.0,
-                              ),
-                            )
-                          ],
-                          shape: BoxShape.circle,
+                    Container(
+                      decoration: BoxDecoration(
+                        boxShadow: [
+                          BoxShadow(
+                            blurRadius: 7.0,
+                            color: Color(0x0D2C2C2C),
+                            offset: Offset(
+                              0.0,
+                              2.0,
+                            ),
+                          )
+                        ],
+                        shape: BoxShape.circle,
+                      ),
+                      child: FlutterFlowIconButton(
+                        borderRadius: 50.0,
+                        buttonSize: 60.0,
+                        fillColor:
+                            FlutterFlowTheme.of(context).primaryBackground,
+                        icon: Icon(
+                          Icons.close_sharp,
+                          color: FlutterFlowTheme.of(context).error,
+                          size: 20.0,
                         ),
-                        child: FlutterFlowIconButton(
-                          borderRadius: 50.0,
-                          buttonSize: 60.0,
-                          fillColor:
-                              FlutterFlowTheme.of(context).primaryBackground,
-                          icon: Icon(
-                            Icons.close_sharp,
-                            color: FlutterFlowTheme.of(context).error,
-                            size: 20.0,
-                          ),
-                          onPressed: () async {
-                            Navigator.pop(context);
-                          },
-                        ),
+                        onPressed: () async {
+                          Navigator.pop(context);
+                        },
                       ),
                     ),
                   ],

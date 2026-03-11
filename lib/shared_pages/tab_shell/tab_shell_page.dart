@@ -127,28 +127,33 @@ class _TabShellPageState extends State<TabShellPage> {
 
   @override
   Widget build(BuildContext context) {
-    final currentPath =
-        _normalizePath(_provider?.value.uri.path ?? widget.state.uri.path);
-    _lastRoutePath = currentPath;
-    final showNavBar = _tabPathsOrdered.contains(currentPath);
-    final indexCurrentPage = _indexCurrentPage(currentPath);
+    return AuthUserStreamWidget(
+      builder: (context) {
+        final currentPath =
+            _normalizePath(_provider?.value.uri.path ?? widget.state.uri.path);
+        _lastRoutePath = currentPath;
+        final showNavBar = _tabPathsOrdered.contains(currentPath);
+        final indexCurrentPage = _indexCurrentPage(currentPath);
 
-    if (kDebugMode) {
-      debugPrint(
-        '[TabShellPage] path=$currentPath '
-        'showNavBar=$showNavBar '
-        'indexCurrentPage=$indexCurrentPage '
-        'role=${_isTeacher ? 'teacher' : 'student'} '
-        'platformBranch=${_platformBranch()}',
-      );
-    }
+        if (kDebugMode) {
+          debugPrint(
+            '[TabShellPage] path=$currentPath '
+            'showNavBar=$showNavBar '
+            'indexCurrentPage=$indexCurrentPage '
+            'role=${_isTeacher ? 'teacher' : 'student'} '
+            'platformBranch=${_platformBranch()}',
+          );
+        }
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBody: true,
-      body: widget.child,
-      bottomNavigationBar:
-          showNavBar ? NavBarWidget(indexCurrentPage: indexCurrentPage) : null,
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          extendBody: true,
+          body: widget.child,
+          bottomNavigationBar: showNavBar
+              ? NavBarWidget(indexCurrentPage: indexCurrentPage)
+              : null,
+        );
+      },
     );
   }
 }

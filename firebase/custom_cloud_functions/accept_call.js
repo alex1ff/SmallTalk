@@ -11,12 +11,16 @@ const { evaluateTutorAvailabilityWindow } = require("./availability");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const PRECREATED_ROOM_VALIDATION_WINDOW_MS = 60 * 1000;
 
 exports.acceptCall = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .https.onCall(async (data, context) => {
     console.log("✅ Tutor accepting call (updated version)...");
 
+    let tutorId = null;
+    let sessionRef = null;
+    let lockAcquired = false;
     try {
       // === 1. АУТЕНТИФИКАЦИЯ И ВАЛИДАЦИЯ ===
       if (!context.auth) {
@@ -27,7 +31,7 @@ exports.acceptCall = functions
         );
       }
 
-      const tutorId = context.auth.uid;
+      tutorId = context.auth.uid;
       const { sessionId } = data;
 
       console.log("👨‍🏫 Tutor ID:", tutorId);
@@ -41,136 +45,14 @@ exports.acceptCall = functions
         );
       }
 
-      // === 2. ПОЛУЧЕНИЕ И ВАЛИДАЦИЯ ДАННЫХ СЕССИИ ===
-      console.log("📋 Fetching video session data...");
-      const sessionDoc = await admin
-        .firestore()
-        .collection("videoSessions")
-        .doc(sessionId)
-        .get();
-
-      if (!sessionDoc.exists) {
-        console.log("❌ Video session not found:", sessionId);
-        throw new functions.https.HttpsError(
-          "not-found",
-          "Video session not found",
-        );
-      }
-
-      const sessionData = sessionDoc.data();
-      console.log("📋 Session data:", {
-        status: sessionData.status,
-        currentTutorId: sessionData.currentTutorId,
-        studentId: sessionData.studentId,
-        language: sessionData.language,
-      });
-
-      // Идемпотентность: если сессия уже активна для этого же преподавателя,
-      // возвращаем существующие данные комнаты, не создавая новую.
-      if (["active", "connecting"].includes(sessionData.status)) {
-        if (sessionData.tutorId === tutorId && sessionData.dailyRoomUrl) {
-          console.log(
-            "ℹ️ Session already active for this tutor, returning existing room",
-          );
-          let existingRoomName =
-            sessionData.dailyRoomName ||
-            getRoomNameFromUrl(sessionData.dailyRoomUrl);
-          let existingMeetingToken = null;
-
-          if (existingRoomName) {
-            try {
-              existingMeetingToken = await createMeetingToken({
-                roomName: existingRoomName,
-                expSeconds: 3600,
-                isOwner: false,
-                userId: tutorId,
-                userName:
-                  sessionData.tutorInfo?.name ||
-                  sessionData.tutorName ||
-                  "Tutor",
-              });
-            } catch (tokenError) {
-              console.error(
-                "⚠️ Failed to create meeting token for existing room:",
-                tokenError.message,
-              );
-            }
-          }
-
-          return {
-            status: "connected",
-            sessionId: sessionId,
-            roomUrl: sessionData.dailyRoomUrl,
-            roomName: existingRoomName || null,
-            meetingToken: existingMeetingToken || null,
-            studentInfo: sessionData.studentInfo || null,
-            sessionData: {
-              language: sessionData.language,
-              startedAt:
-                sessionData.startedAt?.toMillis?.() ||
-                sessionData.startedAt ||
-                null,
-              maxDuration: 3600000,
-            },
-          };
-        }
-
-        console.log(
-          "❌ Session is already active with another tutor or missing room data",
-          sessionData.status,
-        );
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Session is already active",
-        );
-      }
-
-      // Проверяем, что сессия в статусе поиска
-      if (sessionData.status !== "searching") {
-        console.log(
-          "❌ Session is not in searching status, current status:",
-          sessionData.status,
-        );
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Session is not available for acceptance",
-        );
-      }
-
-      // Проверяем, что звонок адресован этому преподавателю
-      if (sessionData.currentTutorId !== tutorId) {
-        console.log(
-          "❌ Session is not for this tutor. Expected:",
-          sessionData.currentTutorId,
-          "Got:",
-          tutorId,
-        );
-        throw new functions.https.HttpsError(
-          "permission-denied",
-          "This session is not assigned to you",
-        );
-      }
-
-      // Проверяем, что сессия не истекла
-      if (
-        sessionData.expiresAt &&
-        sessionData.expiresAt.toDate() < new Date()
-      ) {
-        console.log("❌ Session has expired");
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Session has expired",
-        );
-      }
-
-      // === 2.5. БЛОКИРОВКА ACCEPT (защита от параллельных accept) ===
-      const sessionRef = admin
+      sessionRef = admin
         .firestore()
         .collection("videoSessions")
         .doc(sessionId);
       const acceptLockWindowMs = 30 * 1000;
-      let lockAcquired = false;
-      await admin.firestore().runTransaction(async (transaction) => {
+      const initialSessionState = await admin
+        .firestore()
+        .runTransaction(async (transaction) => {
         const freshSnap = await transaction.get(sessionRef);
         if (!freshSnap.exists) {
           throw new functions.https.HttpsError(
@@ -178,17 +60,35 @@ exports.acceptCall = functions
             "Video session not found",
           );
         }
-        const fresh = freshSnap.data();
-        if (fresh.status !== "searching") {
+        const fresh = freshSnap.data() || {};
+        if (["active", "connecting"].includes(fresh.status)) {
+          if (fresh.tutorId === tutorId && fresh.dailyRoomUrl) {
+            return {
+              alreadyAccepted: true,
+              session: fresh,
+            };
+          }
           throw new functions.https.HttpsError(
             "failed-precondition",
             "Session is already active",
+          );
+        }
+        if (fresh.status !== "searching") {
+          throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Session is not available for acceptance",
           );
         }
         if (fresh.currentTutorId !== tutorId) {
           throw new functions.https.HttpsError(
             "permission-denied",
             "This session is not assigned to you",
+          );
+        }
+        if (fresh.expiresAt && fresh.expiresAt.toDate() < new Date()) {
+          throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Session has expired",
           );
         }
         const acceptingTutorId = fresh.acceptingTutorId || null;
@@ -203,20 +103,80 @@ exports.acceptCall = functions
             acceptingAt: admin.firestore.FieldValue.serverTimestamp(),
           });
           lockAcquired = true;
-          return;
+          return {
+            alreadyAccepted: false,
+            session: fresh,
+          };
         }
         if (acceptingTutorId === tutorId) {
           transaction.update(sessionRef, {
             acceptingAt: admin.firestore.FieldValue.serverTimestamp(),
           });
           lockAcquired = true;
-          return;
+          return {
+            alreadyAccepted: false,
+            session: fresh,
+          };
         }
         throw new functions.https.HttpsError(
           "failed-precondition",
           "Session is already being accepted",
         );
       });
+
+      const sessionData = initialSessionState.session || {};
+      console.log("📋 Session data:", {
+        status: sessionData.status,
+        currentTutorId: sessionData.currentTutorId,
+        studentId: sessionData.studentId,
+        language: sessionData.language,
+      });
+
+      if (initialSessionState.alreadyAccepted) {
+        console.log(
+          "ℹ️ Session already active for this tutor, returning existing room",
+        );
+        let existingRoomName =
+          sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
+        let existingMeetingToken = null;
+
+        if (existingRoomName) {
+          try {
+            existingMeetingToken = await createMeetingToken({
+              roomName: existingRoomName,
+              expSeconds: 3600,
+              isOwner: false,
+              userId: tutorId,
+              userName:
+                sessionData.tutorInfo?.name ||
+                sessionData.tutorName ||
+                "Tutor",
+            });
+          } catch (tokenError) {
+            console.error(
+              "⚠️ Failed to create meeting token for existing room:",
+              tokenError.message,
+            );
+          }
+        }
+
+        return {
+          status: "connected",
+          sessionId: sessionId,
+          roomUrl: sessionData.dailyRoomUrl,
+          roomName: existingRoomName || null,
+          meetingToken: existingMeetingToken || null,
+          studentInfo: sessionData.studentInfo || null,
+          sessionData: {
+            language: sessionData.language,
+            startedAt:
+              sessionData.startedAt?.toMillis?.() ||
+              sessionData.startedAt ||
+              null,
+            maxDuration: 3600000,
+          },
+        };
+      }
 
       // === 3. ПОЛУЧЕНИЕ ДАННЫХ ПРЕПОДАВАТЕЛЯ И СТУДЕНТА (ПАРАЛЛЕЛЬНО) ===
       console.log("👨‍🏫 Fetching tutor and student data in parallel...");
@@ -300,11 +260,9 @@ exports.acceptCall = functions
         }
       }
       let meetingToken = null;
-      let roomPrecreated = false;
       let roomCreatedAt = sessionData.sessionMetadata?.roomCreatedAt || null;
 
       if (roomUrl) {
-        roomPrecreated = true;
         console.log("♻️ Using precreated Daily room:", {
           roomName,
           roomUrl,
@@ -316,7 +274,7 @@ exports.acceptCall = functions
         if (roomName) {
           // Skip Daily API validation if room was created recently (< 60s)
           const roomAgeMs = roomCreatedAt ? Date.now() - roomCreatedAt : Infinity;
-          if (roomAgeMs > 60000) {
+          if (roomAgeMs > PRECREATED_ROOM_VALIDATION_WINDOW_MS) {
             const existingRoom = await getDailyRoom(roomName);
             if (!existingRoom) {
               console.warn(
@@ -324,7 +282,6 @@ exports.acceptCall = functions
               );
               roomUrl = null;
               roomName = null;
-              roomPrecreated = false;
               roomCreatedAt = null;
             }
           } else {
@@ -332,7 +289,6 @@ exports.acceptCall = functions
           }
         } else {
           roomUrl = null;
-          roomPrecreated = false;
           roomCreatedAt = null;
         }
       }
@@ -373,7 +329,6 @@ exports.acceptCall = functions
           );
           roomUrl = null;
           roomName = null;
-          roomPrecreated = false;
           roomCreatedAt = null;
           studentMeetingToken = null;
         }
@@ -474,8 +429,8 @@ exports.acceptCall = functions
             dailyRoomUrl: roomUrl,
             dailyRoomName: roomName,
             expiresAt: activeExpiresAt,
-            acceptingTutorId: null,
-            acceptingAt: null,
+            acceptingTutorId: admin.firestore.FieldValue.delete(),
+            acceptingAt: admin.firestore.FieldValue.delete(),
 
             // Добавляем информацию о преподавателе
             tutorInfo: {
@@ -484,18 +439,10 @@ exports.acceptCall = functions
             },
 
             // Очищаем поля поиска (уже не нужны)
-            currentTutorId: null,
+            currentTutorId: admin.firestore.FieldValue.delete(),
             tutorNavigationTriggered: false,
             studentNavigationTriggered: false,
-
-            // Обновляем метаданные
-            sessionMetadata: {
-              acceptedBy: tutorId,
-              acceptedAt: Date.now(),
-              roomProvider: "daily",
-              roomCreatedAt: roomCreatedAt || Date.now(),
-              roomPrecreated: roomPrecreated,
-            },
+            "sessionMetadata.roomCreatedAt": roomCreatedAt || Date.now(),
           };
 
           // Store student meeting token in session for faster student join
@@ -626,8 +573,8 @@ exports.acceptCall = functions
             const data = snap.data();
             if (data.acceptingTutorId === tutorId) {
               transaction.update(sessionRef, {
-                acceptingTutorId: null,
-                acceptingAt: null,
+                acceptingTutorId: admin.firestore.FieldValue.delete(),
+                acceptingAt: admin.firestore.FieldValue.delete(),
               });
             }
           });

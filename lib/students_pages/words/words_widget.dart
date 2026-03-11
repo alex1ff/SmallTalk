@@ -609,10 +609,9 @@ class _WordsWidgetState extends State<WordsWidget> {
                                                 .toList();
                                         if (pronoun.isEmpty) {
                                           return Center(
-                                            child: Image.asset(
-                                              'assets/images/Group_117127509d5.png',
-                                              width: 100.0,
-                                              fit: BoxFit.contain,
+                                            child: EmptyWidget(
+                                              txt:
+                                                  'По выбранной части речи пока ничего нет. Попробуйте другой фильтр.',
                                             ),
                                           );
                                         }

@@ -1,4 +1,5 @@
 import '/auth/firebase_auth/auth_util.dart';
+import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
@@ -398,114 +399,46 @@ class _LoginWidgetState extends State<LoginWidget> {
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 8.0),
-                child: Stack(
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      height: 60.0,
-                      decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).primaryText,
-                        borderRadius: BorderRadius.circular(50.0),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(2.0),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.max,
-                          children: [
-                            Expanded(
-                              child: Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    16.0, 0.0, 0.0, 0.0),
-                                child: Text(
-                                  FFLocalizations.of(context).getText(
-                                    '8x9f21aa' /* Далее */,
-                                  ),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'Cool',
-                                        color: FlutterFlowTheme.of(context)
-                                            .primaryBackground,
-                                        fontSize: 20.0,
-                                        letterSpacing: 0.0,
-                                      ),
-                                ),
-                              ),
-                            ),
-                            Container(
-                              width: 56.0,
-                              height: 56.0,
-                              decoration: BoxDecoration(
-                                color: FlutterFlowTheme.of(context)
-                                    .primaryBackground,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Align(
-                                alignment: AlignmentDirectional(0.0, 0.0),
-                                child: Icon(
-                                  FFIcons.karrowRight,
-                                  color: Colors.black,
-                                  size: 20.0,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    FFButtonWidget(
-                      onPressed: () async {
-                        Function() _navigate = () {};
-                        if (functions
-                            .isValidEmail(_model.emailTextController.text)) {
-                          GoRouter.of(context).prepareAuthEvent();
+                child: ButtonWidget(
+                  text: FFLocalizations.of(context).getText(
+                    '8x9f21aa' /* Далее */,
+                  ),
+                  loadingText: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Входим...',
+                    enText: 'Signing in...',
+                  ),
+                  busyStyle: ButtonBusyStyle.spinner,
+                  keyboardAwarePadding: false,
+                  padding: EdgeInsets.zero,
+                  action: () async {
+                    Function() _navigate = () {};
+                    if (functions
+                        .isValidEmail(_model.emailTextController.text)) {
+                      GoRouter.of(context).prepareAuthEvent();
 
-                          final user = await authManager.signInWithEmail(
-                            context,
-                            _model.emailTextController.text,
-                            _model.passTextController.text,
-                          );
-                          if (user == null) {
-                            return;
-                          }
+                      final user = await authManager.signInWithEmail(
+                        context,
+                        _model.emailTextController.text,
+                        _model.passTextController.text,
+                      );
+                      if (user == null) {
+                        return;
+                      }
 
-                          _navigate = () => context.goNamedAuth(
-                              LoadingWidget.routeName, context.mounted);
-                        } else {
-                          await actions.showTopNotification(
-                            context,
-                            'Неверный e-mail',
-                            '',
-                            true,
-                          );
-                          return;
-                        }
+                      _navigate = () => context.goNamedAuth(
+                          LoadingWidget.routeName, context.mounted);
+                    } else {
+                      await actions.showTopNotification(
+                        context,
+                        'Неверный e-mail',
+                        '',
+                        true,
+                      );
+                      return;
+                    }
 
-                        _navigate();
-                      },
-                      text: FFLocalizations.of(context).getText(
-                        'b7eijuxv' /*   */,
-                      ),
-                      options: FFButtonOptions(
-                        width: double.infinity,
-                        height: 60.0,
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
-                        iconPadding:
-                            EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
-                        color: Colors.transparent,
-                        textStyle:
-                            FlutterFlowTheme.of(context).titleSmall.override(
-                                  fontFamily: 'sf pro display',
-                                  color: Colors.white,
-                                  letterSpacing: 0.0,
-                                ),
-                        elevation: 0.0,
-                        borderRadius: BorderRadius.circular(50.0),
-                      ),
-                      showLoadingIndicator: false,
-                    ),
-                  ],
+                    _navigate();
+                  },
                 ),
               ),
               Expanded(
@@ -595,7 +528,8 @@ class _LoginWidgetState extends State<LoginWidget> {
                                         shape: BoxShape.circle,
                                       ),
                                       child: Align(
-                                        alignment: AlignmentDirectional(0.0, 0.0),
+                                        alignment:
+                                            AlignmentDirectional(0.0, 0.0),
                                         child: Icon(
                                           Icons.apple,
                                           color: FlutterFlowTheme.of(context)
@@ -615,8 +549,9 @@ class _LoginWidgetState extends State<LoginWidget> {
                                             .bodyMedium
                                             .override(
                                               fontFamily: 'sf pro display',
-                                              color: FlutterFlowTheme.of(context)
-                                                  .primaryText,
+                                              color:
+                                                  FlutterFlowTheme.of(context)
+                                                      .primaryText,
                                               fontSize: 16.0,
                                               letterSpacing: 0.0,
                                               fontWeight: FontWeight.normal,
@@ -643,8 +578,8 @@ class _LoginWidgetState extends State<LoginWidget> {
                                   }
 
                                   GoRouter.of(context).prepareAuthEvent();
-                                  final user =
-                                      await authManager.signInWithApple(context);
+                                  final user = await authManager
+                                      .signInWithApple(context);
                                   if (user == null) {
                                     return;
                                   }
@@ -700,7 +635,8 @@ class _LoginWidgetState extends State<LoginWidget> {
                                         shape: BoxShape.circle,
                                       ),
                                       child: Align(
-                                        alignment: AlignmentDirectional(0.0, 0.0),
+                                        alignment:
+                                            AlignmentDirectional(0.0, 0.0),
                                         child: FaIcon(
                                           FontAwesomeIcons.google,
                                           color: FlutterFlowTheme.of(context)
@@ -720,8 +656,9 @@ class _LoginWidgetState extends State<LoginWidget> {
                                             .bodyMedium
                                             .override(
                                               fontFamily: 'sf pro display',
-                                              color: FlutterFlowTheme.of(context)
-                                                  .primaryText,
+                                              color:
+                                                  FlutterFlowTheme.of(context)
+                                                      .primaryText,
                                               fontSize: 16.0,
                                               letterSpacing: 0.0,
                                               fontWeight: FontWeight.normal,
@@ -734,14 +671,14 @@ class _LoginWidgetState extends State<LoginWidget> {
                               FFButtonWidget(
                                 onPressed: () async {
                                   GoRouter.of(context).prepareAuthEvent();
-                                  final user =
-                                      await authManager.signInWithGoogle(context);
+                                  final user = await authManager
+                                      .signInWithGoogle(context);
                                   if (user == null) {
                                     return;
                                   }
 
-                                  context.goNamedAuth(LoadingWidget.routeName,
-                                      context.mounted);
+                                  context.goNamedAuth(
+                                      LoadingWidget.routeName, context.mounted);
                                 },
                                 text: FFLocalizations.of(context).getText(
                                   'vj9omtyq' /*  */,
