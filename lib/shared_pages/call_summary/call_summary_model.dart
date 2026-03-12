@@ -1,6 +1,7 @@
 import '/backend/backend.dart';
 import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/review_flow/review_submission_helper.dart';
 import 'call_summary_widget.dart' show CallSummaryWidget;
 import 'package:flutter/material.dart';
 
@@ -16,6 +17,12 @@ class CallSummaryModel extends FlutterFlowModel<CallSummaryWidget> {
   bool favTouched = false;
 
   bool blackTouched = false;
+
+  DocumentReference? reviewRefOverride;
+
+  Future<PairReviewState>? pairReviewFuture;
+
+  String? pairReviewTargetPath;
 
   ///  State fields for stateful widgets in this page.
 

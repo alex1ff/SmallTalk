@@ -10,9 +10,9 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
 import '/shared_pages/review_flow/review_submission_helper.dart';
+import '/students_pages/native_speaker_page/native_speaker_page_widget.dart';
 import '/students_pages/components/new_word/new_word_widget.dart';
 import '/students_pages/components/woed/woed_widget.dart';
-import '/students_pages/components/fav/fav_widget.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/gestures.dart';
@@ -789,24 +789,41 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     );
   }
 
-  DocumentReference? _tutorReference(VideoSessionsRecord session) {
-    final tutorId = session.tutorId.trim();
-    if (tutorId.isEmpty) {
+  DocumentReference? _counterpartReference(VideoSessionsRecord session) {
+    final counterpartId =
+        (_isTeacherForSession(session) ? session.studentId : session.tutorId)
+            .trim();
+    if (counterpartId.isEmpty) {
       return null;
     }
 
-    return functions.stringToRef(tutorId);
+    return functions.stringToRef(counterpartId);
   }
 
   DocumentReference? _reviewTargetReference(VideoSessionsRecord session) {
-    final targetId =
-        (_isTeacherForSession(session) ? session.studentId : session.tutorId)
-            .trim();
-    if (targetId.isEmpty) {
-      return null;
+    return _counterpartReference(session);
+  }
+
+  String _counterpartName(BuildContext context, VideoSessionsRecord session) {
+    final rawName = (_isTeacherForSession(session)
+            ? session.studentInfo.name
+            : session.tutorInfo.name)
+        .trim();
+    if (rawName.isNotEmpty) {
+      return rawName;
     }
 
-    return functions.stringToRef(targetId);
+    return FFLocalizations.of(context).getVariableText(
+      ruText: _isTeacherForSession(session) ? 'Студент' : 'Преподаватель',
+      enText: _isTeacherForSession(session) ? 'Student' : 'Tutor',
+    );
+  }
+
+  String _counterpartPhotoUrl(VideoSessionsRecord session) {
+    return (_isTeacherForSession(session)
+            ? session.studentInfo.photo
+            : session.tutorInfo.photo)
+        .trim();
   }
 
   bool _transactionMatchesCurrentSession(
@@ -865,27 +882,28 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     required String label,
     required Widget value,
   }) {
-    return Row(
-      mainAxisSize: MainAxisSize.max,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.center,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            softWrap: false,
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'sf pro display',
-                  color: FlutterFlowTheme.of(context).secondaryText,
-                  fontSize: 14.0,
-                  letterSpacing: 0.0,
-                ),
-          ),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          softWrap: false,
+          style: FlutterFlowTheme.of(context).bodyMedium.override(
+                fontFamily: 'sf pro display',
+                color: FlutterFlowTheme.of(context).secondaryText,
+                fontSize: 14.0,
+                letterSpacing: 0.0,
+              ),
         ),
-        const SizedBox(width: 16.0),
-        Flexible(child: value),
+        const SizedBox(height: 4.0),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: value,
+        ),
       ],
     );
   }
@@ -893,10 +911,10 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   Widget _buildValueText(BuildContext context, String value) {
     return Text(
       value,
-      maxLines: 1,
+      maxLines: 2,
       overflow: TextOverflow.ellipsis,
-      softWrap: false,
-      textAlign: TextAlign.end,
+      softWrap: true,
+      textAlign: TextAlign.start,
       style: FlutterFlowTheme.of(context).bodyMedium.override(
             fontFamily: 'sf pro display',
             fontSize: 15.0,
@@ -1097,6 +1115,28 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     );
   }
 
+  Future<PairReviewState> _ensurePairReviewFuture(
+    DocumentReference? targetUserRef,
+  ) {
+    if (currentUserReference == null || targetUserRef == null) {
+      return Future.value(const PairReviewState(hasReviewed: false));
+    }
+
+    final targetUserPath = targetUserRef.path;
+    final cachedFuture = _model.pairReviewFuture;
+    if (cachedFuture != null && _model.pairReviewTargetPath == targetUserPath) {
+      return cachedFuture;
+    }
+
+    final pairReviewFuture = resolveCurrentUserPairReview(
+      currentUserRef: currentUserReference!,
+      targetUserRef: targetUserRef,
+    );
+    _model.pairReviewFuture = pairReviewFuture;
+    _model.pairReviewTargetPath = targetUserPath;
+    return pairReviewFuture;
+  }
+
   Future<void> _submitReview(
     BuildContext context,
     VideoSessionsRecord session,
@@ -1139,7 +1179,6 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         comment: _model.reviewCommentTextController.text,
       );
 
-      _model.hasReviewedOverride = true;
       _model.reviewRefOverride = result.reviewRef;
       _model.rating = 0;
       _model.reviewCommentTextController?.clear();
@@ -1283,30 +1322,6 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     );
   }
 
-  Widget _buildSubmittedReviewFallback(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Text(
-          FFLocalizations.of(context).getVariableText(
-            ruText: 'Отзыв уже сохранен для этого звонка.',
-            enText: 'A review has already been saved for this call.',
-          ),
-          style: FlutterFlowTheme.of(context).bodyMedium.override(
-                fontFamily: 'sf pro display',
-                fontSize: 15.0,
-                letterSpacing: 0.0,
-              ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildStoredReview(
     BuildContext context, {
     required DocumentReference reviewRef,
@@ -1322,7 +1337,11 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         if (reviewDoc == null ||
             !reviewDoc.exists ||
             reviewDoc.data() == null) {
-          return _buildSubmittedReviewFallback(context);
+          return PairReviewContent(
+            hasReviewed: true,
+            formContent: const SizedBox.shrink(),
+            reviewFallbackText: reviewAlreadyLeftMessage(context),
+          );
         }
 
         final reviewRecord = ReviewsRecord.fromSnapshot(reviewDoc);
@@ -1343,43 +1362,56 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     BuildContext context,
     VideoSessionsRecord session,
   ) {
-    final isTeacher = _isTeacherForSession(session);
-    final sessionReviewState = currentUserReviewState(
-      session,
-      isTeacher: isTeacher,
-    );
-    final hasReviewed =
-        _model.hasReviewedOverride ?? sessionReviewState.hasReviewed;
-    final reviewRef = _model.reviewRefOverride ?? sessionReviewState.reviewRef;
+    final targetUserRef = _reviewTargetReference(session);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
-          child: Text(
-            FFLocalizations.of(context).getVariableText(
-              ruText: hasReviewed ? 'Отзыв оставлен' : 'Оставить отзыв',
-              enText: hasReviewed ? 'Review submitted' : 'Leave feedback',
-            ),
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'Cool',
-                  fontSize: 24.0,
-                  letterSpacing: 0.0,
-                  fontWeight: FontWeight.normal,
+    return FutureBuilder<PairReviewState>(
+      future: _ensurePairReviewFuture(targetUserRef),
+      builder: (context, snapshot) {
+        final resolvedReviewRef =
+            _model.reviewRefOverride ?? snapshot.data?.reviewRef;
+        final hasReviewed =
+            resolvedReviewRef != null || (snapshot.data?.hasReviewed ?? false);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding:
+                  const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
+              child: Text(
+                FFLocalizations.of(context).getVariableText(
+                  ruText: hasReviewed ? 'Отзыв оставлен' : 'Оставить отзыв',
+                  enText: hasReviewed ? 'Review submitted' : 'Leave feedback',
                 ),
-          ),
-        ),
-        const SizedBox(height: 12.0),
-        Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
-          child: hasReviewed
-              ? (reviewRef != null
-                  ? _buildStoredReview(context, reviewRef: reviewRef)
-                  : _buildSubmittedReviewFallback(context))
-              : _buildReviewForm(context, session),
-        ),
-      ],
+                style: FlutterFlowTheme.of(context).bodyMedium.override(
+                      fontFamily: 'Cool',
+                      fontSize: 24.0,
+                      letterSpacing: 0.0,
+                      fontWeight: FontWeight.normal,
+                    ),
+              ),
+            ),
+            const SizedBox(height: 12.0),
+            Padding(
+              padding:
+                  const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
+              child: !snapshot.hasData && _model.reviewRefOverride == null
+                  ? _buildLoadingState(context)
+                  : PairReviewContent(
+                      hasReviewed: hasReviewed,
+                      reviewContent: resolvedReviewRef != null
+                          ? _buildStoredReview(
+                              context,
+                              reviewRef: resolvedReviewRef,
+                            )
+                          : null,
+                      reviewFallbackText: reviewAlreadyLeftMessage(context),
+                      formContent: _buildReviewForm(context, session),
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1422,7 +1454,9 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
 
               final session = snapshot.data!;
               final isTeacher = _isTeacherForSession(session);
-              final tutorReference = _tutorReference(session);
+              final counterpartReference = _counterpartReference(session);
+              final counterpartName = _counterpartName(context, session);
+              final counterpartPhotoUrl = _counterpartPhotoUrl(session);
               final sessionLanguage = _findLanguageByCode(session.language);
               final startedAtLabel = formatSessionStartedAt(context, session);
               final durationLabel = formatDurationLabel(
@@ -1443,16 +1477,21 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (tutorReference != null) ...[
-                                SizedBox(
-                                  height: 177.5,
-                                  child: FavWidget(
-                                    nsUser: tutorReference,
-                                    enableNavigation: !isTeacher,
+                              SizedBox(
+                                height: 177.5,
+                                child: _CallParticipantCard(
+                                  participantRef: counterpartReference,
+                                  fallbackName: counterpartName,
+                                  fallbackPhotoUrl: counterpartPhotoUrl,
+                                  fallbackRoleLabel: FFLocalizations.of(context)
+                                      .getVariableText(
+                                    ruText:
+                                        isTeacher ? 'Студент' : 'Преподаватель',
+                                    enText: isTeacher ? 'Student' : 'Tutor',
                                   ),
                                 ),
-                                const SizedBox(width: 6.0),
-                              ],
+                              ),
+                              const SizedBox(width: 6.0),
                               Expanded(
                                 child: _buildCallInfoCard(
                                   context,
@@ -1601,6 +1640,291 @@ class _InteractiveCaptionLogTextState
       TextSpan(
         style: widget.style,
         children: _buildSpans(),
+      ),
+    );
+  }
+}
+
+class _CallParticipantCard extends StatelessWidget {
+  const _CallParticipantCard({
+    required this.participantRef,
+    required this.fallbackName,
+    required this.fallbackPhotoUrl,
+    required this.fallbackRoleLabel,
+  });
+
+  final DocumentReference? participantRef;
+  final String fallbackName;
+  final String fallbackPhotoUrl;
+  final String fallbackRoleLabel;
+
+  String _resolvedDisplayName(UsersRecord? user) {
+    final displayName = user?.displayName.trim() ?? '';
+    return displayName.isNotEmpty ? displayName : fallbackName;
+  }
+
+  String _resolvedPhotoUrl(UsersRecord? user) {
+    final photoUrl = user?.photoUrl.trim() ?? '';
+    return photoUrl.isNotEmpty ? photoUrl : fallbackPhotoUrl;
+  }
+
+  String _resolvedRoleLabel(BuildContext context, UsersRecord? user) {
+    if (user?.role == UserRole.native_speaker) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Преподаватель',
+        enText: 'Tutor',
+      );
+    }
+    if (user?.role == UserRole.student) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Студент',
+        enText: 'Student',
+      );
+    }
+    return fallbackRoleLabel;
+  }
+
+  Future<void> _openParticipant(
+    BuildContext context,
+    UsersRecord? participant,
+  ) async {
+    final targetRef = participantRef;
+    if (targetRef == null || participant?.role != UserRole.native_speaker) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => NativeSpeakerPageWidget(nsUserDocRef: targetRef),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (participantRef == null) {
+      return _CallParticipantCardBody(
+        displayName: fallbackName,
+        photoUrl: fallbackPhotoUrl,
+        roleLabel: fallbackRoleLabel,
+      );
+    }
+
+    return StreamBuilder<UsersRecord>(
+      stream: UsersRecord.getDocument(participantRef!),
+      builder: (context, snapshot) {
+        final participant = snapshot.data;
+
+        return _CallParticipantCardBody(
+          displayName: _resolvedDisplayName(participant),
+          photoUrl: _resolvedPhotoUrl(participant),
+          roleLabel: _resolvedRoleLabel(context, participant),
+          ratingAverage: participant?.rating.average,
+          hasReviews: (participant?.rating.totalReviews ?? 0) > 0,
+          onTap: participant?.role == UserRole.native_speaker
+              ? () => _openParticipant(context, participant)
+              : null,
+        );
+      },
+    );
+  }
+}
+
+class _CallParticipantCardBody extends StatelessWidget {
+  const _CallParticipantCardBody({
+    required this.displayName,
+    required this.photoUrl,
+    required this.roleLabel,
+    this.ratingAverage,
+    this.hasReviews = false,
+    this.onTap,
+  });
+
+  final String displayName;
+  final String photoUrl;
+  final String roleLabel;
+  final double? ratingAverage;
+  final bool hasReviews;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      splashColor: Colors.transparent,
+      focusColor: Colors.transparent,
+      hoverColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      onTap: onTap,
+      child: Container(
+        width: 140.0,
+        decoration: BoxDecoration(
+          color: FlutterFlowTheme.of(context).primaryBackground,
+          borderRadius: BorderRadius.circular(26.0),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                alignment: const AlignmentDirectional(0.0, 1.0),
+                children: [
+                  _ParticipantAvatar(
+                    photoUrl: photoUrl,
+                    displayName: displayName,
+                    size: 125.0,
+                    borderWidth: 3.0,
+                  ),
+                  if (hasReviews)
+                    Container(
+                      width: 55.0,
+                      height: 25.0,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24.0),
+                      ),
+                      child: Padding(
+                        padding:
+                            const EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              FFIcons.kstar012,
+                              color: Color(0xFFFFC100),
+                              size: 13.0,
+                            ),
+                            Text(
+                              formatNumber(
+                                ratingAverage ?? 0.0,
+                                formatType: FormatType.custom,
+                                format: '0.0',
+                                locale: '',
+                              ),
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
+                                    fontFamily: 'sf pro display',
+                                    letterSpacing: 0.0,
+                                  ),
+                            ),
+                          ].divide(const SizedBox(width: 3.0)),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(0, 10, 0, 0),
+                child: Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: FlutterFlowTheme.of(context).bodyMedium.override(
+                        fontFamily: 'sf pro display',
+                        fontSize: 15.0,
+                        letterSpacing: 0.0,
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(0, 2, 0, 0),
+                child: Text(
+                  roleLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: FlutterFlowTheme.of(context).bodyMedium.override(
+                        fontFamily: 'sf pro display',
+                        color: FlutterFlowTheme.of(context).secondaryText,
+                        fontSize: 13.0,
+                        letterSpacing: 0.0,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ParticipantAvatar extends StatelessWidget {
+  const _ParticipantAvatar({
+    required this.photoUrl,
+    required this.displayName,
+    required this.size,
+    required this.borderWidth,
+  });
+
+  final String photoUrl;
+  final String displayName;
+  final double size;
+  final double borderWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(size / 2);
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).secondaryBackground,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: FlutterFlowTheme.of(context).secondaryBackground,
+          width: borderWidth,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: photoUrl.trim().isNotEmpty
+            ? Image.network(
+                photoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _ParticipantAvatarFallback(
+                  displayName: displayName,
+                ),
+              )
+            : _ParticipantAvatarFallback(
+                displayName: displayName,
+              ),
+      ),
+    );
+  }
+}
+
+class _ParticipantAvatarFallback extends StatelessWidget {
+  const _ParticipantAvatarFallback({
+    required this.displayName,
+  });
+
+  final String displayName;
+
+  String _initial() {
+    final normalizedName = displayName.trim();
+    if (normalizedName.isEmpty) {
+      return '?';
+    }
+
+    return normalizedName.characters.first.toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: FlutterFlowTheme.of(context).secondaryBackground,
+      alignment: Alignment.center,
+      child: Text(
+        _initial(),
+        textAlign: TextAlign.center,
+        style: FlutterFlowTheme.of(context).bodyMedium.override(
+              fontFamily: 'Cool',
+              fontSize: 28.0,
+              letterSpacing: 0.0,
+            ),
       ),
     );
   }

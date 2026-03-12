@@ -74,6 +74,20 @@ function normalizeComment(rawComment) {
   return comment;
 }
 
+function encodePairReviewComponent(value) {
+  return encodeURIComponent(String(value || "").trim()).replace(/_/g, "%5F");
+}
+
+function buildPairReviewId(fromUserId, toUserId) {
+  const normalizedFromUserId = String(fromUserId || "").trim();
+  const normalizedToUserId = String(toUserId || "").trim();
+  if (!normalizedFromUserId || !normalizedToUserId) {
+    return "";
+  }
+
+  return `${encodePairReviewComponent(normalizedFromUserId)}__${encodePairReviewComponent(normalizedToUserId)}`;
+}
+
 function toMillis(value) {
   if (!value) return 0;
   if (typeof value?.toMillis === "function") {
@@ -239,6 +253,49 @@ function buildReviewSessionUpdate({isStudent, isTutor, reviewRef}) {
   return {};
 }
 
+function compareReviewDocs(leftDoc, rightDoc) {
+  const leftData = leftDoc.data() || {};
+  const rightData = rightDoc.data() || {};
+  const leftCreatedAt = toMillis(leftData.createdAt);
+  const rightCreatedAt = toMillis(rightData.createdAt);
+  if (leftCreatedAt !== rightCreatedAt) {
+    return rightCreatedAt - leftCreatedAt;
+  }
+
+  return rightDoc.ref.path.localeCompare(leftDoc.ref.path);
+}
+
+async function findLatestLegacyPairReview({
+  transaction,
+  db,
+  callerRef,
+  targetUserRef,
+  canonicalReviewPath,
+}) {
+  const authoredReviewsQuery = db
+    .collection("reviews")
+    .where("fromUserId", "==", callerRef);
+  const authoredReviewsSnap = await transaction.get(authoredReviewsQuery);
+
+  let latestReviewDoc = null;
+  for (const reviewDoc of authoredReviewsSnap.docs) {
+    if (reviewDoc.ref.path === canonicalReviewPath) {
+      continue;
+    }
+
+    const reviewData = reviewDoc.data() || {};
+    if (reviewData.toUserId?.path !== targetUserRef.path) {
+      continue;
+    }
+
+    if (!latestReviewDoc || compareReviewDocs(reviewDoc, latestReviewDoc) < 0) {
+      latestReviewDoc = reviewDoc;
+    }
+  }
+
+  return latestReviewDoc;
+}
+
 exports.submitReview = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -317,7 +374,13 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
       }
 
       const targetUserRef = db.collection("users").doc(targetUserId);
-      const reviewId = `${resolvedSessionRef.id}_${userId}_${targetUserId}`;
+      const reviewId = buildPairReviewId(userId, targetUserId);
+      if (!reviewId) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Could not build a review id for this participant pair",
+        );
+      }
       const reviewRef = db.collection("reviews").doc(reviewId);
 
       const targetUserSnap = await transaction.get(targetUserRef);
@@ -329,6 +392,16 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
       }
 
       const reviewSnap = await transaction.get(reviewRef);
+      const legacyReviewSnap = reviewSnap.exists ?
+        null :
+        await findLatestLegacyPairReview({
+          transaction,
+          db,
+          callerRef,
+          targetUserRef,
+          canonicalReviewPath: reviewRef.path,
+        });
+      const existingReviewSnap = reviewSnap.exists ? reviewSnap : legacyReviewSnap;
       const targetUserData = targetUserSnap.data() || {};
       const targetRating = targetUserData.rating || {};
       const currentTotal = Number(targetRating.totalReviews || 0);
@@ -336,15 +409,15 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
       const reviewSessionUpdate = buildReviewSessionUpdate({
         isStudent,
         isTutor,
-        reviewRef,
+        reviewRef: existingReviewSnap?.ref || reviewRef,
       });
 
-      if (reviewSnap.exists) {
+      if (existingReviewSnap) {
         transaction.set(resolvedSessionRef, reviewSessionUpdate, {merge: true});
         return {
           reviewStatus: "already_submitted",
-          reviewId,
-          reviewPath: reviewRef.path,
+          reviewId: existingReviewSnap.id,
+          reviewPath: existingReviewSnap.ref.path,
           toUserId: targetUserId,
           average: currentAverage,
           totalReviews: currentTotal,
