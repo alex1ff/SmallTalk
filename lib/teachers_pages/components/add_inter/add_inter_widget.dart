@@ -34,16 +34,6 @@ class _AddInterWidgetState extends State<AddInterWidget> {
   static const int _durationAdjustmentStepMinutes = 15;
   static const int _lastMinuteOfDay = (24 * 60) - _minuteStep;
   static const int _latestStartMinute = _lastMinuteOfDay - _minuteStep;
-  static const List<int> _durationPresetMinutes = [
-    15,
-    30,
-    45,
-    60,
-    90,
-    120,
-    180,
-    240,
-  ];
 
   late AddInterModel _model;
   _IntervalField _activeField = _IntervalField.start;
@@ -286,47 +276,6 @@ class _AddInterWidgetState extends State<AddInterWidget> {
       return '$hours ч';
     }
     return '$minutes мин';
-  }
-
-  Widget _buildDurationChip({
-    required int minutes,
-    required bool isSelected,
-    required bool isEnabled,
-  }) {
-    return Opacity(
-      opacity: isEnabled ? 1.0 : 0.45,
-      child: InkWell(
-        splashColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-        onTap: isEnabled ? () => _updateDuration(minutes) : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? const Color(0xFFF7EEF6)
-                : FlutterFlowTheme.of(context).primaryBackground,
-            borderRadius: BorderRadius.circular(18.0),
-            border: Border.all(
-              color: isSelected
-                  ? FlutterFlowTheme.of(context).primaryText
-                  : const Color(0xFFE6E6EB),
-              width: isSelected ? 1.5 : 1.0,
-            ),
-          ),
-          child: Text(
-            _formatDuration(minutes),
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'sf pro display',
-                  fontSize: 14.0,
-                  letterSpacing: 0.0,
-                  fontWeight: FontWeight.w500,
-                ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildDurationAdjustButton({
@@ -661,22 +610,6 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                               )
                           : null,
                     ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(16.0, 12.0, 16.0, 0.0),
-                child: Wrap(
-                  spacing: 8.0,
-                  runSpacing: 8.0,
-                  children: [
-                    for (final durationMinutes in _durationPresetMinutes)
-                      _buildDurationChip(
-                        minutes: durationMinutes,
-                        isSelected: _durationMinutes == durationMinutes,
-                        isEnabled:
-                            durationMinutes <= _maxAvailableDurationMinutes,
-                      ),
                   ],
                 ),
               ),

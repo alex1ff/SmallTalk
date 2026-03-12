@@ -1,4 +1,5 @@
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/review_flow/review_submission_helper.dart';
 import 'call_details_widget.dart' show CallDetailsWidget;
 import 'package:flutter/material.dart';
 
@@ -9,9 +10,11 @@ class CallDetailsModel extends FlutterFlowModel<CallDetailsWidget> {
 
   bool isSubmittingReview = false;
 
-  bool? hasReviewedOverride;
-
   DocumentReference? reviewRefOverride;
+
+  Future<PairReviewState>? pairReviewFuture;
+
+  String? pairReviewTargetPath;
 
   bool areCaptionLogsExpanded = false;
 

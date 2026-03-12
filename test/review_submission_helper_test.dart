@@ -1,0 +1,149 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/flutter_flow/internationalization.dart';
+import 'package:small_talk/shared_pages/review_flow/review_submission_helper.dart';
+
+Widget _buildTestApp(Widget child) {
+  return MaterialApp(
+    locale: const Locale('ru'),
+    supportedLocales: const [
+      Locale('ru'),
+      Locale('en'),
+    ],
+    localizationsDelegates: const [
+      FFLocalizationsDelegate(),
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+      FallbackMaterialLocalizationDelegate(),
+      FallbackCupertinoLocalizationDelegate(),
+    ],
+    home: Scaffold(body: child),
+  );
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await FFLocalizations.initialize();
+  });
+
+  group('pair review path resolution', () {
+    test('returns canonical path when canonical review exists', () {
+      final resolution = resolvePairReviewPaths(
+        fromUserId: 'student_1',
+        toUserId: 'tutor_2',
+        canonicalExists: true,
+      );
+
+      expect(
+        resolution.canonicalPath,
+        'reviews/student%5F1__tutor%5F2',
+      );
+      expect(
+        resolution.resolvedPath,
+        'reviews/student%5F1__tutor%5F2',
+      );
+      expect(resolution.hasReviewed, isTrue);
+    });
+
+    test('falls back to latest legacy review for the target pair', () {
+      final resolution = resolvePairReviewPaths(
+        fromUserId: 'student',
+        toUserId: 'tutor',
+        canonicalExists: false,
+        legacyCandidates: [
+          LegacyReviewCandidate(
+            reviewPath: 'reviews/old-review',
+            toUserPath: 'users/tutor',
+            createdAt: DateTime(2025, 1, 1),
+          ),
+          LegacyReviewCandidate(
+            reviewPath: 'reviews/new-review',
+            toUserPath: 'users/tutor',
+            createdAt: DateTime(2025, 2, 1),
+          ),
+          LegacyReviewCandidate(
+            reviewPath: 'reviews/other-target',
+            toUserPath: 'users/someone-else',
+            createdAt: DateTime(2025, 3, 1),
+          ),
+        ],
+      );
+
+      expect(resolution.resolvedPath, 'reviews/new-review');
+      expect(resolution.hasReviewed, isTrue);
+    });
+
+    test('returns no review when canonical and legacy reviews are absent', () {
+      final resolution = resolvePairReviewPaths(
+        fromUserId: 'student',
+        toUserId: 'tutor',
+        canonicalExists: false,
+      );
+
+      expect(resolution.canonicalPath, 'reviews/student__tutor');
+      expect(resolution.resolvedPath, isNull);
+      expect(resolution.hasReviewed, isFalse);
+    });
+
+    test('canonical review id escapes underscores without collisions', () {
+      expect(
+        buildCanonicalPairReviewId(
+          fromUserId: 'alice_bob',
+          toUserId: 'carol',
+        ),
+        'alice%5Fbob__carol',
+      );
+      expect(
+        buildCanonicalPairReviewId(
+          fromUserId: 'alice',
+          toUserId: 'bob__carol',
+        ),
+        'alice__bob%5F%5Fcarol',
+      );
+    });
+  });
+
+  testWidgets(
+    'CallSummary review state shows stored review and note when pair review exists',
+    (tester) async {
+      await tester.pumpWidget(
+        _buildTestApp(
+          const PairReviewContent(
+            hasReviewed: true,
+            reviewNoteText: 'Отзыв на собеседника уже оставлен',
+            reviewContent: Text('stored review'),
+            formContent: Text('review form'),
+          ),
+        ),
+      );
+
+      expect(find.text('Отзыв на собеседника уже оставлен'), findsOneWidget);
+      expect(find.text('stored review'), findsOneWidget);
+      expect(find.text('review form'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'CallDetails review state shows form when pair review does not exist',
+    (tester) async {
+      await tester.pumpWidget(
+        _buildTestApp(
+          const PairReviewContent(
+            hasReviewed: false,
+            reviewContent: Text('stored review'),
+            formContent: Text('review form'),
+          ),
+        ),
+      );
+
+      expect(find.text('review form'), findsOneWidget);
+      expect(find.text('stored review'), findsNothing);
+    },
+  );
+}

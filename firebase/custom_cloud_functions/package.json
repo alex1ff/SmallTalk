@@ -3,6 +3,7 @@
   "description": "Cloud Functions for Firebase",
   "scripts": {
     "backfill:video-session-review-flags": "node scripts/backfill_video_session_review_flags.js",
+    "migrate:pair-reviews": "node scripts/migrate_pair_reviews.js",
     "lint": "eslint .",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",

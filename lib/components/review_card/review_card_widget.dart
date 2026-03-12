@@ -24,6 +24,17 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
   late ReviewCardModel _model;
   late Future<UsersRecord?> _userFuture;
 
+  String? _normalizedComment() {
+    final normalizedComment = widget.rewDoc?.comment.trim();
+    if (normalizedComment == null ||
+        normalizedComment.isEmpty ||
+        normalizedComment == '-') {
+      return null;
+    }
+
+    return normalizedComment;
+  }
+
   Future<UsersRecord?> _createUserFuture() async {
     final authorRef = widget.rewDoc?.fromUserId;
     if (authorRef == null) {
@@ -75,6 +86,8 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final reviewComment = _normalizedComment();
+
     return Container(
       width: 325.0,
       decoration: BoxDecoration(
@@ -196,18 +209,11 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                 ),
               ],
             ),
-            if (valueOrDefault<String>(
-                  widget.rewDoc?.comment,
-                  '-',
-                ) !=
-                '')
+            if (reviewComment != null)
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
                 child: Text(
-                  valueOrDefault<String>(
-                    widget.rewDoc?.comment,
-                    '-',
-                  ),
+                  reviewComment,
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'sf pro display',
                         letterSpacing: 0.0,

@@ -2,6 +2,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
+import '/components/review_card/review_card_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -147,6 +148,365 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     );
   }
 
+  Future<PairReviewState> _ensurePairReviewFuture() {
+    final targetUserRef = widget.userRef;
+    if (currentUserReference == null || targetUserRef == null) {
+      return Future.value(const PairReviewState(hasReviewed: false));
+    }
+
+    final targetUserPath = targetUserRef.path;
+    final cachedFuture = _model.pairReviewFuture;
+    if (cachedFuture != null && _model.pairReviewTargetPath == targetUserPath) {
+      return cachedFuture;
+    }
+
+    final pairReviewFuture = resolveCurrentUserPairReview(
+      currentUserRef: currentUserReference!,
+      targetUserRef: targetUserRef,
+    );
+    _model.pairReviewFuture = pairReviewFuture;
+    _model.pairReviewTargetPath = targetUserPath;
+    return pairReviewFuture;
+  }
+
+  Widget _buildReviewLoadingState(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).primaryBackground,
+        borderRadius: BorderRadius.circular(26.0),
+      ),
+      alignment: Alignment.center,
+      child: const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32.0),
+        child: CircularProgressIndicator(),
+      ),
+    );
+  }
+
+  Widget _buildStoredReview(
+    BuildContext context, {
+    required DocumentReference reviewRef,
+  }) {
+    return StreamBuilder<DocumentSnapshot<Object?>>(
+      stream: reviewRef.snapshots(),
+      builder: (context, reviewSnapshot) {
+        if (!reviewSnapshot.hasData) {
+          return _buildReviewLoadingState(context);
+        }
+
+        final reviewDoc = reviewSnapshot.data;
+        if (reviewDoc == null ||
+            !reviewDoc.exists ||
+            reviewDoc.data() == null) {
+          return PairReviewContent(
+            hasReviewed: true,
+            formContent: const SizedBox.shrink(),
+            reviewFallbackText: reviewAlreadyLeftMessage(context),
+          );
+        }
+
+        final reviewRecord = ReviewsRecord.fromSnapshot(reviewDoc);
+        return SizedBox(
+          width: double.infinity,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ReviewCardWidget(
+              rewDoc: reviewRecord,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildReviewForm(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: FlutterFlowTheme.of(context).primaryBackground,
+            borderRadius: BorderRadius.circular(26.0),
+          ),
+          alignment: const AlignmentDirectional(0.0, 0.0),
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(8.0, 35.0, 8.0, 35.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: FlutterFlowIconButton(
+                    borderColor: Colors.transparent,
+                    borderRadius: 8,
+                    buttonSize: 55,
+                    icon: Icon(
+                      FFIcons.kstar012,
+                      color: valueOrDefault<Color>(
+                        () {
+                          if (_model.rait == 1) {
+                            return Color(0xFF850000);
+                          } else if (_model.rait == 2) {
+                            return Color(0xFFFF0000);
+                          } else if (_model.rait == 3) {
+                            return Color(0xFFFF3D00);
+                          } else if (_model.rait == 4) {
+                            return Color(0xFFFF7000);
+                          } else if (_model.rait == 5) {
+                            return Color(0xFFFFC600);
+                          } else {
+                            return FlutterFlowTheme.of(context)
+                                .secondaryBackground;
+                          }
+                        }(),
+                        FlutterFlowTheme.of(context).secondaryBackground,
+                      ),
+                      size: 40,
+                    ),
+                    onPressed: () async {
+                      _model.rait = 1;
+                      safeSetState(() {});
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: FlutterFlowIconButton(
+                    borderColor: Colors.transparent,
+                    borderRadius: 8,
+                    buttonSize: 55,
+                    icon: Icon(
+                      FFIcons.kstar012,
+                      color: valueOrDefault<Color>(
+                        () {
+                          if (_model.rait == 2) {
+                            return Color(0xFFFF0000);
+                          } else if (_model.rait == 3) {
+                            return Color(0xFFFF3D00);
+                          } else if (_model.rait == 4) {
+                            return Color(0xFFFF7000);
+                          } else if (_model.rait == 5) {
+                            return Color(0xFFFFC600);
+                          } else {
+                            return FlutterFlowTheme.of(context)
+                                .secondaryBackground;
+                          }
+                        }(),
+                        FlutterFlowTheme.of(context).secondaryBackground,
+                      ),
+                      size: 40,
+                    ),
+                    onPressed: () async {
+                      _model.rait = 2;
+                      safeSetState(() {});
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: FlutterFlowIconButton(
+                    borderColor: Colors.transparent,
+                    borderRadius: 8,
+                    buttonSize: 55,
+                    icon: Icon(
+                      FFIcons.kstar012,
+                      color: valueOrDefault<Color>(
+                        () {
+                          if (_model.rait == 3) {
+                            return Color(0xFFFF3D00);
+                          } else if (_model.rait == 4) {
+                            return Color(0xFFFF7000);
+                          } else if (_model.rait == 5) {
+                            return Color(0xFFFFC600);
+                          } else {
+                            return FlutterFlowTheme.of(context)
+                                .secondaryBackground;
+                          }
+                        }(),
+                        FlutterFlowTheme.of(context).secondaryBackground,
+                      ),
+                      size: 40,
+                    ),
+                    onPressed: () async {
+                      _model.rait = 3;
+                      safeSetState(() {});
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: FlutterFlowIconButton(
+                    borderColor: Colors.transparent,
+                    borderRadius: 8,
+                    buttonSize: 55,
+                    icon: Icon(
+                      FFIcons.kstar012,
+                      color: valueOrDefault<Color>(
+                        () {
+                          if (_model.rait == 4) {
+                            return Color(0xFFFF7000);
+                          } else if (_model.rait == 5) {
+                            return Color(0xFFFFC600);
+                          } else {
+                            return FlutterFlowTheme.of(context)
+                                .secondaryBackground;
+                          }
+                        }(),
+                        FlutterFlowTheme.of(context).secondaryBackground,
+                      ),
+                      size: 40,
+                    ),
+                    onPressed: () async {
+                      _model.rait = 4;
+                      safeSetState(() {});
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: FlutterFlowIconButton(
+                    borderColor: Colors.transparent,
+                    borderRadius: 8,
+                    buttonSize: 55,
+                    icon: Icon(
+                      FFIcons.kstar012,
+                      color: valueOrDefault<Color>(
+                        _model.rait == 5
+                            ? Color(0xFFFFC600)
+                            : FlutterFlowTheme.of(context).secondaryBackground,
+                        FlutterFlowTheme.of(context).secondaryBackground,
+                      ),
+                      size: 40,
+                    ),
+                    onPressed: () async {
+                      _model.rait = 5;
+                      safeSetState(() {});
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
+          child: SizedBox(
+            width: double.infinity,
+            child: TextFormField(
+              controller: _model.aboutMeTextController,
+              focusNode: _model.aboutMeFocusNode,
+              onChanged: (_) => EasyDebounce.debounce(
+                '_model.aboutMeTextController',
+                Duration.zero,
+                () => safeSetState(() {}),
+              ),
+              autofocus: false,
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.done,
+              obscureText: false,
+              decoration: InputDecoration(
+                isDense: false,
+                hintText: valueOrDefault<String>(
+                  reviewCommentHintText(
+                    context,
+                    _model.rait,
+                  ),
+                  reviewCommentHintText(context, 0),
+                ),
+                hintStyle: FlutterFlowTheme.of(context).bodyMedium.override(
+                      fontFamily: 'sf pro display',
+                      color: FlutterFlowTheme.of(context).secondaryText,
+                      fontSize: 16,
+                      letterSpacing: 0.0,
+                    ),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(
+                    color: Color(0x00000000),
+                    width: 1,
+                  ),
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(
+                    color: Color(0x00000000),
+                    width: 1,
+                  ),
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: FlutterFlowTheme.of(context).error,
+                    width: 1,
+                  ),
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: FlutterFlowTheme.of(context).error,
+                    width: 1,
+                  ),
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                filled: true,
+                fillColor: FlutterFlowTheme.of(context).primaryBackground,
+                contentPadding: const EdgeInsets.all(16),
+                hoverColor: FlutterFlowTheme.of(context).primaryBackground,
+              ),
+              style: FlutterFlowTheme.of(context).bodyMedium.override(
+                    fontFamily: 'sf pro display',
+                    fontSize: 16,
+                    letterSpacing: 0.0,
+                  ),
+              maxLines: 12,
+              minLines: 2,
+              cursorColor: FlutterFlowTheme.of(context).primaryText,
+              enableInteractiveSelection: true,
+              validator:
+                  _model.aboutMeTextControllerValidator.asValidator(context),
+              inputFormatters: [
+                if (!isAndroid && !isiOS)
+                  TextInputFormatter.withFunction((oldValue, newValue) {
+                    return TextEditingValue(
+                      selection: newValue.selection,
+                      text: newValue.text
+                          .toCapitalization(TextCapitalization.sentences),
+                    );
+                  }),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReviewSection(BuildContext context) {
+    return FutureBuilder<PairReviewState>(
+      future: _ensurePairReviewFuture(),
+      builder: (context, snapshot) {
+        final resolvedReviewRef =
+            _model.reviewRefOverride ?? snapshot.data?.reviewRef;
+        final hasReviewed =
+            resolvedReviewRef != null || (snapshot.data?.hasReviewed ?? false);
+
+        if (!snapshot.hasData && _model.reviewRefOverride == null) {
+          return _buildReviewLoadingState(context);
+        }
+
+        return PairReviewContent(
+          hasReviewed: hasReviewed,
+          reviewContent: resolvedReviewRef != null
+              ? _buildStoredReview(context, reviewRef: resolvedReviewRef)
+              : null,
+          reviewNoteText: FFLocalizations.of(context).getVariableText(
+            ruText: 'Отзыв на собеседника уже оставлен',
+            enText: 'A review for your partner has already been submitted',
+          ),
+          reviewFallbackText: reviewAlreadyLeftMessage(context),
+          formContent: _buildReviewForm(context),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isKeyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
@@ -266,282 +626,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             Padding(
                               padding:
                                   EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
-                              child: Container(
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  color: FlutterFlowTheme.of(context)
-                                      .primaryBackground,
-                                  borderRadius: BorderRadius.circular(26),
-                                ),
-                                alignment: AlignmentDirectional(0, 0),
-                                child: Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      8, 35, 8, 35),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Expanded(
-                                        child: FlutterFlowIconButton(
-                                          borderColor: Colors.transparent,
-                                          borderRadius: 8,
-                                          buttonSize: 55,
-                                          icon: Icon(
-                                            FFIcons.kstar012,
-                                            color: valueOrDefault<Color>(
-                                              () {
-                                                if (_model.rait == 1) {
-                                                  return Color(0xFF850000);
-                                                } else if (_model.rait == 2) {
-                                                  return Color(0xFFFF0000);
-                                                } else if (_model.rait == 3) {
-                                                  return Color(0xFFFF3D00);
-                                                } else if (_model.rait == 4) {
-                                                  return Color(0xFFFF7000);
-                                                } else if (_model.rait == 5) {
-                                                  return Color(0xFFFFC600);
-                                                } else {
-                                                  return FlutterFlowTheme.of(
-                                                          context)
-                                                      .secondaryBackground;
-                                                }
-                                              }(),
-                                              FlutterFlowTheme.of(context)
-                                                  .secondaryBackground,
-                                            ),
-                                            size: 40,
-                                          ),
-                                          onPressed: () async {
-                                            _model.rait = 1;
-                                            safeSetState(() {});
-                                          },
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: FlutterFlowIconButton(
-                                          borderColor: Colors.transparent,
-                                          borderRadius: 8,
-                                          buttonSize: 55,
-                                          icon: Icon(
-                                            FFIcons.kstar012,
-                                            color: valueOrDefault<Color>(
-                                              () {
-                                                if (_model.rait == 2) {
-                                                  return Color(0xFFFF0000);
-                                                } else if (_model.rait == 3) {
-                                                  return Color(0xFFFF3D00);
-                                                } else if (_model.rait == 4) {
-                                                  return Color(0xFFFF7000);
-                                                } else if (_model.rait == 5) {
-                                                  return Color(0xFFFFC600);
-                                                } else {
-                                                  return FlutterFlowTheme.of(
-                                                          context)
-                                                      .secondaryBackground;
-                                                }
-                                              }(),
-                                              FlutterFlowTheme.of(context)
-                                                  .secondaryBackground,
-                                            ),
-                                            size: 40,
-                                          ),
-                                          onPressed: () async {
-                                            _model.rait = 2;
-                                            safeSetState(() {});
-                                          },
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: FlutterFlowIconButton(
-                                          borderColor: Colors.transparent,
-                                          borderRadius: 8,
-                                          buttonSize: 55,
-                                          icon: Icon(
-                                            FFIcons.kstar012,
-                                            color: valueOrDefault<Color>(
-                                              () {
-                                                if (_model.rait == 3) {
-                                                  return Color(0xFFFF3D00);
-                                                } else if (_model.rait == 4) {
-                                                  return Color(0xFFFF7000);
-                                                } else if (_model.rait == 5) {
-                                                  return Color(0xFFFFC600);
-                                                } else {
-                                                  return FlutterFlowTheme.of(
-                                                          context)
-                                                      .secondaryBackground;
-                                                }
-                                              }(),
-                                              FlutterFlowTheme.of(context)
-                                                  .secondaryBackground,
-                                            ),
-                                            size: 40,
-                                          ),
-                                          onPressed: () async {
-                                            _model.rait = 3;
-                                            safeSetState(() {});
-                                          },
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: FlutterFlowIconButton(
-                                          borderColor: Colors.transparent,
-                                          borderRadius: 8,
-                                          buttonSize: 55,
-                                          icon: Icon(
-                                            FFIcons.kstar012,
-                                            color: valueOrDefault<Color>(
-                                              () {
-                                                if (_model.rait == 4) {
-                                                  return Color(0xFFFF7000);
-                                                } else if (_model.rait == 5) {
-                                                  return Color(0xFFFFC600);
-                                                } else {
-                                                  return FlutterFlowTheme.of(
-                                                          context)
-                                                      .secondaryBackground;
-                                                }
-                                              }(),
-                                              FlutterFlowTheme.of(context)
-                                                  .secondaryBackground,
-                                            ),
-                                            size: 40,
-                                          ),
-                                          onPressed: () async {
-                                            _model.rait = 4;
-                                            safeSetState(() {});
-                                          },
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: FlutterFlowIconButton(
-                                          borderColor: Colors.transparent,
-                                          borderRadius: 8,
-                                          buttonSize: 55,
-                                          icon: Icon(
-                                            FFIcons.kstar012,
-                                            color: valueOrDefault<Color>(
-                                              _model.rait == 5
-                                                  ? Color(0xFFFFC600)
-                                                  : FlutterFlowTheme.of(context)
-                                                      .secondaryBackground,
-                                              FlutterFlowTheme.of(context)
-                                                  .secondaryBackground,
-                                            ),
-                                            size: 40,
-                                          ),
-                                          onPressed: () async {
-                                            _model.rait = 5;
-                                            safeSetState(() {});
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Padding(
-                              padding:
-                                  EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
-                              child: Container(
-                                width: double.infinity,
-                                child: TextFormField(
-                                  controller: _model.aboutMeTextController,
-                                  focusNode: _model.aboutMeFocusNode,
-                                  onChanged: (_) => EasyDebounce.debounce(
-                                    '_model.aboutMeTextController',
-                                    Duration(milliseconds: 0),
-                                    () => safeSetState(() {}),
-                                  ),
-                                  autofocus: false,
-                                  textCapitalization:
-                                      TextCapitalization.sentences,
-                                  textInputAction: TextInputAction.done,
-                                  obscureText: false,
-                                  decoration: InputDecoration(
-                                    isDense: false,
-                                    hintText: valueOrDefault<String>(
-                                      reviewCommentHintText(
-                                        context,
-                                        _model.rait,
-                                      ),
-                                      reviewCommentHintText(context, 0),
-                                    ),
-                                    hintStyle: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: FlutterFlowTheme.of(context)
-                                              .secondaryText,
-                                          fontSize: 16,
-                                          letterSpacing: 0.0,
-                                        ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                        color: Color(0x00000000),
-                                        width: 1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(26),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                        color: Color(0x00000000),
-                                        width: 1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(26),
-                                    ),
-                                    errorBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                        color:
-                                            FlutterFlowTheme.of(context).error,
-                                        width: 1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(26),
-                                    ),
-                                    focusedErrorBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                        color:
-                                            FlutterFlowTheme.of(context).error,
-                                        width: 1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(26),
-                                    ),
-                                    filled: true,
-                                    fillColor: FlutterFlowTheme.of(context)
-                                        .primaryBackground,
-                                    contentPadding: EdgeInsets.all(16),
-                                    hoverColor: FlutterFlowTheme.of(context)
-                                        .primaryBackground,
-                                  ),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        fontSize: 16,
-                                        letterSpacing: 0.0,
-                                      ),
-                                  maxLines: 12,
-                                  minLines: 2,
-                                  cursorColor:
-                                      FlutterFlowTheme.of(context).primaryText,
-                                  enableInteractiveSelection: true,
-                                  validator: _model
-                                      .aboutMeTextControllerValidator
-                                      .asValidator(context),
-                                  inputFormatters: [
-                                    if (!isAndroid && !isiOS)
-                                      TextInputFormatter.withFunction(
-                                          (oldValue, newValue) {
-                                        return TextEditingValue(
-                                          selection: newValue.selection,
-                                          text: newValue.text.toCapitalization(
-                                              TextCapitalization.sentences),
-                                        );
-                                      }),
-                                  ],
-                                ),
-                              ),
+                              child: _buildReviewSection(context),
                             ),
                             Padding(
                               padding:
@@ -862,7 +947,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                         }
 
                                         try {
-                                          await submitSessionReview(
+                                          final result =
+                                              await submitSessionReview(
                                             sessionRef: sessionRef,
                                             toUserRef: toUserRef,
                                             rating: _model.rait,
@@ -872,6 +958,12 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                             comment: _model
                                                 .aboutMeTextController.text,
                                           );
+                                          _model.reviewRefOverride =
+                                              result.reviewRef;
+                                          _model.rait = 0;
+                                          _model.aboutMeTextController?.clear();
+                                          FocusScope.of(context).unfocus();
+                                          safeSetState(() {});
                                         } on FirebaseFunctionsException catch (e) {
                                           ScaffoldMessenger.of(context)
                                               .showSnackBar(
