@@ -9,7 +9,6 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/students_pages/components/tarif_loader/tarif_loader_widget.dart';
-import 'dart:async';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
 import 'package:collection/collection.dart';
@@ -22,6 +21,12 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 import 'pay_model.dart';
 export 'pay_model.dart';
+
+class _PromoActivationException implements Exception {
+  const _PromoActivationException(this.message);
+
+  final String message;
+}
 
 class PayWidget extends StatefulWidget {
   const PayWidget({super.key});
@@ -156,6 +161,173 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
     }
   }
 
+  Future<PromoCodesRecord?> _findPromoCode(String promoCode) async {
+    final candidates = <String>{
+      promoCode,
+      promoCode.toUpperCase(),
+    }.where((candidate) => candidate.isNotEmpty);
+
+    for (final candidate in candidates) {
+      final promoCodeRecord = await queryPromoCodesRecordOnce(
+        queryBuilder: (promoCodesRecord) => promoCodesRecord.where(
+          'code',
+          isEqualTo: candidate,
+        ),
+        singleRecord: true,
+      ).then((records) => records.firstOrNull);
+
+      if (promoCodeRecord != null) {
+        return promoCodeRecord;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _showPromoCodeNotification(
+    String header, {
+    String text = '',
+    bool isError = true,
+  }) async {
+    if (!mounted) {
+      return;
+    }
+
+    await actions.showTopNotification(
+      context,
+      header,
+      text,
+      isError,
+    );
+  }
+
+  Future<void> _handleApplyPromoCode() async {
+    final enteredPromoCode = _model.nameTextController.text.trim();
+    if (enteredPromoCode.isEmpty) {
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    try {
+      final promoCodeRecord = await _findPromoCode(enteredPromoCode);
+      if (promoCodeRecord == null) {
+        await _showPromoCodeNotification('Промокод не найден');
+        return;
+      }
+
+      final userRef = currentUserReference;
+      if (userRef == null) {
+        throw const _PromoActivationException(
+          'Нужно заново войти в аккаунт, чтобы активировать промокод.',
+        );
+      }
+
+      final now = getCurrentTimestamp;
+      PromoCodesRecord? activatedPromoCode;
+
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final promoSnapshot = await transaction.get(promoCodeRecord.reference);
+        if (!promoSnapshot.exists) {
+          throw const _PromoActivationException('Промокод не найден');
+        }
+
+        final freshPromoCode = PromoCodesRecord.fromSnapshot(promoSnapshot);
+        if (!freshPromoCode.isActive) {
+          throw const _PromoActivationException('Промокод неактивен');
+        }
+
+        final expiredDate = freshPromoCode.expiredDate;
+        if (expiredDate == null || !expiredDate.isAfter(now)) {
+          throw const _PromoActivationException('Промокод истёк');
+        }
+
+        final alreadyUsed =
+            freshPromoCode.usedBy.any((entry) => entry.user == userRef);
+        if (alreadyUsed) {
+          throw const _PromoActivationException(
+            'Вы уже использовали этот промокод',
+          );
+        }
+
+        if (freshPromoCode.usageCount >= freshPromoCode.usageLimit) {
+          throw const _PromoActivationException('Промокод исчерпан');
+        }
+
+        final promoValue = freshPromoCode.valueSamllTalk.toDouble();
+        if (promoValue <= 0) {
+          throw const _PromoActivationException('Промокод недоступен');
+        }
+
+        transaction.update(freshPromoCode.reference, {
+          'usedBy': FieldValue.arrayUnion([
+            getPromoUsedByFirestoreData(
+              updatePromoUsedByStruct(
+                PromoUsedByStruct(
+                  user: userRef,
+                  data: now,
+                ),
+                clearUnsetFields: false,
+              ),
+              true,
+            ),
+          ]),
+          'usageCount': FieldValue.increment(1),
+        });
+
+        transaction.update(userRef, {
+          'balanceST.smallTalks': FieldValue.increment(promoValue),
+          'balanceST.minutes': FieldValue.increment(promoValue * 10),
+        });
+
+        final transactionDoc = TransactionsRecord.collection.doc();
+        transaction.set(
+          transactionDoc,
+          createTransactionsRecordData(
+            userId: userRef,
+            createdAt: now,
+            type: TypeTransactions.promocode,
+            amountST: promoValue,
+            promoCodeDocRef: freshPromoCode.reference,
+            promoCode: freshPromoCode.code,
+          ),
+        );
+
+        activatedPromoCode = freshPromoCode;
+      });
+
+      if (!mounted || activatedPromoCode == null) {
+        return;
+      }
+
+      safeSetState(() {
+        _model.codeCopy = activatedPromoCode;
+        _model.nameTextController?.clear();
+      });
+
+      await _showPromoCodeNotification(
+        'Промокод активирован',
+        text:
+            'Вы получили ${activatedPromoCode!.valueSamllTalk.toString()} Small Talk!',
+        isError: false,
+      );
+    } on _PromoActivationException catch (error) {
+      await _showPromoCodeNotification(error.message);
+    } catch (error, stackTrace) {
+      debugPrint('Failed to apply promo code: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      await _showPromoCodeNotification(
+        'Не удалось активировать промокод',
+        text: 'Попробуйте еще раз.',
+      );
+    } finally {
+      if (mounted) {
+        safeSetState(() {});
+      }
+    }
+  }
+
   Future<void> _handlePayPressed() async {
     if (_isCreatingPaymentSession) {
       return;
@@ -229,6 +401,8 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -678,176 +852,7 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                       size: 20,
                                     ),
                                     onPressed: () async {
-                                      var _shouldSetState = false;
-                                      _model.codeCopy =
-                                          await queryPromoCodesRecordOnce(
-                                        queryBuilder: (promoCodesRecord) =>
-                                            promoCodesRecord.where(
-                                          'code',
-                                          isEqualTo:
-                                              _model.nameTextController.text,
-                                        ),
-                                        singleRecord: true,
-                                      ).then((s) => s.firstOrNull);
-                                      _shouldSetState = true;
-                                      if (_model.codeCopy != null) {
-                                        if (_model.codeCopy!.isActive) {
-                                          if (_model.codeCopy!.expiredDate! >
-                                              getCurrentTimestamp) {
-                                            if (!(_model.codeCopy!.usedBy
-                                                .where((e) =>
-                                                    e.user ==
-                                                    currentUserReference)
-                                                .toList()
-                                                .isNotEmpty)) {
-                                              if (_model.codeCopy!.usageLimit >
-                                                  _model.codeCopy!.usageCount) {
-                                                await _model.codeCopy!.reference
-                                                    .update({
-                                                  ...mapToFirestore(
-                                                    {
-                                                      'usedBy': FieldValue
-                                                          .arrayUnion([
-                                                        getPromoUsedByFirestoreData(
-                                                          updatePromoUsedByStruct(
-                                                            PromoUsedByStruct(
-                                                              user:
-                                                                  currentUserReference,
-                                                              data:
-                                                                  getCurrentTimestamp,
-                                                            ),
-                                                            clearUnsetFields:
-                                                                false,
-                                                          ),
-                                                          true,
-                                                        )
-                                                      ]),
-                                                      'usageCount':
-                                                          FieldValue.increment(
-                                                              1),
-                                                    },
-                                                  ),
-                                                });
-
-                                                await currentUserReference!
-                                                    .update(
-                                                        createUsersRecordData(
-                                                  balanceST:
-                                                      createBalanceStruct(
-                                                    fieldValues: {
-                                                      'smallTalks': FieldValue
-                                                          .increment(_model
-                                                              .codeCopy!
-                                                              .valueSamllTalk
-                                                              .toDouble()),
-                                                      'minutes': FieldValue
-                                                          .increment((_model
-                                                                      .codeCopy!
-                                                                      .valueSamllTalk *
-                                                                  10)
-                                                              .toDouble()),
-                                                    },
-                                                    clearUnsetFields: false,
-                                                  ),
-                                                ));
-                                                unawaited(
-                                                  () async {
-                                                    await TransactionsRecord
-                                                        .collection
-                                                        .doc()
-                                                        .set(
-                                                            createTransactionsRecordData(
-                                                          userId:
-                                                              currentUserReference,
-                                                          createdAt:
-                                                              getCurrentTimestamp,
-                                                          type: TypeTransactions
-                                                              .promocode,
-                                                          amountST: _model
-                                                              .codeCopy!
-                                                              .valueSamllTalk
-                                                              .toDouble(),
-                                                          promoCodeDocRef:
-                                                              _model.codeCopy
-                                                                  ?.reference,
-                                                          promoCode: _model
-                                                              .codeCopy?.code,
-                                                        ));
-                                                  }(),
-                                                );
-                                                unawaited(
-                                                  () async {
-                                                    await actions
-                                                        .showTopNotification(
-                                                      context,
-                                                      'Промокод активирован',
-                                                      'Вы получили ${_model.codeCopy!.valueSamllTalk.toString()} Small Talk!',
-                                                      false,
-                                                    );
-                                                  }(),
-                                                );
-                                                safeSetState(() {
-                                                  _model.nameTextController
-                                                      ?.clear();
-                                                });
-                                              } else {
-                                                await actions
-                                                    .showTopNotification(
-                                                  context,
-                                                  'Промокод исчерпан',
-                                                  '',
-                                                  true,
-                                                );
-                                                if (_shouldSetState)
-                                                  safeSetState(() {});
-                                                return;
-                                              }
-                                            } else {
-                                              await actions.showTopNotification(
-                                                context,
-                                                'Вы уже использовали этот промокод',
-                                                '',
-                                                true,
-                                              );
-                                              if (_shouldSetState)
-                                                safeSetState(() {});
-                                              return;
-                                            }
-                                          } else {
-                                            await actions.showTopNotification(
-                                              context,
-                                              'Промокод истёк',
-                                              '',
-                                              true,
-                                            );
-                                            if (_shouldSetState)
-                                              safeSetState(() {});
-                                            return;
-                                          }
-                                        } else {
-                                          await actions.showTopNotification(
-                                            context,
-                                            'Промокод неактивен',
-                                            '',
-                                            true,
-                                          );
-                                          if (_shouldSetState)
-                                            safeSetState(() {});
-                                          return;
-                                        }
-                                      } else {
-                                        await actions.showTopNotification(
-                                          context,
-                                          'Промокод не найден',
-                                          '',
-                                          true,
-                                        );
-                                        if (_shouldSetState)
-                                          safeSetState(() {});
-                                        return;
-                                      }
-
-                                      if (_shouldSetState) safeSetState(() {});
+                                      await _handleApplyPromoCode();
                                     },
                                   ),
                               ],
@@ -1212,55 +1217,56 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                 ),
               ),
             ),
-            Align(
-              alignment: AlignmentDirectional(0, 1),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Color(0x00F2F2F7),
-                      Color(0xACF2F2F7),
-                      FlutterFlowTheme.of(context).secondaryBackground
-                    ],
-                    stops: [0, 0.2, 1],
-                    begin: AlignmentDirectional(0, -1),
-                    end: AlignmentDirectional(0, 1),
+            if (!keyboardVisible)
+              Align(
+                alignment: AlignmentDirectional(0, 1),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Color(0x00F2F2F7),
+                        Color(0xACF2F2F7),
+                        FlutterFlowTheme.of(context).secondaryBackground
+                      ],
+                      stops: [0, 0.2, 1],
+                      begin: AlignmentDirectional(0, -1),
+                      end: AlignmentDirectional(0, 1),
+                    ),
                   ),
-                ),
-                child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(6, 12, 6, 35),
-                  child: ButtonWidget(
-                    text: FFLocalizations.of(context).getText(
-                      '5visqusd' /* Оплатить */,
+                  child: Padding(
+                    padding: EdgeInsetsDirectional.fromSTEB(6, 12, 6, 35),
+                    child: ButtonWidget(
+                      text: FFLocalizations.of(context).getText(
+                        '5visqusd' /* Оплатить */,
+                      ),
+                      loadingText: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Создаем оплату...',
+                        enText: 'Creating payment...',
+                      ),
+                      busyStyle: ButtonBusyStyle.spinner,
+                      keyboardAwarePadding: false,
+                      padding: EdgeInsets.zero,
+                      trailingContent: _model.tarifDoc != null
+                          ? Text(
+                              '${_model.tarifDoc!.price.toString()}₽',
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
+                                    fontFamily: 'sf pro display',
+                                    color: FlutterFlowTheme.of(context)
+                                        .secondaryText,
+                                    fontSize: 15,
+                                    letterSpacing: 0.0,
+                                  ),
+                            )
+                          : null,
+                      action: () async {
+                        await _handlePayPressed();
+                      },
                     ),
-                    loadingText: FFLocalizations.of(context).getVariableText(
-                      ruText: 'Создаем оплату...',
-                      enText: 'Creating payment...',
-                    ),
-                    busyStyle: ButtonBusyStyle.spinner,
-                    keyboardAwarePadding: false,
-                    padding: EdgeInsets.zero,
-                    trailingContent: _model.tarifDoc != null
-                        ? Text(
-                            '${_model.tarifDoc!.price.toString()}₽',
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color: FlutterFlowTheme.of(context)
-                                      .secondaryText,
-                                  fontSize: 15,
-                                  letterSpacing: 0.0,
-                                ),
-                          )
-                        : null,
-                    action: () async {
-                      await _handlePayPressed();
-                    },
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),
