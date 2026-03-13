@@ -12,9 +12,11 @@ class ReviewCardWidget extends StatefulWidget {
   const ReviewCardWidget({
     super.key,
     required this.rewDoc,
+    this.width = 325.0,
   });
 
   final ReviewsRecord? rewDoc;
+  final double width;
 
   @override
   State<ReviewCardWidget> createState() => _ReviewCardWidgetState();
@@ -89,7 +91,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
     final reviewComment = _normalizedComment();
 
     return Container(
-      width: 325.0,
+      width: widget.width,
       decoration: BoxDecoration(
         color: FlutterFlowTheme.of(context).primaryBackground,
         borderRadius: BorderRadius.circular(26.0),

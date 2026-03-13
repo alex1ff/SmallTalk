@@ -883,7 +883,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     required Widget value,
   }) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -999,41 +999,35 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: Center(
-                child: _buildInfoRow(
-                  context,
-                  label: FFLocalizations.of(context).getVariableText(
-                    ruText: 'Дата и время',
-                    enText: 'Date and time',
-                  ),
-                  value: _buildValueText(context, startedAtLabel),
+              child: _buildInfoRow(
+                context,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Дата и время',
+                  enText: 'Date and time',
                 ),
+                value: _buildValueText(context, startedAtLabel),
               ),
             ),
             const Divider(height: 1.0),
             Expanded(
-              child: Center(
-                child: _buildInfoRow(
-                  context,
-                  label: FFLocalizations.of(context).getVariableText(
-                    ruText: 'Длительность',
-                    enText: 'Duration',
-                  ),
-                  value: _buildValueText(context, durationLabel),
+              child: _buildInfoRow(
+                context,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Длительность',
+                  enText: 'Duration',
                 ),
+                value: _buildValueText(context, durationLabel),
               ),
             ),
             const Divider(height: 1.0),
             Expanded(
-              child: Center(
-                child: _buildInfoRow(
-                  context,
-                  label: FFLocalizations.of(context).getVariableText(
-                    ruText: isTeacher ? 'Заработок' : 'Стоимость',
-                    enText: isTeacher ? 'Earnings' : 'Cost',
-                  ),
-                  value: _buildAmountValue(context, session),
+              child: _buildInfoRow(
+                context,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: isTeacher ? 'Заработок' : 'Стоимость',
+                  enText: isTeacher ? 'Earnings' : 'Cost',
                 ),
+                value: _buildAmountValue(context, session),
               ),
             ),
           ],
@@ -1351,6 +1345,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
             alignment: Alignment.centerLeft,
             child: ReviewCardWidget(
               rewDoc: reviewRecord,
+              width: double.infinity,
             ),
           ),
         );
@@ -1453,7 +1448,6 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               }
 
               final session = snapshot.data!;
-              final isTeacher = _isTeacherForSession(session);
               final counterpartReference = _counterpartReference(session);
               final counterpartName = _counterpartName(context, session);
               final counterpartPhotoUrl = _counterpartPhotoUrl(session);
@@ -1483,12 +1477,6 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                                   participantRef: counterpartReference,
                                   fallbackName: counterpartName,
                                   fallbackPhotoUrl: counterpartPhotoUrl,
-                                  fallbackRoleLabel: FFLocalizations.of(context)
-                                      .getVariableText(
-                                    ruText:
-                                        isTeacher ? 'Студент' : 'Преподаватель',
-                                    enText: isTeacher ? 'Student' : 'Tutor',
-                                  ),
                                 ),
                               ),
                               const SizedBox(width: 6.0),
@@ -1650,13 +1638,11 @@ class _CallParticipantCard extends StatelessWidget {
     required this.participantRef,
     required this.fallbackName,
     required this.fallbackPhotoUrl,
-    required this.fallbackRoleLabel,
   });
 
   final DocumentReference? participantRef;
   final String fallbackName;
   final String fallbackPhotoUrl;
-  final String fallbackRoleLabel;
 
   String _resolvedDisplayName(UsersRecord? user) {
     final displayName = user?.displayName.trim() ?? '';
@@ -1666,22 +1652,6 @@ class _CallParticipantCard extends StatelessWidget {
   String _resolvedPhotoUrl(UsersRecord? user) {
     final photoUrl = user?.photoUrl.trim() ?? '';
     return photoUrl.isNotEmpty ? photoUrl : fallbackPhotoUrl;
-  }
-
-  String _resolvedRoleLabel(BuildContext context, UsersRecord? user) {
-    if (user?.role == UserRole.native_speaker) {
-      return FFLocalizations.of(context).getVariableText(
-        ruText: 'Преподаватель',
-        enText: 'Tutor',
-      );
-    }
-    if (user?.role == UserRole.student) {
-      return FFLocalizations.of(context).getVariableText(
-        ruText: 'Студент',
-        enText: 'Student',
-      );
-    }
-    return fallbackRoleLabel;
   }
 
   Future<void> _openParticipant(
@@ -1706,7 +1676,6 @@ class _CallParticipantCard extends StatelessWidget {
       return _CallParticipantCardBody(
         displayName: fallbackName,
         photoUrl: fallbackPhotoUrl,
-        roleLabel: fallbackRoleLabel,
       );
     }
 
@@ -1718,7 +1687,6 @@ class _CallParticipantCard extends StatelessWidget {
         return _CallParticipantCardBody(
           displayName: _resolvedDisplayName(participant),
           photoUrl: _resolvedPhotoUrl(participant),
-          roleLabel: _resolvedRoleLabel(context, participant),
           ratingAverage: participant?.rating.average,
           hasReviews: (participant?.rating.totalReviews ?? 0) > 0,
           onTap: participant?.role == UserRole.native_speaker
@@ -1734,7 +1702,6 @@ class _CallParticipantCardBody extends StatelessWidget {
   const _CallParticipantCardBody({
     required this.displayName,
     required this.photoUrl,
-    required this.roleLabel,
     this.ratingAverage,
     this.hasReviews = false,
     this.onTap,
@@ -1742,7 +1709,6 @@ class _CallParticipantCardBody extends StatelessWidget {
 
   final String displayName;
   final String photoUrl;
-  final String roleLabel;
   final double? ratingAverage;
   final bool hasReviews;
   final VoidCallback? onTap;
@@ -1825,20 +1791,6 @@ class _CallParticipantCardBody extends StatelessWidget {
                         fontSize: 15.0,
                         letterSpacing: 0.0,
                         fontWeight: FontWeight.w500,
-                      ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(0, 2, 0, 0),
-                child: Text(
-                  roleLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'sf pro display',
-                        color: FlutterFlowTheme.of(context).secondaryText,
-                        fontSize: 13.0,
-                        letterSpacing: 0.0,
                       ),
                 ),
               ),
