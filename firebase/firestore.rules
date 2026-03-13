@@ -5,6 +5,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
     function isSelf(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
@@ -40,18 +44,11 @@ service cloud.firestore {
         request.resource.data.usageCount == resource.data.usageCount + 1;
     }
 
-    function isRatingOnlyUpdate() {
-      return isSignedIn() &&
-        request.resource.data.diff(resource.data).changedKeys().hasOnly([
-          'rating'
-        ]);
-    }
-
     match /users/{userId} {
-      allow create: if isSelf(userId);
+      allow create: if isAdmin() || isSelf(userId);
       allow read: if isSignedIn();
-      allow update: if isSelf(userId) || isRatingOnlyUpdate();
-      allow delete: if false;
+      allow update: if isAdmin() || isSelf(userId);
+      allow delete: if isAdmin();
     }
 
     match /videoSessions/{sessionId} {
@@ -74,63 +71,74 @@ service cloud.firestore {
     }
 
     match /users/{userId}/userWords/{wordId} {
-      allow create, read, update, delete: if isSelf(userId);
+      allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
     match /notifications/{notificationId} {
-      allow create: if false;
-      allow read: if isSignedIn() &&
-        resource.data.recipientId == request.auth.uid;
-      allow update, delete: if false;
+      allow create: if isAdmin();
+      allow read: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.recipientId == request.auth.uid
+      );
+      allow update, delete: if isAdmin();
     }
 
     match /transactions/{transactionId} {
-      allow create: if isOwnerRef(request.resource.data.userId);
-      allow read: if isOwnerRef(resource.data.userId);
-      allow update, delete: if false;
+      allow create: if isAdmin() || isOwnerRef(request.resource.data.userId);
+      allow read: if isAdmin() || isOwnerRef(resource.data.userId);
+      allow update, delete: if isAdmin();
     }
 
     match /promoCodes/{promoCodeId} {
-      allow read: if isSignedIn();
-      allow update: if isPromoCodeRedeemUpdate();
-      allow create, delete: if false;
+      allow read: if isAdmin() || isSignedIn();
+      allow update: if isAdmin() || isPromoCodeRedeemUpdate();
+      allow create, delete: if isAdmin();
     }
 
     match /reviews/{reviewId} {
-      allow create: if isSignedIn() &&
+      allow create: if isAdmin() || (
+        isSignedIn() &&
         request.resource.data.fromUserId == currentUserRef() &&
         request.resource.data.rating is int &&
         request.resource.data.rating >= 1 &&
-        request.resource.data.rating <= 5;
-      allow read: if isSignedIn();
-      allow update, delete: if false;
+        request.resource.data.rating <= 5
+      );
+      allow read: if isAdmin() || isSignedIn();
+      allow update, delete: if isAdmin();
     }
 
     match /packages/{packageId} {
       allow read: if true;
-      allow create, update, delete: if false;
+      allow create, update, delete: if isAdmin();
     }
 
     match /rewiews_of_the_app/{reviewId} {
-      allow create: if isSignedIn() &&
-        request.resource.data.user == currentUserRef();
-      allow read: if isSignedIn() &&
-        resource.data.user == currentUserRef();
-      allow update, delete: if false;
+      allow create: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.user == currentUserRef()
+      );
+      allow read: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.user == currentUserRef()
+      );
+      allow update, delete: if isAdmin();
     }
 
     match /avatars/{avatarId} {
       allow read: if true;
-      allow create, update, delete: if false;
+      allow create, update, delete: if isAdmin();
     }
 
     match /users/{userId}/stats/{statsId} {
-      allow read: if isSelf(userId);
-      allow create, update, delete: if false;
+      allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
     match /users/{userId}/cards/{cardId} {
-      allow create, read, update, delete: if isSelf(userId);
+      allow create, read, update, delete: if isAdmin() || isSelf(userId);
+    }
+
+    match /{document=**} {
+      allow read: if isAdmin();
     }
   }
 }
