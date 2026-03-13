@@ -15,6 +15,7 @@ class PayCopyModel extends FlutterFlowModel<PayCopyWidget> {
   String tarif = '20 Small Talk';
 
   DocumentReference? selectedCard;
+  bool shouldAutoSelectFirstCard = true;
 
   @override
   void initState(BuildContext context) {}
