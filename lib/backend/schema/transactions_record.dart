@@ -46,6 +46,11 @@ class TransactionsRecord extends FirestoreRecord {
   DocumentReference? get packageDocRef => _packageDocRef;
   bool hasPackageDocRef() => _packageDocRef != null;
 
+  // "card" field.
+  DocumentReference? _card;
+  DocumentReference? get card => _card;
+  bool hasCard() => _card != null;
+
   // "promoCodeDocRef" field.
   DocumentReference? _promoCodeDocRef;
   DocumentReference? get promoCodeDocRef => _promoCodeDocRef;
@@ -97,6 +102,7 @@ class TransactionsRecord extends FirestoreRecord {
         : deserializeEnum<StatusTransactions>(snapshotData['status']);
     _amountST = castToType<double>(snapshotData['amount_ST']);
     _packageDocRef = snapshotData['packageDocRef'] as DocumentReference?;
+    _card = snapshotData['card'] as DocumentReference?;
     _promoCodeDocRef = snapshotData['promoCodeDocRef'] as DocumentReference?;
     _sessionDocRef = snapshotData['sessionDocRef'] as DocumentReference?;
     _callDuration = snapshotData['callDuration']?.toString();
@@ -148,6 +154,7 @@ Map<String, dynamic> createTransactionsRecordData({
   StatusTransactions? status,
   double? amountST,
   DocumentReference? packageDocRef,
+  DocumentReference? card,
   DocumentReference? promoCodeDocRef,
   DocumentReference? sessionDocRef,
   String? callDuration,
@@ -165,6 +172,7 @@ Map<String, dynamic> createTransactionsRecordData({
       'status': status,
       'amount_ST': amountST,
       'packageDocRef': packageDocRef,
+      'card': card,
       'promoCodeDocRef': promoCodeDocRef,
       'sessionDocRef': sessionDocRef,
       'callDuration': callDuration,
@@ -191,6 +199,7 @@ class TransactionsRecordDocumentEquality
         e1?.status == e2?.status &&
         e1?.amountST == e2?.amountST &&
         e1?.packageDocRef == e2?.packageDocRef &&
+        e1?.card == e2?.card &&
         e1?.promoCodeDocRef == e2?.promoCodeDocRef &&
         e1?.sessionDocRef == e2?.sessionDocRef &&
         e1?.callDuration == e2?.callDuration &&
@@ -209,6 +218,7 @@ class TransactionsRecordDocumentEquality
         e?.status,
         e?.amountST,
         e?.packageDocRef,
+        e?.card,
         e?.promoCodeDocRef,
         e?.sessionDocRef,
         e?.callDuration,
