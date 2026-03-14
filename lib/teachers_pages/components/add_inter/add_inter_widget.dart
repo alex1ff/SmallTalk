@@ -327,6 +327,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
 
     final availabilityUpdate = createUsersRecordData(
       availabilityToday: createAvailabilityTodayStruct(
+        enabled: true,
         fieldValues: {
           'intervals': FieldValue.arrayUnion([
             getIntervalsFirestoreData(

@@ -1,20 +1,18 @@
 import '/auth/firebase_auth/auth_util.dart';
+import '/authorization/components/native_speaker_entry_toggle.dart';
+import '/authorization/shared/social_auth_entry_logic.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
-import '/components/pop/pop_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
-import 'dart:async';
 import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'registration_model.dart';
 export 'registration_model.dart';
 
@@ -30,6 +28,8 @@ class RegistrationWidget extends StatefulWidget {
 
 class _RegistrationWidgetState extends State<RegistrationWidget> {
   late RegistrationModel _model;
+  bool _isSubmittingEmailRegistration = false;
+  bool _isSubmittingSocialAuth = false;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -52,6 +52,167 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
     _model.dispose();
 
     super.dispose();
+  }
+
+  Future<void> _handleEmailRegistration() async {
+    if (_isSubmittingEmailRegistration) {
+      return;
+    }
+
+    final email = _model.emailTextController.text.trim();
+    if (!functions.isValidEmail(email)) {
+      await actions.showTopNotification(
+        context,
+        'Неверный e-mail',
+        '',
+        true,
+      );
+      return;
+    }
+
+    _isSubmittingEmailRegistration = true;
+    FocusScope.of(context).unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    try {
+      GoRouter.of(context).prepareAuthEvent();
+
+      final user = await authManager.createAccountWithEmail(
+        context,
+        email,
+        _model.passTextController.text,
+      );
+      if (user == null || !mounted) {
+        return;
+      }
+
+      if (_model.switchValue == true) {
+        await UsersRecord.collection.doc(user.uid).update(createUsersRecordData(
+              role: UserRole.native_speaker,
+            ));
+
+        if (!mounted) {
+          return;
+        }
+
+        context.goNamedAuth(
+          AcquaintanceNSWidget.routeName,
+          context.mounted,
+          queryParameters: {
+            'index': serializeParam(
+              0,
+              ParamType.int,
+            ),
+          }.withoutNulls,
+        );
+        return;
+      }
+
+      await UsersRecord.collection.doc(user.uid).update(createUsersRecordData(
+            role: UserRole.student,
+            balanceST: updateBalanceStruct(
+              BalanceStruct(
+                smallTalks: 1,
+                minutes: 10,
+              ),
+              clearUnsetFields: false,
+              create: true,
+            ),
+          ));
+
+      await TransactionsRecord.collection
+          .doc()
+          .set(createTransactionsRecordData(
+            userId: currentUserReference,
+            createdAt: getCurrentTimestamp,
+            type: TypeTransactions.bonus,
+            status: StatusTransactions.completed,
+            amountST: 1.0,
+          ));
+
+      if (!mounted) {
+        return;
+      }
+
+      context.goNamedAuth(
+        AcquaintanceSTUDENTWidget.routeName,
+        context.mounted,
+        queryParameters: {
+          'index': serializeParam(
+            0,
+            ParamType.int,
+          ),
+        }.withoutNulls,
+      );
+    } finally {
+      _isSubmittingEmailRegistration = false;
+    }
+  }
+
+  Future<void> _handleSocialAuth({
+    required Future<BaseAuthUser?> Function() signInAction,
+  }) async {
+    if (_isSubmittingSocialAuth) {
+      return;
+    }
+
+    _isSubmittingSocialAuth = true;
+    try {
+      GoRouter.of(context).prepareAuthEvent();
+      final user = await signInAction();
+      if (user == null || !mounted) {
+        return;
+      }
+
+      final decision = await resolveAndPersistSocialAuthEntry(
+        nativeSpeakerIntent: _model.switchValue ?? false,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (decision == null) {
+        await actions.showTopNotification(
+          context,
+          'Не удалось загрузить профиль',
+          '',
+          true,
+        );
+        return;
+      }
+
+      switch (decision.destination) {
+        case SocialAuthEntryDestination.loading:
+          context.goNamedAuth(LoadingWidget.routeName, context.mounted);
+          return;
+        case SocialAuthEntryDestination.acquaintanceNativeSpeaker:
+          context.goNamedAuth(
+            AcquaintanceNSWidget.routeName,
+            context.mounted,
+            queryParameters: {
+              'index': serializeParam(0, ParamType.int),
+            }.withoutNulls,
+          );
+          return;
+        case SocialAuthEntryDestination.acquaintanceStudent:
+          context.goNamedAuth(
+            AcquaintanceSTUDENTWidget.routeName,
+            context.mounted,
+            queryParameters: {
+              'index': serializeParam(0, ParamType.int),
+            }.withoutNulls,
+          );
+          return;
+      }
+    } catch (_) {
+      await actions.showTopNotification(
+        context,
+        'Не удалось завершить регистрацию',
+        '',
+        true,
+      );
+    } finally {
+      _isSubmittingSocialAuth = false;
+    }
   }
 
   @override
@@ -289,148 +450,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                   controller: _model.passTextController,
                                   focusNode: _model.passFocusNode,
                                   onFieldSubmitted: (_) async {
-                                    var _shouldSetState = false;
-                                    if (functions.isValidEmail(
-                                        _model.emailTextController.text)) {
-                                      _model.userCopy =
-                                          await queryUsersRecordCount(
-                                        queryBuilder: (usersRecord) =>
-                                            usersRecord.where(
-                                          'email',
-                                          isEqualTo:
-                                              _model.emailTextController.text,
-                                        ),
-                                      );
-                                      _shouldSetState = true;
-                                      if (_model.userCopy != 0) {
-                                        await showDialog(
-                                          context: context,
-                                          builder: (dialogContext) {
-                                            return Dialog(
-                                              elevation: 0,
-                                              insetPadding: EdgeInsets.zero,
-                                              backgroundColor:
-                                                  Colors.transparent,
-                                              alignment:
-                                                  AlignmentDirectional(0.0, 0.0)
-                                                      .resolve(
-                                                          Directionality.of(
-                                                              context)),
-                                              child: WebViewAware(
-                                                child: GestureDetector(
-                                                  onTap: () {
-                                                    FocusScope.of(dialogContext)
-                                                        .unfocus();
-                                                    FocusManager
-                                                        .instance.primaryFocus
-                                                        ?.unfocus();
-                                                  },
-                                                  child: PopWidget(
-                                                    header:
-                                                        'Этот e-mail уже используется',
-                                                    isError: true,
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        );
-
-                                        if (_shouldSetState)
-                                          safeSetState(() {});
-                                        return;
-                                      } else {
-                                        GoRouter.of(context).prepareAuthEvent();
-
-                                        final user = await authManager
-                                            .createAccountWithEmail(
-                                          context,
-                                          _model.emailTextController.text,
-                                          _model.passTextController.text,
-                                        );
-                                        if (user == null) {
-                                          return;
-                                        }
-
-                                        if (_model.switchValue == true) {
-                                          await UsersRecord.collection
-                                              .doc(user.uid)
-                                              .update(createUsersRecordData(
-                                                role: UserRole.native_speaker,
-                                              ));
-
-                                          context.goNamedAuth(
-                                            AcquaintanceNSWidget.routeName,
-                                            context.mounted,
-                                            queryParameters: {
-                                              'index': serializeParam(
-                                                0,
-                                                ParamType.int,
-                                              ),
-                                            }.withoutNulls,
-                                          );
-                                        } else {
-                                          await UsersRecord.collection
-                                              .doc(user.uid)
-                                              .update(createUsersRecordData(
-                                                role: UserRole.student,
-                                                balanceST: updateBalanceStruct(
-                                                  BalanceStruct(
-                                                    smallTalks: 1,
-                                                    minutes: 10,
-                                                  ),
-                                                  clearUnsetFields: false,
-                                                  create: true,
-                                                ),
-                                              ));
-
-                                          context.goNamedAuth(
-                                            AcquaintanceSTUDENTWidget.routeName,
-                                            context.mounted,
-                                            queryParameters: {
-                                              'index': serializeParam(
-                                                0,
-                                                ParamType.int,
-                                              ),
-                                            }.withoutNulls,
-                                          );
-                                        }
-                                      }
-                                    } else {
-                                      await showDialog(
-                                        context: context,
-                                        builder: (dialogContext) {
-                                          return Dialog(
-                                            elevation: 0,
-                                            insetPadding: EdgeInsets.zero,
-                                            backgroundColor: Colors.transparent,
-                                            alignment: AlignmentDirectional(
-                                                    0.0, 0.0)
-                                                .resolve(
-                                                    Directionality.of(context)),
-                                            child: WebViewAware(
-                                              child: GestureDetector(
-                                                onTap: () {
-                                                  FocusScope.of(dialogContext)
-                                                      .unfocus();
-                                                  FocusManager
-                                                      .instance.primaryFocus
-                                                      ?.unfocus();
-                                                },
-                                                child: PopWidget(
-                                                  header: 'Неверный e-mail',
-                                                  isError: true,
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      );
-
-                                      return;
-                                    }
-
-                                    if (_shouldSetState) safeSetState(() {});
+                                    await _handleEmailRegistration();
                                   },
                                   autofocus: false,
                                   textInputAction: TextInputAction.go,
@@ -494,67 +514,11 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(0.0, 4.0, 0.0, 0.0),
-                child: Container(
-                  width: double.infinity,
-                  height: 60.0,
-                  decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(26.0),
-                  ),
-                  child: Padding(
-                    padding:
-                        EdgeInsetsDirectional.fromSTEB(4.0, 4.0, 16.0, 4.0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 52.0,
-                          height: 52.0,
-                          decoration: BoxDecoration(
-                            color: FlutterFlowTheme.of(context)
-                                .secondaryBackground,
-                            borderRadius: BorderRadius.circular(22.0),
-                            shape: BoxShape.rectangle,
-                          ),
-                          child: Align(
-                            alignment: AlignmentDirectional(0.0, 0.0),
-                            child: Icon(
-                              FFIcons.kglobe01,
-                              color: FlutterFlowTheme.of(context).primaryText,
-                              size: 19.0,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                10.0, 0.0, 0.0, 0.0),
-                            child: Text(
-                              'Войти как Native Speaker',
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'sf pro display',
-                                    color: FlutterFlowTheme.of(context)
-                                        .primaryText,
-                                    fontSize: 16.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.normal,
-                                  ),
-                            ),
-                          ),
-                        ),
-                        AdaptiveSwitch(
-                          value: _model.switchValue!,
-                          onChanged: (newValue) async {
-                            safeSetState(() => _model.switchValue = newValue);
-                          },
-                          activeColor: FlutterFlowTheme.of(context).success,
-                        ),
-                      ],
-                    ),
-                  ),
+                child: NativeSpeakerEntryToggle(
+                  value: _model.switchValue ?? false,
+                  onChanged: (newValue) async {
+                    safeSetState(() => _model.switchValue = newValue);
+                  },
                 ),
               ),
               Padding(
@@ -571,81 +535,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                   keyboardAwarePadding: false,
                   padding: EdgeInsets.zero,
                   action: () async {
-                    if (functions
-                        .isValidEmail(_model.emailTextController.text)) {
-                      GoRouter.of(context).prepareAuthEvent();
-
-                      final user = await authManager.createAccountWithEmail(
-                        context,
-                        _model.emailTextController.text,
-                        _model.passTextController.text,
-                      );
-                      if (user == null) {
-                        return;
-                      }
-
-                      if (_model.switchValue == true) {
-                        await UsersRecord.collection
-                            .doc(user.uid)
-                            .update(createUsersRecordData(
-                              role: UserRole.native_speaker,
-                            ));
-
-                        context.goNamedAuth(
-                          AcquaintanceNSWidget.routeName,
-                          context.mounted,
-                          queryParameters: {
-                            'index': serializeParam(
-                              0,
-                              ParamType.int,
-                            ),
-                          }.withoutNulls,
-                        );
-                      } else {
-                        await UsersRecord.collection
-                            .doc(user.uid)
-                            .update(createUsersRecordData(
-                              role: UserRole.student,
-                              balanceST: updateBalanceStruct(
-                                BalanceStruct(
-                                  smallTalks: 1,
-                                  minutes: 10,
-                                ),
-                                clearUnsetFields: false,
-                                create: true,
-                              ),
-                            ));
-
-                        await TransactionsRecord.collection
-                            .doc()
-                            .set(createTransactionsRecordData(
-                              userId: currentUserReference,
-                              createdAt: getCurrentTimestamp,
-                              type: TypeTransactions.bonus,
-                              status: StatusTransactions.completed,
-                              amountST: 1.0,
-                            ));
-
-                        context.goNamedAuth(
-                          AcquaintanceSTUDENTWidget.routeName,
-                          context.mounted,
-                          queryParameters: {
-                            'index': serializeParam(
-                              0,
-                              ParamType.int,
-                            ),
-                          }.withoutNulls,
-                        );
-                      }
-                    } else {
-                      await actions.showTopNotification(
-                        context,
-                        'Неверный e-mail',
-                        '',
-                        true,
-                      );
-                      return;
-                    }
+                    await _handleEmailRegistration();
                   },
                 ),
               ),
@@ -785,68 +675,10 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                     return;
                                   }
 
-                                  GoRouter.of(context).prepareAuthEvent();
-                                  final user = await authManager
-                                      .signInWithApple(context);
-                                  if (user == null) {
-                                    return;
-                                  }
-                                  if (_model.switchValue == true) {
-                                    await currentUserReference!
-                                        .update(createUsersRecordData(
-                                      role: UserRole.native_speaker,
-                                    ));
-
-                                    context.goNamedAuth(
-                                      AcquaintanceNSWidget.routeName,
-                                      context.mounted,
-                                      queryParameters: {
-                                        'index': serializeParam(
-                                          1,
-                                          ParamType.int,
-                                        ),
-                                      }.withoutNulls,
-                                    );
-                                  } else {
-                                    await currentUserReference!
-                                        .update(createUsersRecordData(
-                                      role: UserRole.student,
-                                      balanceST: updateBalanceStruct(
-                                        BalanceStruct(
-                                          smallTalks: 1,
-                                          minutes: 10,
-                                        ),
-                                        clearUnsetFields: false,
-                                        create: true,
-                                      ),
-                                    ));
-
-                                    unawaited(
-                                      () async {
-                                        await TransactionsRecord.collection
-                                            .doc()
-                                            .set(createTransactionsRecordData(
-                                              userId: currentUserReference,
-                                              createdAt: getCurrentTimestamp,
-                                              type: TypeTransactions.bonus,
-                                              status:
-                                                  StatusTransactions.completed,
-                                              amountST: 1.0,
-                                            ));
-                                      }(),
-                                    );
-
-                                    context.goNamedAuth(
-                                      AcquaintanceSTUDENTWidget.routeName,
-                                      context.mounted,
-                                      queryParameters: {
-                                        'index': serializeParam(
-                                          1,
-                                          ParamType.int,
-                                        ),
-                                      }.withoutNulls,
-                                    );
-                                  }
+                                  await _handleSocialAuth(
+                                    signInAction: () =>
+                                        authManager.signInWithApple(context),
+                                  );
                                 },
                                 text: FFLocalizations.of(context).getText(
                                   '4xlxvpvt' /*  */,
@@ -931,68 +763,10 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                               ),
                               FFButtonWidget(
                                 onPressed: () async {
-                                  GoRouter.of(context).prepareAuthEvent();
-                                  final user = await authManager
-                                      .signInWithGoogle(context);
-                                  if (user == null) {
-                                    return;
-                                  }
-                                  if (_model.switchValue == true) {
-                                    await currentUserReference!
-                                        .update(createUsersRecordData(
-                                      role: UserRole.native_speaker,
-                                    ));
-
-                                    context.goNamedAuth(
-                                      AcquaintanceNSWidget.routeName,
-                                      context.mounted,
-                                      queryParameters: {
-                                        'index': serializeParam(
-                                          0,
-                                          ParamType.int,
-                                        ),
-                                      }.withoutNulls,
-                                    );
-                                  } else {
-                                    await currentUserReference!
-                                        .update(createUsersRecordData(
-                                      role: UserRole.student,
-                                      balanceST: updateBalanceStruct(
-                                        BalanceStruct(
-                                          smallTalks: 1,
-                                          minutes: 10,
-                                        ),
-                                        clearUnsetFields: false,
-                                        create: true,
-                                      ),
-                                    ));
-
-                                    unawaited(
-                                      () async {
-                                        await TransactionsRecord.collection
-                                            .doc()
-                                            .set(createTransactionsRecordData(
-                                              userId: currentUserReference,
-                                              createdAt: getCurrentTimestamp,
-                                              type: TypeTransactions.bonus,
-                                              status:
-                                                  StatusTransactions.completed,
-                                              amountST: 1.0,
-                                            ));
-                                      }(),
-                                    );
-
-                                    context.goNamedAuth(
-                                      AcquaintanceSTUDENTWidget.routeName,
-                                      context.mounted,
-                                      queryParameters: {
-                                        'index': serializeParam(
-                                          0,
-                                          ParamType.int,
-                                        ),
-                                      }.withoutNulls,
-                                    );
-                                  }
+                                  await _handleSocialAuth(
+                                    signInAction: () =>
+                                        authManager.signInWithGoogle(context),
+                                  );
                                 },
                                 text: FFLocalizations.of(context).getText(
                                   'lzgus691' /*  */,

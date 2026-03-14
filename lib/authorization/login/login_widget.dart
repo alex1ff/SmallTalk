@@ -1,4 +1,6 @@
 import '/auth/firebase_auth/auth_util.dart';
+import '/authorization/components/native_speaker_entry_toggle.dart';
+import '/authorization/shared/social_auth_entry_logic.dart';
 import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -26,6 +28,73 @@ class _LoginWidgetState extends State<LoginWidget> {
   late LoginModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _isSubmittingSocialAuth = false;
+
+  Future<void> _handleSocialAuth({
+    required Future<BaseAuthUser?> Function() signInAction,
+  }) async {
+    if (_isSubmittingSocialAuth) {
+      return;
+    }
+
+    _isSubmittingSocialAuth = true;
+    try {
+      GoRouter.of(context).prepareAuthEvent();
+      final user = await signInAction();
+      if (user == null || !mounted) {
+        return;
+      }
+
+      final decision = await resolveAndPersistSocialAuthEntry(
+        nativeSpeakerIntent: _model.switchValue ?? false,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (decision == null) {
+        await actions.showTopNotification(
+          context,
+          'Не удалось загрузить профиль',
+          '',
+          true,
+        );
+        return;
+      }
+
+      switch (decision.destination) {
+        case SocialAuthEntryDestination.loading:
+          context.goNamedAuth(LoadingWidget.routeName, context.mounted);
+          return;
+        case SocialAuthEntryDestination.acquaintanceNativeSpeaker:
+          context.goNamedAuth(
+            AcquaintanceNSWidget.routeName,
+            context.mounted,
+            queryParameters: {
+              'index': serializeParam(0, ParamType.int),
+            }.withoutNulls,
+          );
+          return;
+        case SocialAuthEntryDestination.acquaintanceStudent:
+          context.goNamedAuth(
+            AcquaintanceSTUDENTWidget.routeName,
+            context.mounted,
+            queryParameters: {
+              'index': serializeParam(0, ParamType.int),
+            }.withoutNulls,
+          );
+          return;
+      }
+    } catch (_) {
+      await actions.showTopNotification(
+        context,
+        'Не удалось завершить вход',
+        '',
+        true,
+      );
+    } finally {
+      _isSubmittingSocialAuth = false;
+    }
+  }
 
   @override
   void initState() {
@@ -37,6 +106,7 @@ class _LoginWidgetState extends State<LoginWidget> {
 
     _model.passTextController ??= TextEditingController();
     _model.passFocusNode ??= FocusNode();
+    _model.switchValue = false;
   }
 
   @override
@@ -368,6 +438,15 @@ class _LoginWidgetState extends State<LoginWidget> {
                   ),
                 ),
               ),
+              Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(0.0, 4.0, 0.0, 0.0),
+                child: NativeSpeakerEntryToggle(
+                  value: _model.switchValue ?? false,
+                  onChanged: (newValue) async {
+                    safeSetState(() => _model.switchValue = newValue);
+                  },
+                ),
+              ),
               Align(
                 alignment: AlignmentDirectional(1.0, 0.0),
                 child: FFButtonWidget(
@@ -577,15 +656,10 @@ class _LoginWidgetState extends State<LoginWidget> {
                                     return;
                                   }
 
-                                  GoRouter.of(context).prepareAuthEvent();
-                                  final user = await authManager
-                                      .signInWithApple(context);
-                                  if (user == null) {
-                                    return;
-                                  }
-
-                                  context.goNamedAuth(
-                                      LoadingWidget.routeName, context.mounted);
+                                  await _handleSocialAuth(
+                                    signInAction: () =>
+                                        authManager.signInWithApple(context),
+                                  );
                                 },
                                 text: FFLocalizations.of(context).getText(
                                   'zga53c5g' /*  */,
@@ -670,15 +744,10 @@ class _LoginWidgetState extends State<LoginWidget> {
                               ),
                               FFButtonWidget(
                                 onPressed: () async {
-                                  GoRouter.of(context).prepareAuthEvent();
-                                  final user = await authManager
-                                      .signInWithGoogle(context);
-                                  if (user == null) {
-                                    return;
-                                  }
-
-                                  context.goNamedAuth(
-                                      LoadingWidget.routeName, context.mounted);
+                                  await _handleSocialAuth(
+                                    signInAction: () =>
+                                        authManager.signInWithGoogle(context),
+                                  );
                                 },
                                 text: FFLocalizations.of(context).getText(
                                   'vj9omtyq' /*  */,

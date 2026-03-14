@@ -1,6 +1,4 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/components/av/av_widget.dart';
-import '/authorization/components/avatar_card/avatar_card_widget.dart';
 import '/authorization/components/chips/chips_widget.dart';
 import '/authorization/components/country/country_widget.dart';
 import '/authorization/components/lang/lang_widget.dart';
@@ -20,14 +18,14 @@ import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/permissions_util.dart';
 import '/index.dart';
+import 'student_onboarding_logic.dart';
 import 'dart:math' as math;
 import 'package:auto_size_text/auto_size_text.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'acquaintance_s_t_u_d_e_n_t_model.dart';
 export 'acquaintance_s_t_u_d_e_n_t_model.dart';
 
@@ -51,6 +49,352 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
   late AcquaintanceSTUDENTModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _isSubmitting = false;
+  String _existingPhotoUrl = '';
+
+  bool get _hasSocialPrefillProvider =>
+      FirebaseAuth.instance.currentUser?.providerData.any(
+        (provider) =>
+            provider.providerId == 'google.com' ||
+            provider.providerId == 'apple.com',
+      ) ??
+      false;
+
+  bool get _canUseSocialPrefill =>
+      _hasSocialPrefillProvider &&
+      !(currentUserDocument?.acquaintance ?? false) &&
+      !(currentUserDocument?.isProfileComplete ?? false);
+
+  bool get _shouldShowNameStep =>
+      !(_canUseSocialPrefill && currentUserDisplayName.trim().isNotEmpty);
+
+  bool get _shouldShowPhotoStep =>
+      !(_canUseSocialPrefill && _existingPhotoUrl.trim().isNotEmpty);
+
+  List<StudentOnboardingPage> get _visiblePages => buildVisibleStudentPages(
+        showName: _shouldShowNameStep,
+        showPhoto: _shouldShowPhotoStep,
+      );
+
+  int get _effectiveInitialPage => resolveStudentInitialPage(
+        requestedRawIndex: valueOrDefault<int>(widget.index, 0),
+        visiblePages: _visiblePages,
+      );
+
+  StudentOnboardingPage get _currentPage =>
+      StudentOnboardingPage.values[_model.pageViewCurrentIndex];
+
+  int get _displayedCurrentStep => studentDisplayedCurrentStep(
+        currentRawIndex: _model.pageViewCurrentIndex,
+        visiblePages: _visiblePages,
+      );
+
+  int get _displayedTotalSteps => studentDisplayedTotalSteps(
+        visiblePages: _visiblePages,
+      );
+
+  bool get _isLastVisiblePage => isStudentLastVisiblePage(
+        currentRawIndex: _model.pageViewCurrentIndex,
+        visiblePages: _visiblePages,
+      );
+
+  bool get _shouldShowSkipAction =>
+      _visiblePages.contains(_currentPage) &&
+      _currentPage.index > StudentOnboardingPage.interstitial.index;
+
+  String _resolvedStudentName() {
+    final typedName = _model.nameTextController.text.trim();
+    if (typedName.isNotEmpty) {
+      return typedName;
+    }
+    return currentUserDisplayName.trim();
+  }
+
+  Gender _resolvedStudentGender() =>
+      _model.genderMALE ? Gender.male : Gender.female;
+
+  Level _resolvedStudentLevel() =>
+      _model.level ?? currentUserDocument?.level ?? Level.Basic;
+
+  LanguageStruct? _resolvedLearningLanguage() =>
+      cloneLanguageSelection(_model.selectedLangLearn) ??
+      cloneLanguageSelection(currentUserDocument?.learningLanguage);
+
+  LanguageStruct? _resolvedPreferredNativeLanguage() =>
+      cloneLanguageSelection(_model.langNS) ??
+      cloneLanguageSelection(
+        (currentUserDocument != null &&
+                currentUserDocument!.hasPreferences() &&
+                currentUserDocument!.preferences.hasPreferredNativeLanguage())
+            ? currentUserDocument!.preferences.preferredNativeLanguage
+            : null,
+      );
+
+  CountryStruct? _resolvedPreferredLocation() =>
+      cloneCountrySelection(_model.counntryNS) ??
+      cloneCountrySelection(
+        (currentUserDocument != null &&
+                currentUserDocument!.hasPreferences() &&
+                currentUserDocument!.preferences.hasPreferredLocation())
+            ? currentUserDocument!.preferences.preferredLocation
+            : null,
+      );
+
+  void _hydrateStudentStateFromProfile() {
+    final initialState = buildStudentOnboardingInitialState(
+      displayName: currentUserDisplayName,
+      gender: currentUserDocument?.gender,
+      level: currentUserDocument?.level,
+      learningLanguage: currentUserDocument?.learningLanguage,
+      purpose: currentUserDocument?.purpose,
+      preferences:
+          currentUserDocument != null && currentUserDocument!.hasPreferences()
+              ? currentUserDocument!.preferences
+              : null,
+      photoUrl: currentUserPhoto,
+    );
+
+    if (_model.nameTextController.text.trim().isEmpty &&
+        initialState.displayName.isNotEmpty) {
+      _model.nameTextController.text = initialState.displayName;
+    }
+    _model.genderMALE = initialState.genderMale;
+    _model.level = initialState.level;
+    _model.selectedLangLearn = initialState.learningLanguage;
+    _model.purpose = List<String>.from(initialState.purpose);
+    _model.langNS = initialState.preferredNativeLanguage;
+    _model.counntryNS = initialState.preferredLocation;
+    _existingPhotoUrl = initialState.photoUrl;
+  }
+
+  Future<String?> _uploadStudentPhotoIfNeeded() async {
+    if (!(_model.avatarPhooto?.bytes?.isNotEmpty ?? false)) {
+      return _existingPhotoUrl.trim().isEmpty ? null : _existingPhotoUrl.trim();
+    }
+
+    safeSetState(() => _model.isDataUploading_uploadDataY2w = true);
+    final selectedUploadedFiles = <FFUploadedFile>[_model.avatarPhooto!];
+    final selectedMedia = selectedFilesFromUploadedFiles(selectedUploadedFiles);
+    final downloadUrls = <String>[];
+    try {
+      downloadUrls.addAll(
+        (await Future.wait(
+          selectedMedia.map(
+            (media) async => uploadData(media.storagePath, media.bytes),
+          ),
+        ))
+            .where((url) => url != null)
+            .map((url) => url!)
+            .toList(),
+      );
+    } finally {
+      if (mounted) {
+        safeSetState(() => _model.isDataUploading_uploadDataY2w = false);
+      }
+    }
+
+    if (downloadUrls.length != selectedMedia.length) {
+      return null;
+    }
+
+    final uploadedUrl = downloadUrls.first;
+    safeSetState(() {
+      _model.uploadedLocalFile_uploadDataY2w = selectedUploadedFiles.first;
+      _model.uploadedFileUrl_uploadDataY2w = uploadedUrl;
+    });
+    return uploadedUrl;
+  }
+
+  Future<bool> _saveStudentProfile({
+    required bool markProfileComplete,
+  }) async {
+    final userRef = currentUserReference;
+    if (userRef == null) {
+      return false;
+    }
+    if (_isSubmitting) {
+      return false;
+    }
+
+    safeSetState(() => _isSubmitting = true);
+    try {
+      String? photoUrl;
+      if (markProfileComplete) {
+        if (!hasStudentCompletionPhoto(
+          localPhoto: _model.avatarPhooto,
+          existingPhotoUrl: _existingPhotoUrl,
+        )) {
+          await actions.showTopNotification(
+            context,
+            'Загрузите фото профиля',
+            '',
+            true,
+          );
+          return false;
+        }
+
+        photoUrl = await _uploadStudentPhotoIfNeeded();
+        if (photoUrl == null || photoUrl.isEmpty) {
+          await actions.showTopNotification(
+            context,
+            'Не удалось загрузить фото профиля',
+            '',
+            true,
+          );
+          return false;
+        }
+      }
+
+      final learningLanguage = _resolvedLearningLanguage();
+      final preferences = markProfileComplete &&
+              (hasLanguageSelection(_resolvedPreferredNativeLanguage()) ||
+                  hasCountrySelection(_resolvedPreferredLocation()))
+          ? updatePreferencesStruct(
+              PreferencesStruct(
+                preferredNativeLanguage: _resolvedPreferredNativeLanguage(),
+                preferredLocation: _resolvedPreferredLocation(),
+              ),
+              clearUnsetFields: false,
+            )
+          : null;
+
+      final updateData = <String, dynamic>{
+        ...createUsersRecordData(
+          displayName:
+              _resolvedStudentName().isEmpty ? null : _resolvedStudentName(),
+          gender: _resolvedStudentGender(),
+          level: _resolvedStudentLevel(),
+          acquaintance: true,
+          isProfileComplete: markProfileComplete ? true : null,
+          learningLanguage: learningLanguage != null
+              ? updateLanguageStruct(
+                  learningLanguage,
+                  clearUnsetFields: false,
+                )
+              : null,
+          photoUrl: markProfileComplete ? photoUrl : null,
+          preferences: preferences,
+        ),
+      };
+
+      if (markProfileComplete && _model.purpose.isNotEmpty) {
+        updateData.addAll(mapToFirestore({'purpose': _model.purpose}));
+      }
+
+      await userRef.update(updateData);
+      if (photoUrl != null && photoUrl.isNotEmpty) {
+        _existingPhotoUrl = photoUrl;
+      }
+      return true;
+    } catch (_) {
+      await actions.showTopNotification(
+        context,
+        'Не удалось сохранить профиль',
+        '',
+        true,
+      );
+      return false;
+    } finally {
+      if (mounted) {
+        safeSetState(() => _isSubmitting = false);
+      }
+    }
+  }
+
+  void _goToStudentsDashboard({
+    required bool showCelebration,
+    required bool done,
+  }) {
+    if (showCelebration) {
+      context.goNamed(
+        StudentsDashboardWidget.routeName,
+        queryParameters: {
+          'zn': serializeParam(
+            true,
+            ParamType.bool,
+          ),
+          'done': serializeParam(
+            done,
+            ParamType.bool,
+          ),
+        }.withoutNulls,
+      );
+      return;
+    }
+
+    context.goNamed(StudentsDashboardWidget.routeName);
+  }
+
+  Future<void> _finishStudentOnboarding({
+    required bool showCelebration,
+    required bool done,
+  }) async {
+    final saved = await _saveStudentProfile(markProfileComplete: true);
+    if (!mounted || !saved) {
+      return;
+    }
+    _goToStudentsDashboard(
+      showCelebration: showCelebration,
+      done: done,
+    );
+  }
+
+  Future<void> _deferStudentOnboarding() async {
+    final saved = await _saveStudentProfile(markProfileComplete: false);
+    if (!mounted || !saved) {
+      return;
+    }
+    _goToStudentsDashboard(
+      showCelebration: widget.index != 4,
+      done: false,
+    );
+  }
+
+  Future<void> _handleStudentSkipAction() async {
+    if (_isSubmitting) {
+      return;
+    }
+    if (_isLastVisiblePage) {
+      await _finishStudentOnboarding(
+        showCelebration: true,
+        done: true,
+      );
+      return;
+    }
+    await _goToNextVisiblePage();
+  }
+
+  Future<void> _goToNextVisiblePage() async {
+    final nextPage = nextVisibleStudentPage(
+      currentRawIndex: _model.pageViewCurrentIndex,
+      visiblePages: _visiblePages,
+    );
+    if (nextPage == null) {
+      return;
+    }
+
+    await _model.pageViewController?.animateToPage(
+      nextPage,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.ease,
+    );
+  }
+
+  Future<void> _goToPreviousVisiblePage() async {
+    final previousPage = previousVisibleStudentPage(
+      currentRawIndex: _model.pageViewCurrentIndex,
+      visiblePages: _visiblePages,
+    );
+    if (previousPage == null) {
+      return;
+    }
+
+    await _model.pageViewController?.animateToPage(
+      previousPage,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.ease,
+    );
+  }
 
   @override
   void initState() {
@@ -64,8 +408,10 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
       await requestPermission(microphonePermission);
     });
 
-    _model.nameTextController ??= TextEditingController();
+    _model.nameTextController ??=
+        TextEditingController(text: currentUserDisplayName);
     _model.nameFocusNode ??= FocusNode();
+    _hydrateStudentStateFromProfile();
   }
 
   @override
@@ -126,37 +472,13 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                       child: custom_widgets.ProggresBar(
                                         width: double.infinity,
                                         height: double.infinity,
-                                        currentStep: () {
-                                          if (_model.pageViewCurrentIndex ==
-                                              4) {
-                                            return 4;
-                                          } else if (_model
-                                                  .pageViewCurrentIndex >
-                                              4) {
-                                            return _model.pageViewCurrentIndex;
-                                          } else {
-                                            return (_model
-                                                    .pageViewCurrentIndex +
-                                                1);
-                                          }
-                                        }(),
-                                        totalSteps: 8,
+                                        currentStep: _displayedCurrentStep,
+                                        totalSteps: _displayedTotalSteps,
                                       ),
                                     ),
                                   ),
                                   Text(
-                                    '${() {
-                                      if (_model.pageViewCurrentIndex == 4) {
-                                        return '4';
-                                      } else if (_model.pageViewCurrentIndex >
-                                          4) {
-                                        return _model.pageViewCurrentIndex
-                                            .toString();
-                                      } else {
-                                        return (_model.pageViewCurrentIndex + 1)
-                                            .toString();
-                                      }
-                                    }()}/8',
+                                    '$_displayedCurrentStep/$_displayedTotalSteps',
                                     textAlign: TextAlign.center,
                                     style: FlutterFlowTheme.of(context)
                                         .bodyMedium
@@ -170,179 +492,17 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                                 ],
                               ),
                             ),
-                            if (_model.pageViewCurrentIndex > 4)
+                            if (_shouldShowSkipAction)
                               InkWell(
                                 splashColor: Colors.transparent,
                                 focusColor: Colors.transparent,
                                 hoverColor: Colors.transparent,
                                 highlightColor: Colors.transparent,
-                                onTap: () async {
-                                  if (_model.pageViewCurrentIndex == 8) {
-                                    if (_model.avatarPhooto != null &&
-                                        (_model.avatarPhooto?.bytes
-                                                ?.isNotEmpty ??
-                                            false)) {
-                                      {
-                                        safeSetState(() => _model
-                                                .isDataUploading_uploadDataY2w2 =
-                                            true);
-                                        var selectedUploadedFiles =
-                                            <FFUploadedFile>[];
-                                        var selectedMedia = <SelectedFile>[];
-                                        var downloadUrls = <String>[];
-                                        try {
-                                          selectedUploadedFiles = _model
-                                                  .avatarPhooto!
-                                                  .bytes!
-                                                  .isNotEmpty
-                                              ? [_model.avatarPhooto!]
-                                              : <FFUploadedFile>[];
-                                          selectedMedia =
-                                              selectedFilesFromUploadedFiles(
-                                            selectedUploadedFiles,
-                                          );
-                                          downloadUrls = (await Future.wait(
-                                            selectedMedia.map(
-                                              (m) async => await uploadData(
-                                                  m.storagePath, m.bytes),
-                                            ),
-                                          ))
-                                              .where((u) => u != null)
-                                              .map((u) => u!)
-                                              .toList();
-                                        } finally {
-                                          _model.isDataUploading_uploadDataY2w2 =
-                                              false;
-                                        }
-                                        if (selectedUploadedFiles.length ==
-                                                selectedMedia.length &&
-                                            downloadUrls.length ==
-                                                selectedMedia.length) {
-                                          safeSetState(() {
-                                            _model.uploadedLocalFile_uploadDataY2w2 =
-                                                selectedUploadedFiles.first;
-                                            _model.uploadedFileUrl_uploadDataY2w2 =
-                                                downloadUrls.first;
-                                          });
-                                        } else {
-                                          safeSetState(() {});
-                                          return;
-                                        }
-                                      }
-
-                                      unawaited(
-                                        () async {
-                                          await currentUserReference!.update({
-                                            ...createUsersRecordData(
-                                              isProfileComplete: true,
-                                              preferences:
-                                                  updatePreferencesStruct(
-                                                PreferencesStruct(
-                                                  preferredNativeLanguage: _model
-                                                          .langNS ??
-                                                      _model.selectedLangLearn,
-                                                  preferredLocation:
-                                                      _model.counntryNS,
-                                                ),
-                                                clearUnsetFields: false,
-                                              ),
-                                              photoUrl: _model
-                                                  .uploadedFileUrl_uploadDataY2w2,
-                                              displayName: _model
-                                                  .nameTextController.text,
-                                              gender: _model.genderMALE
-                                                  ? Gender.male
-                                                  : Gender.female,
-                                              level: _model.level,
-                                              acquaintance: true,
-                                              balanceST: updateBalanceStruct(
-                                                BalanceStruct(
-                                                  smallTalks: 1.0,
-                                                  minutes: 10.0,
-                                                ),
-                                                clearUnsetFields: false,
-                                              ),
-                                              learningLanguage:
-                                                  updateLanguageStruct(
-                                                _model.selectedLangLearn,
-                                                clearUnsetFields: false,
-                                              ),
-                                            ),
-                                            ...mapToFirestore(
-                                              {
-                                                'purpose': _model.purpose,
-                                              },
-                                            ),
-                                          });
-                                        }(),
-                                      );
-                                    } else {
-                                      unawaited(
-                                        () async {
-                                          await currentUserReference!.update({
-                                            ...createUsersRecordData(
-                                              isProfileComplete: true,
-                                              preferences:
-                                                  updatePreferencesStruct(
-                                                PreferencesStruct(
-                                                  preferredNativeLanguage: _model
-                                                          .langNS ??
-                                                      _model.selectedLangLearn,
-                                                  preferredLocation:
-                                                      _model.counntryNS,
-                                                ),
-                                                clearUnsetFields: false,
-                                              ),
-                                              displayName: _model
-                                                  .nameTextController.text,
-                                              gender: _model.genderMALE
-                                                  ? Gender.male
-                                                  : Gender.female,
-                                              level: _model.level,
-                                              acquaintance: true,
-                                              balanceST: updateBalanceStruct(
-                                                BalanceStruct(
-                                                  smallTalks: 1.0,
-                                                  minutes: 10.0,
-                                                ),
-                                                clearUnsetFields: false,
-                                              ),
-                                              learningLanguage:
-                                                  updateLanguageStruct(
-                                                _model.selectedLangLearn,
-                                                clearUnsetFields: false,
-                                              ),
-                                            ),
-                                            ...mapToFirestore(
-                                              {
-                                                'purpose': _model.purpose,
-                                              },
-                                            ),
-                                          });
-                                        }(),
-                                      );
-                                    }
-
-                                    context.goNamed(
-                                      StudentsDashboardWidget.routeName,
-                                      queryParameters: {
-                                        'zn': serializeParam(
-                                          true,
-                                          ParamType.bool,
-                                        ),
-                                        'done': serializeParam(
-                                          true,
-                                          ParamType.bool,
-                                        ),
-                                      }.withoutNulls,
-                                    );
-                                  } else {
-                                    await _model.pageViewController?.nextPage(
-                                      duration: Duration(milliseconds: 300),
-                                      curve: Curves.ease,
-                                    );
-                                  }
-                                },
+                                onTap: _isSubmitting
+                                    ? null
+                                    : () async {
+                                        await _handleStudentSkipAction();
+                                      },
                                 child: Row(
                                   mainAxisSize: MainAxisSize.max,
                                   children: [
@@ -398,231 +558,234 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                       child: PageView(
                         physics: const NeverScrollableScrollPhysics(),
                         controller: _model.pageViewController ??=
-                            PageController(
-                                initialPage: max(
-                                    0,
-                                    min(
-                                        valueOrDefault<int>(
-                                          widget.index,
-                                          0,
-                                        ),
-                                        8))),
+                            PageController(initialPage: _effectiveInitialPage),
                         onPageChanged: (_) => safeSetState(() {}),
                         scrollDirection: Axis.horizontal,
                         children: [
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                6.0, 0.0, 6.0, 0.0),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.max,
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
+                          _shouldShowNameStep
+                              ? Padding(
                                   padding: EdgeInsetsDirectional.fromSTEB(
-                                      10.0, 16.0, 0.0, 0.0),
-                                  child: Text(
-                                    FFLocalizations.of(context).getText(
-                                      'ip2rlf3r' /* Как вас зовут? */,
-                                    ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'Cool',
-                                          fontSize: 43.0,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
+                                      6.0, 0.0, 6.0, 0.0),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.max,
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Padding(
+                                        padding: EdgeInsetsDirectional.fromSTEB(
+                                            10.0, 16.0, 0.0, 0.0),
+                                        child: Text(
+                                          FFLocalizations.of(context).getText(
+                                            'ip2rlf3r' /* Как вас зовут? */,
+                                          ),
+                                          style: FlutterFlowTheme.of(context)
+                                              .bodyMedium
+                                              .override(
+                                                fontFamily: 'Cool',
+                                                fontSize: 43.0,
+                                                letterSpacing: 0.0,
+                                                fontWeight: FontWeight.normal,
+                                              ),
                                         ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      10.0, 4.0, 0.0, 0.0),
-                                  child: Text(
-                                    FFLocalizations.of(context).getText(
-                                      'f55kpaxg' /* Лучше написать настоящее имя */,
-                                    ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: FlutterFlowTheme.of(context)
-                                              .secondaryText,
-                                          fontSize: 16.0,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
-                                        ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      0.0, 60.0, 0.0, 0.0),
-                                  child: Container(
-                                    width: double.infinity,
-                                    height: 60.0,
-                                    decoration: BoxDecoration(
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryBackground,
-                                      borderRadius:
-                                          BorderRadius.circular(100.0),
-                                    ),
-                                    child: Padding(
-                                      padding: EdgeInsets.all(2.0),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.max,
-                                        children: [
-                                          Container(
-                                            width: 56.0,
-                                            height: 56.0,
-                                            decoration: BoxDecoration(
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .secondaryBackground,
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: Align(
-                                              alignment: AlignmentDirectional(
-                                                  0.0, 0.0),
-                                              child: Icon(
-                                                FFIcons.kuser03,
+                                      ),
+                                      Padding(
+                                        padding: EdgeInsetsDirectional.fromSTEB(
+                                            10.0, 4.0, 0.0, 0.0),
+                                        child: Text(
+                                          FFLocalizations.of(context).getText(
+                                            'f55kpaxg' /* Лучше написать настоящее имя */,
+                                          ),
+                                          style: FlutterFlowTheme.of(context)
+                                              .bodyMedium
+                                              .override(
+                                                fontFamily: 'sf pro display',
                                                 color:
                                                     FlutterFlowTheme.of(context)
-                                                        .primaryText,
-                                                size: 20.0,
+                                                        .secondaryText,
+                                                fontSize: 16.0,
+                                                letterSpacing: 0.0,
+                                                fontWeight: FontWeight.normal,
                                               ),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: Padding(
-                                              padding: EdgeInsetsDirectional
-                                                  .fromSTEB(8.0, 0.0, 8.0, 0.0),
-                                              child: Container(
-                                                width: double.infinity,
-                                                child: TextFormField(
-                                                  controller:
-                                                      _model.nameTextController,
-                                                  focusNode:
-                                                      _model.nameFocusNode,
-                                                  onFieldSubmitted: (_) async {
-                                                    if (_model
-                                                            .nameTextController
-                                                            .text !=
-                                                        '') {
-                                                      if (functions.isValidName(
-                                                          _model
-                                                              .nameTextController
-                                                              .text)) {
-                                                        await _model
-                                                            .pageViewController
-                                                            ?.nextPage(
-                                                          duration: Duration(
-                                                              milliseconds:
-                                                                  300),
-                                                          curve: Curves.ease,
-                                                        );
-                                                      } else {
-                                                        await actions
-                                                            .showTopNotification(
-                                                          context,
-                                                          'Неверное имя',
-                                                          '',
-                                                          true,
-                                                        );
-                                                        return;
-                                                      }
-                                                    } else {
-                                                      await actions
-                                                          .showTopNotification(
-                                                        context,
-                                                        'Пожалуйста, представьтесь',
-                                                        '',
-                                                        true,
-                                                      );
-                                                      return;
-                                                    }
-                                                  },
-                                                  autofocus: true,
-                                                  textCapitalization:
-                                                      TextCapitalization
-                                                          .sentences,
-                                                  textInputAction:
-                                                      TextInputAction.next,
-                                                  obscureText: false,
-                                                  decoration: InputDecoration(
-                                                    isDense: false,
-                                                    labelText:
-                                                        FFLocalizations.of(
-                                                                context)
-                                                            .getText(
-                                                      'aty6z85z' /* Ваше имя */,
-                                                    ),
-                                                    labelStyle: FlutterFlowTheme
-                                                            .of(context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily:
-                                                              'sf pro display',
-                                                          color: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .secondaryText,
-                                                          fontSize: 16.0,
-                                                          letterSpacing: 0.0,
-                                                        ),
-                                                    enabledBorder:
-                                                        InputBorder.none,
-                                                    focusedBorder:
-                                                        InputBorder.none,
-                                                    errorBorder:
-                                                        InputBorder.none,
-                                                    focusedErrorBorder:
-                                                        InputBorder.none,
-                                                  ),
-                                                  style: FlutterFlowTheme.of(
-                                                          context)
-                                                      .bodyMedium
-                                                      .override(
-                                                        fontFamily:
-                                                            'sf pro display',
-                                                        fontSize: 16.0,
-                                                        letterSpacing: 0.0,
-                                                      ),
-                                                  cursorColor:
-                                                      FlutterFlowTheme.of(
-                                                              context)
-                                                          .primaryText,
-                                                  enableInteractiveSelection:
-                                                      true,
-                                                  validator: _model
-                                                      .nameTextControllerValidator
-                                                      .asValidator(context),
-                                                  inputFormatters: [
-                                                    if (!isAndroid && !isiOS)
-                                                      TextInputFormatter
-                                                          .withFunction(
-                                                              (oldValue,
-                                                                  newValue) {
-                                                        return TextEditingValue(
-                                                          selection: newValue
-                                                              .selection,
-                                                          text: newValue.text
-                                                              .toCapitalization(
-                                                                  TextCapitalization
-                                                                      .sentences),
-                                                        );
-                                                      }),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
+                                        ),
                                       ),
-                                    ),
+                                      Padding(
+                                        padding: EdgeInsetsDirectional.fromSTEB(
+                                            0.0, 60.0, 0.0, 0.0),
+                                        child: Container(
+                                          width: double.infinity,
+                                          height: 60.0,
+                                          decoration: BoxDecoration(
+                                            color: FlutterFlowTheme.of(context)
+                                                .primaryBackground,
+                                            borderRadius:
+                                                BorderRadius.circular(100.0),
+                                          ),
+                                          child: Padding(
+                                            padding: EdgeInsets.all(2.0),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.max,
+                                              children: [
+                                                Container(
+                                                  width: 56.0,
+                                                  height: 56.0,
+                                                  decoration: BoxDecoration(
+                                                    color: FlutterFlowTheme.of(
+                                                            context)
+                                                        .secondaryBackground,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: Align(
+                                                    alignment:
+                                                        AlignmentDirectional(
+                                                            0.0, 0.0),
+                                                    child: Icon(
+                                                      FFIcons.kuser03,
+                                                      color:
+                                                          FlutterFlowTheme.of(
+                                                                  context)
+                                                              .primaryText,
+                                                      size: 20.0,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Padding(
+                                                    padding:
+                                                        EdgeInsetsDirectional
+                                                            .fromSTEB(8.0, 0.0,
+                                                                8.0, 0.0),
+                                                    child: Container(
+                                                      width: double.infinity,
+                                                      child: TextFormField(
+                                                        controller: _model
+                                                            .nameTextController,
+                                                        focusNode: _model
+                                                            .nameFocusNode,
+                                                        onFieldSubmitted:
+                                                            (_) async {
+                                                          if (_model
+                                                                  .nameTextController
+                                                                  .text !=
+                                                              '') {
+                                                            if (functions
+                                                                .isValidName(_model
+                                                                    .nameTextController
+                                                                    .text)) {
+                                                              await _goToNextVisiblePage();
+                                                            } else {
+                                                              await actions
+                                                                  .showTopNotification(
+                                                                context,
+                                                                'Неверное имя',
+                                                                '',
+                                                                true,
+                                                              );
+                                                              return;
+                                                            }
+                                                          } else {
+                                                            await actions
+                                                                .showTopNotification(
+                                                              context,
+                                                              'Пожалуйста, представьтесь',
+                                                              '',
+                                                              true,
+                                                            );
+                                                            return;
+                                                          }
+                                                        },
+                                                        autofocus: true,
+                                                        textCapitalization:
+                                                            TextCapitalization
+                                                                .sentences,
+                                                        textInputAction:
+                                                            TextInputAction
+                                                                .next,
+                                                        obscureText: false,
+                                                        decoration:
+                                                            InputDecoration(
+                                                          isDense: false,
+                                                          labelText:
+                                                              FFLocalizations.of(
+                                                                      context)
+                                                                  .getText(
+                                                            'aty6z85z' /* Ваше имя */,
+                                                          ),
+                                                          labelStyle:
+                                                              FlutterFlowTheme.of(
+                                                                      context)
+                                                                  .bodyMedium
+                                                                  .override(
+                                                                    fontFamily:
+                                                                        'sf pro display',
+                                                                    color: FlutterFlowTheme.of(
+                                                                            context)
+                                                                        .secondaryText,
+                                                                    fontSize:
+                                                                        16.0,
+                                                                    letterSpacing:
+                                                                        0.0,
+                                                                  ),
+                                                          enabledBorder:
+                                                              InputBorder.none,
+                                                          focusedBorder:
+                                                              InputBorder.none,
+                                                          errorBorder:
+                                                              InputBorder.none,
+                                                          focusedErrorBorder:
+                                                              InputBorder.none,
+                                                        ),
+                                                        style: FlutterFlowTheme
+                                                                .of(context)
+                                                            .bodyMedium
+                                                            .override(
+                                                              fontFamily:
+                                                                  'sf pro display',
+                                                              fontSize: 16.0,
+                                                              letterSpacing:
+                                                                  0.0,
+                                                            ),
+                                                        cursorColor:
+                                                            FlutterFlowTheme.of(
+                                                                    context)
+                                                                .primaryText,
+                                                        enableInteractiveSelection:
+                                                            true,
+                                                        validator: _model
+                                                            .nameTextControllerValidator
+                                                            .asValidator(
+                                                                context),
+                                                        inputFormatters: [
+                                                          if (!isAndroid &&
+                                                              !isiOS)
+                                                            TextInputFormatter
+                                                                .withFunction(
+                                                                    (oldValue,
+                                                                        newValue) {
+                                                              return TextEditingValue(
+                                                                selection: newValue
+                                                                    .selection,
+                                                                text: newValue
+                                                                    .text
+                                                                    .toCapitalization(
+                                                                        TextCapitalization
+                                                                            .sentences),
+                                                              );
+                                                            }),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
+                                )
+                              : const SizedBox.shrink(),
                           Stack(
                             children: [
                               Padding(
@@ -2161,56 +2324,11 @@ Native */
                                   Align(
                                     alignment: AlignmentDirectional(0.0, -1.0),
                                     child: FFButtonWidget(
-                                      onPressed: () async {
-                                        if (widget.index == 4) {
-                                          context.goNamed(
-                                              StudentsDashboardWidget
-                                                  .routeName);
-                                        } else {
-                                          unawaited(
-                                            () async {
-                                              await currentUserReference!
-                                                  .update(createUsersRecordData(
-                                                level: _model.level,
-                                                learningLanguage:
-                                                    updateLanguageStruct(
-                                                  _model.selectedLangLearn,
-                                                  clearUnsetFields: false,
-                                                ),
-                                                acquaintance: true,
-                                                displayName: _model
-                                                    .nameTextController.text,
-                                                gender: _model.genderMALE
-                                                    ? Gender.male
-                                                    : Gender.female,
-                                                preferences:
-                                                    createPreferencesStruct(
-                                                  preferredNativeLanguage:
-                                                      updateLanguageStruct(
-                                                    _model.selectedLangLearn,
-                                                    clearUnsetFields: false,
-                                                  ),
-                                                  clearUnsetFields: false,
-                                                ),
-                                              ));
-                                            }(),
-                                          );
-
-                                          context.goNamed(
-                                            StudentsDashboardWidget.routeName,
-                                            queryParameters: {
-                                              'zn': serializeParam(
-                                                true,
-                                                ParamType.bool,
-                                              ),
-                                              'done': serializeParam(
-                                                false,
-                                                ParamType.bool,
-                                              ),
-                                            }.withoutNulls,
-                                          );
-                                        }
-                                      },
+                                      onPressed: _isSubmitting
+                                          ? null
+                                          : () async {
+                                              await _deferStudentOnboarding();
+                                            },
                                       text: FFLocalizations.of(context).getText(
                                         'ybk9bjx6' /* Заполню позже */,
                                       ),
@@ -2468,276 +2586,199 @@ Native */
                               ),
                             ),
                           ),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                6.0, 0.0, 6.0, 0.0),
-                            child: SingleChildScrollView(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        10.0, 0.0, 10.0, 0.0),
-                                    child: Text(
-                                      FFLocalizations.of(context).getText(
-                                        '4l7nhxkw' /* Выберите аватар */,
-                                      ),
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'Cool',
-                                            fontSize: 43.0,
-                                            letterSpacing: 0.0,
-                                            fontWeight: FontWeight.normal,
-                                            lineHeight: 1.1,
-                                          ),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 60.0, 0.0, 0.0),
-                                    child: Container(
-                                      height: 263.37,
-                                      decoration: BoxDecoration(),
-                                      child: FutureBuilder<List<AvatarsRecord>>(
-                                        future: queryAvatarsRecordOnce(
-                                          queryBuilder: (avatarsRecord) =>
-                                              avatarsRecord.where(
-                                            'gender',
-                                            isEqualTo: _model.genderMALE
-                                                ? Gender.male.serialize()
-                                                : Gender.female.serialize(),
-                                          ),
-                                        ),
-                                        builder: (context, snapshot) {
-                                          // Customize what your widget looks like when it's loading.
-                                          if (!snapshot.hasData) {
-                                            return Center(
-                                              child: SizedBox(
-                                                width: 50.0,
-                                                height: 50.0,
-                                                child: SpinKitCircle(
-                                                  color: FlutterFlowTheme.of(
-                                                          context)
-                                                      .secondary,
-                                                  size: 50.0,
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                          List<AvatarsRecord>
-                                              gridViewAvatarsRecordList =
-                                              snapshot.data!;
-
-                                          return GridView.builder(
-                                            padding: EdgeInsets.zero,
-                                            gridDelegate:
-                                                SliverGridDelegateWithFixedCrossAxisCount(
-                                              crossAxisCount: 3,
-                                              crossAxisSpacing: 6.0,
-                                              mainAxisSpacing: 6.0,
-                                              childAspectRatio: 1.0,
+                          _shouldShowPhotoStep
+                              ? Padding(
+                                  padding: EdgeInsetsDirectional.fromSTEB(
+                                      6.0, 0.0, 6.0, 0.0),
+                                  child: SingleChildScrollView(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.max,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Padding(
+                                          padding:
+                                              EdgeInsetsDirectional.fromSTEB(
+                                                  10.0, 0.0, 10.0, 0.0),
+                                          child: Text(
+                                            FFLocalizations.of(context)
+                                                .getVariableText(
+                                              ruText: 'Загрузите фото',
+                                              enText: 'Upload a photo',
                                             ),
-                                            scrollDirection: Axis.vertical,
-                                            itemCount: gridViewAvatarsRecordList
-                                                .length,
-                                            itemBuilder:
-                                                (context, gridViewIndex) {
-                                              final gridViewAvatarsRecord =
-                                                  gridViewAvatarsRecordList[
-                                                      gridViewIndex];
-                                              return AvatarCardWidget(
-                                                key: Key(
-                                                    'Keyvh8_${gridViewIndex}_of_${gridViewAvatarsRecordList.length}'),
-                                                avatarDoc:
-                                                    gridViewAvatarsRecord,
-                                                selected: _model.selectedAvatar,
-                                                avatar: _model.avatar,
-                                                action: (doc) async {
-                                                  if (_model.selectedAvatar !=
-                                                      gridViewAvatarsRecord
-                                                          .reference) {
-                                                    _model.selectedAvatar =
-                                                        gridViewAvatarsRecord
-                                                            .reference;
-                                                    _model.avatarPhooto = null;
-                                                    _model.avatar = null;
-                                                    safeSetState(() {});
-                                                  }
-                                                  await showModalBottomSheet(
-                                                    isScrollControlled: true,
-                                                    backgroundColor:
-                                                        Colors.transparent,
-                                                    context: context,
-                                                    builder: (context) {
-                                                      return WebViewAware(
-                                                        child: GestureDetector(
-                                                          onTap: () {
-                                                            FocusScope.of(
-                                                                    context)
-                                                                .unfocus();
-                                                            FocusManager
-                                                                .instance
-                                                                .primaryFocus
-                                                                ?.unfocus();
-                                                          },
-                                                          child: Padding(
-                                                            padding: MediaQuery
-                                                                .viewInsetsOf(
-                                                                    context),
-                                                            child: AvWidget(
-                                                              avatarDoc:
-                                                                  gridViewAvatarsRecord,
-                                                              ation:
-                                                                  (img) async {
-                                                                _model.avatar =
-                                                                    img;
-                                                                safeSetState(
-                                                                    () {});
-                                                              },
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      );
-                                                    },
-                                                  ).then((value) =>
-                                                      safeSetState(() {}));
-                                                },
-                                                actiondele: () async {
-                                                  _model.selectedAvatar = null;
-                                                  _model.avatar = null;
-                                                  safeSetState(() {});
-                                                },
-                                              );
-                                            },
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 16.0, 0.0, 0.0),
-                                    child: InkWell(
-                                      splashColor: Colors.transparent,
-                                      focusColor: Colors.transparent,
-                                      hoverColor: Colors.transparent,
-                                      highlightColor: Colors.transparent,
-                                      onTap: () async {
-                                        final selectedMedia = await selectMedia(
-                                          maxWidth: 500.00,
-                                          maxHeight: 500.00,
-                                          imageQuality: 95,
-                                          mediaSource: MediaSource.photoGallery,
-                                          multiImage: false,
-                                        );
-                                        if (selectedMedia != null &&
-                                            selectedMedia.every((m) =>
-                                                validateFileFormat(
-                                                    m.storagePath, context))) {
-                                          var selectedUploadedFiles =
-                                              <FFUploadedFile>[];
-                                          selectedUploadedFiles = selectedMedia
-                                              .map((m) => FFUploadedFile(
-                                                    name: m.storagePath
-                                                        .split('/')
-                                                        .last,
-                                                    bytes: m.bytes,
-                                                    height:
-                                                        m.dimensions?.height,
-                                                    width: m.dimensions?.width,
-                                                    blurHash: m.blurHash,
-                                                    originalFilename:
-                                                        m.originalFilename,
-                                                  ))
-                                              .toList();
-                                          if (selectedUploadedFiles.length ==
-                                              selectedMedia.length) {
-                                            _model.avatarPhooto =
-                                                selectedUploadedFiles.first;
-                                            _model.avatar = null;
-                                            _model.selectedAvatar = null;
-                                            safeSetState(() {});
-                                          }
-                                        }
-                                      },
-                                      child: Container(
-                                        width: double.infinity,
-                                        height: 479.1,
-                                        decoration: BoxDecoration(
-                                          color: FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                          borderRadius:
-                                              BorderRadius.circular(26.0),
+                                            style: FlutterFlowTheme.of(context)
+                                                .bodyMedium
+                                                .override(
+                                                  fontFamily: 'Cool',
+                                                  fontSize: 43.0,
+                                                  letterSpacing: 0.0,
+                                                  fontWeight: FontWeight.normal,
+                                                  lineHeight: 1.1,
+                                                ),
+                                          ),
                                         ),
-                                        child: Align(
-                                          alignment:
-                                              AlignmentDirectional(0.0, 0.0),
-                                          child: Builder(
-                                            builder: (context) {
-                                              if (_model.avatarPhooto != null &&
-                                                  (_model.avatarPhooto?.bytes
-                                                          ?.isNotEmpty ??
-                                                      false)) {
-                                                return ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          26.0),
-                                                  child: Image.memory(
-                                                    _model.avatarPhooto
-                                                            ?.bytes ??
-                                                        Uint8List.fromList([]),
-                                                    width: double.infinity,
-                                                    height: double.infinity,
-                                                    fit: BoxFit.cover,
-                                                  ),
-                                                );
-                                              } else {
-                                                return Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.max,
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    Container(
-                                                      width: 45.0,
-                                                      height: 45.0,
-                                                      decoration: BoxDecoration(
-                                                        color: FlutterFlowTheme
-                                                                .of(context)
-                                                            .secondaryBackground,
+                                        Padding(
+                                          padding:
+                                              EdgeInsetsDirectional.fromSTEB(
+                                                  0.0, 60.0, 0.0, 0.0),
+                                          child: InkWell(
+                                            splashColor: Colors.transparent,
+                                            focusColor: Colors.transparent,
+                                            hoverColor: Colors.transparent,
+                                            highlightColor: Colors.transparent,
+                                            onTap: () async {
+                                              if (_isSubmitting) {
+                                                return;
+                                              }
+                                              final selectedMedia =
+                                                  await selectMedia(
+                                                maxWidth: 500.00,
+                                                maxHeight: 500.00,
+                                                imageQuality: 95,
+                                                mediaSource:
+                                                    MediaSource.photoGallery,
+                                                multiImage: false,
+                                              );
+                                              if (selectedMedia != null &&
+                                                  selectedMedia.every((m) =>
+                                                      validateFileFormat(
+                                                          m.storagePath,
+                                                          context))) {
+                                                final selectedUploadedFiles =
+                                                    selectedMedia
+                                                        .map((m) =>
+                                                            FFUploadedFile(
+                                                              name: m
+                                                                  .storagePath
+                                                                  .split('/')
+                                                                  .last,
+                                                              bytes: m.bytes,
+                                                              height: m
+                                                                  .dimensions
+                                                                  ?.height,
+                                                              width: m
+                                                                  .dimensions
+                                                                  ?.width,
+                                                              blurHash:
+                                                                  m.blurHash,
+                                                              originalFilename:
+                                                                  m.originalFilename,
+                                                            ))
+                                                        .toList();
+                                                if (selectedUploadedFiles
+                                                        .length ==
+                                                    selectedMedia.length) {
+                                                  _model.avatarPhooto =
+                                                      selectedUploadedFiles
+                                                          .first;
+                                                  safeSetState(() {});
+                                                }
+                                              }
+                                            },
+                                            child: Container(
+                                              width: double.infinity,
+                                              height: 479.1,
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    FlutterFlowTheme.of(context)
+                                                        .primaryBackground,
+                                                borderRadius:
+                                                    BorderRadius.circular(26.0),
+                                              ),
+                                              child: Align(
+                                                alignment: AlignmentDirectional(
+                                                    0.0, 0.0),
+                                                child: Builder(
+                                                  builder: (context) {
+                                                    if (_model.avatarPhooto !=
+                                                            null &&
+                                                        (_model
+                                                                .avatarPhooto
+                                                                ?.bytes
+                                                                ?.isNotEmpty ??
+                                                            false)) {
+                                                      return ClipRRect(
                                                         borderRadius:
                                                             BorderRadius
-                                                                .circular(20.0),
-                                                      ),
-                                                      child: Icon(
-                                                        FFIcons.kcameraPlus,
-                                                        color:
-                                                            FlutterFlowTheme.of(
-                                                                    context)
-                                                                .primaryText,
-                                                        size: 20.0,
-                                                      ),
-                                                    ),
-                                                    Padding(
-                                                      padding:
-                                                          EdgeInsetsDirectional
-                                                              .fromSTEB(
-                                                                  12.0,
-                                                                  0.0,
-                                                                  0.0,
-                                                                  0.0),
-                                                      child: AutoSizeText(
-                                                        FFLocalizations.of(
-                                                                context)
-                                                            .getText(
-                                                          'x6szbodc' /* Или загрузить своё фото */,
+                                                                .circular(26.0),
+                                                        child: Image.memory(
+                                                          _model.avatarPhooto
+                                                                  ?.bytes ??
+                                                              Uint8List
+                                                                  .fromList([]),
+                                                          width:
+                                                              double.infinity,
+                                                          height:
+                                                              double.infinity,
+                                                          fit: BoxFit.cover,
                                                         ),
-                                                        style:
-                                                            FlutterFlowTheme.of(
+                                                      );
+                                                    }
+                                                    if (_existingPhotoUrl
+                                                        .isNotEmpty) {
+                                                      return ClipRRect(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(26.0),
+                                                        child: Image.network(
+                                                          _existingPhotoUrl,
+                                                          width:
+                                                              double.infinity,
+                                                          height:
+                                                              double.infinity,
+                                                          fit: BoxFit.cover,
+                                                        ),
+                                                      );
+                                                    }
+                                                    return Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.max,
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .center,
+                                                      children: [
+                                                        Container(
+                                                          width: 45.0,
+                                                          height: 45.0,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: FlutterFlowTheme
+                                                                    .of(context)
+                                                                .secondaryBackground,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        20.0),
+                                                          ),
+                                                          child: Icon(
+                                                            FFIcons.kcameraPlus,
+                                                            color: FlutterFlowTheme
+                                                                    .of(context)
+                                                                .primaryText,
+                                                            size: 20.0,
+                                                          ),
+                                                        ),
+                                                        Padding(
+                                                          padding:
+                                                              EdgeInsetsDirectional
+                                                                  .fromSTEB(
+                                                                      12.0,
+                                                                      0.0,
+                                                                      0.0,
+                                                                      0.0),
+                                                          child: AutoSizeText(
+                                                            FFLocalizations.of(
                                                                     context)
+                                                                .getVariableText(
+                                                              ruText:
+                                                                  'Выбрать из галереи',
+                                                              enText:
+                                                                  'Choose from gallery',
+                                                            ),
+                                                            style: FlutterFlowTheme
+                                                                    .of(context)
                                                                 .bodyMedium
                                                                 .override(
                                                                   fontFamily:
@@ -2753,23 +2794,23 @@ Native */
                                                                       FontWeight
                                                                           .normal,
                                                                 ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                );
-                                              }
-                                            },
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      ]
+                                          .addToStart(SizedBox(height: 16.0))
+                                          .addToEnd(SizedBox(height: 120.0)),
                                     ),
                                   ),
-                                ]
-                                    .addToStart(SizedBox(height: 16.0))
-                                    .addToEnd(SizedBox(height: 120.0)),
-                              ),
-                            ),
-                          ),
+                                )
+                              : const SizedBox.shrink(),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
                                 6.0, 0.0, 6.0, 0.0),
@@ -2931,7 +2972,7 @@ Native */
                   alignment: AlignmentDirectional(0.0, 1.0),
                   child: Builder(
                     builder: (context) {
-                      if (_model.pageViewCurrentIndex != 4) {
+                      if (_currentPage != StudentOnboardingPage.interstitial) {
                         return AnimatedPadding(
                           duration: const Duration(milliseconds: 160),
                           curve: Curves.easeOutCubic,
@@ -2959,215 +3000,53 @@ Native */
                                           .secondaryText,
                                       size: 24.0,
                                     ),
-                                    onPressed: (_model.pageViewCurrentIndex ==
-                                            0)
+                                    onPressed: (previousVisibleStudentPage(
+                                              currentRawIndex:
+                                                  _model.pageViewCurrentIndex,
+                                              visiblePages: _visiblePages,
+                                            ) ==
+                                            null)
                                         ? null
                                         : () async {
-                                            await _model.pageViewController
-                                                ?.previousPage(
-                                              duration:
-                                                  Duration(milliseconds: 300),
-                                              curve: Curves.ease,
-                                            );
+                                            await _goToPreviousVisiblePage();
                                           },
                                   ),
                                   Builder(
                                     builder: (context) {
-                                      if (_model.pageViewCurrentIndex == 8) {
+                                      if (_isLastVisiblePage) {
                                         return FlutterFlowIconButton(
                                           borderRadius: 60.0,
                                           buttonSize: 56.0,
                                           fillColor:
                                               FlutterFlowTheme.of(context)
                                                   .success,
-                                          icon: Icon(
-                                            Icons.check,
-                                            color: Colors.black,
-                                            size: 24.0,
-                                          ),
-                                          onPressed: () async {
-                                            if (_model.counntryNS != null) {
-                                              if (_model.avatarPhooto != null &&
-                                                  (_model.avatarPhooto?.bytes
-                                                          ?.isNotEmpty ??
-                                                      false)) {
-                                                {
-                                                  safeSetState(() => _model
-                                                          .isDataUploading_uploadDataY2w =
-                                                      true);
-                                                  var selectedUploadedFiles =
-                                                      <FFUploadedFile>[];
-                                                  var selectedMedia =
-                                                      <SelectedFile>[];
-                                                  var downloadUrls = <String>[];
-                                                  try {
-                                                    selectedUploadedFiles =
-                                                        _model
-                                                                .avatarPhooto!
-                                                                .bytes!
-                                                                .isNotEmpty
-                                                            ? [
-                                                                _model
-                                                                    .avatarPhooto!
-                                                              ]
-                                                            : <FFUploadedFile>[];
-                                                    selectedMedia =
-                                                        selectedFilesFromUploadedFiles(
-                                                      selectedUploadedFiles,
-                                                    );
-                                                    downloadUrls = (await Future
-                                                            .wait(
-                                                      selectedMedia.map(
-                                                        (m) async =>
-                                                            await uploadData(
-                                                                m.storagePath,
-                                                                m.bytes),
-                                                      ),
-                                                    ))
-                                                        .where((u) => u != null)
-                                                        .map((u) => u!)
-                                                        .toList();
-                                                  } finally {
-                                                    _model.isDataUploading_uploadDataY2w =
-                                                        false;
-                                                  }
-                                                  if (selectedUploadedFiles
-                                                              .length ==
-                                                          selectedMedia
-                                                              .length &&
-                                                      downloadUrls.length ==
-                                                          selectedMedia
-                                                              .length) {
-                                                    safeSetState(() {
-                                                      _model.uploadedLocalFile_uploadDataY2w =
-                                                          selectedUploadedFiles
-                                                              .first;
-                                                      _model.uploadedFileUrl_uploadDataY2w =
-                                                          downloadUrls.first;
-                                                    });
-                                                  } else {
-                                                    safeSetState(() {});
-                                                    return;
-                                                  }
-                                                }
-
-                                                unawaited(
-                                                  () async {
-                                                    await currentUserReference!
-                                                        .update({
-                                                      ...createUsersRecordData(
-                                                        isProfileComplete: true,
-                                                        preferences:
-                                                            updatePreferencesStruct(
-                                                          PreferencesStruct(
-                                                            preferredNativeLanguage:
-                                                                _model.langNS,
-                                                            preferredLocation:
-                                                                _model
-                                                                    .counntryNS,
-                                                          ),
-                                                          clearUnsetFields:
-                                                              false,
-                                                        ),
-                                                        photoUrl: _model
-                                                            .uploadedFileUrl_uploadDataY2w,
-                                                        displayName: _model
-                                                            .nameTextController
-                                                            .text,
-                                                        gender:
-                                                            _model.genderMALE
-                                                                ? Gender.male
-                                                                : Gender.female,
-                                                        level: _model.level,
-                                                        acquaintance: true,
-                                                        learningLanguage:
-                                                            updateLanguageStruct(
-                                                          _model
-                                                              .selectedLangLearn,
-                                                          clearUnsetFields:
-                                                              false,
-                                                        ),
-                                                      ),
-                                                      ...mapToFirestore(
-                                                        {
-                                                          'purpose':
-                                                              _model.purpose,
-                                                        },
-                                                      ),
-                                                    });
-                                                  }(),
-                                                );
-                                              } else {
-                                                unawaited(
-                                                  () async {
-                                                    await currentUserReference!
-                                                        .update({
-                                                      ...createUsersRecordData(
-                                                        isProfileComplete: true,
-                                                        preferences:
-                                                            updatePreferencesStruct(
-                                                          PreferencesStruct(
-                                                            preferredNativeLanguage:
-                                                                _model.langNS,
-                                                            preferredLocation:
-                                                                _model
-                                                                    .counntryNS,
-                                                          ),
-                                                          clearUnsetFields:
-                                                              false,
-                                                        ),
-                                                        displayName: _model
-                                                            .nameTextController
-                                                            .text,
-                                                        gender:
-                                                            _model.genderMALE
-                                                                ? Gender.male
-                                                                : Gender.female,
-                                                        level: _model.level,
-                                                        acquaintance: true,
-                                                        learningLanguage:
-                                                            updateLanguageStruct(
-                                                          _model
-                                                              .selectedLangLearn,
-                                                          clearUnsetFields:
-                                                              false,
-                                                        ),
-                                                      ),
-                                                      ...mapToFirestore(
-                                                        {
-                                                          'purpose':
-                                                              _model.purpose,
-                                                        },
-                                                      ),
-                                                    });
-                                                  }(),
-                                                );
-                                              }
-
-                                              context.pushNamed(
-                                                StudentsDashboardWidget
-                                                    .routeName,
-                                                queryParameters: {
-                                                  'zn': serializeParam(
-                                                    true,
-                                                    ParamType.bool,
+                                          icon: _isSubmitting
+                                              ? SizedBox(
+                                                  width: 20.0,
+                                                  height: 20.0,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2.2,
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<
+                                                            Color>(
+                                                      Colors.black,
+                                                    ),
                                                   ),
-                                                  'done': serializeParam(
-                                                    true,
-                                                    ParamType.bool,
-                                                  ),
-                                                }.withoutNulls,
-                                              );
-                                            } else {
-                                              await actions.showTopNotification(
-                                                context,
-                                                'Выберите страну из списка',
-                                                '',
-                                                true,
-                                              );
-                                              return;
-                                            }
-                                          },
+                                                )
+                                              : Icon(
+                                                  Icons.check,
+                                                  color: Colors.black,
+                                                  size: 24.0,
+                                                ),
+                                          onPressed: _isSubmitting
+                                              ? null
+                                              : () async {
+                                                  await _finishStudentOnboarding(
+                                                    showCelebration: true,
+                                                    done: true,
+                                                  );
+                                                },
                                         );
                                       } else {
                                         return FlutterFlowIconButton(
@@ -3187,103 +3066,106 @@ Native */
                                                 await actions.closeKeyboard();
                                               }(),
                                             );
-                                            if (_model.pageViewCurrentIndex ==
-                                                0) {
-                                              if (_model.nameTextController
-                                                      .text !=
-                                                  '') {
-                                                if (!functions.isValidName(
-                                                    _model.nameTextController
-                                                        .text)) {
+                                            switch (_currentPage) {
+                                              case StudentOnboardingPage.name:
+                                                if (_model.nameTextController
+                                                        .text !=
+                                                    '') {
+                                                  if (!functions.isValidName(
+                                                      _model.nameTextController
+                                                          .text)) {
+                                                    await actions
+                                                        .showTopNotification(
+                                                      context,
+                                                      'Неверное имя',
+                                                      '',
+                                                      true,
+                                                    );
+                                                    return;
+                                                  }
+                                                } else {
                                                   await actions
                                                       .showTopNotification(
                                                     context,
-                                                    'Неверное имя',
+                                                    'Пожалуйста, представьтесь',
                                                     '',
                                                     true,
                                                   );
                                                   return;
                                                 }
-                                              } else {
-                                                await actions
-                                                    .showTopNotification(
-                                                  context,
-                                                  'Пожалуйста, представьтесь',
-                                                  '',
-                                                  true,
-                                                );
-                                                return;
-                                              }
-                                            } else if (_model
-                                                    .pageViewCurrentIndex ==
-                                                2) {
-                                              if (!(_model.selectedLangLearn !=
-                                                  null)) {
-                                                await actions
-                                                    .showTopNotification(
-                                                  context,
-                                                  'Выберите язык из списка',
-                                                  '',
-                                                  true,
-                                                );
-                                                return;
-                                              }
-                                            } else if (_model
-                                                    .pageViewCurrentIndex ==
-                                                5) {
-                                              if (!(_model
-                                                  .purpose.isNotEmpty)) {
-                                                await actions
-                                                    .showTopNotification(
-                                                  context,
-                                                  'Выберите минимум одну цель',
-                                                  '',
-                                                  true,
-                                                );
-                                                return;
-                                              }
-                                            } else if (_model
-                                                    .pageViewCurrentIndex ==
-                                                6) {
-                                              if (!((_model.avatarPhooto !=
-                                                          null &&
-                                                      (_model
-                                                              .avatarPhooto
-                                                              ?.bytes
-                                                              ?.isNotEmpty ??
-                                                          false)) ||
-                                                  (_model.avatar != null &&
-                                                      _model.avatar != ''))) {
-                                                await actions
-                                                    .showTopNotification(
-                                                  context,
-                                                  'Выберите аватар или загрузите фото',
-                                                  '',
-                                                  true,
-                                                );
-                                                return;
-                                              }
-                                            } else if (_model
-                                                    .pageViewCurrentIndex ==
-                                                7) {
-                                              if (!(_model.langNS != null)) {
-                                                await actions
-                                                    .showTopNotification(
-                                                  context,
-                                                  'Выберите язык из списка',
-                                                  '',
-                                                  true,
-                                                );
-                                                return;
-                                              }
+                                                break;
+                                              case StudentOnboardingPage.gender:
+                                                break;
+                                              case StudentOnboardingPage
+                                                    .learningLanguage:
+                                                if (!hasLanguageSelection(
+                                                    _model.selectedLangLearn)) {
+                                                  await actions
+                                                      .showTopNotification(
+                                                    context,
+                                                    'Выберите язык из списка',
+                                                    '',
+                                                    true,
+                                                  );
+                                                  return;
+                                                }
+                                                break;
+                                              case StudentOnboardingPage.level:
+                                                break;
+                                              case StudentOnboardingPage
+                                                    .interstitial:
+                                                break;
+                                              case StudentOnboardingPage
+                                                    .purpose:
+                                                if (!(_model
+                                                    .purpose.isNotEmpty)) {
+                                                  await actions
+                                                      .showTopNotification(
+                                                    context,
+                                                    'Выберите минимум одну цель',
+                                                    '',
+                                                    true,
+                                                  );
+                                                  return;
+                                                }
+                                                break;
+                                              case StudentOnboardingPage.photo:
+                                                if (!hasStudentCompletionPhoto(
+                                                  localPhoto:
+                                                      _model.avatarPhooto,
+                                                  existingPhotoUrl:
+                                                      _existingPhotoUrl,
+                                                )) {
+                                                  await actions
+                                                      .showTopNotification(
+                                                    context,
+                                                    'Загрузите фото профиля',
+                                                    '',
+                                                    true,
+                                                  );
+                                                  return;
+                                                }
+                                                break;
+                                              case StudentOnboardingPage
+                                                    .preferredNativeLanguage:
+                                                if (!hasLanguageSelection(
+                                                    _model.langNS)) {
+                                                  await actions
+                                                      .showTopNotification(
+                                                    context,
+                                                    'Выберите язык из списка',
+                                                    '',
+                                                    true,
+                                                  );
+                                                  return;
+                                                }
+                                                break;
+                                              case StudentOnboardingPage
+                                                    .preferredLocation:
+                                                break;
                                             }
 
-                                            await _model.pageViewController
-                                                ?.nextPage(
-                                              duration:
-                                                  Duration(milliseconds: 300),
-                                              curve: Curves.ease,
-                                            );
+                                            await _goToNextVisiblePage();
                                           },
                                         );
                                       }
@@ -3303,10 +3185,7 @@ Native */
                               'tkv7vhn7' /* Продолжить */,
                             ),
                             action: () async {
-                              await _model.pageViewController?.nextPage(
-                                duration: Duration(milliseconds: 300),
-                                curve: Curves.ease,
-                              );
+                              await _goToNextVisiblePage();
                             },
                           ),
                         );

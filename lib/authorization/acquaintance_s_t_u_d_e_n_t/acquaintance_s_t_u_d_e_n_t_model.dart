@@ -32,11 +32,7 @@ class AcquaintanceSTUDENTModel
 
   FFUploadedFile? avatarPhooto;
 
-  String? avatar;
-
   bool genderMALE = true;
-
-  DocumentReference? selectedAvatar;
 
   LanguageStruct? langNS;
   void updateLangNSStruct(Function(LanguageStruct) updateFn) {
@@ -49,11 +45,6 @@ class AcquaintanceSTUDENTModel
   }
 
   ///  State fields for stateful widgets in this page.
-
-  bool isDataUploading_uploadDataY2w2 = false;
-  FFUploadedFile uploadedLocalFile_uploadDataY2w2 =
-      FFUploadedFile(bytes: Uint8List.fromList([]), originalFilename: '');
-  String uploadedFileUrl_uploadDataY2w2 = '';
 
   // State field(s) for PageView widget.
   PageController? pageViewController;
