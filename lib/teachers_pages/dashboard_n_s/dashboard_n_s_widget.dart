@@ -84,9 +84,24 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
 
     try {
       if (currentUserReference != null) {
-        final refreshedUser = await UsersRecord.getDocumentOnce(currentUserReference!);
+        final refreshedUser =
+            await UsersRecord.getDocumentOnce(currentUserReference!);
+        final availabilityToday = refreshedUser.availabilityToday;
+        final hasIntervals = availabilityToday.intervals.isNotEmpty;
+
+        if (!hasIntervals && availabilityToday.enabled) {
+          final availabilityUpdate = createUsersRecordData(
+            availabilityToday: createAvailabilityTodayStruct(
+              enabled: false,
+              clearUnsetFields: false,
+            ),
+          );
+          availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
+          await currentUserReference!.update(availabilityUpdate);
+        }
+
         if (mounted) {
-          _model.switchValue = refreshedUser.availabilityToday.enabled;
+          _model.switchValue = hasIntervals && availabilityToday.enabled;
         }
       }
     } catch (_) {}
@@ -128,8 +143,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
       }
     });
 
-    _model.switchValue =
-        valueOrDefault<bool>(currentUserDocument?.availabilityToday.enabled, false);
+    _model.switchValue = valueOrDefault<bool>(
+        currentUserDocument?.availabilityToday.enabled, false);
 
     // Create stats stream once, not on every build().
     final now = DateTime.now().toUtc();
@@ -296,13 +311,14 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                   child: Stack(
                     children: [
                       Padding(
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(55.0, 0.0, 55.0, 0.0),
+                        padding: EdgeInsetsDirectional.fromSTEB(
+                            55.0, 0.0, 55.0, 0.0),
                         child: Container(
                           width: double.infinity,
                           height: 165.0,
                           decoration: BoxDecoration(
-                            color: FlutterFlowTheme.of(context).primaryBackground,
+                            color:
+                                FlutterFlowTheme.of(context).primaryBackground,
                             borderRadius: BorderRadius.circular(12.0),
                             border: Border.all(
                               color: Color(0xFFE0E3E7),

@@ -402,6 +402,7 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final promoCodeFieldFocused = _model.nameFocusNode?.hasFocus ?? false;
 
     return GestureDetector(
       onTap: () {
@@ -1217,7 +1218,7 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                 ),
               ),
             ),
-            if (!keyboardVisible)
+            if (!keyboardVisible && !promoCodeFieldFocused)
               Align(
                 alignment: AlignmentDirectional(0, 1),
                 child: Container(
