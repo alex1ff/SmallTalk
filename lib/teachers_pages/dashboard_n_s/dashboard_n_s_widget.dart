@@ -56,8 +56,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
     }
   }
 
-  Future<void> _openAddInterBottomSheet({Future Function()? act}) async {
-    await showModalBottomSheet(
+  Future<bool> _openAddInterBottomSheet() async {
+    final intervalAdded = await showModalBottomSheet<bool>(
       useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -71,7 +71,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
             },
             child: Padding(
               padding: MediaQuery.viewInsetsOf(context),
-              child: AddInterWidget(act: act),
+              child: AddInterWidget(),
             ),
           ),
         );
@@ -79,36 +79,11 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
     );
 
     if (!mounted) {
-      return;
+      return intervalAdded ?? false;
     }
 
-    try {
-      if (currentUserReference != null) {
-        final refreshedUser =
-            await UsersRecord.getDocumentOnce(currentUserReference!);
-        final availabilityToday = refreshedUser.availabilityToday;
-        final hasIntervals = availabilityToday.intervals.isNotEmpty;
-
-        if (!hasIntervals && availabilityToday.enabled) {
-          final availabilityUpdate = createUsersRecordData(
-            availabilityToday: createAvailabilityTodayStruct(
-              enabled: false,
-              clearUnsetFields: false,
-            ),
-          );
-          availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
-          await currentUserReference!.update(availabilityUpdate);
-        }
-
-        if (mounted) {
-          _model.switchValue = hasIntervals && availabilityToday.enabled;
-        }
-      }
-    } catch (_) {}
-
-    if (mounted) {
-      safeSetState(() {});
-    }
+    safeSetState(() {});
+    return intervalAdded ?? false;
   }
 
   @override
@@ -573,13 +548,38 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   safeSetState(() {
                                     _model.switchValue = false;
                                   });
-                                  await _openAddInterBottomSheet(
-                                    act: () async {
+                                  final intervalAdded =
+                                      await _openAddInterBottomSheet();
+                                  if (!mounted) {
+                                    return;
+                                  }
+
+                                  if (intervalAdded) {
+                                    safeSetState(() {
+                                      _model.switchValue = true;
+                                    });
+                                  } else {
+                                    if (currentUserReference != null) {
+                                      final availabilityUpdate =
+                                          createUsersRecordData(
+                                        availabilityToday:
+                                            createAvailabilityTodayStruct(
+                                          enabled: false,
+                                          clearUnsetFields: false,
+                                        ),
+                                      );
+                                      availabilityUpdate.addAll(
+                                          _buildTimezoneMetadataUpdate());
+                                      await currentUserReference!
+                                          .update(availabilityUpdate);
+                                    }
+
+                                    if (mounted) {
                                       safeSetState(() {
-                                        _model.switchValue = true;
+                                        _model.switchValue = false;
                                       });
-                                    },
-                                  );
+                                    }
+                                  }
                                 }
                                 safeSetState(() {});
                               } else {

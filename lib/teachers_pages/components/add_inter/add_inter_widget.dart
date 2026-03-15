@@ -19,10 +19,7 @@ enum _IntervalField {
 class AddInterWidget extends StatefulWidget {
   const AddInterWidget({
     super.key,
-    this.act,
   });
-
-  final Future Function()? act;
 
   @override
   State<AddInterWidget> createState() => _AddInterWidgetState();
@@ -347,9 +344,8 @@ class _AddInterWidgetState extends State<AddInterWidget> {
     );
     availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
     await currentUserReference!.update(availabilityUpdate);
-    await widget.act?.call();
     if (mounted) {
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     }
   }
 
@@ -741,7 +737,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                           size: 20.0,
                         ),
                         onPressed: () async {
-                          Navigator.pop(context);
+                          Navigator.pop(context, false);
                         },
                       ),
                     ),
