@@ -1,5 +1,6 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/custom_code/actions/index.dart' as actions;
@@ -49,17 +50,48 @@ class _LoadingWidgetState extends State<LoadingWidget> {
             : null,
       );
 
+  bool _shouldRefreshRouteFieldsFromBackend(UsersRecord? user) {
+    switch (user?.role) {
+      case UserRole.native_speaker:
+        return user?.hasAcquaintance() != true;
+      case UserRole.student:
+        if (user?.hasAcquaintance() != true) {
+          return true;
+        }
+        return user?.acquaintance == true &&
+            user?.hasIsProfileComplete() != true;
+      default:
+        return true;
+    }
+  }
+
+  bool _hasInferredStudentProfileCompletion(UsersRecord? user) {
+    if (user?.role != UserRole.student) {
+      return false;
+    }
+
+    return user?.hasAcquaintance() == true &&
+        user?.acquaintance == true &&
+        user?.hasDisplayName() == true &&
+        user!.displayName.trim().isNotEmpty &&
+        user.hasPhotoUrl() &&
+        user.photoUrl.trim().isNotEmpty &&
+        user.hasLearningLanguage();
+  }
+
   Future<UsersRecord?> _resolveUserDocumentForRouting() async {
     if (!loggedIn || currentUserReference == null) {
       return null;
     }
-    if (_hasResolvedUserRoutingState(currentUserDocument)) {
+    if (_hasResolvedUserRoutingState(currentUserDocument) &&
+        !_shouldRefreshRouteFieldsFromBackend(currentUserDocument)) {
       return currentUserDocument;
     }
 
     final deadline = DateTime.now().add(const Duration(seconds: 5));
     while (DateTime.now().isBefore(deadline)) {
-      if (_hasResolvedUserRoutingState(currentUserDocument)) {
+      if (_hasResolvedUserRoutingState(currentUserDocument) &&
+          !_shouldRefreshRouteFieldsFromBackend(currentUserDocument)) {
         return currentUserDocument;
       }
 
@@ -67,7 +99,8 @@ class _LoadingWidgetState extends State<LoadingWidget> {
         final snapshot = await currentUserReference!.get();
         if (snapshot.exists && snapshot.data() != null) {
           currentUserDocument = UsersRecord.fromSnapshot(snapshot);
-          if (_hasResolvedUserRoutingState(currentUserDocument)) {
+          if (_hasResolvedUserRoutingState(currentUserDocument) &&
+              !_shouldRefreshRouteFieldsFromBackend(currentUserDocument)) {
             return currentUserDocument;
           }
         }
@@ -153,8 +186,14 @@ class _LoadingWidgetState extends State<LoadingWidget> {
 
       final destination = resolveLoadingRouteDestination(
         role: userDocument?.role,
-        acquaintance: userDocument?.acquaintance ?? false,
-        isProfileComplete: userDocument?.isProfileComplete ?? false,
+        acquaintance: userDocument?.hasAcquaintance() == true
+            ? userDocument?.acquaintance
+            : null,
+        isProfileComplete: userDocument?.hasIsProfileComplete() == true
+            ? userDocument?.isProfileComplete
+            : null,
+        hasInferredStudentProfileCompletion:
+            _hasInferredStudentProfileCompletion(userDocument),
       );
 
       if (destination == null) {
