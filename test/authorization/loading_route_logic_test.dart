@@ -4,14 +4,14 @@ import 'package:small_talk/backend/schema/enums/enums.dart';
 
 void main() {
   group('hasResolvedLoadingRouteState', () {
-    test('waits for acquaintance before routing native speakers', () {
+    test('resolves once role is known for native speakers', () {
       expect(
         hasResolvedLoadingRouteState(
           role: UserRole.native_speaker,
           acquaintance: null,
           isProfileComplete: null,
         ),
-        isFalse,
+        isTrue,
       );
 
       expect(
@@ -24,14 +24,14 @@ void main() {
       );
     });
 
-    test('waits for isProfileComplete only on resumed student onboarding', () {
+    test('resolves once role is known for student profiles', () {
       expect(
         hasResolvedLoadingRouteState(
           role: UserRole.student,
           acquaintance: null,
           isProfileComplete: null,
         ),
-        isFalse,
+        isTrue,
       );
 
       expect(
@@ -49,7 +49,7 @@ void main() {
           acquaintance: true,
           isProfileComplete: null,
         ),
-        isFalse,
+        isTrue,
       );
 
       expect(
@@ -70,6 +70,7 @@ void main() {
         role: UserRole.native_speaker,
         acquaintance: false,
         isProfileComplete: false,
+        hasInferredStudentProfileCompletion: false,
       );
 
       expect(
@@ -83,6 +84,7 @@ void main() {
         role: UserRole.native_speaker,
         acquaintance: true,
         isProfileComplete: true,
+        hasInferredStudentProfileCompletion: false,
       );
 
       expect(
@@ -97,6 +99,7 @@ void main() {
         role: UserRole.student,
         acquaintance: false,
         isProfileComplete: false,
+        hasInferredStudentProfileCompletion: false,
       );
 
       expect(
@@ -110,6 +113,7 @@ void main() {
         role: UserRole.student,
         acquaintance: true,
         isProfileComplete: false,
+        hasInferredStudentProfileCompletion: false,
       );
 
       expect(
@@ -123,6 +127,7 @@ void main() {
         role: UserRole.student,
         acquaintance: true,
         isProfileComplete: true,
+        hasInferredStudentProfileCompletion: false,
       );
 
       expect(
@@ -136,9 +141,54 @@ void main() {
         role: null,
         acquaintance: false,
         isProfileComplete: false,
+        hasInferredStudentProfileCompletion: false,
       );
 
       expect(destination, isNull);
+    });
+
+    test('routes legacy student without acquaintance flag to onboarding start',
+        () {
+      final destination = resolveLoadingRouteDestination(
+        role: UserRole.student,
+        acquaintance: null,
+        isProfileComplete: null,
+        hasInferredStudentProfileCompletion: false,
+      );
+
+      expect(
+        destination,
+        LoadingRouteDestination.acquaintanceStudentStart,
+      );
+    });
+
+    test('routes legacy completed student without profile flag to dashboard',
+        () {
+      final destination = resolveLoadingRouteDestination(
+        role: UserRole.student,
+        acquaintance: true,
+        isProfileComplete: null,
+        hasInferredStudentProfileCompletion: true,
+      );
+
+      expect(
+        destination,
+        LoadingRouteDestination.studentsDashboard,
+      );
+    });
+
+    test('routes legacy unfinished student without profile flag to resume', () {
+      final destination = resolveLoadingRouteDestination(
+        role: UserRole.student,
+        acquaintance: true,
+        isProfileComplete: null,
+        hasInferredStudentProfileCompletion: false,
+      );
+
+      expect(
+        destination,
+        LoadingRouteDestination.acquaintanceStudentResume,
+      );
     });
   });
 }
