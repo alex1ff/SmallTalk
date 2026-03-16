@@ -2,6 +2,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import 'package:flutter/foundation.dart';
 
 enum SocialAuthEntryDestination {
   loading,
@@ -51,32 +52,37 @@ SocialAuthEntryDecision resolveSocialAuthEntryDecision({
   );
 }
 
-Future<UsersRecord?> refreshCurrentUserDocumentForAuthEntry() async {
-  final userRef = currentUserReference;
-  if (userRef == null) {
-    return null;
+void _debugSocialAuthLog(String message) {
+  if (!kDebugMode) {
+    return;
   }
+  debugPrint('🔐 SocialAuthEntry: $message');
+}
 
-  final snapshot = await userRef.get();
-  if (!snapshot.exists || snapshot.data() == null) {
-    return null;
-  }
-
-  final userDocument = UsersRecord.fromSnapshot(snapshot);
-  currentUserDocument = userDocument;
-  return userDocument;
+Future<UsersRecord?> refreshCurrentUserDocumentForAuthEntry({
+  String? authUserUid,
+}) async {
+  return waitForResolvedCurrentUserDocument(
+    preferredUid: authUserUid,
+    refreshFromBackend: true,
+    onDebugLog: _debugSocialAuthLog,
+  );
 }
 
 Future<SocialAuthEntryDecision?> resolveAndPersistSocialAuthEntry({
   required bool nativeSpeakerIntent,
+  String? authUserUid,
 }) async {
-  final userRef = currentUserReference;
+  final userRef = resolveCurrentUserReference(preferredUid: authUserUid);
   if (userRef == null) {
+    _debugSocialAuthLog('cannot resolve userRef after social auth');
     return null;
   }
 
-  final currentUser = await refreshCurrentUserDocumentForAuthEntry();
+  final currentUser =
+      await refreshCurrentUserDocumentForAuthEntry(authUserUid: authUserUid);
   if (currentUser == null) {
+    _debugSocialAuthLog('user doc unavailable after social auth');
     return null;
   }
 
@@ -84,6 +90,13 @@ Future<SocialAuthEntryDecision?> resolveAndPersistSocialAuthEntry({
     hasAssignedRole: currentUser.hasRole(),
     nativeSpeakerIntent: nativeSpeakerIntent,
     hasStudentBalance: currentUser.hasBalanceST(),
+  );
+  _debugSocialAuthLog(
+    'uid=${userRef.id} decision=${decision.destination.name} '
+    'rawRole=${currentUser.snapshotData['role']} '
+    'role=${currentUser.role?.name ?? 'null'} '
+    'assignRole=${decision.roleToAssign?.name ?? 'null'} '
+    'grantBonus=${decision.grantStudentBonus}',
   );
 
   if (!decision.shouldAssignRole) {
@@ -125,6 +138,6 @@ Future<SocialAuthEntryDecision?> resolveAndPersistSocialAuthEntry({
         );
   }
 
-  await refreshCurrentUserDocumentForAuthEntry();
+  await refreshCurrentUserDocumentForAuthEntry(authUserUid: authUserUid);
   return decision;
 }

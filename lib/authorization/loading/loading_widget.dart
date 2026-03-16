@@ -8,8 +8,10 @@ import '/index.dart';
 import '/services/voip_service.dart';
 import 'loading_route_logic.dart';
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/foundation.dart';
 import 'loading_model.dart';
 export 'loading_model.dart';
 
@@ -40,29 +42,11 @@ class _LoadingWidgetState extends State<LoadingWidget> {
     }
   }
 
-  bool _hasResolvedUserRoutingState(UsersRecord? user) =>
-      hasResolvedLoadingRouteState(
-        role: user?.role,
-        acquaintance:
-            user?.hasAcquaintance() == true ? user?.acquaintance : null,
-        isProfileComplete: user?.hasIsProfileComplete() == true
-            ? user?.isProfileComplete
-            : null,
-      );
-
-  bool _shouldRefreshRouteFieldsFromBackend(UsersRecord? user) {
-    switch (user?.role) {
-      case UserRole.native_speaker:
-        return user?.hasAcquaintance() != true;
-      case UserRole.student:
-        if (user?.hasAcquaintance() != true) {
-          return true;
-        }
-        return user?.acquaintance == true &&
-            user?.hasIsProfileComplete() != true;
-      default:
-        return true;
+  void _debugLoadingLog(String message) {
+    if (!kDebugMode) {
+      return;
     }
+    debugPrint('⏳ LoadingWidget: $message');
   }
 
   bool _hasInferredStudentProfileCompletion(UsersRecord? user) {
@@ -80,38 +64,23 @@ class _LoadingWidgetState extends State<LoadingWidget> {
   }
 
   Future<UsersRecord?> _resolveUserDocumentForRouting() async {
-    if (!loggedIn || currentUserReference == null) {
+    final authUid = resolveAuthenticatedUserId();
+    if (authUid == null) {
+      _debugLoadingLog('auth uid unavailable during route resolution');
       return null;
     }
-    if (_hasResolvedUserRoutingState(currentUserDocument) &&
-        !_shouldRefreshRouteFieldsFromBackend(currentUserDocument)) {
-      return currentUserDocument;
-    }
-
-    final deadline = DateTime.now().add(const Duration(seconds: 5));
-    while (DateTime.now().isBefore(deadline)) {
-      if (_hasResolvedUserRoutingState(currentUserDocument) &&
-          !_shouldRefreshRouteFieldsFromBackend(currentUserDocument)) {
-        return currentUserDocument;
-      }
-
-      try {
-        final snapshot = await currentUserReference!.get();
-        if (snapshot.exists && snapshot.data() != null) {
-          currentUserDocument = UsersRecord.fromSnapshot(snapshot);
-          if (_hasResolvedUserRoutingState(currentUserDocument) &&
-              !_shouldRefreshRouteFieldsFromBackend(currentUserDocument)) {
-            return currentUserDocument;
-          }
-        }
-      } catch (_) {}
-
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-    }
-
-    return _hasResolvedUserRoutingState(currentUserDocument)
-        ? currentUserDocument
-        : null;
+    _debugLoadingLog(
+      'starting route resolution '
+      'uid=$authUid '
+      'firebase=${FirebaseAuth.instance.currentUser?.uid ?? 'null'} '
+      'current=${currentUser?.uid ?? 'null'} '
+      'cachedDoc=${hasCurrentUserDocumentForUid(authUid)}',
+    );
+    return waitForResolvedCurrentUserDocument(
+      preferredUid: authUid,
+      refreshFromBackend: true,
+      onDebugLog: _debugLoadingLog,
+    );
   }
 
   void _navigateToResolvedDestination(LoadingRouteDestination destination) {
@@ -194,6 +163,13 @@ class _LoadingWidgetState extends State<LoadingWidget> {
             : null,
         hasInferredStudentProfileCompletion:
             _hasInferredStudentProfileCompletion(userDocument),
+      );
+      _debugLoadingLog(
+        'resolved destination=${destination?.name ?? 'null'} '
+        'rawRole=${userDocument?.snapshotData['role']} '
+        'role=${userDocument?.role?.name ?? 'null'} '
+        'acquaintance=${userDocument?.hasAcquaintance() == true ? userDocument?.acquaintance : 'null'} '
+        'isProfileComplete=${userDocument?.hasIsProfileComplete() == true ? userDocument?.isProfileComplete : 'null'}',
       );
 
       if (destination == null) {
