@@ -47,6 +47,7 @@ class _LoginWidgetState extends State<LoginWidget> {
 
       final decision = await resolveAndPersistSocialAuthEntry(
         nativeSpeakerIntent: _model.switchValue ?? false,
+        authUserUid: user.uid,
       );
       if (!mounted) {
         return;

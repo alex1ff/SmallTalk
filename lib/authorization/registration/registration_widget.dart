@@ -166,6 +166,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
 
       final decision = await resolveAndPersistSocialAuthEntry(
         nativeSpeakerIntent: _model.switchValue ?? false,
+        authUserUid: user.uid,
       );
       if (!mounted) {
         return;
