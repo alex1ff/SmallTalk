@@ -121,6 +121,9 @@ class _MyAppState extends State<MyApp> {
     _router = createRouter(_appStateNotifier);
     userStream = smallTalkFirebaseUserStream();
     _userStreamSub = userStream.listen((user) {
+      if (!user.loggedIn) {
+        FFAppState().clearPendingSocialAuthContext();
+      }
       _appStateNotifier.update(user);
       _appStateNotifier.stopShowingSplashImage();
     });

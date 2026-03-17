@@ -47,4 +47,39 @@ void main() {
       );
     });
   });
+
+  group('resolveAuthenticatedUserIdResolutionFromSources', () {
+    test('tracks preferred uid as source', () {
+      final resolution = resolveAuthenticatedUserIdResolutionFromSources(
+        preferredUid: 'social-user',
+        firebaseAuthUid: 'firebase-user',
+        currentUserUid: 'stream-user',
+      );
+
+      expect(resolution.uid, 'social-user');
+      expect(resolution.source, AuthenticatedUserIdSource.preferred);
+    });
+
+    test('tracks firebase auth uid as source when globals lag', () {
+      final resolution = resolveAuthenticatedUserIdResolutionFromSources(
+        preferredUid: null,
+        firebaseAuthUid: 'firebase-user',
+        currentUserUid: null,
+      );
+
+      expect(resolution.uid, 'firebase-user');
+      expect(resolution.source, AuthenticatedUserIdSource.firebaseAuth);
+    });
+
+    test('marks resolution unavailable when no uid source exists', () {
+      final resolution = resolveAuthenticatedUserIdResolutionFromSources(
+        preferredUid: null,
+        firebaseAuthUid: null,
+        currentUserUid: null,
+      );
+
+      expect(resolution.uid, isNull);
+      expect(resolution.source, AuthenticatedUserIdSource.unavailable);
+    });
+  });
 }

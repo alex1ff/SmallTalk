@@ -151,6 +151,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
 
   Future<void> _handleSocialAuth({
     required Future<BaseAuthUser?> Function() signInAction,
+    required String providerId,
   }) async {
     if (_isSubmittingSocialAuth) {
       return;
@@ -158,26 +159,55 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
 
     _isSubmittingSocialAuth = true;
     try {
+      beginPendingSocialAuthContext(
+        providerId: providerId,
+        sourceScreen: RegistrationWidget.routeName,
+        nativeSpeakerIntent: _model.switchValue ?? false,
+      );
       GoRouter.of(context).prepareAuthEvent();
       final user = await signInAction();
       if (user == null || !mounted) {
+        clearPendingSocialAuthContext();
         return;
       }
 
+      final resolvedUserUid = resolveAuthenticatedUserId(
+        preferredUid: user.uid,
+      );
+      if (resolvedUserUid == null) {
+        clearPendingSocialAuthContext();
+        await actions.showTopNotification(
+          context,
+          'Не удалось определить аккаунт',
+          '',
+          true,
+        );
+        return;
+      }
+
+      attachPendingSocialAuthUid(resolvedUserUid);
       final decision = await resolveAndPersistSocialAuthEntry(
         nativeSpeakerIntent: _model.switchValue ?? false,
-        authUserUid: user.uid,
+        authUserUid: resolvedUserUid,
       );
       if (!mounted) {
         return;
       }
       if (decision == null) {
+        clearPendingSocialAuthContext();
         await actions.showTopNotification(
           context,
           'Не удалось загрузить профиль',
           '',
           true,
         );
+        return;
+      }
+
+      await waitForAuthenticatedAppStateSync(
+        authUserUid: resolvedUserUid,
+      );
+      if (!mounted) {
         return;
       }
 
@@ -205,6 +235,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
           return;
       }
     } catch (_) {
+      clearPendingSocialAuthContext();
       await actions.showTopNotification(
         context,
         'Не удалось завершить регистрацию',
@@ -679,6 +710,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                   await _handleSocialAuth(
                                     signInAction: () =>
                                         authManager.signInWithApple(context),
+                                    providerId: 'apple.com',
                                   );
                                 },
                                 text: FFLocalizations.of(context).getText(
@@ -767,6 +799,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                   await _handleSocialAuth(
                                     signInAction: () =>
                                         authManager.signInWithGoogle(context),
+                                    providerId: 'google.com',
                                   );
                                 },
                                 text: FFLocalizations.of(context).getText(
