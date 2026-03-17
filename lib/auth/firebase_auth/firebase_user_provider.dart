@@ -60,12 +60,13 @@ class SmallTalkFirebaseUser extends BaseAuthUser {
 
 Stream<BaseAuthUser> smallTalkFirebaseUserStream() => FirebaseAuth.instance
         .authStateChanges()
-        .debounce((user) => user == null && !loggedIn
-            ? TimerStream(true, const Duration(seconds: 1))
-            : Stream.value(user))
+        .startWith(FirebaseAuth.instance.currentUser)
         .map<BaseAuthUser>(
       (user) {
         currentUser = SmallTalkFirebaseUser(user);
         return currentUser!;
       },
+    ).distinct(
+      (previous, next) =>
+          previous.uid == next.uid && previous.loggedIn == next.loggedIn,
     );
