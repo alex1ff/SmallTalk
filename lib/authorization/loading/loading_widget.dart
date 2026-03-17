@@ -1,6 +1,9 @@
 import '/auth/firebase_auth/auth_util.dart';
+import '/authorization/components/native_speaker_entry_toggle.dart';
+import '/authorization/shared/social_auth_entry_logic.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/custom_code/actions/index.dart' as actions;
@@ -31,6 +34,10 @@ class _LoadingWidgetState extends State<LoadingWidget> {
   final scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isResolvingRoute = false;
   String? _errorMessage;
+  bool _showRoleRecoveryChoice = false;
+  bool _recoverySwitchValue = false;
+  AuthenticatedUserProfileResolution? _latestProfileResolution;
+  UsersRecord? _latestResolvedUserDocument;
 
   bool _hasPendingVoipNavigationSafe() {
     try {
@@ -63,11 +70,34 @@ class _LoadingWidgetState extends State<LoadingWidget> {
         user.hasLearningLanguage();
   }
 
-  Future<UsersRecord?> _resolveUserDocumentForRouting() async {
+  LoadingRouteDestination? _resolveDestinationForUser(
+      UsersRecord? userDocument) {
+    return resolveLoadingRouteDestination(
+      role: userDocument?.role,
+      acquaintance: userDocument?.hasAcquaintance() == true
+          ? userDocument?.acquaintance
+          : null,
+      isProfileComplete: userDocument?.hasIsProfileComplete() == true
+          ? userDocument?.isProfileComplete
+          : null,
+      hasInferredStudentProfileCompletion:
+          _hasInferredStudentProfileCompletion(userDocument),
+    );
+  }
+
+  Future<AuthenticatedUserProfileResolution>
+      _resolveUserProfileForRouting() async {
     final authUid = resolveAuthenticatedUserId();
     if (authUid == null) {
       _debugLoadingLog('auth uid unavailable during route resolution');
-      return null;
+      return const AuthenticatedUserProfileResolution(
+        status: AuthenticatedUserProfileResolutionStatus.missingAuthUid,
+        uidResolution: AuthenticatedUserIdResolution(
+          uid: null,
+          source: AuthenticatedUserIdSource.unavailable,
+        ),
+        canonicalUserRef: null,
+      );
     }
     _debugLoadingLog(
       'starting route resolution '
@@ -76,7 +106,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
       'current=${currentUser?.uid ?? 'null'} '
       'cachedDoc=${hasCurrentUserDocumentForUid(authUid)}',
     );
-    return waitForResolvedCurrentUserDocument(
+    return resolveAuthenticatedUserProfile(
       preferredUid: authUid,
       refreshFromBackend: true,
       onDebugLog: _debugLoadingLog,
@@ -132,6 +162,99 @@ class _LoadingWidgetState extends State<LoadingWidget> {
     }
   }
 
+  Future<void> _applyRoleRecoveryAndNavigate({
+    required AuthenticatedUserProfileResolution resolution,
+    required UserRole role,
+    required bool grantStudentBonus,
+    required UserRoleRecoverySource recoverySource,
+  }) async {
+    final userRef = resolution.canonicalUserRef;
+    if (userRef == null) {
+      safeSetState(() {
+        _errorMessage = 'Не удалось загрузить профиль. Попробуйте ещё раз.';
+        _showRoleRecoveryChoice = false;
+      });
+      return;
+    }
+
+    final baseUser = resolution.userDocument ??
+        await ensureCanonicalCurrentUserDocument(
+          preferredUid: resolution.uid,
+          canonicalUserRef: userRef,
+          onDebugLog: _debugLoadingLog,
+        );
+    if (!mounted || baseUser == null) {
+      safeSetState(() {
+        _errorMessage = 'Не удалось загрузить профиль. Попробуйте ещё раз.';
+        _showRoleRecoveryChoice = false;
+      });
+      return;
+    }
+
+    final updatedUser = await persistCanonicalUserRole(
+      userRef: userRef,
+      role: role,
+      recoverySource: recoverySource,
+      authUserUid: resolution.uid ?? userRef.id,
+      existingUser: baseUser,
+      grantStudentBonus: grantStudentBonus,
+      onDebugLog: _debugLoadingLog,
+    );
+    if (!mounted || updatedUser == null) {
+      safeSetState(() {
+        _errorMessage = 'Не удалось сохранить профиль. Попробуйте ещё раз.';
+        _showRoleRecoveryChoice = false;
+      });
+      return;
+    }
+
+    final destination = _resolveDestinationForUser(updatedUser);
+    _debugLoadingLog(
+      'role recovery completed '
+      'uid=${userRef.id} '
+      'role=${updatedUser.role?.name ?? role.name} '
+      'recoverySource=${recoverySource.name} '
+      'destination=${destination?.name ?? 'null'}',
+    );
+
+    if (destination == null) {
+      safeSetState(() {
+        _errorMessage = 'Не удалось загрузить профиль. Попробуйте ещё раз.';
+        _showRoleRecoveryChoice = false;
+      });
+      return;
+    }
+
+    safeSetState(() {
+      _latestResolvedUserDocument = updatedUser;
+      _errorMessage = null;
+      _showRoleRecoveryChoice = false;
+    });
+    _navigateToResolvedDestination(destination);
+  }
+
+  Future<void> _continueManualRoleRecovery() async {
+    if (_isResolvingRoute) {
+      return;
+    }
+
+    final resolution =
+        _latestProfileResolution ?? await _resolveUserProfileForRouting();
+    if (!mounted) {
+      return;
+    }
+
+    final selectedRole =
+        _recoverySwitchValue ? UserRole.native_speaker : UserRole.student;
+    await _applyRoleRecoveryAndNavigate(
+      resolution: resolution,
+      role: selectedRole,
+      grantStudentBonus: selectedRole == UserRole.student &&
+          !(_latestResolvedUserDocument?.hasBalanceST() ?? false),
+      recoverySource: UserRoleRecoverySource.manualRecovery,
+    );
+  }
+
   Future<void> _resolveAndNavigate() async {
     if (_isResolvingRoute) {
       return;
@@ -148,38 +271,75 @@ class _LoadingWidgetState extends State<LoadingWidget> {
         return;
       }
 
-      final userDocument = await _resolveUserDocumentForRouting();
+      final resolution = await _resolveUserProfileForRouting();
+      final userDocument = resolution.userDocument;
+      _latestProfileResolution = resolution;
+      _latestResolvedUserDocument = userDocument;
       if (!mounted) {
         return;
       }
 
-      final destination = resolveLoadingRouteDestination(
-        role: userDocument?.role,
-        acquaintance: userDocument?.hasAcquaintance() == true
-            ? userDocument?.acquaintance
-            : null,
-        isProfileComplete: userDocument?.hasIsProfileComplete() == true
-            ? userDocument?.isProfileComplete
-            : null,
-        hasInferredStudentProfileCompletion:
-            _hasInferredStudentProfileCompletion(userDocument),
-      );
+      final destination = _resolveDestinationForUser(userDocument);
       _debugLoadingLog(
         'resolved destination=${destination?.name ?? 'null'} '
+        'resolutionStatus=${resolution.status.name} '
+        'uidSource=${resolution.uidResolution.source.name} '
+        'legacyMatchCount=${resolution.legacyMatchCount} '
         'rawRole=${userDocument?.snapshotData['role']} '
         'role=${userDocument?.role?.name ?? 'null'} '
         'acquaintance=${userDocument?.hasAcquaintance() == true ? userDocument?.acquaintance : 'null'} '
         'isProfileComplete=${userDocument?.hasIsProfileComplete() == true ? userDocument?.isProfileComplete : 'null'}',
       );
 
-      if (destination == null) {
+      if (destination != null) {
         safeSetState(() {
-          _errorMessage = 'Не удалось загрузить профиль. Попробуйте ещё раз.';
+          _errorMessage = null;
+          _showRoleRecoveryChoice = false;
         });
+        _navigateToResolvedDestination(destination);
         return;
       }
 
-      _navigateToResolvedDestination(destination);
+      final pendingContext = getValidPendingSocialAuthContext(
+        currentAuthUid: resolution.uid,
+      );
+      final recoveryDecision = resolveLoadingRecoveryDecision(
+        resolution: resolution,
+        userDocument: userDocument,
+        pendingContext: pendingContext,
+      );
+      _debugLoadingLog(
+        'recovery action=${recoveryDecision.action.name} '
+        'pendingContext=${pendingContext != null} '
+        'recoverySource=${recoveryDecision.recoverySource?.name ?? 'null'} '
+        'roleToAssign=${recoveryDecision.roleToAssign?.name ?? 'null'} '
+        'grantStudentBonus=${recoveryDecision.grantStudentBonus}',
+      );
+
+      switch (recoveryDecision.action) {
+        case LoadingRecoveryAction.assignRole:
+          await _applyRoleRecoveryAndNavigate(
+            resolution: resolution,
+            role: recoveryDecision.roleToAssign!,
+            grantStudentBonus: recoveryDecision.grantStudentBonus,
+            recoverySource: recoveryDecision.recoverySource!,
+          );
+          return;
+        case LoadingRecoveryAction.showManualRoleChoice:
+          safeSetState(() {
+            _showRoleRecoveryChoice = true;
+            _recoverySwitchValue = recoveryDecision.suggestedNativeSpeakerValue;
+            _errorMessage = null;
+          });
+          return;
+        case LoadingRecoveryAction.fatalError:
+          safeSetState(() {
+            _showRoleRecoveryChoice = false;
+            _errorMessage = recoveryDecision.errorMessage ??
+                'Не удалось загрузить профиль. Попробуйте ещё раз.';
+          });
+          return;
+      }
     } finally {
       _isResolvingRoute = false;
     }
@@ -253,6 +413,39 @@ class _LoadingWidgetState extends State<LoadingWidget> {
                           letterSpacing: 0.0,
                         ),
                   ),
+                ),
+              ],
+              if (_showRoleRecoveryChoice) ...[
+                const SizedBox(height: 20.0),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  child: Text(
+                    'Мы нашли аккаунт, но не смогли определить тип профиля. Выберите, как продолжить вход.',
+                    textAlign: TextAlign.center,
+                    style: FlutterFlowTheme.of(context).bodyMedium.override(
+                          fontFamily: 'sf pro display',
+                          color: FlutterFlowTheme.of(context).secondaryText,
+                          letterSpacing: 0.0,
+                        ),
+                  ),
+                ),
+                const SizedBox(height: 12.0),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  child: NativeSpeakerEntryToggle(
+                    value: _recoverySwitchValue,
+                    onChanged: (newValue) {
+                      safeSetState(() => _recoverySwitchValue = newValue);
+                    },
+                  ),
+                ),
+                ButtonWidget(
+                  text: 'Продолжить',
+                  loadingText: 'Сохраняем...',
+                  busyStyle: ButtonBusyStyle.spinner,
+                  keyboardAwarePadding: false,
+                  padding: const EdgeInsets.fromLTRB(20.0, 12.0, 20.0, 0.0),
+                  action: _continueManualRoleRecovery,
                 ),
               ],
             ],

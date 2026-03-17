@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '/authorization/shared/pending_social_auth_context.dart';
 import '/backend/backend.dart';
+import '/backend/schema/enums/enums.dart';
 import '/backend/schema/structs/index.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +19,8 @@ class FFAppState extends ChangeNotifier {
   static void reset() {
     _instance = FFAppState._internal();
   }
+
+  static const _pendingSocialAuthContextKey = 'ff_pendingSocialAuthContext';
 
   Future initializePersistedState() async {
     prefs = await SharedPreferences.getInstance();
@@ -39,6 +43,14 @@ class FFAppState extends ChangeNotifier {
     _safeInit(() {
       _isNativeSpeaker =
           prefs.getBool('ff_isNativeSpeaker') ?? _isNativeSpeaker;
+    });
+    _safeInit(() {
+      final serializedContext = prefs.getString(_pendingSocialAuthContextKey);
+      if (serializedContext == null || serializedContext.isEmpty) {
+        return;
+      }
+      _pendingSocialAuthContext =
+          PendingSocialAuthContext.maybeFromMap(jsonDecode(serializedContext));
     });
   }
 
@@ -150,6 +162,66 @@ class FFAppState extends ChangeNotifier {
   set isNativeSpeaker(bool value) {
     _isNativeSpeaker = value;
     prefs.setBool('ff_isNativeSpeaker', value);
+  }
+
+  PendingSocialAuthContext? _pendingSocialAuthContext;
+  PendingSocialAuthContext? get pendingSocialAuthContext =>
+      _pendingSocialAuthContext;
+  set pendingSocialAuthContext(PendingSocialAuthContext? value) {
+    _pendingSocialAuthContext = value;
+    if (value == null) {
+      prefs.remove(_pendingSocialAuthContextKey);
+      return;
+    }
+    prefs.setString(
+      _pendingSocialAuthContextKey,
+      jsonEncode(value.toSerializableMap()),
+    );
+  }
+
+  void setPendingSocialAuthContext({
+    required String providerId,
+    required String sourceScreen,
+    required UserRole roleIntent,
+    String? authUid,
+  }) {
+    pendingSocialAuthContext = PendingSocialAuthContext(
+      providerId: providerId,
+      sourceScreen: sourceScreen,
+      roleIntent: roleIntent,
+      createdAt: DateTime.now(),
+      authUid: authUid,
+    );
+  }
+
+  void attachPendingSocialAuthUid(String authUid) {
+    final currentContext = _pendingSocialAuthContext;
+    if (currentContext == null) {
+      return;
+    }
+    pendingSocialAuthContext = currentContext.copyWith(authUid: authUid);
+  }
+
+  PendingSocialAuthContext? getValidPendingSocialAuthContext({
+    String? currentAuthUid,
+    DateTime? now,
+  }) {
+    final currentContext = _pendingSocialAuthContext;
+    if (currentContext == null) {
+      return null;
+    }
+    if (!currentContext.isValidFor(
+      currentAuthUid: currentAuthUid,
+      now: now,
+    )) {
+      clearPendingSocialAuthContext();
+      return null;
+    }
+    return currentContext;
+  }
+
+  void clearPendingSocialAuthContext() {
+    pendingSocialAuthContext = null;
   }
 }
 
