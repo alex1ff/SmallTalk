@@ -61,14 +61,6 @@ void main() async {
   await Future.wait([
     FFLocalizations.initialize(),
     appState.initializePersistedState(),
-    () async {
-      try {
-        await VoIPService().initialize();
-        debugPrint('✅ VoIP Service initialized successfully');
-      } catch (e) {
-        debugPrint('❌ VoIP Service initialization failed: $e');
-      }
-    }(),
   ]);
 
   runApp(ChangeNotifierProvider(
@@ -113,6 +105,24 @@ class _MyAppState extends State<MyApp> {
   final authUserSub = authenticatedUserStream.listen((_) {});
   StreamSubscription? _jwtTokenSub;
 
+  Future<void> _initializeVoipService() async {
+    try {
+      await VoIPService().initialize();
+      debugPrint('✅ VoIP Service initialized successfully');
+    } catch (e) {
+      debugPrint('❌ VoIP Service initialization failed: $e');
+    }
+  }
+
+  Future<void> _deinitializeVoipService() async {
+    try {
+      await VoIPService().deinitialize();
+      debugPrint('✅ VoIP Service deinitialized successfully');
+    } catch (e) {
+      debugPrint('❌ VoIP Service deinitialization failed: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -121,8 +131,14 @@ class _MyAppState extends State<MyApp> {
     _router = createRouter(_appStateNotifier);
     userStream = smallTalkFirebaseUserStream();
     _userStreamSub = userStream.listen((user) {
+      final wasLoggedIn = _appStateNotifier.loggedIn;
       if (!user.loggedIn) {
         FFAppState().clearPendingSocialAuthContext();
+        if (wasLoggedIn) {
+          unawaited(_deinitializeVoipService());
+        }
+      } else if (!wasLoggedIn) {
+        unawaited(_initializeVoipService());
       }
       _appStateNotifier.update(user);
       _appStateNotifier.stopShowingSplashImage();
