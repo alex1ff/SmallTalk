@@ -4,11 +4,13 @@ import '/components/empty/empty_widget.dart';
 import '/components/word_pos_chip/word_pos_chip_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/index.dart';
 import '/students_pages/components/new_word/new_word_widget.dart';
 import '/students_pages/components/word_card/word_card_widget.dart';
+import '/students_pages/flashcard/flashcard_review_repository.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:percent_indicator/percent_indicator.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
 import 'words_model.dart';
 export 'words_model.dart';
@@ -35,6 +37,18 @@ class _WordsWidgetState extends State<WordsWidget> {
     _model.wordsStream = queryUserWordsRecord(
       parent: currentUserReference,
     );
+    _model.wordReviewsStream = queryWordReviewsRecord(
+      parent: currentUserReference,
+    );
+
+    final userRef = currentUserReference;
+    if (userRef != null) {
+      unawaited(
+        FlashcardReviewRepository.ensureWordReviewsBackfilled(
+          userRef: userRef,
+        ),
+      );
+    }
   }
 
   @override
@@ -42,6 +56,40 @@ class _WordsWidgetState extends State<WordsWidget> {
     _model.dispose();
 
     super.dispose();
+  }
+
+  Future<void> _openNewWordSheet() async {
+    await showModalBottomSheet(
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      enableDrag: false,
+      context: context,
+      builder: (context) {
+        return WebViewAware(
+          child: GestureDetector(
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
+            child: Padding(
+              padding: MediaQuery.viewInsetsOf(context),
+              child: const NewWordWidget(
+                word: 'hello',
+                langCode: 'eng',
+              ),
+            ),
+          ),
+        );
+      },
+    ).then((value) => safeSetState(() {}));
+  }
+
+  String _dueCountLabel(int dueCount) {
+    if (dueCount > 99) {
+      return '99+';
+    }
+    return dueCount.toString();
   }
 
   @override
@@ -60,150 +108,182 @@ class _WordsWidgetState extends State<WordsWidget> {
             mainAxisSize: MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20.0),
-                  child: Container(
-                    width: double.infinity,
-                    height: 172.0,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Color(0xFFA765FC),
-                          FlutterFlowTheme.of(context).secondary
-                        ],
-                        stops: [0.0, 1.0],
-                        begin: AlignmentDirectional(-0.07, 1.0),
-                        end: AlignmentDirectional(0.07, -1.0),
-                      ),
-                      borderRadius: BorderRadius.circular(20.0),
-                    ),
-                    child: Stack(
-                      children: [
-                        Align(
-                          alignment: AlignmentDirectional(1.0, 0.0),
-                          child: Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                128.0, 0.0, 0.0, 0.0),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8.0),
-                              child: Image.asset(
-                                'assets/images/Dot_pattern.png',
-                                width: 300.0,
-                                height: 200.0,
-                                fit: BoxFit.cover,
+              StreamBuilder<List<WordReviewsRecord>>(
+                stream: _model.wordReviewsStream,
+                builder: (context, reviewSnapshot) {
+                  final reviews = reviewSnapshot.data ?? const <WordReviewsRecord>[];
+                  final now = DateTime.now();
+                  final dueCount = reviews
+                      .where(
+                        (review) =>
+                            review.dueAt != null && !review.dueAt!.isAfter(now),
+                      )
+                      .length;
+
+                  return Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20.0),
+                        onTap: () async {
+                          context.pushNamed(FlashcardWidget.routeName);
+                        },
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20.0),
+                          child: Container(
+                            width: double.infinity,
+                            height: 172.0,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  const Color(0xFFA765FC),
+                                  FlutterFlowTheme.of(context).secondary,
+                                ],
+                                stops: const [0.0, 1.0],
+                                begin: const AlignmentDirectional(-0.07, 1.0),
+                                end: const AlignmentDirectional(0.07, -1.0),
                               ),
+                              borderRadius: BorderRadius.circular(20.0),
                             ),
-                          ),
-                        ),
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              16.0, 16.0, 16.0, 16.0),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.max,
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Column(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  InkWell(
-                                    splashColor: Colors.transparent,
-                                    focusColor: Colors.transparent,
-                                    hoverColor: Colors.transparent,
-                                    highlightColor: Colors.transparent,
-                                    onTap: () async {
-                                      await showModalBottomSheet(
-                                        useRootNavigator: true,
-                                        isScrollControlled: true,
-                                        backgroundColor: Colors.transparent,
-                                        enableDrag: false,
-                                        context: context,
-                                        builder: (context) {
-                                          return WebViewAware(
-                                            child: GestureDetector(
-                                              onTap: () {
-                                                FocusScope.of(context)
-                                                    .unfocus();
-                                                FocusManager
-                                                    .instance.primaryFocus
-                                                    ?.unfocus();
-                                              },
-                                              child: Padding(
-                                                padding:
-                                                    MediaQuery.viewInsetsOf(
-                                                        context),
-                                                child: NewWordWidget(
-                                                  word: 'hello',
-                                                  langCode: 'eng',
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ).then((value) => safeSetState(() {}));
-                                    },
-                                    child: CircularPercentIndicator(
-                                      percent: 0.75,
-                                      radius: 30.0,
-                                      lineWidth: 3.0,
-                                      animation: true,
-                                      animateFromLastPercent: true,
-                                      progressColor: Colors.white,
-                                      backgroundColor: Color(0x30FFFFFF),
-                                      center: Text(
-                                        FFLocalizations.of(context).getText(
-                                          'mh59o8kl' /* 75% */,
-                                        ),
-                                        style: FlutterFlowTheme.of(context)
-                                            .headlineSmall
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color: Colors.white,
-                                              fontSize: 17.0,
-                                              letterSpacing: 0.0,
-                                            ),
+                            child: Stack(
+                              children: [
+                                Align(
+                                  alignment: const AlignmentDirectional(1.0, 0.0),
+                                  child: Padding(
+                                    padding: const EdgeInsetsDirectional.fromSTEB(
+                                        128.0, 0.0, 0.0, 0.0),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8.0),
+                                      child: Image.asset(
+                                        'assets/images/Dot_pattern.png',
+                                        width: 300.0,
+                                        height: 200.0,
+                                        fit: BoxFit.cover,
                                       ),
                                     ),
                                   ),
-                                  Text(
-                                    FFLocalizations.of(context).getText(
-                                      'w44p5wo4' /* Flash‑cards */,
-                                    ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: Colors.white,
-                                          fontSize: 20.0,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.w600,
+                                ),
+                                Padding(
+                                  padding:
+                                      const EdgeInsetsDirectional.fromSTEB(16.0, 16.0, 16.0, 16.0),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            InkWell(
+                                              splashColor: Colors.transparent,
+                                              focusColor: Colors.transparent,
+                                              hoverColor: Colors.transparent,
+                                              highlightColor: Colors.transparent,
+                                              onTap: _openNewWordSheet,
+                                              child: Container(
+                                                width: 60.0,
+                                                height: 60.0,
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0x24FFFFFF),
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(
+                                                    color: const Color(0x4DFFFFFF),
+                                                    width: 2.0,
+                                                  ),
+                                                ),
+                                                child: const Icon(
+                                                  Icons.add_rounded,
+                                                  color: Colors.white,
+                                                  size: 28.0,
+                                                ),
+                                              ),
+                                            ),
+                                            const Spacer(),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 10.0,
+                                                vertical: 6.0,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0x24FFFFFF),
+                                                borderRadius: BorderRadius.circular(18.0),
+                                              ),
+                                              child: Text(
+                                                FFLocalizations.of(context).getVariableText(
+                                                  ruText:
+                                                      '${_dueCountLabel(dueCount)} к повторению',
+                                                  enText:
+                                                      '${_dueCountLabel(dueCount)} due now',
+                                                ),
+                                                style: FlutterFlowTheme.of(context)
+                                                    .bodyMedium
+                                                    .override(
+                                                      fontFamily: 'sf pro display',
+                                                      color: Colors.white,
+                                                      fontSize: 13.0,
+                                                      letterSpacing: 0.0,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 10.0),
+                                            Text(
+                                              FFLocalizations.of(context).getText(
+                                                'w44p5wo4' /* Flash‑cards */,
+                                              ),
+                                              style: FlutterFlowTheme.of(context)
+                                                  .bodyMedium
+                                                  .override(
+                                                    fontFamily: 'sf pro display',
+                                                    color: Colors.white,
+                                                    fontSize: 20.0,
+                                                    letterSpacing: 0.0,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                            ),
+                                            const SizedBox(height: 4.0),
+                                            Text(
+                                              FFLocalizations.of(context).getVariableText(
+                                                ruText: 'Откройте карточки и повторите слова по интервальному плану.',
+                                                enText:
+                                                    'Open flashcards and review words on their interval schedule.',
+                                              ),
+                                              style: FlutterFlowTheme.of(context)
+                                                  .bodyMedium
+                                                  .override(
+                                                    fontFamily: 'sf pro display',
+                                                    color: const Color(0xCCFFFFFF),
+                                                    fontSize: 13.0,
+                                                    letterSpacing: 0.0,
+                                                    fontWeight: FontWeight.normal,
+                                                  ),
+                                            ),
+                                          ],
                                         ),
-                                  ),
-                                ],
-                              ),
-                              Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    0.0, 0.0, 8.0, 0.0),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8.0),
-                                  child: Image.asset(
-                                    'assets/images/Cards-2.png',
-                                    height: 124.0,
-                                    fit: BoxFit.cover,
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsetsDirectional.fromSTEB(
+                                            12.0, 0.0, 8.0, 0.0),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8.0),
+                                          child: Image.asset(
+                                            'assets/images/Cards-2.png',
+                                            height: 124.0,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(30.0, 0.0, 30.0, 0.0),
