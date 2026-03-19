@@ -37,4 +37,5 @@ export '/students_pages/pay_web_wiew/pay_web_wiew_widget.dart'
 export '/shared_pages/black_list/black_list_widget.dart' show BlackListWidget;
 export '/teachers_pages/my_rew_n_s/my_rew_n_s_widget.dart' show MyRewNSWidget;
 export '/students_pages/favorite/favorite_widget.dart' show FavoriteWidget;
+export '/students_pages/flashcard/flashcard_widget.dart' show FlashcardWidget;
 export '/shared_pages/my_calls/my_calls_widget.dart' show MyCallsWidget;

@@ -3,6 +3,7 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/students_pages/components/woed/woed_widget.dart';
+import '/students_pages/flashcard/flashcard_review_repository.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:webviewx_plus/webviewx_plus.dart';
@@ -159,6 +160,9 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                         onPressed: () async {
                           unawaited(
                             () async {
+                              await FlashcardReviewRepository.deleteReviewForWord(
+                                widget.wordDoc!.reference,
+                              );
                               await widget.wordDoc!.reference.delete();
                             }(),
                           );

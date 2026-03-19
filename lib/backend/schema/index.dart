@@ -3,4 +3,5 @@ export 'package:flutter/material.dart' show Color, Colors;
 export '/flutter_flow/lat_lng.dart';
 
 export '/backend/schema/caption_logs_record.dart';
+export '/backend/schema/word_reviews_record.dart';
 export 'structs/index.dart';

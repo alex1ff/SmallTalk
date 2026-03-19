@@ -11,6 +11,7 @@ class WordsModel extends FlutterFlowModel<WordsWidget> {
 
   // Cached stream so it is not recreated on every build().
   Stream<List<UserWordsRecord>>? wordsStream;
+  Stream<List<WordReviewsRecord>>? wordReviewsStream;
 
   ///  State fields for stateful widgets in this page.
 

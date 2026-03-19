@@ -7,6 +7,7 @@ import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/students_pages/flashcard/flashcard_review_repository.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/material.dart';
@@ -462,6 +463,7 @@ class _WoedWidgetState extends State<WoedWidget> {
         return;
       }
 
+      await FlashcardReviewRepository.deleteReviewForWord(savedWordReference);
       await savedWordReference.delete();
       if (!mounted) {
         return;
@@ -485,9 +487,10 @@ class _WoedWidgetState extends State<WoedWidget> {
     }
 
     final userWordsRecordReference = UserWordsRecord.createDoc(userReference);
+    final addedAt = getCurrentTimestamp;
     await userWordsRecordReference.set({
       ...createUserWordsRecordData(
-        addedAt: getCurrentTimestamp,
+        addedAt: addedAt,
       ),
       ...mapToFirestore(
         {
@@ -496,6 +499,10 @@ class _WoedWidgetState extends State<WoedWidget> {
         },
       ),
     });
+    await FlashcardReviewRepository.ensureInitialReviewForWord(
+      wordRef: userWordsRecordReference,
+      addedAt: addedAt,
+    );
 
     if (!mounted) {
       return;

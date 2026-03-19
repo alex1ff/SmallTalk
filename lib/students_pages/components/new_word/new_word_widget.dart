@@ -5,6 +5,7 @@ import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/students_pages/flashcard/flashcard_review_repository.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
@@ -1261,14 +1262,22 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                             onTap: () async {
                                               unawaited(
                                                 () async {
-                                                  await containerUserWordsRecordList
-                                                      .where((e) =>
-                                                          e.entry.firstOrNull
-                                                              ?.text ==
-                                                          primaryEntryText)
-                                                      .toList()
-                                                      .firstOrNull!
-                                                      .reference
+                                                  final existingWord =
+                                                      containerUserWordsRecordList
+                                                          .where((e) =>
+                                                              e.entry.firstOrNull
+                                                                  ?.text ==
+                                                              primaryEntryText)
+                                                          .toList()
+                                                          .firstOrNull;
+                                                  if (existingWord == null) {
+                                                    return;
+                                                  }
+                                                  await FlashcardReviewRepository
+                                                      .deleteReviewForWord(
+                                                    existingWord.reference,
+                                                  );
+                                                  await existingWord.reference
                                                       .delete();
                                                 }(),
                                               );
@@ -1297,12 +1306,13 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                             onTap: () async {
                                               final sentencesToSave =
                                                   _sentencesToSave();
+                                              final addedAt = getCurrentTimestamp;
                                               var userWordsRecordReference =
                                                   UserWordsRecord.createDoc(
                                                       currentUserReference!);
                                               await userWordsRecordReference.set({
                                                 ...createUserWordsRecordData(
-                                                  addedAt: getCurrentTimestamp,
+                                                  addedAt: addedAt,
                                                 ),
                                                 ...mapToFirestore(
                                                   {
@@ -1318,10 +1328,15 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                   },
                                                 ),
                                               });
+                                              await FlashcardReviewRepository
+                                                  .ensureInitialReviewForWord(
+                                                wordRef: userWordsRecordReference,
+                                                addedAt: addedAt,
+                                              );
                                               _model.erweerw = UserWordsRecord
                                                   .getDocumentFromData({
                                                 ...createUserWordsRecordData(
-                                                  addedAt: getCurrentTimestamp,
+                                                  addedAt: addedAt,
                                                 ),
                                                 ...mapToFirestore(
                                                   {

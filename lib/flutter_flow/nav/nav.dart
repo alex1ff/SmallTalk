@@ -281,6 +281,12 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             builder: (context, params) => FavoriteWidget(),
           ),
           FFRoute(
+            name: FlashcardWidget.routeName,
+            path: FlashcardWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => FlashcardWidget(),
+          ),
+          FFRoute(
             name: ProfileEditWidget.routeName,
             path: ProfileEditWidget.routePath,
             requireAuth: true,
