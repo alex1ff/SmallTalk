@@ -74,6 +74,10 @@ service cloud.firestore {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
+    match /users/{userId}/wordReviews/{reviewId} {
+      allow create, read, update, delete: if isAdmin() || isSelf(userId);
+    }
+
     match /notifications/{notificationId} {
       allow create: if isAdmin();
       allow read: if isAdmin() || (

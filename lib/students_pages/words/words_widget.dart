@@ -5,13 +5,11 @@ import '/components/word_pos_chip/word_pos_chip_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
-import '/students_pages/components/new_word/new_word_widget.dart';
 import '/students_pages/components/word_card/word_card_widget.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'words_model.dart';
 export 'words_model.dart';
 
@@ -56,33 +54,6 @@ class _WordsWidgetState extends State<WordsWidget> {
     _model.dispose();
 
     super.dispose();
-  }
-
-  Future<void> _openNewWordSheet() async {
-    await showModalBottomSheet(
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      enableDrag: false,
-      context: context,
-      builder: (context) {
-        return WebViewAware(
-          child: GestureDetector(
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              FocusManager.instance.primaryFocus?.unfocus();
-            },
-            child: Padding(
-              padding: MediaQuery.viewInsetsOf(context),
-              child: const NewWordWidget(
-                word: 'hello',
-                langCode: 'eng',
-              ),
-            ),
-          ),
-        );
-      },
-    ).then((value) => safeSetState(() {}));
   }
 
   String _dueCountLabel(int dueCount) {
@@ -174,29 +145,9 @@ class _WordsWidgetState extends State<WordsWidget> {
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            InkWell(
-                                              splashColor: Colors.transparent,
-                                              focusColor: Colors.transparent,
-                                              hoverColor: Colors.transparent,
-                                              highlightColor: Colors.transparent,
-                                              onTap: _openNewWordSheet,
-                                              child: Container(
-                                                width: 60.0,
-                                                height: 60.0,
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0x24FFFFFF),
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(
-                                                    color: const Color(0x4DFFFFFF),
-                                                    width: 2.0,
-                                                  ),
-                                                ),
-                                                child: const Icon(
-                                                  Icons.add_rounded,
-                                                  color: Colors.white,
-                                                  size: 28.0,
-                                                ),
-                                              ),
+                                            const SizedBox(
+                                              width: 60.0,
+                                              height: 60.0,
                                             ),
                                             const Spacer(),
                                             Container(

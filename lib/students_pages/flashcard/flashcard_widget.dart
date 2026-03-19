@@ -3,6 +3,7 @@ import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/flutter_flow/flutter_flow_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'flashcard_model.dart';
@@ -70,6 +71,65 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
               child: FutureBuilder<List<FlashcardSessionEntry>>(
                 future: _model.sessionFuture,
                 builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.error_outline_rounded,
+                              color: FlutterFlowTheme.of(context).error,
+                              size: 42.0,
+                            ),
+                            const SizedBox(height: 16.0),
+                            Text(
+                              FFLocalizations.of(context).getVariableText(
+                                ruText:
+                                    'Не удалось загрузить карточки. Проверьте доступ к данным и попробуйте снова.',
+                                enText:
+                                    'Failed to load flashcards. Please check data access and try again.',
+                              ),
+                              textAlign: TextAlign.center,
+                              style: FlutterFlowTheme.of(context).bodyMedium.override(
+                                    fontFamily: 'sf pro display',
+                                    fontSize: 16.0,
+                                    letterSpacing: 0.0,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                            ),
+                            const SizedBox(height: 16.0),
+                            FFButtonWidget(
+                              onPressed: () {
+                                safeSetState(_refreshSession);
+                              },
+                              text: FFLocalizations.of(context).getVariableText(
+                                ruText: 'Повторить',
+                                enText: 'Retry',
+                              ),
+                              options: FFButtonOptions(
+                                height: 44.0,
+                                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                                color: FlutterFlowTheme.of(context).secondary,
+                                textStyle: FlutterFlowTheme.of(context)
+                                    .titleSmall
+                                    .override(
+                                      fontFamily: 'sf pro display',
+                                      color: Colors.white,
+                                      fontSize: 14.0,
+                                      letterSpacing: 0.0,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                borderRadius: BorderRadius.circular(14.0),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
                   if (!snapshot.hasData) {
                     return Center(
                       child: SizedBox(
@@ -86,7 +146,7 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
                   final entries = snapshot.data ?? const <FlashcardSessionEntry>[];
                   if (entries.isEmpty) {
                     return Center(
-                      child: SizedBox(
+                      child: Container(
                         height: 500.0,
                         child: EmptyWidget(
                           txt: FFLocalizations.of(context).getVariableText(
