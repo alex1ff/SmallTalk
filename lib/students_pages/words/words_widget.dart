@@ -145,11 +145,6 @@ class _WordsWidgetState extends State<WordsWidget> {
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            const SizedBox(
-                                              width: 60.0,
-                                              height: 60.0,
-                                            ),
-                                            const Spacer(),
                                             Container(
                                               padding: const EdgeInsets.symmetric(
                                                 horizontal: 10.0,
