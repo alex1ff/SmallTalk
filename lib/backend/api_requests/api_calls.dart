@@ -189,6 +189,32 @@ class TatoebaCall {
   }
 }
 
+class DatamuseCall {
+  static Future<ApiCallResponse> call({
+    String? word = '',
+    int max = 8,
+  }) async {
+    return ApiManager.instance.makeApiCall(
+      callName: 'datamuseSynonyms',
+      apiUrl: 'https://api.datamuse.com/words',
+      callType: ApiCallType.GET,
+      headers: {
+        'Accept': 'application/json',
+      },
+      params: {
+        'rel_syn': word,
+        'max': max.toString(),
+      },
+      returnBody: true,
+      encodeBodyUtf8: false,
+      decodeUtf8: false,
+      cache: false,
+      isStreamingApi: false,
+      alwaysAllowBody: false,
+    );
+  }
+}
+
 class ApiPagingParams {
   int nextPageNumber = 0;
   int numItems = 0;

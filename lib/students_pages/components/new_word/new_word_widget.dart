@@ -5,6 +5,7 @@ import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/students_pages/flashcard/flashcard_content_service.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
@@ -174,6 +175,10 @@ class _NewWordWidgetState extends State<NewWordWidget> {
       merged.add(sentence);
     }
 
+    for (final sentence in _exampleSentences()) {
+      addSentence(sentence);
+    }
+
     final conversationSentenceText = _conversationSentenceText();
     if (conversationSentenceText != null) {
       addSentence(
@@ -182,10 +187,6 @@ class _NewWordWidgetState extends State<NewWordWidget> {
           lang: _normalizeLanguageCode(widget.langCode),
         ),
       );
-    }
-
-    for (final sentence in _exampleSentences()) {
-      addSentence(sentence);
     }
 
     return merged;
@@ -1306,6 +1307,8 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                             onTap: () async {
                                               final sentencesToSave =
                                                   _sentencesToSave();
+                                              var entriesToSave =
+                                                  _dictionaryEntries();
                                               final addedAt = getCurrentTimestamp;
                                               var userWordsRecordReference =
                                                   UserWordsRecord.createDoc(
@@ -1318,8 +1321,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                   {
                                                     'entry':
                                                         getEntryListFirestoreData(
-                                                      _parsedWordResponse()
-                                                          ?.def,
+                                                      entriesToSave,
                                                     ),
                                                     'Sentence':
                                                         getSentenceListFirestoreData(
@@ -1333,6 +1335,17 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                 wordRef: userWordsRecordReference,
                                                 addedAt: addedAt,
                                               );
+                                              try {
+                                                entriesToSave =
+                                                    await FlashcardContentService
+                                                    .enrichWordWithSourceSynonyms(
+                                                  wordRef:
+                                                      userWordsRecordReference,
+                                                  entries: entriesToSave,
+                                                  sourceLanguageCode:
+                                                      _resolvedYandexSourceLanguageCode(),
+                                                );
+                                              } catch (_) {}
                                               _model.erweerw = UserWordsRecord
                                                   .getDocumentFromData({
                                                 ...createUserWordsRecordData(
@@ -1342,8 +1355,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                   {
                                                     'entry':
                                                         getEntryListFirestoreData(
-                                                      _parsedWordResponse()
-                                                          ?.def,
+                                                      entriesToSave,
                                                     ),
                                                     'Sentence':
                                                         getSentenceListFirestoreData(

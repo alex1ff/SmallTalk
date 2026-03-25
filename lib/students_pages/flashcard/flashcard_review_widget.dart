@@ -81,7 +81,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
 
   Future<void> _handleRemembered() async {
     final current = _currentQueuedEntry;
-    if (current == null || !_isAnswerVisible || _isSubmitting) {
+    if (current == null || _isSubmitting) {
       return;
     }
 
@@ -122,7 +122,6 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
     setState(() {
       _queue.removeAt(0);
       _completedCards = _completedCards + 1;
-      _isAnswerVisible = false;
       _isSubmitting = false;
     });
 
@@ -133,20 +132,19 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
 
   void _handleNotRemembered() {
     final current = _currentQueuedEntry;
-    if (current == null || !_isAnswerVisible || _isSubmitting) {
+    if (current == null || _isSubmitting) {
       return;
     }
 
     setState(() {
       final movedEntry = _queue.removeAt(0).copyWith(hadAnyMiss: true);
       _queue.add(movedEntry);
-      _isAnswerVisible = false;
       _dragOffset = 0.0;
     });
   }
 
   void _handleHorizontalDragUpdate(DragUpdateDetails details) {
-    if (!_isAnswerVisible || _isSubmitting) {
+    if (_isSubmitting) {
       return;
     }
 
@@ -157,7 +155,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
   }
 
   void _handleHorizontalDragEnd(DragEndDetails details) {
-    if (!_isAnswerVisible || _isSubmitting) {
+    if (_isSubmitting) {
       return;
     }
 
@@ -229,12 +227,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
           ),
         ),
         const SizedBox(height: 20.0),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          child: _isAnswerVisible
-              ? _buildDecisionButtons(context)
-              : _buildRevealButton(context),
-        ),
+        _buildDecisionButtons(context),
       ],
     );
   }
@@ -301,6 +294,14 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
     final primaryTextColor = FlutterFlowTheme.of(context).primaryText;
     final secondaryTextColor = FlutterFlowTheme.of(context).secondaryText;
     final accentColor = FlutterFlowTheme.of(context).primary;
+    final sourceWordVisible = flashcardIsSourceWordVisible(
+      direction: entry.direction,
+      isAnswerVisible: _isAnswerVisible,
+    );
+    final selectedExampleText =
+        entry.selectedExampleText ?? entry.exampleSource ?? '';
+    final selectedExampleTranslation =
+        entry.selectedExampleTranslation ?? entry.exampleTranslation ?? '';
 
     return Container(
       width: double.infinity,
@@ -322,22 +323,55 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(20.0),
-              ),
-              child: Text(
-                _directionLabel(context, entry.direction),
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'sf pro display',
-                      color: accentColor,
-                      fontSize: 13.0,
-                      letterSpacing: 0.0,
-                      fontWeight: FontWeight.w600,
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(20.0),
+                  ),
+                  child: Text(
+                    _directionLabel(context, entry.direction),
+                    style: FlutterFlowTheme.of(context).bodyMedium.override(
+                          fontFamily: 'sf pro display',
+                          color: accentColor,
+                          fontSize: 13.0,
+                          letterSpacing: 0.0,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ),
+                const Spacer(),
+                InkWell(
+                  key: const Key('answerVisibilityToggle'),
+                  borderRadius: BorderRadius.circular(18.0),
+                  onTap: _isSubmitting
+                      ? null
+                      : () {
+                          setState(() {
+                            _isAnswerVisible = !_isAnswerVisible;
+                          });
+                        },
+                  child: Container(
+                    width: 40.0,
+                    height: 40.0,
+                    decoration: BoxDecoration(
+                      color: FlutterFlowTheme.of(context)
+                          .secondaryBackground
+                          .withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(18.0),
                     ),
-              ),
+                    child: Icon(
+                      _isAnswerVisible
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      color: secondaryTextColor,
+                      size: 22.0,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24.0),
             Text(
@@ -351,6 +385,11 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                     fontWeight: FontWeight.normal,
                   ),
             ),
+            if (entry.direction == FlashcardPromptDirection.enToRu &&
+                sourceWordVisible) ...[
+              const SizedBox(height: 14.0),
+              _buildSourceMetadata(context, entry),
+            ],
             const SizedBox(height: 16.0),
             Text(
               _isAnswerVisible
@@ -359,8 +398,8 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                       enText: 'Correct answer',
                     )
                   : FFLocalizations.of(context).getVariableText(
-                      ruText: 'Сначала вспомните ответ, затем откройте его.',
-                      enText: 'Recall the answer first, then reveal it.',
+                      ruText: 'Ответ можно открыть по иконке глаза, но это не обязательно.',
+                      enText: 'You can open the answer with the eye icon, but it is optional.',
                     ),
               textAlign: TextAlign.center,
               style: FlutterFlowTheme.of(context).bodyMedium.override(
@@ -385,6 +424,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                         ),
                         const SizedBox(height: 24.0),
                         Text(
+                          key: const Key('flashcardAnswerText'),
                           entry.answerText,
                           textAlign: TextAlign.center,
                           style: FlutterFlowTheme.of(context).bodyMedium.override(
@@ -395,10 +435,15 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                                 fontWeight: FontWeight.normal,
                               ),
                         ),
-                        if ((entry.exampleSource ?? '').isNotEmpty ||
-                            (entry.exampleTranslation ?? '').isNotEmpty) ...[
+                        if (entry.direction == FlashcardPromptDirection.ruToEn &&
+                            sourceWordVisible) ...[
+                          const SizedBox(height: 14.0),
+                          _buildSourceMetadata(context, entry),
+                        ],
+                        if (selectedExampleText.isNotEmpty) ...[
                           const SizedBox(height: 24.0),
                           Container(
+                            key: const Key('flashcardExampleBlock'),
                             width: double.infinity,
                             padding: const EdgeInsets.all(16.0),
                             decoration: BoxDecoration(
@@ -407,25 +452,24 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                             ),
                             child: Column(
                               children: [
-                                if ((entry.exampleSource ?? '').isNotEmpty)
-                                  Text(
-                                    entry.exampleSource!,
-                                    textAlign: TextAlign.center,
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: primaryTextColor,
-                                          fontSize: 16.0,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.w500,
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                  ),
-                                if ((entry.exampleTranslation ?? '').isNotEmpty) ...[
+                                Text(
+                                  selectedExampleText,
+                                  textAlign: TextAlign.center,
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        color: primaryTextColor,
+                                        fontSize: 16.0,
+                                        letterSpacing: 0.0,
+                                        fontWeight: FontWeight.w500,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                ),
+                                if (selectedExampleTranslation.isNotEmpty) ...[
                                   const SizedBox(height: 8.0),
                                   Text(
-                                    entry.exampleTranslation!,
+                                    selectedExampleTranslation,
                                     textAlign: TextAlign.center,
                                     style: FlutterFlowTheme.of(context)
                                         .bodyMedium
@@ -452,43 +496,83 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
     );
   }
 
-  Widget _buildRevealButton(BuildContext context) {
-    return SizedBox(
-      key: const ValueKey<String>('revealAction'),
-      width: double.infinity,
-      child: ElevatedButton(
-        key: const Key('revealButton'),
-        onPressed: _isSubmitting
-            ? null
-            : () {
-                setState(() {
-                  _isAnswerVisible = true;
-                });
-              },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: FlutterFlowTheme.of(context).primary,
-          foregroundColor: Colors.white,
-          minimumSize: const Size.fromHeight(56.0),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22.0),
+  Widget _buildSourceMetadata(
+    BuildContext context,
+    FlashcardSessionEntry entry,
+  ) {
+    final transcription = _formatTranscription(entry.sourceTranscription);
+    final synonyms = entry.sourceSynonyms;
+    final hasTranscription = transcription.isNotEmpty;
+    final hasSynonyms = synonyms.isNotEmpty;
+
+    if (!hasTranscription && !hasSynonyms) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      key: const Key('sourceMetadata'),
+      children: [
+        if (hasTranscription)
+          Text(
+            key: const Key('sourceTranscriptionText'),
+            transcription,
+            textAlign: TextAlign.center,
+            style: FlutterFlowTheme.of(context).bodyMedium.override(
+                  fontFamily: 'sf pro display',
+                  color: FlutterFlowTheme.of(context).secondaryText,
+                  fontSize: 15.0,
+                  letterSpacing: 0.0,
+                  fontWeight: FontWeight.w500,
+                ),
           ),
-          elevation: 0.0,
-        ),
-        child: Text(
-          FFLocalizations.of(context).getVariableText(
-            ruText: 'Показать ответ',
-            enText: 'Show answer',
+        if (hasSynonyms) ...[
+          if (hasTranscription) const SizedBox(height: 12.0),
+          Wrap(
+            spacing: 8.0,
+            runSpacing: 8.0,
+            alignment: WrapAlignment.center,
+            children: synonyms
+                .map(
+                  (synonym) => Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 8.0,
+                    ),
+                    decoration: BoxDecoration(
+                      color: FlutterFlowTheme.of(context).secondaryBackground,
+                      borderRadius: BorderRadius.circular(18.0),
+                    ),
+                    child: Text(
+                      key: ValueKey<String>('sourceSynonym_${synonym.text}'),
+                      synonym.text,
+                      style: FlutterFlowTheme.of(context).bodyMedium.override(
+                            fontFamily: 'sf pro display',
+                            color: FlutterFlowTheme.of(context).primaryText,
+                            fontSize: 13.0,
+                            letterSpacing: 0.0,
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                  ),
+                )
+                .toList(growable: false),
           ),
-          style: FlutterFlowTheme.of(context).bodyMedium.override(
-                fontFamily: 'sf pro display',
-                color: Colors.white,
-                fontSize: 16.0,
-                letterSpacing: 0.0,
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-      ),
+        ],
+      ],
     );
+  }
+
+  String _formatTranscription(String? transcription) {
+    final normalized = transcription?.trim() ?? '';
+    if (normalized.isEmpty) {
+      return '';
+    }
+
+    if (normalized.startsWith('[') && normalized.endsWith(']')) {
+      return normalized;
+    }
+
+    return '[$normalized]';
   }
 
   Widget _buildDecisionButtons(BuildContext context) {

@@ -7,6 +7,7 @@ import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/students_pages/flashcard/flashcard_content_service.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -476,7 +477,7 @@ class _WoedWidgetState extends State<WoedWidget> {
       return;
     }
 
-    final entriesToSave = _dictionaryEntries();
+    var entriesToSave = _dictionaryEntries();
     if (entriesToSave.isEmpty) {
       return;
     }
@@ -503,6 +504,13 @@ class _WoedWidgetState extends State<WoedWidget> {
       wordRef: userWordsRecordReference,
       addedAt: addedAt,
     );
+    try {
+      entriesToSave = await FlashcardContentService.enrichWordWithSourceSynonyms(
+        wordRef: userWordsRecordReference,
+        entries: entriesToSave,
+        sourceLanguageCode: _resolvedYandexSourceLanguageCode(),
+      );
+    } catch (_) {}
 
     if (!mounted) {
       return;
