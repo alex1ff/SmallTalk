@@ -1,5 +1,6 @@
 import '/backend/backend.dart';
 
+import 'flashcard_content_service.dart';
 import 'flashcard_review_logic.dart';
 
 class FlashcardReviewRepository {
@@ -104,6 +105,13 @@ class FlashcardReviewRepository {
     final wordsById = <String, UserWordsRecord>{
       for (final word in words) word.reference.id: word,
     };
+    UsersRecord? user;
+    try {
+      user = await UsersRecord.getDocumentOnce(userRef);
+    } catch (_) {}
+
+    final preferredTranslationLanguageCode =
+        flashcardPreferredTranslationLanguageCode(user);
 
     final dueReviews = reviews
         .where(
@@ -119,19 +127,36 @@ class FlashcardReviewRepository {
         return leftDueAt.compareTo(rightDueAt);
       });
 
-    return dueReviews
-        .map((review) {
-          final word = wordsById[review.reference.id];
-          if (word == null) {
-            return null;
-          }
-          return buildFlashcardSessionEntry(
-            word: word,
-            review: review,
-          );
-        })
-        .whereType<FlashcardSessionEntry>()
-        .toList();
+    final entries = <FlashcardSessionEntry>[];
+
+    for (final review in dueReviews) {
+      final originalWord = wordsById[review.reference.id];
+      final word = originalWord == null
+          ? null
+          : await _maybeBackfillSourceSynonyms(originalWord);
+      if (word == null) {
+        continue;
+      }
+
+      final resolvedExample = await resolveFlashcardExample(
+        sentences: word.sentence,
+        sourceWord: flashcardSourceWord(word),
+        sourceLanguageCode: flashcardSourceLanguageCode(word),
+        targetLanguageCode: preferredTranslationLanguageCode,
+      );
+
+      final entry = buildFlashcardSessionEntry(
+        word: word,
+        review: review,
+        exampleSource: resolvedExample.exampleText,
+        exampleTranslation: resolvedExample.exampleTranslation,
+      );
+      if (entry != null) {
+        entries.add(entry);
+      }
+    }
+
+    return entries;
   }
 
   static Future<void> persistCompletedReview({
@@ -165,4 +190,39 @@ class FlashcardReviewRepository {
       SetOptions(merge: true),
     );
   }
+
+  static Future<UserWordsRecord> _maybeBackfillSourceSynonyms(
+    UserWordsRecord word,
+  ) async {
+    if (word.entry.isEmpty ||
+        !flashcardLanguageMatches(flashcardSourceLanguageCode(word), 'en') ||
+        word.entry.first.hasSyn()) {
+      return word;
+    }
+
+    try {
+      final updatedEntries = await FlashcardContentService.enrichWordWithSourceSynonyms(
+        wordRef: word.reference,
+        entries: word.entry,
+        sourceLanguageCode: flashcardSourceLanguageCode(word),
+      );
+      return UserWordsRecord.getDocumentFromData(
+        {
+          ...createUserWordsRecordData(
+            addedAt: word.addedAt,
+          ),
+          ...mapToFirestore(
+            <String, dynamic>{
+              'entry': getEntryListFirestoreData(updatedEntries),
+              'Sentence': getSentenceListFirestoreData(word.sentence),
+            },
+          ),
+        },
+        word.reference,
+      );
+    } catch (_) {
+      return word;
+    }
+  }
+
 }

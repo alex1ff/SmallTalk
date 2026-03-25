@@ -12,11 +12,13 @@ class EntryStruct extends FFFirebaseStruct {
     String? text,
     String? pos,
     String? ts,
+    List<SynonymStruct>? syn,
     List<TranslationStruct>? tr,
     FirestoreUtilData firestoreUtilData = const FirestoreUtilData(),
   })  : _text = text,
         _pos = pos,
         _ts = ts,
+        _syn = syn,
         _tr = tr,
         super(firestoreUtilData);
 
@@ -41,6 +43,17 @@ class EntryStruct extends FFFirebaseStruct {
 
   bool hasTs() => _ts != null;
 
+  // "syn" field.
+  List<SynonymStruct>? _syn;
+  List<SynonymStruct> get syn => _syn ?? const [];
+  set syn(List<SynonymStruct>? val) => _syn = val;
+
+  void updateSyn(Function(List<SynonymStruct>) updateFn) {
+    updateFn(_syn ??= []);
+  }
+
+  bool hasSyn() => _syn != null;
+
   // "tr" field.
   List<TranslationStruct>? _tr;
   List<TranslationStruct> get tr => _tr ?? const [];
@@ -56,6 +69,10 @@ class EntryStruct extends FFFirebaseStruct {
         text: data['text'] as String?,
         pos: data['pos'] as String?,
         ts: data['ts'] as String?,
+        syn: getStructList(
+          data['syn'],
+          SynonymStruct.fromMap,
+        ),
         tr: getStructList(
           data['tr'],
           TranslationStruct.fromMap,
@@ -69,6 +86,7 @@ class EntryStruct extends FFFirebaseStruct {
         'text': _text,
         'pos': _pos,
         'ts': _ts,
+        'syn': _syn?.map((e) => e.toMap()).toList(),
         'tr': _tr?.map((e) => e.toMap()).toList(),
       }.withoutNulls;
 
@@ -85,6 +103,11 @@ class EntryStruct extends FFFirebaseStruct {
         'ts': serializeParam(
           _ts,
           ParamType.String,
+        ),
+        'syn': serializeParam(
+          _syn,
+          ParamType.DataStruct,
+          isList: true,
         ),
         'tr': serializeParam(
           _tr,
@@ -110,6 +133,12 @@ class EntryStruct extends FFFirebaseStruct {
           ParamType.String,
           false,
         ),
+        syn: deserializeStructParam<SynonymStruct>(
+          data['syn'],
+          ParamType.DataStruct,
+          true,
+          structBuilder: SynonymStruct.fromSerializableMap,
+        ),
         tr: deserializeStructParam<TranslationStruct>(
           data['tr'],
           ParamType.DataStruct,
@@ -128,17 +157,20 @@ class EntryStruct extends FFFirebaseStruct {
         text == other.text &&
         pos == other.pos &&
         ts == other.ts &&
+        listEquality.equals(syn, other.syn) &&
         listEquality.equals(tr, other.tr);
   }
 
   @override
-  int get hashCode => const ListEquality().hash([text, pos, ts, tr]);
+  int get hashCode => const ListEquality().hash([text, pos, ts, syn, tr]);
 }
 
 EntryStruct createEntryStruct({
   String? text,
   String? pos,
   String? ts,
+  List<SynonymStruct>? syn,
+  List<TranslationStruct>? tr,
   Map<String, dynamic> fieldValues = const {},
   bool clearUnsetFields = true,
   bool create = false,
@@ -148,6 +180,8 @@ EntryStruct createEntryStruct({
       text: text,
       pos: pos,
       ts: ts,
+      syn: syn,
+      tr: tr,
       firestoreUtilData: FirestoreUtilData(
         clearUnsetFields: clearUnsetFields,
         create: create,
