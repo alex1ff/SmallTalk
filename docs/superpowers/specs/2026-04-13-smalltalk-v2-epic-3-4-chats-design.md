@@ -48,18 +48,22 @@ This design intentionally supports only new completed calls after release. No re
 
 ## Architecture Overview
 
-The system is split into four bounded units:
+The system is split into six bounded units:
 
 1. Unlock event producer
 2. Unlock event processor
 3. Conversation and message data model
-4. Chat surfaces in the Flutter app
+4. Message summary updater
+5. Firestore rules
+6. Chat surfaces in the Flutter app
 
 Each unit has one clear responsibility:
 
 - The producer emits unlock work after a qualifying session ends.
 - The processor validates the event and unlocks the pair conversation.
 - The data model stores unlocked conversations and messages.
+- The summary updater maintains inbox preview fields after message creation.
+- Firestore rules enforce participant-only access and prevent client-side unlock.
 - The app renders the chat hub, thread UI, and entry points without owning unlock decisions.
 
 ## Unit 1: Unlock Event Producer
@@ -86,7 +90,53 @@ with:
 - `pairId`
 - `status: "pending"`
 - `createdAt`
+- `updatedAt`
 - `source: "endSession"`
+
+### Unlock Event Schema
+
+Document path:
+
+`conversationUnlockEvents/{sessionId}`
+
+Required fields:
+
+- `sessionId: string`
+- `sessionRef: DocumentReference`
+- `participantIds: List<String>`
+- `participantRefs: List<DocumentReference>`
+- `pairId: string`
+- `source: "endSession"`
+- `status: "pending" | "processing" | "processed" | "ignored" | "failed"`
+- `reason: string?`
+- `attemptCount: int`
+- `createdAt: Timestamp`
+- `updatedAt: Timestamp`
+
+Processor-owned fields:
+
+- `processingStartedAt: Timestamp?`
+- `processedAt: Timestamp?`
+- `conversationRef: DocumentReference?`
+- `errorCode: string?`
+- `errorMessage: string?`
+
+`reason` is used for terminal explanations such as `processed_unlocked`, `processed_existing_conversation`, `ignored_not_connected`, `ignored_invalid_pair`, or `failed_exception`.
+
+The event document is the persisted interface between session teardown and conversation unlock. Producer code may create only `pending` events. Processor code owns all later state transitions.
+
+### Unlock Event State Transitions
+
+| From | To | Actor | Field updates |
+| --- | --- | --- | --- |
+| missing | `pending` | producer | sets required producer fields, `attemptCount: 0`, `createdAt`, `updatedAt` |
+| `pending` | `processing` | processor | increments `attemptCount`, sets `processingStartedAt`, clears `errorCode` and `errorMessage`, sets `updatedAt` |
+| `processing` | `processed` | processor | sets `conversationRef`, `reason`, `processedAt`, `updatedAt` |
+| `processing` | `ignored` | processor | sets `reason`, `processedAt`, `updatedAt`; leaves `conversationRef` empty |
+| `processing` | `failed` | processor | sets `reason: "failed_exception"`, `errorCode`, `errorMessage`, `processedAt`, `updatedAt` |
+| `failed` | `pending` | trusted backend retry tooling | clears `processingStartedAt`, `processedAt`, `errorCode`, and `errorMessage`; keeps `attemptCount`; sets `updatedAt` |
+
+`processed` and `ignored` are terminal states. Normal client code cannot reset any event state. If a processor instance crashes after setting `processing`, trusted retry tooling may reset stale `processing` events to `pending` while keeping the existing `attemptCount`.
 
 ### Eligibility
 
@@ -136,6 +186,8 @@ For each event, the processor:
 4. Creates or reuses `conversations/{pairId}`.
 5. Marks the event terminally as `processed`, `ignored`, or `failed`.
 
+The processor may be implemented as a create/update trigger on `conversationUnlockEvents`, but it must process only non-terminal events. Events already marked `processed` or `ignored` are no-ops. Failed events may be retried only by explicitly resetting their status to `pending` or by an implementation-defined retry path that increments `attemptCount`.
+
 ### Conversation Creation Rules
 
 The processor creates or reuses:
@@ -161,6 +213,18 @@ Safe rerun behavior:
 
 ## Unit 3: Data Model
 
+### Pair ID Canonicalization
+
+The canonical pair identifier is generated from the two Firebase Auth UID strings:
+
+1. Convert both IDs to raw strings.
+2. Sort ascending by code-unit lexicographic order.
+3. Join with a single underscore: `<lowerUid>_<higherUid>`.
+
+The generated value is stored as `pairId` and used as the Firestore document ID for the conversation.
+
+The app and backend must use the same helper algorithm. `pairId` is treated as an opaque identifier; code must not parse it back to recover participants because UIDs can contain separator-like characters. Participant identity always comes from `participantIds` and `participantRefs`.
+
 ### Conversations
 
 Document path:
@@ -180,6 +244,7 @@ Fields:
 - `lastMessageAt: Timestamp?`
 - `lastMessageText: String?`
 - `lastMessageSenderId: String?`
+- `lastMessageId: String?`
 - `lastReadAtByUserId: Map<String, Timestamp?>`
 
 ### Messages
@@ -196,6 +261,8 @@ Fields:
 - `text: string`
 - `createdAt: Timestamp`
 
+`createdAt` is server-assigned. The Flutter client writes it with Firestore server timestamp semantics; rules reject arbitrary client-chosen timestamps.
+
 ### Design Notes
 
 - `pairId` is deterministic from sorted participant IDs.
@@ -203,9 +270,55 @@ Fields:
 - `lastReadAtByUserId` supports MVP unread state without a separate unread counter service.
 - Message type is constrained to plain text for this release.
 
-## Unit 4: Firestore Rules
+## Unit 4: Message Summary Updater
+
+### Responsibility
+
+Keep conversation inbox summary fields synchronized after a participant sends a text message.
+
+### Location
+
+Firebase Cloud Function triggered from:
+
+`conversations/{pairId}/messages/{messageId}`
+
+### Behavior
+
+When a valid message is created, the updater writes to the parent conversation:
+
+- `lastMessageAt`
+- `lastMessageText`
+- `lastMessageSenderId`
+- `lastMessageId`
+- `updatedAt`
+
+The updater must verify the parent conversation still exists, is unlocked, and contains the message sender as a participant.
+
+### Stale-Write Protection
+
+The updater must use a transaction and compare the incoming message against the current parent summary.
+
+Authoritative ordering tuple:
+
+1. `message.createdAt`
+2. `messageId` as a deterministic tie-breaker
+
+The updater writes the parent summary only if the incoming tuple is newer than the existing tuple `(lastMessageAt, lastMessageId)`. Older or duplicate trigger deliveries are no-ops and must not regress inbox ordering or previews.
+
+### Constraints
+
+- Client code does not update `lastMessage*` fields directly.
+- Message creation remains participant-only.
+- The updater is idempotent: repeated handling of the same message must leave the parent conversation in a valid latest-message state.
+
+## Unit 5: Firestore Rules
 
 Add new rules for `conversations` and `messages`.
+
+### Unlock Event Rules
+
+- Client create, read, update, and delete are not allowed for `conversationUnlockEvents`.
+- Unlock events are written and processed only by trusted backend code.
 
 ### Conversation Rules
 
@@ -215,6 +328,15 @@ Add new rules for `conversations` and `messages`.
 - Client update is limited to safe participant-owned read marker updates.
 - Unlock metadata and participant membership are server-owned only.
 
+Allowed client conversation update shape:
+
+- A participant may update only `lastReadAtByUserId.<auth.uid>`.
+- The value must be a timestamp.
+- No client update may change `participantIds`, `participantRefs`, `pairId`, `isUnlocked`, `unlockedAt`, `unlockedBySessionRef`, `lastMessageAt`, `lastMessageText`, `lastMessageSenderId`, `lastMessageId`, `createdAt`, or `updatedAt`.
+- Conversation summary fields are updated by trusted backend code when a message is sent.
+
+The Flutter app may optimistically request a read-marker update, but Firestore rules must reject every other conversation-field mutation from client code.
+
 ### Message Rules
 
 - Read allowed only for conversation participants.
@@ -222,14 +344,36 @@ Add new rules for `conversations` and `messages`.
 - The client may create messages only with its own `senderId` and `senderRef`.
 - Client update and delete are not allowed in MVP.
 
+Allowed client message create shape:
+
+- `senderId == request.auth.uid`
+- `senderRef == /databases/$(database)/documents/users/$(request.auth.uid)`
+- `type == "text"`
+- `text` is a non-empty string
+- `createdAt == request.time`
+- no additional client-owned fields are accepted
+
+The backend may update the parent conversation summary after a message create.
+
+### Rules Matrix
+
+| Resource | Actor | Create | Read | Update | Delete |
+| --- | --- | --- | --- | --- | --- |
+| `conversations/{pairId}` | backend | yes | yes | yes | no normal path |
+| `conversations/{pairId}` | participant client | no | yes | only own read marker | no |
+| `conversations/{pairId}` | non-participant client | no | no | no | no |
+| `messages/{messageId}` | participant client | yes, text only as self | yes | no | no |
+| `messages/{messageId}` | non-participant client | no | no | no | no |
+
 ### Security Goals
 
 - A client cannot self-unlock a chat.
 - A client cannot forge a conversation for an arbitrary pair.
 - A non-participant cannot read conversations or messages.
 - A participant cannot send on behalf of the other participant.
+- A client cannot read or mutate unlock-event internals.
 
-## Flutter App Design
+## Unit 6: Flutter App Design
 
 ## Chats Hub
 
@@ -264,6 +408,15 @@ The current route remains the user-facing `Чаты` destination, but its conten
 
 - Reuses existing `videoSessions`-based call history logic in compact form.
 - This is a summary surface in the hub, not a replacement for deeper call-history pages that may already exist elsewhere.
+- Shows a capped recent-history preview, not the full call-history product surface.
+- Data source interface: `fetchRecentHubCallSessions(currentUserUid, limit: 5)`.
+- The interface runs a union of participant queries for `studentId == currentUserUid`, `tutorId == currentUserUid`, and `currentTutorId == currentUserUid`.
+- Results are deduped by `VideoSessionsRecord.reference.path`.
+- Results are filtered to `status == "ended"`.
+- Recency is sorted with the existing call-history resolver order: `sessionMetadata.callConnectedAt`, then `startedAt`, then `createdAt`.
+- Rows show only completed call-history entries already considered valid by existing call-history logic, with the peer identity, call time, and duration when available.
+- Initial MVP cap: recent 5 entries.
+- If there are no call-history entries, the `Звонки` section is hidden unless both conversations and calls are absent, in which case the approved hub empty state is shown.
 
 ### Empty State
 
