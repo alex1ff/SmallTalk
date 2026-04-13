@@ -106,7 +106,7 @@ Required fields:
 - `participantIds: List<String>`
 - `participantRefs: List<DocumentReference>`
 - `pairId: string`
-- `source: "endSession"`
+- `source: "endSession" | "repairMissingConversationUnlockEvents"`
 - `status: "pending" | "processing" | "processed" | "ignored" | "failed"`
 - `reason: string?`
 - `attemptCount: int`
@@ -134,7 +134,8 @@ The event document is the persisted interface between session teardown and conve
 | `processing` | `processed` | processor | sets `conversationRef`, `reason`, `processedAt`, `updatedAt` |
 | `processing` | `ignored` | processor | sets `reason`, `processedAt`, `updatedAt`; leaves `conversationRef` empty |
 | `processing` | `failed` | processor | sets `reason: "failed_exception"`, `errorCode`, `errorMessage`, `processedAt`, `updatedAt` |
-| `failed` | `pending` | trusted backend retry tooling | clears `processingStartedAt`, `processedAt`, `errorCode`, and `errorMessage`; keeps `attemptCount`; sets `updatedAt` |
+| `processing` | `pending` | `repairMissingConversationUnlockEvents` | allowed only for stale `processing`; clears `processingStartedAt`, `processedAt`, `errorCode`, and `errorMessage`; keeps `attemptCount`; sets `updatedAt`, `source: "repairMissingConversationUnlockEvents"` |
+| `failed` | `pending` | `repairMissingConversationUnlockEvents` | clears `processingStartedAt`, `processedAt`, `errorCode`, and `errorMessage`; keeps `attemptCount`; sets `updatedAt`, `source: "repairMissingConversationUnlockEvents"` |
 
 `processed` and `ignored` are terminal states. Normal client code cannot reset any event state. If a processor instance crashes after setting `processing`, trusted retry tooling may reset stale `processing` events to `pending` while keeping the existing `attemptCount`.
 
@@ -145,6 +146,7 @@ An event is emitted only for a session that:
 - ended successfully
 - has a valid participant pair
 - has evidence of a real connected call
+- was created at or after the configured chats rollout timestamp
 
 Connected-call evidence uses the existing session metadata with fallback:
 
@@ -157,6 +159,8 @@ Connected-call evidence uses the existing session metadata with fallback:
 - The producer does not create or update `conversations`.
 - The producer does not block session teardown, billing, or navigation if event creation fails.
 - Event identity is one document per `sessionId`, so duplicate event creation is naturally limited.
+
+For this spec, a "qualifying session" always includes the rollout guard above. Historical sessions created before rollout are out of scope even if `endSession` is called again later.
 
 ## Unit 2: Unlock Event Processor
 
@@ -187,6 +191,41 @@ For each event, the processor:
 5. Marks the event terminally as `processed`, `ignored`, or `failed`.
 
 The processor may be implemented as a create/update trigger on `conversationUnlockEvents`, but it must process only non-terminal events. Events already marked `processed` or `ignored` are no-ops. Failed events may be retried only by explicitly resetting their status to `pending` or by an implementation-defined retry path that increments `attemptCount`.
+
+### Recovery Policy
+
+- A `processing` event is considered stale if `processingStartedAt` is older than 5 minutes and the event is not terminal.
+- Trusted backend retry tooling is responsible for reclaiming stale `processing` events by resetting them to `pending`.
+- The same retry tooling may also create a missing `conversationUnlockEvents/{sessionId}` document for a qualifying ended session when the original producer path failed and no event exists.
+- The repair tooling is automatic and scoped only to sessions that satisfy the rollout guard. It is not a historical backfill job.
+
+### Repair Mechanism
+
+The repair owner is a scheduled backend worker:
+
+- name: `repairMissingConversationUnlockEvents`
+- cadence: every 5 minutes
+- scope: all `videoSessions` created after rollout and qualifying for messaging unlock
+- scan contract:
+  - maintain a persistent cursor over post-rollout `videoSessions` ordered by `createdAt asc`, then `documentId asc`
+  - process one bounded page per run
+  - when the cursor reaches the current head, restart from the rollout boundary on the next cycle
+- behavior:
+  - page through qualifying ended sessions after rollout
+  - find sessions with no `conversationUnlockEvents/{sessionId}`
+  - create the missing event as `pending` with `source: "repairMissingConversationUnlockEvents"`
+  - reset stale `processing` events to `pending`
+
+This worker is the canonical and only missed-unlock recovery path in MVP.
+
+### Repair Ownership
+
+| Failure mode | Owner | Mechanism |
+| --- | --- | --- |
+| initial unlock event production after qualifying `endSession` | `endSession` producer path | create `conversationUnlockEvents/{sessionId}` with `source: "endSession"` |
+| missing unlock event after producer failure | `repairMissingConversationUnlockEvents` | create missing `pending` event |
+| stale or failed unlock-event processing | `repairMissingConversationUnlockEvents` | reset stale or failed events to `pending` |
+| missed or stale `lastMessage*` summary fields | `repairConversationMessageSummaries` | reconcile conversation summary from newest message |
 
 ### Conversation Creation Rules
 
@@ -225,6 +264,14 @@ The generated value is stored as `pairId` and used as the Firestore document ID 
 
 The app and backend must use the same helper algorithm. `pairId` is treated as an opaque identifier; code must not parse it back to recover participants because UIDs can contain separator-like characters. Participant identity always comes from `participantIds` and `participantRefs`.
 
+Unread interpretation rules:
+
+- If the conversation has no `lastMessageAt`, it has no unread state.
+- If the current user has no `lastReadAtByUserId[currentUserUid]` entry and `lastMessageSenderId != currentUserUid`, the conversation is unread.
+- If the current user has a read marker, unread is determined by comparing `lastReadAtByUserId[currentUserUid] < lastMessageAt`.
+- A message authored by the current user does not create an unread badge for that same user.
+- While the 1:1 thread is foregrounded on the current device, the conversation is treated as locally read and the client must advance the read marker again whenever `lastMessageAt` changes. This is the MVP race-healing rule for concurrent summary and read-marker updates.
+
 ### Conversations
 
 Document path:
@@ -246,6 +293,14 @@ Fields:
 - `lastMessageSenderId: String?`
 - `lastMessageId: String?`
 - `lastReadAtByUserId: Map<String, Timestamp?>`
+
+Conversation creation initializes:
+
+- `lastMessageAt = null`
+- `lastMessageText = null`
+- `lastMessageSenderId = null`
+- `lastMessageId = null`
+- `lastReadAtByUserId = {}`
 
 ### Messages
 
@@ -310,6 +365,22 @@ The updater writes the parent summary only if the incoming tuple is newer than t
 - Client code does not update `lastMessage*` fields directly.
 - Message creation remains participant-only.
 - The updater is idempotent: repeated handling of the same message must leave the parent conversation in a valid latest-message state.
+- The updater must update only summary fields and must preserve `lastReadAtByUserId`, unlock metadata, and participant metadata via transaction field merge semantics.
+
+### Summary Repair Mechanism
+
+Missed or failed `lastMessage*` updates are recovered by a scheduled backend worker:
+
+- name: `repairConversationMessageSummaries`
+- cadence: every 10 minutes
+- scope: post-rollout conversations
+- scan contract:
+  - maintain a persistent cursor over `conversations` ordered by `updatedAt asc`, then `documentId asc`
+  - process one bounded page per run
+  - for each conversation, compare parent summary fields against the newest message tuple `(createdAt, messageId)`
+  - if mismatched, repair `lastMessageAt`, `lastMessageText`, `lastMessageSenderId`, `lastMessageId`, and `updatedAt`
+
+This worker is the canonical reconciliation path for stale inbox previews and ordering after trigger failure.
 
 ## Unit 5: Firestore Rules
 
@@ -331,7 +402,12 @@ Add new rules for `conversations` and `messages`.
 Allowed client conversation update shape:
 
 - A participant may update only `lastReadAtByUserId.<auth.uid>`.
-- The value must be a timestamp.
+- The value must equal `request.time`.
+- The new value must be greater than or equal to the previous value for `lastReadAtByUserId.<auth.uid>` when that previous value exists.
+- The top-level document diff must change only `lastReadAtByUserId`.
+- Inside the map diff, only the entry for `<auth.uid>` may change.
+- Existing sibling entries for other user IDs must remain byte-for-byte unchanged.
+- The update must preserve all existing keys in `lastReadAtByUserId`; replacing the whole map is not allowed.
 - No client update may change `participantIds`, `participantRefs`, `pairId`, `isUnlocked`, `unlockedAt`, `unlockedBySessionRef`, `lastMessageAt`, `lastMessageText`, `lastMessageSenderId`, `lastMessageId`, `createdAt`, or `updatedAt`.
 - Conversation summary fields are updated by trusted backend code when a message is sent.
 
@@ -388,9 +464,11 @@ The current route remains the user-facing `Чаты` destination, but its conten
 ### Messages Section
 
 - Shows unlocked conversations for the current user.
-- Sort order:
-  - `lastMessageAt desc` when available
-  - fallback to `updatedAt desc` or `unlockedAt desc` for newly unlocked empty threads
+- Sort order uses one total tuple for every row:
+  - `conversationSortAt = lastMessageAt ?? unlockedAt`
+  - `conversationSortId = lastMessageId ?? pairId`
+  - final order: `(conversationSortAt, conversationSortId, pairId) desc`
+- The Flutter inbox must apply this sort tuple in memory after fetching the participant's conversations.
 - Each row shows:
   - avatar
   - display name
@@ -411,11 +489,14 @@ The current route remains the user-facing `Чаты` destination, but its conten
 - Shows a capped recent-history preview, not the full call-history product surface.
 - Data source interface: `fetchRecentHubCallSessions(currentUserUid, limit: 5)`.
 - The interface runs a union of participant queries for `studentId == currentUserUid`, `tutorId == currentUserUid`, and `currentTutorId == currentUserUid`.
+- In MVP, each branch query fetches the full matching set for that participant role, then the three branches are unioned in memory.
+- This full-fetch union is an intentional MVP contract based on bounded per-user call volume in the current product.
 - Results are deduped by `VideoSessionsRecord.reference.path`.
 - Results are filtered to `status == "ended"`.
-- Recency is sorted with the existing call-history resolver order: `sessionMetadata.callConnectedAt`, then `startedAt`, then `createdAt`.
+- Recency is sorted after dedupe, using the existing call-history resolver order: `sessionMetadata.callConnectedAt`, then `startedAt`, then `createdAt`.
+- Tie-break order after the resolved recency timestamp is `endedAt desc`, then `VideoSessionsRecord.reference.path desc`.
 - Rows show only completed call-history entries already considered valid by existing call-history logic, with the peer identity, call time, and duration when available.
-- Initial MVP cap: recent 5 entries.
+- Final hub limit is applied after fetch, dedupe, filter, and sort. Initial MVP cap: recent 5 entries.
 - If there are no call-history entries, the `Звонки` section is hidden unless both conversations and calls are absent, in which case the approved hub empty state is shown.
 
 ### Empty State
@@ -435,12 +516,13 @@ Render one unlocked conversation and allow plain-text send.
 ### Layout
 
 - header with partner avatar and name
-- message list ordered by `createdAt asc`
+- message list ordered by `(createdAt, messageId) asc`
 - bottom composer for text send
 
 ### Behavior
 
 - Opening the thread updates the current user's read marker.
+- After the first thread snapshot is visible, and on every later change to `lastMessageAt` while the thread stays foregrounded, the client advances the read marker again to `request.time`.
 - Sending a message creates a message document and updates conversation summary fields.
 - Normal entry points never route into a locked or missing conversation.
 
@@ -496,10 +578,10 @@ Use `ignored` when:
 
 Expected Firestore index requirements:
 
-- `conversations` with `participantIds arrayContains` + descending recency field for inbox sorting
+- `conversations` queried by `participantIds arrayContains`, with inbox ordering applied client-side after fetch in MVP
 - standard ordered reads for `messages` by `createdAt`
 
-Exact composite index definitions should be added only for the queries used by the final UI implementation.
+Exact composite index definitions should be added only for the queries used by the final UI implementation. The computed inbox tuple `(lastMessageAt ?? unlockedAt, lastMessageId ?? pairId, pairId)` is not materialized as a dedicated Firestore sort field in this MVP.
 
 ## Testing and Validation
 
@@ -528,7 +610,10 @@ Exact composite index definitions should be added only for the queries used by t
 ## Rollout Notes
 
 - Unlock applies only to new completed calls after release.
-- No backfill job is included in this MVP.
+- Two post-rollout repair workers are included in this MVP:
+  - `repairMissingConversationUnlockEvents`
+  - `repairConversationMessageSummaries`
+- No historical backfill job is included in this MVP.
 - Historical completed sessions do not create conversations automatically.
 
 ## Open Decisions Already Resolved
