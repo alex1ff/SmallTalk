@@ -1,7 +1,6 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.dart';
-import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/students_pages/components/new_word/new_word_widget.dart';
@@ -218,9 +217,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     _didNavigateToSummary = true;
 
     final sessionRef = widget.videoDocRef;
-    final userId = currentUserDocument?.role == UserRole.native_speaker
-        ? session?.studentId
-        : session?.tutorId;
+    final isRequester = currentUserUid == session?.studentId;
+    final userId = isRequester ? session?.tutorId : session?.studentId;
 
     final userRef =
         _isValidUserId(userId) ? functions.stringToRef(userId!.trim()) : null;

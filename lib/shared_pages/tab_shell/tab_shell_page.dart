@@ -1,7 +1,7 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
+import '/services/user_match_profile.dart';
 import '/shared_pages/nav_bar/nav_bar_widget.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/foundation.dart'
@@ -95,22 +95,28 @@ class _TabShellPageState extends State<TabShellPage> {
     return path;
   }
 
-  bool get _isTeacher => currentUserDocument?.role == UserRole.native_speaker;
+  bool get _isTeacher => canAccessTeacherSurfaces(currentUserDocument);
 
   List<String> get _tabPathsOrdered => _isTeacher
       ? [
           DashboardNSWidget.routePath,
-          ProfileWidget.routePath,
-          MyCallsWidget.routePath,
+          FavoriteWidget.routePath,
         ]
       : [
           StudentsDashboardWidget.routePath,
           WordsWidget.routePath,
-          ProfileWidget.routePath,
-          MyCallsWidget.routePath,
+          FavoriteWidget.routePath,
         ];
 
-  int _indexCurrentPage(String currentPath) {
+  List<String> get _pathsWithNavBar => [
+        ..._tabPathsOrdered,
+        ProfileWidget.routePath,
+      ];
+
+  int? _indexCurrentPage(String currentPath) {
+    if (currentPath == ProfileWidget.routePath) {
+      return null;
+    }
     final index = _tabPathsOrdered.indexOf(currentPath);
     return index >= 0 ? index : 0;
   }
@@ -132,14 +138,14 @@ class _TabShellPageState extends State<TabShellPage> {
         final currentPath =
             _normalizePath(_provider?.value.uri.path ?? widget.state.uri.path);
         _lastRoutePath = currentPath;
-        final showNavBar = _tabPathsOrdered.contains(currentPath);
+        final showNavBar = _pathsWithNavBar.contains(currentPath);
         final indexCurrentPage = _indexCurrentPage(currentPath);
 
         if (kDebugMode) {
           debugPrint(
             '[TabShellPage] path=$currentPath '
             'showNavBar=$showNavBar '
-            'indexCurrentPage=$indexCurrentPage '
+            'indexCurrentPage=${indexCurrentPage ?? 'none'} '
             'role=${_isTeacher ? 'teacher' : 'student'} '
             'platformBranch=${_platformBranch()}',
           );

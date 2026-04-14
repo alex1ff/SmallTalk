@@ -1,4 +1,4 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
 const {
@@ -8,6 +8,12 @@ const {
   getRoomNameFromUrl,
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
+const {
+  buildSessionUserInfo,
+  getRequesterId,
+  isSupportedSessionRole,
+  normalizeRole,
+} = require("./video_sessions_shared");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -150,7 +156,7 @@ exports.acceptCall = functions
               userName:
                 sessionData.tutorInfo?.name ||
                 sessionData.tutorName ||
-                "Tutor",
+                "Partner",
             });
           } catch (tokenError) {
             console.error(
@@ -178,11 +184,19 @@ exports.acceptCall = functions
         };
       }
 
-      // === 3. ПОЛУЧЕНИЕ ДАННЫХ ПРЕПОДАВАТЕЛЯ И СТУДЕНТА (ПАРАЛЛЕЛЬНО) ===
-      console.log("👨‍🏫 Fetching tutor and student data in parallel...");
+      const requesterId = getRequesterId(sessionData);
+      if (!requesterId) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Session requester is missing",
+        );
+      }
+
+      // === 3. ПОЛУЧЕНИЕ ДАННЫХ РЕСПОНДЕРА И ИНИЦИАТОРА (ПАРАЛЛЕЛЬНО) ===
+      console.log("👥 Fetching responder and requester data in parallel...");
       const [tutorDoc, studentDoc] = await Promise.all([
         admin.firestore().collection("users").doc(tutorId).get(),
-        admin.firestore().collection("users").doc(sessionData.studentId).get(),
+        admin.firestore().collection("users").doc(requesterId).get(),
       ]);
 
       if (!tutorDoc.exists) {
@@ -205,12 +219,11 @@ exports.acceptCall = functions
         timezoneOffsetMinutes: availabilityCheck.timezoneOffsetMinutes ?? null,
       });
 
-      const allowedRoles = ["tutor", "native_speaker"];
-      if (!allowedRoles.includes(tutorData.role)) {
-        console.log("❌ User is not a tutor, role:", tutorData.role);
+      if (!isSupportedSessionRole(tutorData.role)) {
+        console.log("❌ User role cannot accept calls:", tutorData.role);
         throw new functions.https.HttpsError(
           "permission-denied",
-          "Only tutors can accept calls",
+          "This user role cannot accept calls",
         );
       }
 
@@ -231,12 +244,12 @@ exports.acceptCall = functions
       }
 
       if (!studentDoc.exists) {
-        console.log("❌ Student not found:", sessionData.studentId);
-        throw new functions.https.HttpsError("not-found", "Student not found");
+        console.log("❌ Requester not found:", requesterId);
+        throw new functions.https.HttpsError("not-found", "Requester not found");
       }
 
       const studentData = studentDoc.data();
-      console.log("👨‍🎓 Student data:", {
+      console.log("👤 Requester data:", {
         display_name: studentData.display_name,
         role: studentData.role,
       });
@@ -298,20 +311,23 @@ exports.acceptCall = functions
       if (roomUrl && roomName) {
         // Create tutor and student tokens in parallel
         try {
-          const studentName = sessionData.studentInfo?.name || studentData.display_name || "Student";
+          const studentName =
+            sessionData.studentInfo?.name ||
+            studentData.display_name ||
+            "Caller";
           const [tutorToken, studentToken] = await Promise.all([
             createMeetingToken({
               roomName,
               expSeconds: 3600,
               isOwner: false,
               userId: tutorId,
-              userName: tutorData.display_name || "Tutor",
+              userName: tutorData.display_name || "Partner",
             }),
             createMeetingToken({
               roomName,
               expSeconds: 3600,
               isOwner: true,
-              userId: sessionData.studentId,
+              userId: requesterId,
               userName: studentName,
             }),
           ]);
@@ -336,13 +352,16 @@ exports.acceptCall = functions
 
       if (!roomUrl) {
         try {
-          const studentName = sessionData.studentInfo?.name || studentData.display_name || "Student";
+          const studentName =
+            sessionData.studentInfo?.name ||
+            studentData.display_name ||
+            "Caller";
           const dailyRoom = await createDailyRoom({
             language: sessionData.language,
-            studentId: sessionData.studentId,
+            studentId: requesterId,
             tutorId,
             studentName,
-            tutorName: tutorData.display_name || "Tutor",
+            tutorName: tutorData.display_name || "Partner",
             expSeconds: 3600,
           });
           roomUrl = dailyRoom.url;
@@ -356,13 +375,13 @@ exports.acceptCall = functions
               expSeconds: 3600,
               isOwner: false,
               userId: tutorId,
-              userName: tutorData.display_name || "Tutor",
+              userName: tutorData.display_name || "Partner",
             }),
             createMeetingToken({
               roomName,
               expSeconds: 3600,
               isOwner: true,
-              userId: sessionData.studentId,
+              userId: requesterId,
               userName: studentName,
             }),
           ]);
@@ -434,15 +453,22 @@ exports.acceptCall = functions
 
             // Добавляем информацию о преподавателе
             tutorInfo: {
-              name: tutorData.display_name || "Tutor",
+              name: tutorData.display_name || "Partner",
               photo: tutorData.photo_url || null,
             },
+            participantIds: [requesterId, tutorId].sort(),
 
             // Очищаем поля поиска (уже не нужны)
             currentTutorId: admin.firestore.FieldValue.delete(),
             tutorNavigationTriggered: false,
             studentNavigationTriggered: false,
             "sessionMetadata.roomCreatedAt": roomCreatedAt || Date.now(),
+            "matchContext.acceptedResponderId": tutorId,
+            "matchContext.acceptedResponderRole": normalizeRole(tutorData.role),
+            "matchContext.acceptedResponderInfo": buildSessionUserInfo(
+              tutorData,
+              "Partner",
+            ),
           };
 
           // Store student meeting token in session for faster student join
@@ -481,7 +507,7 @@ exports.acceptCall = functions
               expSeconds: 3600,
               isOwner: false,
               userId: tutorId,
-              userName: tutorData.display_name || "Tutor",
+              userName: tutorData.display_name || "Partner",
             });
           } catch (tokenError) {
             console.error(
@@ -510,9 +536,9 @@ exports.acceptCall = functions
       // 🔔 === ОТПРАВКА PUSH + ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ (ПАРАЛЛЕЛЬНО) ===
       console.log("📲 Sending push + updating notifications in parallel...");
       await Promise.all([
-        sendVoipPushToStudent(sessionData.studentId, {
+        sendVoipPushToStudent(requesterId, {
           sessionId: sessionId,
-          callerName: tutorData.display_name || "Преподаватель",
+          callerName: tutorData.display_name || "Собеседник",
           callerId: tutorId,
           callerPhoto: tutorData.photo_url || null,
           roomUrl: roomUrl,
@@ -542,7 +568,7 @@ exports.acceptCall = functions
           name:
             sessionData.studentInfo?.name ||
             studentData.display_name ||
-            "Student",
+            "Caller",
           photo:
             sessionData.studentInfo?.photo || studentData.photo_url || null,
         },

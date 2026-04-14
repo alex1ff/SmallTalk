@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-03-04T01:52:47.343Z",
+  "startedAt": "2026-04-14T09:45:19.841Z",
   "projectId": "demo-smalltalk",
   "emulators": {
     "firestore": "127.0.0.1:8080",
@@ -22,7 +22,63 @@
           "status": "pass"
         },
         {
+          "label": "Firestore pending teacher withdrawal create denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore approved teacher withdrawal create allowed",
+          "status": "pass"
+        },
+        {
           "label": "Firestore self profile update allowed",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore self user create without protected teacher status allowed",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore self user create with teacher status denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore self teacher status update denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore self legacy teacher verification update denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore self matchProfile teacher approval update denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore admin teacher status update allowed",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore self teacher verification request create pending allowed",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore self teacher verification request update pending allowed",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore self teacher verification request approve denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore self teacher verification request create approved denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore cross-user teacher verification request read denied",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore admin teacher verification request approve allowed",
           "status": "pass"
         },
         {
@@ -36,25 +92,137 @@
         {
           "label": "Storage self write allowed",
           "status": "pass"
+        },
+        {
+          "label": "Session client create denied even with participantIds",
+          "status": "pass"
+        },
+        {
+          "label": "Session create without participantIds denied",
+          "status": "pass"
+        },
+        {
+          "label": "Session create with extra participantIds denied",
+          "status": "pass"
+        },
+        {
+          "label": "Session participantIds read allowed",
+          "status": "pass"
+        },
+        {
+          "label": "Session legacy participant read still allowed",
+          "status": "pass"
+        },
+        {
+          "label": "Session non-participant read denied",
+          "status": "pass"
+        },
+        {
+          "label": "Session requester navigation update allowed",
+          "status": "pass"
+        },
+        {
+          "label": "Session responder navigation update allowed via participantIds",
+          "status": "pass"
+        },
+        {
+          "label": "Session participantIds tamper denied",
+          "status": "pass"
+        },
+        {
+          "label": "Session non-navigation update denied for participant",
+          "status": "pass"
+        },
+        {
+          "label": "Caption read allowed via participantIds session membership",
+          "status": "pass"
+        },
+        {
+          "label": "Caption write denied for non-participant",
+          "status": "pass"
+        },
+        {
+          "label": "Caption peer legacy write allowed for participant writer",
+          "status": "pass"
+        },
+        {
+          "label": "Chat unauth conversation read denied",
+          "status": "pass"
+        },
+        {
+          "label": "Chat participant conversation read allowed",
+          "status": "pass"
+        },
+        {
+          "label": "Chat non-participant conversation read denied",
+          "status": "pass"
+        },
+        {
+          "label": "Chat client conversation create denied",
+          "status": "pass"
+        },
+        {
+          "label": "Chat unlock event access denied to clients",
+          "status": "pass"
+        },
+        {
+          "label": "Chat unlocked messages read allowed for participant",
+          "status": "pass"
+        },
+        {
+          "label": "Chat unlocked messages read denied for non-participant",
+          "status": "pass"
+        },
+        {
+          "label": "Chat locked messages read denied before unlock",
+          "status": "pass"
+        },
+        {
+          "label": "Chat locked messages create denied before unlock",
+          "status": "pass"
+        },
+        {
+          "label": "Chat participant message create allowed after unlock",
+          "status": "pass"
+        },
+        {
+          "label": "Chat message create denied for wrong senderRef",
+          "status": "pass"
+        },
+        {
+          "label": "Chat message create denied for extra fields",
+          "status": "pass"
+        },
+        {
+          "label": "Chat participant read marker update allowed on own key only",
+          "status": "pass"
+        },
+        {
+          "label": "Chat read marker update denied for another participant key",
+          "status": "pass"
+        },
+        {
+          "label": "Chat read marker update denied for non-read fields",
+          "status": "pass"
         }
       ],
       "failures": []
     },
     "endSessionConcurrency": {
       "pass": true,
-      "sessionId": "audit_session_1772589169156",
+      "sessionId": "audit_session_1776159921748",
       "invocation": [
         {
           "caller": "student",
           "status": "fulfilled",
-          "responseStatus": "already_ended",
-          "message": "Session was already ended"
+          "responseStatus": "ended",
+          "message": "Session ended successfully"
         },
         {
           "caller": "tutor",
           "status": "fulfilled",
-          "responseStatus": "ended",
-          "message": "Session ended successfully"
+          "responseStatus": "already_ended",
+          "message": "Session was already ended"
         }
       ],
       "transactionCounts": {
@@ -65,7 +233,301 @@
       "studentBalanceMinutesBefore": 50,
       "studentBalanceMinutesAfter": 41,
       "sessionStatusAfter": "ended",
+      "unlockEventCreated": true,
       "failure": null
+    },
+    "unlockProcessorIntegration": {
+      "pass": true,
+      "deliveryPass": true,
+      "scenarios": {
+        "eligibleProcessed": {
+          "pass": true,
+          "manualFallbackUsed": false,
+          "sessionId": "unlock_session_1776159926222",
+          "pairId": "unlock_student_1776159926222_unlock_tutor_1776159926222",
+          "eventStatus": "processed",
+          "eventReason": "processed_unlocked",
+          "conversationPath": "conversations/unlock_student_1776159926222_unlock_tutor_1776159926222",
+          "failure": null
+        },
+        "existingConversationReuse": {
+          "pass": true,
+          "manualFallbackUsed": false,
+          "sessionId": "reuse_session_1776159926222",
+          "pairId": "reuse_student_1776159926222_reuse_tutor_1776159926222",
+          "eventStatus": "processed",
+          "eventReason": "processed_existing_conversation",
+          "unlockRefPreserved": true,
+          "failure": null
+        },
+        "ignoredIneligible": {
+          "pass": true,
+          "manualFallbackUsed": false,
+          "sessionId": "ignored_session_1776159926222",
+          "pairId": "ignored_student_1776159926222_ignored_tutor_1776159926222",
+          "eventStatus": "ignored",
+          "eventReason": "ignored_not_connected",
+          "conversationCreated": false,
+          "failure": null
+        },
+        "missingSessionFailed": {
+          "pass": true,
+          "manualFallbackUsed": false,
+          "sessionId": "missing_session_1776159926222",
+          "pairId": "missing_student_1776159926222_missing_tutor_1776159926222",
+          "eventStatus": "failed",
+          "eventReason": "failed_exception",
+          "conversationCreated": false,
+          "failure": null
+        }
+      },
+      "failure": null
+    },
+    "createVideoSessionMatrix": {
+      "pass": true,
+      "failure": null,
+      "scenario": "native_speaker requester can build all-to-all candidate pool",
+      "responseStatus": "searching",
+      "sessionId": "dfKMKNNzzJ0hflnk3NUw",
+      "participantIds": [
+        "audit_matrix_requester_1776159927353"
+      ],
+      "candidateIds": [
+        "audit_matrix_speaker_1776159927353",
+        "audit_matrix_student_1776159927353"
+      ],
+      "candidateRoleCounts": {
+        "native_speaker": 1,
+        "student": 1
+      }
+    },
+    "sameDayRepeatPrevention": {
+      "pass": true,
+      "failure": null,
+      "scenarios": {
+        "completedConnectedExcluded": {
+          "pass": true,
+          "sessionId": "repeat_completed_session_1776159927433",
+          "historyCreated": true,
+          "directStatus": "no_tutors_available",
+          "poolExcludedCompletedCandidate": true,
+          "poolIncludesFreshCandidate": true,
+          "failure": null
+        },
+        "neverConnectedDoesNotCount": {
+          "pass": true,
+          "sessionId": "repeat_never_session_1776159927433",
+          "historyCreated": false,
+          "directStatus": "searching",
+          "failure": null
+        },
+        "cancelledDoesNotCount": {
+          "pass": true,
+          "sessionId": "repeat_cancelled_session_1776159927433",
+          "historyCreated": false,
+          "directStatus": "searching",
+          "failure": null
+        },
+        "testerBypass": {
+          "pass": true,
+          "directStatus": "searching",
+          "failure": null
+        }
+      }
+    },
+    "partnerLevelFilter": {
+      "pass": true,
+      "failure": null,
+      "scenario": "preferred partner level filters pool and direct calls",
+      "poolSessionId": "8RC5k2Bigweklzuk0Qa2",
+      "poolCandidateIds": [
+        "level_fluent_1776159927891"
+      ],
+      "directMismatchStatus": "no_tutors_available",
+      "directMatchStatus": "searching",
+      "directMatchSessionId": "pOYZiPDPQKa2IZ4yGN9Y",
+      "matchContextFilters": {
+        "preferredNativeLanguage": null,
+        "preferredCountry": null,
+        "preferredPartnerLevel": "Fluent"
+      },
+      "directMatchContextFilters": {
+        "preferredNativeLanguage": null,
+        "preferredCountry": null,
+        "preferredPartnerLevel": "Fluent"
+      }
+    },
+    "teacherBoostRanking": {
+      "pass": true,
+      "failure": null,
+      "scenario": "approved teacher boost ranks Fluent approved teachers first",
+      "sessionId": "81KbKwn6Pton745Cn6kF",
+      "candidateIds": [
+        "teacher_boost_approved_1776159928042",
+        "teacher_boost_pending_1776159928042",
+        "teacher_boost_rejected_1776159928042",
+        "level_fluent_1776159927891"
+      ],
+      "ranking": {
+        "friendPriorityApplied": false,
+        "locationApplied": false,
+        "levelApplied": true,
+        "teacherBoostApplied": true,
+        "internalRankingScore": 0,
+        "legacyPriorityUsedAsTiebreaker": true
+      }
+    },
+    "teacherVerificationRequestFlow": {
+      "pass": true,
+      "deliveryPass": true,
+      "failure": null,
+      "scenarios": {
+        "approvedRequest": {
+          "pass": true,
+          "manualFallbackUsed": false,
+          "userId": "audit_teacher_request_approved_1776159928191",
+          "userStatus": "approved",
+          "verifNS": true,
+          "matchProfile": {
+            "country": "US",
+            "role": "native_speaker",
+            "supportedLanguages": [
+              "en",
+              "ru"
+            ],
+            "legacyPriorityScore": 0,
+            "level": null,
+            "activeLanguage": "en",
+            "activeLanguageSource": "profile",
+            "ratingCount": 0,
+            "version": "v1",
+            "ratingAverage": 0,
+            "approvedTeacher": true,
+            "teacherAccreditationStatus": "approved"
+          },
+          "failure": null
+        },
+        "rejectedRequestClearsLegacy": {
+          "pass": true,
+          "manualFallbackUsed": false,
+          "userId": "audit_teacher_request_rejected_1776159928191",
+          "userStatus": "rejected",
+          "verifNS": false,
+          "matchProfile": {
+            "country": null,
+            "role": "native_speaker",
+            "supportedLanguages": [
+              "en"
+            ],
+            "legacyPriorityScore": 0,
+            "level": null,
+            "activeLanguage": "en",
+            "activeLanguageSource": "profile",
+            "ratingCount": 0,
+            "version": "v1",
+            "ratingAverage": 0,
+            "approvedTeacher": false,
+            "teacherAccreditationStatus": "rejected"
+          },
+          "failure": null
+        }
+      }
+    },
+    "userMatchProfileSync": {
+      "pass": true,
+      "deliveryPass": true,
+      "failure": null,
+      "scenarios": {
+        "studentProfile": {
+          "pass": true,
+          "manualFallbackUsed": false,
+          "userId": "audit_match_student_1776159929000",
+          "matchProfile": {
+            "country": "BR",
+            "role": "student",
+            "legacyPriorityScore": 0,
+            "level": "Intermediate",
+            "approvedTeacher": false,
+            "activeLanguageSource": "profile",
+            "teacherAccreditationStatus": null,
+            "version": "v1",
+            "supportedLanguages": [
+              "es"
+            ],
+            "activeLanguage": "es",
+            "ratingCount": 9,
+            "ratingAverage": 4.8
+          },
+          "failure": null
+        },
+        "nativeSpeakerProfile": {
+          "pass": true,
+          "manualFallbackUsed": false,
+          "userId": "audit_match_native_1776159929000",
+          "matchProfile": {
+            "country": "US",
+            "role": "native_speaker",
+            "supportedLanguages": [
+              "en",
+              "ru"
+            ],
+            "legacyPriorityScore": 0,
+            "level": null,
+            "activeLanguage": "en",
+            "approvedTeacher": true,
+            "activeLanguageSource": "profile",
+            "teacherAccreditationStatus": "approved",
+            "ratingCount": 11,
+            "version": "v1",
+            "ratingAverage": 4.7
+          },
+          "failure": null
+        },
+        "rejectedTeacherProfile": {
+          "pass": true,
+          "manualFallbackUsed": false,
+          "userId": "audit_match_rejected_teacher_1776159929000",
+          "matchProfile": {
+            "country": null,
+            "role": "native_speaker",
+            "supportedLanguages": [
+              "en"
+            ],
+            "legacyPriorityScore": 0,
+            "level": null,
+            "activeLanguage": "en",
+            "approvedTeacher": false,
+            "activeLanguageSource": "profile",
+            "teacherAccreditationStatus": "rejected",
+            "ratingCount": 0,
+            "version": "v1",
+            "ratingAverage": 0
+          },
+          "failure": null
+        },
+        "storedOnlyProfile": {
+          "pass": true,
+          "manualFallbackUsed": false,
+          "userId": "audit_match_stored_only_1776159929000",
+          "matchProfile": {
+            "version": "v1",
+            "role": "native_speaker",
+            "activeLanguage": "fr",
+            "activeLanguageSource": "match_profile",
+            "supportedLanguages": [
+              "fr"
+            ],
+            "country": "CA",
+            "level": "Fluent",
+            "ratingAverage": 4.6,
+            "teacherAccreditationStatus": "approved",
+            "approvedTeacher": true,
+            "legacyPriorityScore": 7,
+            "ratingCount": 0
+          },
+          "failure": null
+        }
+      }
     },
     "createVideoSessionLoad": {
       "pass": true,
@@ -73,10 +535,10 @@
       "concurrency": 5,
       "successCount": 20,
       "errorCount": 0,
-      "p50_ms": 108,
-      "p95_ms": 160,
-      "max_ms": 162,
-      "avg_ms": 111.6,
+      "p50_ms": 195,
+      "p95_ms": 378,
+      "max_ms": 383,
+      "avg_ms": 257.9,
       "logLines": 200,
       "errorLines": 20,
       "responseStatuses": {
@@ -85,5 +547,5 @@
       "failure": null
     }
   },
-  "finishedAt": "2026-03-04T01:52:54.302Z"
+  "finishedAt": "2026-04-14T09:45:31.145Z"
 }

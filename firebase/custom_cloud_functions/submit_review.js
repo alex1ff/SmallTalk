@@ -1,5 +1,6 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {buildStoredMatchProfile} = require("./video_sessions_shared");
 
 const MAX_COMMENT_LENGTH = 1000;
 const RECENT_SESSION_LOOKUP_WINDOW_MS = 1000 * 60 * 60 * 24 * 14;
@@ -442,11 +443,21 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
 
       transaction.set(reviewRef, reviewData);
       transaction.set(resolvedSessionRef, reviewSessionUpdate, {merge: true});
-      transaction.set(targetUserRef, {
+      const updatedTargetUserData = {
+        ...targetUserData,
         rating: {
           average: newAverage,
           totalReviews: newTotal,
         },
+      };
+
+      transaction.set(targetUserRef, {
+        rating: updatedTargetUserData.rating,
+        matchProfile: buildStoredMatchProfile(
+          targetUserId,
+          updatedTargetUserData,
+          {preserveStoredValues: true},
+        ),
       }, {merge: true});
 
       return {

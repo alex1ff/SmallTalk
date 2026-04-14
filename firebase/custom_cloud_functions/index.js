@@ -24,3 +24,18 @@ const submitReview = require("./submit_review.js");
 exports.submitReview = submitReview.submitReview;
 const createPaymentSession = require("./create_payment_session.js");
 exports.createPaymentSession = createPaymentSession.createPaymentSession;
+const conversationUnlockEvents = require("./conversation_unlock_events.js");
+exports.processConversationUnlockEvents =
+  conversationUnlockEvents.processConversationUnlockEvents;
+exports.repairMissingConversationUnlockEvents =
+  conversationUnlockEvents.repairMissingConversationUnlockEvents;
+const conversationMessageSummaries = require("./conversation_message_summaries.js");
+exports.updateConversationMessageSummary =
+  conversationMessageSummaries.updateConversationMessageSummary;
+exports.repairConversationMessageSummaries =
+  conversationMessageSummaries.repairConversationMessageSummaries;
+const userMatchProfileSync = require("./user_match_profile_sync.js");
+exports.syncUserMatchProfile = userMatchProfileSync.syncUserMatchProfile;
+const teacherVerificationRequests = require("./teacher_verification_requests.js");
+exports.syncTeacherVerificationRequest =
+  teacherVerificationRequests.syncTeacherVerificationRequest;

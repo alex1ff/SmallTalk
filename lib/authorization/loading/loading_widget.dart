@@ -82,6 +82,8 @@ class _LoadingWidgetState extends State<LoadingWidget> {
           : null,
       hasInferredStudentProfileCompletion:
           _hasInferredStudentProfileCompletion(userDocument),
+      isTeacherAccreditationApproved:
+          userDocument?.isTeacherAccreditationApproved ?? false,
     );
   }
 

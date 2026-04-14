@@ -8,6 +8,8 @@ import '/flutter_flow/flutter_flow_animations.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/index.dart';
+import '/services/user_match_profile.dart';
 import '/teachers_pages/components/add_card/add_card_widget.dart';
 import '/teachers_pages/components/edit_card/edit_card_widget.dart';
 import '/custom_code/actions/index.dart' as actions;
@@ -112,6 +114,34 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
     safeSetState(() {});
   }
 
+  Widget _buildTeacherAccessPendingRedirect(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      context.goNamed(
+        StudentsDashboardWidget.routeName,
+        queryParameters: {
+          'zn': serializeParam(false, ParamType.bool),
+        }.withoutNulls,
+      );
+    });
+
+    return Scaffold(
+      backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+      body: Center(
+        child: Text(
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Выплаты доступны после проверки заявки',
+            enText: 'Payouts are available after approval',
+          ),
+          textAlign: TextAlign.center,
+          style: FlutterFlowTheme.of(context).bodyMedium,
+        ),
+      ),
+    );
+  }
+
   Future<void> _submitWithdrawalRequest() async {
     final userRef = currentUserReference;
     final selectedCardRef = _model.selectedCard;
@@ -134,6 +164,10 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
       }
 
       final freshUser = UsersRecord.fromSnapshot(userSnapshot);
+      if (!canAccessTeacherSurfaces(freshUser)) {
+        return;
+      }
+
       final availableBalance = freshUser.balanceNS;
       if (availableBalance <= 0) {
         return;
@@ -178,6 +212,11 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
 
   @override
   Widget build(BuildContext context) {
+    if (currentUserDocument != null &&
+        !canAccessTeacherSurfaces(currentUserDocument)) {
+      return _buildTeacherAccessPendingRedirect(context);
+    }
+
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();

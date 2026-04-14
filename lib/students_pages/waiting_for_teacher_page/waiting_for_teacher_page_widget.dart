@@ -4,6 +4,7 @@ import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
+import '/services/user_match_profile.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -52,8 +53,7 @@ class _WaitingForTeacherPageWidgetState
   String? _listeningSessionId;
   String? _lastSnapshotFingerprint;
 
-  bool get _isDirectTutorCall =>
-      _nonEmpty(widget.targetTutorId) != null;
+  bool get _isDirectTutorCall => _nonEmpty(widget.targetTutorId) != null;
 
   @override
   void initState() {
@@ -220,12 +220,15 @@ class _WaitingForTeacherPageWidgetState
     final user = currentUserDocument;
     if (user == null) return null;
 
-    final language = _nonEmpty(user.learningLanguage.code);
+    final language = _nonEmpty(resolveUserActiveConversationLanguage(user));
     if (language == null) return null;
 
     final preferredNativeLanguage =
         _nonEmpty(user.preferences.preferredNativeLanguage.code);
     final preferredCountry = _nonEmpty(user.preferences.preferredLocation.code);
+    final preferredPartnerLevel = _nonEmpty(
+      user.preferences.preferredPartnerLevel?.name,
+    );
 
     return {
       'language': language,
@@ -234,6 +237,8 @@ class _WaitingForTeacherPageWidgetState
         'preferredNativeLanguage': preferredNativeLanguage,
       if (!_isDirectTutorCall && preferredCountry != null)
         'preferredCountry': preferredCountry,
+      if (!_isDirectTutorCall && preferredPartnerLevel != null)
+        'preferredPartnerLevel': preferredPartnerLevel,
     };
   }
 
@@ -302,7 +307,8 @@ class _WaitingForTeacherPageWidgetState
       if (sessionId == null) {
         _detachSessionListener();
         final status = _nonEmpty(resultMap['status']?.toString());
-        final backendMessage = _sanitizeMessage(resultMap['message']?.toString());
+        final backendMessage =
+            _sanitizeMessage(resultMap['message']?.toString());
         _createFailed = true;
         _createMessage = _createFailureMessage(
           status: status,
@@ -590,10 +596,10 @@ class _WaitingForTeacherPageWidgetState
           );
     } else if (isLoading || status == null) {
       title = _localizedText(
-        ruText:
-            _isDirectTutorCall ? 'Звоним преподавателю' : 'Small Talk начинается',
-        enText:
-            _isDirectTutorCall ? 'Calling your tutor' : 'Small Talk begins',
+        ruText: _isDirectTutorCall
+            ? 'Звоним преподавателю'
+            : 'Small Talk начинается',
+        enText: _isDirectTutorCall ? 'Calling your tutor' : 'Small Talk begins',
       );
       subtitle = _localizedText(
         ruText: _isDirectTutorCall
@@ -692,13 +698,13 @@ class _WaitingForTeacherPageWidgetState
         if (!isDialingTutor && !_createFailed)
           Positioned.fill(
             child: Center(
-                child: Lottie.asset(
-                  'assets/jsons/World_Map_Pinging_Animation.json',
-                  fit: BoxFit.contain,
-                  animate: !_isFlutterTest,
-                ),
+              child: Lottie.asset(
+                'assets/jsons/World_Map_Pinging_Animation.json',
+                fit: BoxFit.contain,
+                animate: !_isFlutterTest,
               ),
             ),
+          ),
         if (isDialingTutor && tutorPhoto != null)
           Positioned.fill(
             child: CachedNetworkImage(

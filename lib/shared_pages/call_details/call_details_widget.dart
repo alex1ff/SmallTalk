@@ -10,6 +10,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
 import '/shared_pages/review_flow/review_submission_helper.dart';
+import '/services/user_match_profile.dart';
 import '/students_pages/native_speaker_page/native_speaker_page_widget.dart';
 import '/students_pages/components/new_word/new_word_widget.dart';
 import '/students_pages/components/woed/woed_widget.dart';
@@ -47,7 +48,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   final scaffoldKey = GlobalKey<ScaffoldState>();
   Future<List<TransactionsRecord>>? _transactionsFuture;
 
-  bool get _isTeacher => currentUserDocument?.role == UserRole.native_speaker;
+  bool get _isTeacher => canAccessTeacherSurfaces(currentUserDocument);
 
   @override
   void initState() {

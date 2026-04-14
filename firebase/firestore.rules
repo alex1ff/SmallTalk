@@ -5,8 +5,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function hasField(data, fieldName) {
+      return data.keys().hasAny([fieldName]);
+    }
+
+    function fieldEquals(data, fieldName, value) {
+      return hasField(data, fieldName) && data[fieldName] == value;
+    }
+
     function isAdmin() {
-      return isSignedIn() && request.auth.token.admin == true;
+      return isSignedIn() &&
+        request.auth.token.keys().hasAny(['admin']) &&
+        request.auth.token.admin == true;
     }
 
     function isSelf(userId) {
@@ -23,14 +33,107 @@ service cloud.firestore {
 
     function isSessionParticipant(data) {
       return isSignedIn() && (
-        data.studentId == request.auth.uid ||
-        data.tutorId == request.auth.uid ||
-        data.currentTutorId == request.auth.uid
+        isParticipantIdForSession(data) ||
+        fieldEquals(data, 'studentId', request.auth.uid) ||
+        fieldEquals(data, 'tutorId', request.auth.uid) ||
+        fieldEquals(data, 'currentTutorId', request.auth.uid)
       );
+    }
+
+    function isParticipantIdForSession(data) {
+      return isSignedIn() &&
+        (
+          data.participantIds is list &&
+          data.participantIds.hasAny([request.auth.uid])
+      );
+    }
+
+    function isRequesterForSession(data) {
+      return isSignedIn() && fieldEquals(data, 'studentId', request.auth.uid);
+    }
+
+    function isResponderForSession(data) {
+      return isSignedIn() && (
+        fieldEquals(data, 'tutorId', request.auth.uid) ||
+        fieldEquals(data, 'currentTutorId', request.auth.uid)
+      );
+    }
+
+    function isValidSessionNavigationTimestamp(fieldName) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([fieldName]) ||
+        request.resource.data[fieldName] == request.time;
+    }
+
+    function canUpdateVideoSessionNavigationState() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return isSessionParticipant(resource.data) &&
+        changedKeys.hasOnly([
+          'studentNavigationTriggered',
+          'tutorNavigationTriggered',
+          'navigationTimestamp',
+          'navigationCompletedAt'
+        ]) &&
+        (
+          !changedKeys.hasAny(['studentNavigationTriggered']) ||
+          (
+            isRequesterForSession(resource.data) &&
+            request.resource.data.studentNavigationTriggered is bool
+          )
+        ) &&
+        (
+          !changedKeys.hasAny(['tutorNavigationTriggered']) ||
+          (
+            isResponderForSession(resource.data) &&
+            request.resource.data.tutorNavigationTriggered is bool
+          ) ||
+          (
+            isParticipantIdForSession(resource.data) &&
+            !isRequesterForSession(resource.data) &&
+            request.resource.data.tutorNavigationTriggered is bool
+          )
+        ) &&
+        isValidSessionNavigationTimestamp('navigationTimestamp') &&
+        isValidSessionNavigationTimestamp('navigationCompletedAt');
     }
 
     function videoSessionData(sessionId) {
       return get(/databases/$(database)/documents/videoSessions/$(sessionId)).data;
+    }
+
+    function conversationData(pairId) {
+      return get(/databases/$(database)/documents/conversations/$(pairId)).data;
+    }
+
+    function conversationExists(pairId) {
+      return exists(/databases/$(database)/documents/conversations/$(pairId));
+    }
+
+    function isConversationParticipant(data) {
+      return isSignedIn() &&
+        data.participantIds is list &&
+        data.participantIds.hasAny([request.auth.uid]);
+    }
+
+    function canUpdateConversationReadMarker() {
+      return isSignedIn() &&
+        resource.data.isUnlocked == true &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'lastReadAtByUserId'
+        ]) &&
+        request.resource.data.lastReadAtByUserId is map &&
+        resource.data.lastReadAtByUserId is map &&
+        request.resource.data.lastReadAtByUserId.keys().hasAll(
+          resource.data.lastReadAtByUserId.keys()
+        ) &&
+        request.resource.data.lastReadAtByUserId.diff(
+          resource.data.lastReadAtByUserId
+        ).changedKeys().hasOnly([request.auth.uid]) &&
+        request.resource.data.lastReadAtByUserId[request.auth.uid] == request.time &&
+        (
+          !resource.data.lastReadAtByUserId.keys().hasAny([request.auth.uid]) ||
+          request.resource.data.lastReadAtByUserId[request.auth.uid] >=
+          resource.data.lastReadAtByUserId[request.auth.uid]
+        );
     }
 
     function isPromoCodeRedeemUpdate() {
@@ -44,18 +147,177 @@ service cloud.firestore {
         request.resource.data.usageCount == resource.data.usageCount + 1;
     }
 
+    function hasExplicitTeacherAccreditationStatus(data) {
+      return data.keys().hasAny([
+        'teacherAccreditationStatus',
+        'teacherVerificationStatus',
+        'verificationStatus'
+      ]);
+    }
+
+    function hasExplicitApprovedTeacherAccreditation(data) {
+      return (
+        data.keys().hasAny(['teacherAccreditationStatus']) &&
+        data.teacherAccreditationStatus == 'approved'
+      ) ||
+      (
+        data.keys().hasAny(['teacherVerificationStatus']) &&
+        data.teacherVerificationStatus == 'approved'
+      ) ||
+      (
+        data.keys().hasAny(['verificationStatus']) &&
+        data.verificationStatus == 'approved'
+      );
+    }
+
+    function hasMatchProfileApprovedTeacherAccreditation(data) {
+      return data.keys().hasAny(['matchProfile']) &&
+        data.matchProfile is map &&
+        (
+          (
+            data.matchProfile.keys().hasAny(['teacherAccreditationStatus']) &&
+            data.matchProfile.teacherAccreditationStatus == 'approved'
+          ) ||
+          (
+            data.matchProfile.keys().hasAny(['approvedTeacher']) &&
+            data.matchProfile.approvedTeacher == true
+          )
+        );
+    }
+
+    function hasApprovedTeacherAccreditation(data) {
+      return hasExplicitTeacherAccreditationStatus(data)
+        ? hasExplicitApprovedTeacherAccreditation(data)
+        : (
+          (
+            data.keys().hasAny(['verif_NS']) &&
+            data.verif_NS == true
+          ) ||
+          hasMatchProfileApprovedTeacherAccreditation(data)
+        );
+    }
+
+    function canCreateTransaction() {
+      return isAdmin() || (
+        isOwnerRef(request.resource.data.userId) &&
+        (
+          request.resource.data.type != 'withdrawal' ||
+          hasApprovedTeacherAccreditation(get(currentUserRef()).data)
+        )
+      );
+    }
+
+    function protectedTeacherAccreditationFields() {
+      return [
+        'teacherAccreditationStatus',
+        'teacherVerificationStatus',
+        'verificationStatus',
+        'teacherVerificationRequestRef',
+        'teacherAccreditationUpdatedAt',
+        'verif_NS',
+        'matchProfile'
+      ];
+    }
+
+    function teacherVerificationRequestFields() {
+      return [
+        'userId',
+        'userRef',
+        'status',
+        'displayName',
+        'photoUrl',
+        'languageInstruction',
+        'nativeLanguage',
+        'country',
+        'aboutMe',
+        'createdAt',
+        'updatedAt'
+      ];
+    }
+
+    function teacherVerificationRequestUserRef(userId) {
+      return /databases/$(database)/documents/users/$(userId);
+    }
+
+    function teacherVerificationRequestSnapshotFieldsAreValid() {
+      return (
+        !request.resource.data.keys().hasAny(['displayName']) ||
+        request.resource.data.displayName is string
+      ) &&
+      (
+        !request.resource.data.keys().hasAny(['photoUrl']) ||
+        request.resource.data.photoUrl is string
+      ) &&
+      (
+        !request.resource.data.keys().hasAny(['aboutMe']) ||
+        request.resource.data.aboutMe is string
+      ) &&
+      (
+        !request.resource.data.keys().hasAny(['languageInstruction']) ||
+        request.resource.data.languageInstruction is map
+      ) &&
+      (
+        !request.resource.data.keys().hasAny(['nativeLanguage']) ||
+        request.resource.data.nativeLanguage is map
+      ) &&
+      (
+        !request.resource.data.keys().hasAny(['country']) ||
+        request.resource.data.country is map
+      );
+    }
+
+    function canCreateOwnTeacherVerificationRequest(userId) {
+      return isSelf(userId) &&
+        request.resource.data.keys().hasOnly(teacherVerificationRequestFields()) &&
+        request.resource.data.userId == userId &&
+        request.resource.data.userRef == teacherVerificationRequestUserRef(userId) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        teacherVerificationRequestSnapshotFieldsAreValid();
+    }
+
+    function canUpdateOwnTeacherVerificationRequest(userId) {
+      return isSelf(userId) &&
+        resource.data.status == 'pending' &&
+        request.resource.data.keys().hasOnly(teacherVerificationRequestFields()) &&
+        request.resource.data.userId == userId &&
+        request.resource.data.userRef == teacherVerificationRequestUserRef(userId) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedAt == request.time &&
+        teacherVerificationRequestSnapshotFieldsAreValid();
+    }
+
+    function canCreateOwnUser(userId) {
+      return isSelf(userId) &&
+        !request.resource.data.keys().hasAny(protectedTeacherAccreditationFields());
+    }
+
+    function canUpdateOwnUser(userId) {
+      return isSelf(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(protectedTeacherAccreditationFields());
+    }
+
     match /users/{userId} {
-      allow create: if isAdmin() || isSelf(userId);
+      allow create: if isAdmin() || canCreateOwnUser(userId);
       allow read: if isSignedIn();
-      allow update: if isAdmin() || isSelf(userId);
+      allow update: if isAdmin() || canUpdateOwnUser(userId);
+      allow delete: if isAdmin();
+    }
+
+    match /teacherVerificationRequests/{userId} {
+      allow read: if isAdmin() || isSelf(userId);
+      allow create: if isAdmin() || canCreateOwnTeacherVerificationRequest(userId);
+      allow update: if isAdmin() || canUpdateOwnTeacherVerificationRequest(userId);
       allow delete: if isAdmin();
     }
 
     match /videoSessions/{sessionId} {
-      allow create: if isSignedIn() &&
-        request.resource.data.studentId == request.auth.uid;
+      allow create: if false;
       allow read: if isSessionParticipant(resource.data);
-      allow update: if isSessionParticipant(resource.data);
+      allow update: if isAdmin() || canUpdateVideoSessionNavigationState();
       allow delete: if false;
 
       match /captionLogs/{logId} {
@@ -67,6 +329,45 @@ service cloud.firestore {
             request.resource.data.source == 'peer_legacy_final'
           );
         allow delete: if false;
+      }
+    }
+
+    match /conversationUnlockEvents/{sessionId} {
+      allow create, read, update, delete: if false;
+    }
+
+    match /matchPairDailyCompletions/{completionId} {
+      allow create, read, update, delete: if false;
+    }
+
+    match /conversations/{pairId} {
+      allow read: if isConversationParticipant(resource.data);
+      allow create: if false;
+      allow update: if isConversationParticipant(resource.data) &&
+        canUpdateConversationReadMarker();
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if conversationExists(pairId) &&
+          isConversationParticipant(conversationData(pairId)) &&
+          conversationData(pairId).isUnlocked == true;
+        allow create: if conversationExists(pairId) &&
+          isConversationParticipant(conversationData(pairId)) &&
+          conversationData(pairId).isUnlocked == true &&
+          request.resource.data.keys().hasOnly([
+            'senderId',
+            'senderRef',
+            'type',
+            'text',
+            'createdAt'
+          ]) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.senderRef == currentUserRef() &&
+          request.resource.data.type == 'text' &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
       }
     }
 
@@ -88,7 +389,7 @@ service cloud.firestore {
     }
 
     match /transactions/{transactionId} {
-      allow create: if isAdmin() || isOwnerRef(request.resource.data.userId);
+      allow create: if canCreateTransaction();
       allow read: if isAdmin() || isOwnerRef(resource.data.userId);
       allow update, delete: if isAdmin();
     }

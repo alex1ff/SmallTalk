@@ -35,6 +35,12 @@ enum Level {
   Fluent,
 }
 
+enum TeacherAccreditationStatus {
+  pending,
+  approved,
+  rejected,
+}
+
 enum StatusTransactions {
   completed,
   pending,
@@ -106,6 +112,42 @@ String? _normalizeUserRoleValue(dynamic value) {
   }
 }
 
+String? _normalizeTeacherAccreditationStatusValue(dynamic value) {
+  final rawValue = _enumValueAsString(value);
+  if (rawValue == null) {
+    return null;
+  }
+
+  final normalized = rawValue
+      .trim()
+      .split('.')
+      .last
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\s-]+'), '_');
+
+  switch (normalized) {
+    case 'approved':
+    case 'approve':
+    case 'accepted':
+    case 'verified':
+    case 'true':
+      return TeacherAccreditationStatus.approved.name;
+    case 'rejected':
+    case 'reject':
+    case 'declined':
+    case 'denied':
+      return TeacherAccreditationStatus.rejected.name;
+    case 'pending':
+    case 'review':
+    case 'in_review':
+    case 'under_review':
+    case 'false':
+      return TeacherAccreditationStatus.pending.name;
+    default:
+      return normalized;
+  }
+}
+
 T? deserializeEnum<T>(dynamic value) {
   switch (T) {
     case (UserRole):
@@ -119,6 +161,10 @@ T? deserializeEnum<T>(dynamic value) {
       return Gender.values.deserialize(_enumValueAsString(value)) as T?;
     case (Level):
       return Level.values.deserialize(_enumValueAsString(value)) as T?;
+    case (TeacherAccreditationStatus):
+      return TeacherAccreditationStatus.values.deserialize(
+        _normalizeTeacherAccreditationStatusValue(value),
+      ) as T?;
     case (StatusTransactions):
       return StatusTransactions.values.deserialize(_enumValueAsString(value))
           as T?;

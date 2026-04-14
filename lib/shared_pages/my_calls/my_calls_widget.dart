@@ -1,9 +1,9 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
-import '/backend/schema/enums/enums.dart';
 import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/user_match_profile.dart';
 import '/shared_pages/call_details/call_details_widget.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -27,7 +27,7 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
-  bool get _isTeacher => currentUserDocument?.role == UserRole.native_speaker;
+  bool get _isTeacher => canAccessTeacherSurfaces(currentUserDocument);
 
   @override
   void initState() {

@@ -3,6 +3,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '/backend/schema/util/firestore_util.dart';
+import '/backend/schema/enums/enums.dart';
 
 import 'index.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -11,9 +12,11 @@ class PreferencesStruct extends FFFirebaseStruct {
   PreferencesStruct({
     LanguageStruct? preferredNativeLanguage,
     CountryStruct? preferredLocation,
+    Level? preferredPartnerLevel,
     FirestoreUtilData firestoreUtilData = const FirestoreUtilData(),
   })  : _preferredNativeLanguage = preferredNativeLanguage,
         _preferredLocation = preferredLocation,
+        _preferredPartnerLevel = preferredPartnerLevel,
         super(firestoreUtilData);
 
   // "preferredNativeLanguage" field.
@@ -40,6 +43,13 @@ class PreferencesStruct extends FFFirebaseStruct {
 
   bool hasPreferredLocation() => _preferredLocation != null;
 
+  // "preferredPartnerLevel" field.
+  Level? _preferredPartnerLevel;
+  Level? get preferredPartnerLevel => _preferredPartnerLevel;
+  set preferredPartnerLevel(Level? val) => _preferredPartnerLevel = val;
+
+  bool hasPreferredPartnerLevel() => _preferredPartnerLevel != null;
+
   static PreferencesStruct fromMap(Map<String, dynamic> data) =>
       PreferencesStruct(
         preferredNativeLanguage:
@@ -49,6 +59,9 @@ class PreferencesStruct extends FFFirebaseStruct {
         preferredLocation: data['preferredLocation'] is CountryStruct
             ? data['preferredLocation']
             : CountryStruct.maybeFromMap(data['preferredLocation']),
+        preferredPartnerLevel: data['preferredPartnerLevel'] is Level
+            ? data['preferredPartnerLevel']
+            : deserializeEnum<Level>(data['preferredPartnerLevel']),
       );
 
   static PreferencesStruct? maybeFromMap(dynamic data) => data is Map
@@ -58,6 +71,7 @@ class PreferencesStruct extends FFFirebaseStruct {
   Map<String, dynamic> toMap() => {
         'preferredNativeLanguage': _preferredNativeLanguage?.toMap(),
         'preferredLocation': _preferredLocation?.toMap(),
+        'preferredPartnerLevel': _preferredPartnerLevel?.serialize(),
       }.withoutNulls;
 
   @override
@@ -69,6 +83,10 @@ class PreferencesStruct extends FFFirebaseStruct {
         'preferredLocation': serializeParam(
           _preferredLocation,
           ParamType.DataStruct,
+        ),
+        'preferredPartnerLevel': serializeParam(
+          _preferredPartnerLevel,
+          ParamType.Enum,
         ),
       }.withoutNulls;
 
@@ -86,6 +104,11 @@ class PreferencesStruct extends FFFirebaseStruct {
           false,
           structBuilder: CountryStruct.fromSerializableMap,
         ),
+        preferredPartnerLevel: deserializeParam<Level>(
+          data['preferredPartnerLevel'],
+          ParamType.Enum,
+          false,
+        ),
       );
 
   @override
@@ -95,17 +118,22 @@ class PreferencesStruct extends FFFirebaseStruct {
   bool operator ==(Object other) {
     return other is PreferencesStruct &&
         preferredNativeLanguage == other.preferredNativeLanguage &&
-        preferredLocation == other.preferredLocation;
+        preferredLocation == other.preferredLocation &&
+        preferredPartnerLevel == other.preferredPartnerLevel;
   }
 
   @override
-  int get hashCode =>
-      const ListEquality().hash([preferredNativeLanguage, preferredLocation]);
+  int get hashCode => const ListEquality().hash([
+        preferredNativeLanguage,
+        preferredLocation,
+        preferredPartnerLevel,
+      ]);
 }
 
 PreferencesStruct createPreferencesStruct({
   LanguageStruct? preferredNativeLanguage,
   CountryStruct? preferredLocation,
+  Level? preferredPartnerLevel,
   Map<String, dynamic> fieldValues = const {},
   bool clearUnsetFields = true,
   bool create = false,
@@ -116,6 +144,7 @@ PreferencesStruct createPreferencesStruct({
           (clearUnsetFields ? LanguageStruct() : null),
       preferredLocation:
           preferredLocation ?? (clearUnsetFields ? CountryStruct() : null),
+      preferredPartnerLevel: preferredPartnerLevel,
       firestoreUtilData: FirestoreUtilData(
         clearUnsetFields: clearUnsetFields,
         create: create,

@@ -63,6 +63,11 @@ class VideoSessionsRecord extends FirestoreRecord {
   String get studentId => _studentId ?? '';
   bool hasStudentId() => _studentId != null;
 
+  // "participantIds" field.
+  List<String>? _participantIds;
+  List<String> get participantIds => _participantIds ?? const [];
+  bool hasParticipantIds() => _participantIds != null;
+
   // "dailyRoomUrl" field.
   String? _dailyRoomUrl;
   String get dailyRoomUrl => _dailyRoomUrl ?? '';
@@ -157,6 +162,7 @@ class VideoSessionsRecord extends FirestoreRecord {
     _status = snapshotData['status'] as String?;
     _tutorId = snapshotData['tutorId'] as String?;
     _studentId = snapshotData['studentId'] as String?;
+    _participantIds = getDataList(snapshotData['participantIds']);
     _dailyRoomUrl = snapshotData['dailyRoomUrl'] as String?;
     _meetingToken = snapshotData['meetingToken'] as String?;
     _dailyRoomName = snapshotData['dailyRoomName'] as String?;
@@ -223,6 +229,7 @@ Map<String, dynamic> createVideoSessionsRecordData({
   String? status,
   String? tutorId,
   String? studentId,
+  List<String>? participantIds,
   String? dailyRoomUrl,
   String? meetingToken,
   String? dailyRoomName,
@@ -249,6 +256,7 @@ Map<String, dynamic> createVideoSessionsRecordData({
       'status': status,
       'tutorId': tutorId,
       'studentId': studentId,
+      'participantIds': participantIds,
       'dailyRoomUrl': dailyRoomUrl,
       'meetingToken': meetingToken,
       'dailyRoomName': dailyRoomName,
@@ -291,6 +299,7 @@ class VideoSessionsRecordDocumentEquality
         e1?.status == e2?.status &&
         e1?.tutorId == e2?.tutorId &&
         e1?.studentId == e2?.studentId &&
+        listEquality.equals(e1?.participantIds, e2?.participantIds) &&
         e1?.dailyRoomUrl == e2?.dailyRoomUrl &&
         e1?.meetingToken == e2?.meetingToken &&
         e1?.dailyRoomName == e2?.dailyRoomName &&
@@ -320,6 +329,7 @@ class VideoSessionsRecordDocumentEquality
         e?.status,
         e?.tutorId,
         e?.studentId,
+        e?.participantIds,
         e?.dailyRoomUrl,
         e?.meetingToken,
         e?.dailyRoomName,

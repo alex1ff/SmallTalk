@@ -8,6 +8,64 @@ import '/backend/schema/enums/enums.dart';
 import 'index.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 
+Map<String, dynamic> _asStringKeyedMap(Object? value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return value.map((key, value) => MapEntry(key.toString(), value));
+  }
+  return const <String, dynamic>{};
+}
+
+TeacherAccreditationStatus? _teacherAccreditationStatusFrom(Object? value) {
+  return value is TeacherAccreditationStatus
+      ? value
+      : deserializeEnum<TeacherAccreditationStatus>(value);
+}
+
+TeacherAccreditationStatus resolveTeacherAccreditationStatusFromData(
+  Map<String, dynamic> data,
+) {
+  final canonicalStatus =
+      _teacherAccreditationStatusFrom(data['teacherAccreditationStatus']);
+  if (canonicalStatus != null) {
+    return canonicalStatus;
+  }
+
+  final teacherVerificationStatus =
+      _teacherAccreditationStatusFrom(data['teacherVerificationStatus']);
+  if (teacherVerificationStatus != null) {
+    return teacherVerificationStatus;
+  }
+
+  final verificationStatus =
+      _teacherAccreditationStatusFrom(data['verificationStatus']);
+  if (verificationStatus != null) {
+    return verificationStatus;
+  }
+
+  if (data['verif_NS'] == true) {
+    return TeacherAccreditationStatus.approved;
+  }
+
+  final matchProfile = _asStringKeyedMap(data['matchProfile']);
+  final matchProfileStatus = _teacherAccreditationStatusFrom(
+      matchProfile['teacherAccreditationStatus']);
+  if (matchProfileStatus != null) {
+    return matchProfileStatus;
+  }
+  if (matchProfile['approvedTeacher'] == true) {
+    return TeacherAccreditationStatus.approved;
+  }
+
+  return TeacherAccreditationStatus.pending;
+}
+
+bool isTeacherAccreditationApprovedFromData(Map<String, dynamic> data) =>
+    resolveTeacherAccreditationStatusFromData(data) ==
+    TeacherAccreditationStatus.approved;
+
 class UsersRecord extends FirestoreRecord {
   UsersRecord._(
     DocumentReference reference,
@@ -86,6 +144,12 @@ class UsersRecord extends FirestoreRecord {
   EarningsStruct get earnings => _earnings ?? EarningsStruct();
   bool hasEarnings() => _earnings != null;
 
+  // "friends" field.
+  List<DocumentReference>? _friends;
+  List<DocumentReference> get friends =>
+      _friends ?? _favoriteNativeSpeakers ?? const [];
+  bool hasFriends() => _friends != null;
+
   // "favoriteNativeSpeakers" field.
   List<DocumentReference>? _favoriteNativeSpeakers;
   List<DocumentReference> get favoriteNativeSpeakers =>
@@ -136,6 +200,18 @@ class UsersRecord extends FirestoreRecord {
   bool? _verifNS;
   bool get verifNS => _verifNS ?? false;
   bool hasVerifNS() => _verifNS != null;
+
+  // "teacherAccreditationStatus" field.
+  TeacherAccreditationStatus? _teacherAccreditationStatus;
+  TeacherAccreditationStatus? get teacherAccreditationStatus =>
+      _teacherAccreditationStatus;
+  bool hasTeacherAccreditationStatus() => _teacherAccreditationStatus != null;
+
+  TeacherAccreditationStatus get effectiveTeacherAccreditationStatus =>
+      resolveTeacherAccreditationStatusFromData(snapshotData);
+  bool get isTeacherAccreditationApproved =>
+      effectiveTeacherAccreditationStatus ==
+      TeacherAccreditationStatus.approved;
 
   // "selectedAvatarDocRef" field.
   DocumentReference? _selectedAvatarDocRef;
@@ -202,6 +278,7 @@ class UsersRecord extends FirestoreRecord {
     _earnings = snapshotData['earnings'] is EarningsStruct
         ? snapshotData['earnings']
         : EarningsStruct.maybeFromMap(snapshotData['earnings']);
+    _friends = getDataList(snapshotData['friends']);
     _favoriteNativeSpeakers =
         getDataList(snapshotData['favoriteNativeSpeakers']);
     _learningLanguage = snapshotData['learningLanguage'] is LanguageStruct
@@ -221,6 +298,8 @@ class UsersRecord extends FirestoreRecord {
         ? snapshotData['Country_NS']
         : CountryStruct.maybeFromMap(snapshotData['Country_NS']);
     _verifNS = snapshotData['verif_NS'] as bool?;
+    _teacherAccreditationStatus = _teacherAccreditationStatusFrom(
+        snapshotData['teacherAccreditationStatus']);
     _selectedAvatarDocRef =
         snapshotData['selectedAvatarDocRef'] as DocumentReference?;
     _balanceST = snapshotData['balanceST'] is BalanceStruct
@@ -291,6 +370,8 @@ Map<String, dynamic> createUsersRecordData({
   PreferencesStruct? preferences,
   int? queuePriority,
   EarningsStruct? earnings,
+  List<DocumentReference>? friends,
+  List<DocumentReference>? favoriteNativeSpeakers,
   LanguageStruct? learningLanguage,
   DateTime? dateofbirth,
   URatingStruct? rating,
@@ -299,6 +380,7 @@ Map<String, dynamic> createUsersRecordData({
   bool? acquaintance,
   CountryStruct? countryNS,
   bool? verifNS,
+  TeacherAccreditationStatus? teacherAccreditationStatus,
   DocumentReference? selectedAvatarDocRef,
   BalanceStruct? balanceST,
   double? balanceNS,
@@ -323,6 +405,8 @@ Map<String, dynamic> createUsersRecordData({
       'preferences': PreferencesStruct().toMap(),
       'queuePriority': queuePriority,
       'earnings': EarningsStruct().toMap(),
+      'friends': friends,
+      'favoriteNativeSpeakers': favoriteNativeSpeakers,
       'learningLanguage': LanguageStruct().toMap(),
       'dateofbirth': dateofbirth,
       'rating': URatingStruct().toMap(),
@@ -331,6 +415,7 @@ Map<String, dynamic> createUsersRecordData({
       'Acquaintance': acquaintance,
       'Country_NS': CountryStruct().toMap(),
       'verif_NS': verifNS,
+      'teacherAccreditationStatus': teacherAccreditationStatus,
       'selectedAvatarDocRef': selectedAvatarDocRef,
       'balanceST': BalanceStruct().toMap(),
       'balance_NS': balanceNS,
@@ -393,6 +478,7 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e1?.preferences == e2?.preferences &&
         e1?.queuePriority == e2?.queuePriority &&
         e1?.earnings == e2?.earnings &&
+        listEquality.equals(e1?.friends, e2?.friends) &&
         listEquality.equals(
             e1?.favoriteNativeSpeakers, e2?.favoriteNativeSpeakers) &&
         e1?.learningLanguage == e2?.learningLanguage &&
@@ -404,6 +490,7 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e1?.acquaintance == e2?.acquaintance &&
         e1?.countryNS == e2?.countryNS &&
         e1?.verifNS == e2?.verifNS &&
+        e1?.teacherAccreditationStatus == e2?.teacherAccreditationStatus &&
         e1?.selectedAvatarDocRef == e2?.selectedAvatarDocRef &&
         e1?.balanceST == e2?.balanceST &&
         e1?.balanceNS == e2?.balanceNS &&
@@ -430,6 +517,7 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e?.preferences,
         e?.queuePriority,
         e?.earnings,
+        e?.friends,
         e?.favoriteNativeSpeakers,
         e?.learningLanguage,
         e?.dateofbirth,
@@ -440,6 +528,7 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e?.acquaintance,
         e?.countryNS,
         e?.verifNS,
+        e?.teacherAccreditationStatus,
         e?.selectedAvatarDocRef,
         e?.balanceST,
         e?.balanceNS,

@@ -85,11 +85,28 @@ void main() {
         acquaintance: true,
         isProfileComplete: true,
         hasInferredStudentProfileCompletion: false,
+        isTeacherAccreditationApproved: true,
       );
 
       expect(
         destination,
         LoadingRouteDestination.dashboardNativeSpeaker,
+      );
+    });
+
+    test(
+        'routes unapproved native speaker with completed onboarding to student dashboard',
+        () {
+      final destination = resolveLoadingRouteDestination(
+        role: UserRole.native_speaker,
+        acquaintance: true,
+        isProfileComplete: true,
+        hasInferredStudentProfileCompletion: false,
+      );
+
+      expect(
+        destination,
+        LoadingRouteDestination.studentsDashboard,
       );
     });
 

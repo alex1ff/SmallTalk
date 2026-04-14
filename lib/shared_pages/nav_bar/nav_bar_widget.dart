@@ -1,8 +1,8 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
+import '/services/user_match_profile.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart'
@@ -14,10 +14,10 @@ export 'nav_bar_model.dart';
 class NavBarWidget extends StatefulWidget {
   const NavBarWidget({
     super.key,
-    int? indexCurrentPage,
-  }) : this.indexCurrentPage = indexCurrentPage ?? 0;
+    this.indexCurrentPage,
+  });
 
-  final int indexCurrentPage;
+  final int? indexCurrentPage;
 
   @override
   State<NavBarWidget> createState() => _NavBarWidgetState();
@@ -44,11 +44,58 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     super.dispose();
   }
 
-  bool get _isTeacher => currentUserDocument?.role == UserRole.native_speaker;
+  bool get _isTeacher => canAccessTeacherSurfaces(currentUserDocument);
+
+  bool get _hasActiveSelection => widget.indexCurrentPage != null;
 
   int get _selectedIndex {
-    final maxIndex = _isTeacher ? 2 : 3;
-    return widget.indexCurrentPage.clamp(0, maxIndex).toInt();
+    final maxIndex = _isTeacher ? 1 : 2;
+    return widget.indexCurrentPage!.clamp(0, maxIndex).toInt();
+  }
+
+  List<_NavBarDestination> _destinations(BuildContext context) {
+    if (_isTeacher) {
+      return [
+        _NavBarDestination(
+          icon: FFIcons.khome01,
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Главная',
+            enText: 'Home',
+          ),
+        ),
+        _NavBarDestination(
+          icon: FFIcons.kusers02,
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Чаты',
+            enText: 'Chats',
+          ),
+        ),
+      ];
+    }
+
+    return [
+      _NavBarDestination(
+        icon: FFIcons.khome01,
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Главная',
+          enText: 'Home',
+        ),
+      ),
+      _NavBarDestination(
+        icon: FFIcons.kbookOpen01,
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Словарь',
+          enText: 'Words',
+        ),
+      ),
+      _NavBarDestination(
+        icon: FFIcons.kusers02,
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Чаты',
+          enText: 'Chats',
+        ),
+      ),
+    ];
   }
 
   List<AdaptiveNavigationDestination> _adaptiveDestinations(
@@ -64,17 +111,10 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           ),
         ),
         AdaptiveNavigationDestination(
-          icon: 'person.fill',
+          icon: 'ellipsis.message.fill',
           label: FFLocalizations.of(context).getVariableText(
-            ruText: 'Профиль',
-            enText: 'Profile',
-          ),
-        ),
-        AdaptiveNavigationDestination(
-          icon: 'phone.fill',
-          label: FFLocalizations.of(context).getVariableText(
-            ruText: 'Мои звонки',
-            enText: 'My calls',
+            ruText: 'Чаты',
+            enText: 'Chats',
           ),
         ),
       ];
@@ -96,17 +136,10 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         ),
       ),
       AdaptiveNavigationDestination(
-        icon: 'person.fill',
+        icon: 'ellipsis.message.fill',
         label: FFLocalizations.of(context).getVariableText(
-          ruText: 'Профиль',
-          enText: 'Profile',
-        ),
-      ),
-      AdaptiveNavigationDestination(
-        icon: 'phone.fill',
-        label: FFLocalizations.of(context).getVariableText(
-          ruText: 'Мои звонки',
-          enText: 'My calls',
+          ruText: 'Чаты',
+          enText: 'Chats',
         ),
       ),
     ];
@@ -132,13 +165,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       case 1:
         if (_selectedIndex == 1) return;
         context.goNamed(
-          ProfileWidget.routeName,
-        );
-        return;
-      case 2:
-        if (_selectedIndex == 2) return;
-        context.goNamed(
-          MyCallsWidget.routeName,
+          FavoriteWidget.routeName,
         );
         return;
     }
@@ -164,13 +191,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       case 2:
         if (_selectedIndex == 2) return;
         context.goNamed(
-          ProfileWidget.routeName,
-        );
-        return;
-      case 3:
-        if (_selectedIndex == 3) return;
-        context.goNamed(
-          MyCallsWidget.routeName,
+          FavoriteWidget.routeName,
         );
         return;
     }
@@ -178,6 +199,10 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_hasActiveSelection) {
+      return _buildPassiveNavBar(context);
+    }
+
     if (defaultTargetPlatform == TargetPlatform.android) {
       return _buildMaterialNavBar(context);
     }
@@ -187,6 +212,71 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     }
 
     return _buildCupertinoTabBar(context);
+  }
+
+  Widget _buildPassiveNavBar(BuildContext context) {
+    final destinations = _destinations(context);
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final iconColor = FlutterFlowTheme.of(context).secondaryText;
+    final dividerColor = FlutterFlowTheme.of(context).alternate;
+
+    return Material(
+      color: FlutterFlowTheme.of(context).primaryBackground,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          decoration: BoxDecoration(
+            color: FlutterFlowTheme.of(context).primaryBackground,
+            border: Border(
+              top: BorderSide(
+                color: dividerColor,
+                width: 1,
+              ),
+            ),
+          ),
+          padding: EdgeInsets.fromLTRB(8, 8, 8, bottomPadding > 0 ? 8 : 10),
+          child: Row(
+            children: List.generate(destinations.length, (index) {
+              final destination = destinations[index];
+              return Expanded(
+                child: InkWell(
+                  splashColor: Colors.transparent,
+                  highlightColor: Colors.transparent,
+                  onTap: () => _onTap(index),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          destination.icon,
+                          color: iconColor,
+                          size: 24,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          destination.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              FlutterFlowTheme.of(context).bodyMedium.override(
+                                    fontFamily: 'SF Pro Display',
+                                    color: iconColor,
+                                    fontSize: 12,
+                                    letterSpacing: 0.0,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildNativeIOS26TabBar() {
@@ -216,14 +306,10 @@ class _NavBarWidgetState extends State<NavBarWidget> {
               label: FFLocalizations.of(context).getText('2hh3j18i'),
             ),
             BottomNavigationBarItem(
-              icon: Icon(FFIcons.kuser03),
-              label: FFLocalizations.of(context).getText('j96epnpj'),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FFIcons.kphone),
+              icon: Icon(FFIcons.kusers02),
               label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Мои звонки',
-                enText: 'My calls',
+                ruText: 'Чаты',
+                enText: 'Chats',
               ),
             ),
           ]
@@ -237,14 +323,10 @@ class _NavBarWidgetState extends State<NavBarWidget> {
               label: FFLocalizations.of(context).getText('bhpm1ddo'),
             ),
             BottomNavigationBarItem(
-              icon: Icon(FFIcons.kuser03),
-              label: FFLocalizations.of(context).getText('04sylp8f'),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FFIcons.kphone),
+              icon: Icon(FFIcons.kusers02),
               label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Мои звонки',
-                enText: 'My calls',
+                ruText: 'Чаты',
+                enText: 'Chats',
               ),
             ),
           ];
@@ -268,18 +350,12 @@ class _NavBarWidgetState extends State<NavBarWidget> {
               label: FFLocalizations.of(context).getText('2hh3j18i'),
             ),
             NavigationDestination(
-              icon: Icon(FFIcons.kuser03),
+              icon: Icon(FFIcons.kusers02),
               selectedIcon:
-                  Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
-              label: FFLocalizations.of(context).getText('j96epnpj'),
-            ),
-            NavigationDestination(
-              icon: Icon(FFIcons.kphone),
-              selectedIcon:
-                  Icon(FFIcons.kphone, color: const Color(0xFF008BFF)),
+                  Icon(FFIcons.kusers02, color: const Color(0xFF008BFF)),
               label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Мои звонки',
-                enText: 'My calls',
+                ruText: 'Чаты',
+                enText: 'Chats',
               ),
             ),
           ]
@@ -297,18 +373,12 @@ class _NavBarWidgetState extends State<NavBarWidget> {
               label: FFLocalizations.of(context).getText('bhpm1ddo'),
             ),
             NavigationDestination(
-              icon: Icon(FFIcons.kuser03),
+              icon: Icon(FFIcons.kusers02),
               selectedIcon:
-                  Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
-              label: FFLocalizations.of(context).getText('04sylp8f'),
-            ),
-            NavigationDestination(
-              icon: Icon(FFIcons.kphone),
-              selectedIcon:
-                  Icon(FFIcons.kphone, color: const Color(0xFF008BFF)),
+                  Icon(FFIcons.kusers02, color: const Color(0xFF008BFF)),
               label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Мои звонки',
-                enText: 'My calls',
+                ruText: 'Чаты',
+                enText: 'Chats',
               ),
             ),
           ];
@@ -322,4 +392,14 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       destinations: destinations,
     );
   }
+}
+
+class _NavBarDestination {
+  const _NavBarDestination({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
 }

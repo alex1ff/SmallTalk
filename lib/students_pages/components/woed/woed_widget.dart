@@ -1,12 +1,12 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/api_requests/api_calls.dart';
 import '/backend/backend.dart';
-import '/backend/schema/enums/enums.dart';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/user_match_profile.dart';
 import '/students_pages/flashcard/flashcard_content_service.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -34,7 +34,8 @@ class _WoedWidgetState extends State<WoedWidget> {
   bool _isSaved = false;
 
   bool get _canManageDictionary =>
-      currentUserDocument?.role == UserRole.student &&
+      currentUserDocument != null &&
+      !canAccessTeacherSurfaces(currentUserDocument) &&
       currentUserReference != null;
 
   @override
@@ -229,11 +230,11 @@ class _WoedWidgetState extends State<WoedWidget> {
     final currentUser = currentUserDocument;
     String? roleBasedLanguageCode;
 
-    if (currentUser?.role == UserRole.native_speaker) {
+    if (canAccessTeacherSurfaces(currentUser)) {
       roleBasedLanguageCode = currentUser?.nativeLanguageNS.code;
-    } else if (currentUser?.role == UserRole.student) {
+    } else if (currentUser != null) {
       roleBasedLanguageCode =
-          currentUser?.preferences.preferredNativeLanguage.code;
+          currentUser.preferences.preferredNativeLanguage.code;
     }
 
     final fallbackCodes = <String?>[
@@ -505,7 +506,8 @@ class _WoedWidgetState extends State<WoedWidget> {
       addedAt: addedAt,
     );
     try {
-      entriesToSave = await FlashcardContentService.enrichWordWithSourceSynonyms(
+      entriesToSave =
+          await FlashcardContentService.enrichWordWithSourceSynonyms(
         wordRef: userWordsRecordReference,
         entries: entriesToSave,
         sourceLanguageCode: _resolvedYandexSourceLanguageCode(),

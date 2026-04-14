@@ -17,8 +17,7 @@ class FFLocalizations {
       return localizations;
     }
 
-    final fallbackLocale =
-        Localizations.maybeLocaleOf(context) ??
+    final fallbackLocale = Localizations.maybeLocaleOf(context) ??
         WidgetsBinding.instance.platformDispatcher.locale;
     final supportedLocale = _isSupportedLocale(fallbackLocale)
         ? fallbackLocale
@@ -573,8 +572,8 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Start a small talk',
     },
     'a4u0etcs': {
-      'ru': 'Избранные собеседники',
-      'en': 'Selected Interlocutors',
+      'ru': 'Друзья',
+      'en': 'Friends',
     },
     'lffx4k7x': {
       'ru': 'Статистика за сегодня',
@@ -734,8 +733,8 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': '',
     },
     '2gz8zlq9': {
-      'ru': 'В избранное',
-      'en': 'Add to favorites',
+      'ru': 'В друзья',
+      'en': 'Add to friends',
     },
     'kth7l1fn': {
       'ru': 'Не соединять',
@@ -1440,8 +1439,8 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
   // favorite
   {
     'hq7s4leg': {
-      'ru': 'Избранное',
-      'en': 'Favorites',
+      'ru': 'Друзья',
+      'en': 'Friends',
     },
     'svwzaze6': {
       'ru': 'Home',

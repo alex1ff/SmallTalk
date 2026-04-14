@@ -1,5 +1,17 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {
+  buildUnlockEventPayload,
+  getUnlockEligibility,
+} = require("./chats_shared");
+const {
+  buildCompletedPairHistoryWrite,
+} = require("./match_repeat_prevention");
+const {
+  getRequesterId,
+  isSessionParticipant,
+  normalizeRole,
+} = require("./video_sessions_shared");
 
 // ─── Pricing ────────────────────────────────────────────────────────────────
 // Student pays ~45-50 RUB/min (10 SmallTalks = 4990₽, 20 SmallTalks = 8900₽)
@@ -70,7 +82,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       const sessionData = sessionDoc.data() || {};
       console.log("📋 Current session status:", sessionData.status);
 
-      if (sessionData.studentId !== userId && sessionData.tutorId !== userId) {
+      if (!isSessionParticipant(sessionData, userId)) {
         console.log("❌ Permission denied - user is not a participant");
         throw new functions.https.HttpsError(
           "permission-denied",
@@ -100,8 +112,9 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         );
       }
 
+      const requesterId = getRequesterId(sessionData);
       const endedBy = userId;
-      const endedByRole = sessionData.studentId === userId ? "student" : "tutor";
+      const endedByRole = requesterId === userId ? "requester" : "responder";
       const callConnectedAt =
         toMillis(sessionData.sessionMetadata?.callConnectedAt);
       const legacyCallConnectedAt =
@@ -123,6 +136,13 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       const analyticsDurationMinutes = parseFloat(
         tutorDurationMinutes.toFixed(1),
       );
+      const acceptedResponderRole = normalizeRole(
+        sessionData.matchContext?.acceptedResponderRole,
+      );
+      const hasExplicitResponderRole = acceptedResponderRole.length > 0;
+      const responderEligibleForPayout =
+        !!sessionData.tutorId &&
+        (!hasExplicitResponderRole || acceptedResponderRole !== "student");
       const tutorEarning = parseFloat(
         (tutorDurationMinutes * TUTOR_RATE_PER_MINUTE).toFixed(2),
       );
@@ -154,7 +174,11 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         formattedDuration,
       );
       console.log("👤 Ended by:", endedByRole, endedBy);
-      console.log("💰 Tutor earning:", tutorEarning, "RUB");
+      console.log(
+        "💰 Responder earning:",
+        responderEligibleForPayout ? tutorEarning : 0,
+        "RUB",
+      );
       console.log(
         "🎁 Free minute applied:",
         freeMinuteApplied,
@@ -174,7 +198,14 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         "ST",
       );
 
-      transaction.update(sessionRef, {
+      const pairHistoryWrite = buildCompletedPairHistoryWrite({
+        db,
+        sessionId,
+        sessionRef,
+        sessionData,
+        completedAtMillis: requestTimestamp,
+      });
+      const sessionUpdates = {
         status: "ended",
         endedAt: admin.firestore.FieldValue.serverTimestamp(),
         duration: duration,
@@ -182,7 +213,24 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         freeMinuteApplied: freeMinuteApplied,
         tutorNavigationTriggered: false,
         studentNavigationTriggered: false,
-      });
+        "matchContext.responderEligibleForPayout": responderEligibleForPayout,
+      };
+
+      if (pairHistoryWrite) {
+        sessionUpdates["matchContext.completedPairId"] =
+          pairHistoryWrite.pairId;
+        sessionUpdates["matchContext.completedDayKey"] =
+          pairHistoryWrite.dayKey;
+        sessionUpdates["matchContext.completedPairHistoryRef"] =
+          pairHistoryWrite.ref;
+      }
+
+      transaction.update(sessionRef, sessionUpdates);
+      if (pairHistoryWrite) {
+        transaction.set(pairHistoryWrite.ref, pairHistoryWrite.data, {
+          merge: true,
+        });
+      }
 
       if (sessionData.tutorId) {
         console.log("👨‍🏫 Releasing tutor:", sessionData.tutorId);
@@ -214,10 +262,11 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         freeMinuteApplied,
         analyticsDurationMinutes,
         tutorDurationMinutes,
-        tutorEarning,
+        tutorEarning: responderEligibleForPayout ? tutorEarning : 0,
         formattedDuration,
         studentId: sessionData.studentId,
         tutorId: sessionData.tutorId || null,
+        responderEligibleForPayout,
       };
     });
 
@@ -233,6 +282,8 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       endedBy: txResult.endedBy,
       endedAt: txResult.endedAt,
     };
+
+    await attemptConversationUnlockEventWrite(db, sessionId);
 
     // ─── BACKGROUND OPERATIONS (non-blocking for UX) ──────────────────────
     console.log("📊 Running background billing, stats & notifications...");
@@ -260,7 +311,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     );
 
     // b) Tutor balance update + c) Tutor transaction document
-    if (tutorRef) {
+    if (tutorRef && txResult.responderEligibleForPayout) {
       // b) Increment tutor balance
       backgroundTasks.push(
         tutorRef.update({
@@ -328,7 +379,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     );
 
     // f) Tutor stats (all-time + today)
-    if (tutorRef) {
+    if (tutorRef && txResult.responderEligibleForPayout) {
       backgroundTasks.push(
         db.runTransaction(async (t) => {
           const ref = tutorRef.collection("stats").doc("allTime");
@@ -397,6 +448,55 @@ function formatSecondsToMinStr(totalSeconds) {
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;
   return `${mins}:${secs.toString().padStart(2, "0")} мин`;
+}
+
+async function attemptConversationUnlockEventWrite(db, sessionId) {
+  try {
+    const sessionRef = db.collection("videoSessions").doc(sessionId);
+    const sessionSnap = await sessionRef.get();
+    if (!sessionSnap.exists) {
+      console.log("⚠️ Skipping chat unlock event - session missing:", sessionId);
+      return;
+    }
+
+    const sessionData = sessionSnap.data() || {};
+    const eligibility = getUnlockEligibility(sessionData);
+    if (!eligibility.eligible) {
+      console.log(
+        "ℹ️ Skipping chat unlock event - session is not eligible:",
+        sessionId,
+        eligibility.reason,
+      );
+      return;
+    }
+
+    const eventRef = db.collection("conversationUnlockEvents").doc(sessionId);
+    await db.runTransaction(async (transaction) => {
+      const eventSnap = await transaction.get(eventRef);
+      if (eventSnap.exists) {
+        return null;
+      }
+
+      transaction.set(
+        eventRef,
+        buildUnlockEventPayload({
+          sessionId,
+          sessionRef,
+          participants: eligibility,
+          source: "endSession",
+        }),
+      );
+
+      return null;
+    });
+
+    console.log("✅ Conversation unlock event written:", sessionId);
+  } catch (error) {
+    console.error("❌ Failed to write conversation unlock event:", {
+      sessionId,
+      error: error.message,
+    });
+  }
 }
 
 // ОТМЕНА ВСЕХ УВЕДОМЛЕНИЙ ДЛЯ СЕССИИ

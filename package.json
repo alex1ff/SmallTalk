@@ -1,0 +1,14 @@
+{
+  "name": "smalltalk-tooling",
+  "private": true,
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "backend:checks": "bash audit/scripts/run_backend_checks.sh"
+  },
+  "devDependencies": {
+    "firebase-tools": "15.14.0"
+  }
+}

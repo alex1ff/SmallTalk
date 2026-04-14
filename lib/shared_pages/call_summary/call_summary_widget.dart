@@ -7,6 +7,7 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
+import '/services/user_match_profile.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
@@ -132,7 +133,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
       return;
     }
 
-    if (currentUserDocument?.role == UserRole.native_speaker) {
+    if (canAccessTeacherSurfaces(currentUserDocument)) {
       context.goNamed(DashboardNSWidget.routeName);
       return;
     }
@@ -214,6 +215,65 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
             child: ReviewCardWidget(
               rewDoc: reviewRecord,
             ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOpenChatCta(BuildContext context) {
+    final currentRef = currentUserReference;
+    final targetRef = widget.userRef;
+    if (currentRef == null ||
+        targetRef == null ||
+        currentUserUid.isEmpty ||
+        targetRef.id.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final conversationRef = conversationReferenceForPairId(
+      canonicalConversationPairId(currentUserUid, targetRef.id),
+    );
+
+    return StreamBuilder<DocumentSnapshot<Object?>>(
+      stream: conversationRef.snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox.shrink();
+        }
+
+        final doc = snapshot.data!;
+        if (!doc.exists || doc.data() == null) {
+          return const SizedBox.shrink();
+        }
+
+        final conversation = ConversationsRecord.fromSnapshot(doc);
+        if (!conversation.isUnlocked) {
+          return const SizedBox.shrink();
+        }
+
+        return Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(0.0, 28.0, 0.0, 0.0),
+          child: ButtonWidget(
+            text: FFLocalizations.of(context).getVariableText(
+              ruText: 'Открыть чат',
+              enText: 'Open chat',
+            ),
+            loadingText: FFLocalizations.of(context).getVariableText(
+              ruText: 'Открываем...',
+              enText: 'Opening...',
+            ),
+            busyStyle: ButtonBusyStyle.spinner,
+            keyboardAwarePadding: false,
+            padding: const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+            action: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (context) =>
+                      ChatThreadWidget(conversationRef: conversationRef),
+                ),
+              );
+            },
           ),
         );
       },
@@ -532,10 +592,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
             return AuthUserStreamWidget(
               builder: (context) {
-                final initiallyFavorite = _referenceListContains(
-                  currentUserDocument?.favoriteNativeSpeakers,
-                  widget.userRef,
-                );
+                final initiallyFavorite =
+                    userHasFriend(currentUserDocument, widget.userRef);
                 final initiallyBlocked = _referenceListContains(
                   currentUserDocument?.blockedUsers,
                   widget.userRef,
@@ -628,6 +686,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
                               child: _buildReviewSection(context),
                             ),
+                            _buildOpenChatCta(context),
                             Padding(
                               padding:
                                   EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
@@ -987,27 +1046,22 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                           return;
                                         }
                                       }
-                                      if (effectiveFav) {
+                                      if (effectiveBlack) {
                                         await currentUserReference!.update({
-                                          ...mapToFirestore(
-                                            {
-                                              'favoriteNativeSpeakers':
-                                                  FieldValue.arrayUnion(
-                                                      [widget.userRef]),
-                                            },
+                                          ...buildBlockAndRemoveFriendUpdateData(
+                                            widget.userRef!,
                                           ),
                                         });
-                                      } else if (effectiveBlack) {
+                                      } else if (effectiveFav) {
                                         await currentUserReference!.update({
-                                          ...mapToFirestore(
-                                            {
-                                              'favoriteNativeSpeakers':
-                                                  FieldValue.arrayRemove(
-                                                      [widget.userRef]),
-                                              'blockedUsers':
-                                                  FieldValue.arrayUnion(
-                                                      [widget.userRef]),
-                                            },
+                                          ...buildAddFriendUpdateData(
+                                            widget.userRef!,
+                                          ),
+                                        });
+                                      } else if (initiallyFavorite) {
+                                        await currentUserReference!.update({
+                                          ...buildRemoveFriendUpdateData(
+                                            widget.userRef!,
                                           ),
                                         });
                                       }

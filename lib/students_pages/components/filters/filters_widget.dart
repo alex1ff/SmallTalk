@@ -2,6 +2,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/country_card/country_card_widget.dart';
 import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
+import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -70,6 +71,105 @@ class _FiltersWidgetState extends State<FiltersWidget> {
     return CountryStruct(
       nameRu: ruText,
       nameEn: enText,
+    );
+  }
+
+  String _levelLabel(BuildContext context, Level? level) {
+    final isRu = FFLocalizations.of(context).languageCode == 'ru';
+    switch (level) {
+      case Level.Beginner:
+        return isRu ? 'Начинающий' : 'Beginner';
+      case Level.Basic:
+        return isRu ? 'Базовый' : 'Basic';
+      case Level.Intermediate:
+        return isRu ? 'Средний' : 'Intermediate';
+      case Level.Fluent:
+        return isRu ? 'Свободный' : 'Fluent';
+      case null:
+        return isRu ? 'Любой' : 'Any';
+    }
+  }
+
+  Future<void> _setPreferredPartnerLevel(Level? level) async {
+    final userRef = currentUserReference;
+    if (userRef == null) return;
+
+    await userRef.update(createUsersRecordData(
+      preferences: level == null
+          ? createPreferencesStruct(
+              fieldValues: {
+                'preferredPartnerLevel': FieldValue.delete(),
+              },
+              clearUnsetFields: false,
+            )
+          : createPreferencesStruct(
+              preferredPartnerLevel: level,
+              clearUnsetFields: false,
+            ),
+    ));
+  }
+
+  Widget _buildLevelChoice(
+    BuildContext context, {
+    required Level? level,
+    required Level? selectedLevel,
+  }) {
+    final selected = level == selectedLevel;
+    final theme = FlutterFlowTheme.of(context);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(18.0),
+      onTap: () async {
+        await _setPreferredPartnerLevel(level);
+        safeSetState(() {});
+      },
+      child: Container(
+        padding: EdgeInsetsDirectional.fromSTEB(14.0, 8.0, 14.0, 8.0),
+        decoration: BoxDecoration(
+          color: selected ? theme.primary : theme.secondaryBackground,
+          borderRadius: BorderRadius.circular(18.0),
+          border: Border.all(
+            color: selected ? theme.primary : theme.alternate,
+          ),
+        ),
+        child: Text(
+          _levelLabel(context, level),
+          style: theme.bodyMedium.override(
+            fontFamily: 'Cool',
+            color: selected ? theme.primaryBackground : theme.primaryText,
+            fontSize: 16.0,
+            letterSpacing: 0.0,
+            fontWeight: FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreferredPartnerLevelSelector(BuildContext context) {
+    return AuthUserStreamWidget(
+      builder: (context) {
+        final selectedLevel =
+            currentUserDocument?.preferences.preferredPartnerLevel;
+
+        return Wrap(
+          spacing: 8.0,
+          runSpacing: 8.0,
+          children: [
+            _buildLevelChoice(
+              context,
+              level: null,
+              selectedLevel: selectedLevel,
+            ),
+            for (final level in Level.values)
+              _buildLevelChoice(
+                context,
+                level: level,
+                selectedLevel: selectedLevel,
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -361,6 +461,30 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                               ),
                             ),
                           ),
+                        ),
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              10.0, 40.0, 0.0, 0.0),
+                          child: Text(
+                            FFLocalizations.of(context).getVariableText(
+                              ruText: 'Уровень собеседника',
+                              enText: 'Partner level',
+                            ),
+                            textAlign: TextAlign.start,
+                            style: FlutterFlowTheme.of(context)
+                                .bodyMedium
+                                .override(
+                                  fontFamily: 'Cool',
+                                  fontSize: 20.0,
+                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.normal,
+                                ),
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              10.0, 12.0, 10.0, 0.0),
+                          child: _buildPreferredPartnerLevelSelector(context),
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(

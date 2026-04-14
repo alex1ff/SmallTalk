@@ -21,12 +21,16 @@ LoadingRouteDestination? resolveLoadingRouteDestination({
   required bool? acquaintance,
   required bool? isProfileComplete,
   required bool hasInferredStudentProfileCompletion,
+  bool isTeacherAccreditationApproved = false,
 }) {
   switch (role) {
     case UserRole.native_speaker:
-      return (acquaintance ?? false)
+      if (!(acquaintance ?? false)) {
+        return LoadingRouteDestination.acquaintanceNativeSpeaker;
+      }
+      return isTeacherAccreditationApproved
           ? LoadingRouteDestination.dashboardNativeSpeaker
-          : LoadingRouteDestination.acquaintanceNativeSpeaker;
+          : LoadingRouteDestination.studentsDashboard;
     case UserRole.student:
       if (!(acquaintance ?? false)) {
         return LoadingRouteDestination.acquaintanceStudentStart;

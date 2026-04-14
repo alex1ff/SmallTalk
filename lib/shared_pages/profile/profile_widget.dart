@@ -11,7 +11,7 @@ import '/shared_pages/profile_components/report/report_widget.dart';
 import '/shared_pages/profile_components/stats/stats_widget.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
-import 'dart:math' as math;
+import '/services/user_match_profile.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -46,6 +46,29 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     _model.dispose();
 
     super.dispose();
+  }
+
+  Future<void> _showRateAppSheet() async {
+    await showModalBottomSheet(
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      context: context,
+      builder: (context) {
+        return WebViewAware(
+          child: GestureDetector(
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
+            child: Padding(
+              padding: MediaQuery.viewInsetsOf(context),
+              child: RateAppWidget(),
+            ),
+          ),
+        );
+      },
+    ).then((value) => safeSetState(() {}));
   }
 
   @override
@@ -220,10 +243,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         hoverColor: Colors.transparent,
                         highlightColor: Colors.transparent,
                         onTap: () async {
-                          if (currentUserDocument?.role == UserRole.student) {
-                            context.pushNamed(MyRewWidget.routeName);
-                          } else {
+                          if (canAccessTeacherSurfaces(currentUserDocument)) {
                             context.pushNamed(MyRewNSWidget.routeName);
+                          } else {
+                            context.pushNamed(MyRewWidget.routeName);
                           }
                         },
                         child: Container(
@@ -285,10 +308,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         hoverColor: Colors.transparent,
                         highlightColor: Colors.transparent,
                         onTap: () async {
-                          if (currentUserDocument?.role == UserRole.student) {
-                            context.pushNamed(PayWidget.routeName);
-                          } else {
+                          if (canAccessTeacherSurfaces(currentUserDocument)) {
                             context.pushNamed(PayCopyWidget.routeName);
+                          } else {
+                            context.pushNamed(PayWidget.routeName);
                           }
                         },
                         child: Container(
@@ -355,27 +378,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         hoverColor: Colors.transparent,
                         highlightColor: Colors.transparent,
                         onTap: () async {
-                          await showModalBottomSheet(
-                            useRootNavigator: true,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            context: context,
-                            builder: (context) {
-                              return WebViewAware(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    FocusScope.of(context).unfocus();
-                                    FocusManager.instance.primaryFocus
-                                        ?.unfocus();
-                                  },
-                                  child: Padding(
-                                    padding: MediaQuery.viewInsetsOf(context),
-                                    child: RateAppWidget(),
-                                  ),
-                                ),
-                              );
-                            },
-                          ).then((value) => safeSetState(() {}));
+                          context.pushNamed(MyCallsWidget.routeName);
                         },
                         child: Container(
                           width: 100,
@@ -392,30 +395,35 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Flexible(
-                                  child: Text(
-                                    FFLocalizations.of(context).getText(
-                                      'u9y8laa9' /* Как вам приложение? */,
-                                    ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          fontSize: 15,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                Text(
+                                  FFLocalizations.of(context).getVariableText(
+                                    ruText: 'Мои звонки',
+                                    enText: 'My calls',
                                   ),
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        fontSize: 15,
+                                        letterSpacing: 0.0,
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                 ),
                                 Align(
-                                  alignment: AlignmentDirectional(1, 1),
-                                  child: Transform.rotate(
-                                    angle: 339 * (math.pi / 180),
-                                    child: Image.asset(
-                                      'assets/images/Group_117127509d5.png',
-                                      width: 55.6,
-                                      height: 46.7,
-                                      fit: BoxFit.cover,
+                                  alignment: AlignmentDirectional(1, 0),
+                                  child: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: FlutterFlowTheme.of(context)
+                                          .secondaryBackground,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      FFIcons.kphone,
+                                      color: FlutterFlowTheme.of(context)
+                                          .primaryText,
+                                      size: 18,
                                     ),
                                   ),
                                 ),
@@ -530,8 +538,9 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                 hoverColor: Colors.transparent,
                                 highlightColor: Colors.transparent,
                                 onTap: () async {
-                                  if (valueOrDefault<bool>(
-                                      currentUserDocument?.verifNS, false)) {
+                                  if (currentUserDocument
+                                          ?.isTeacherAccreditationApproved ??
+                                      false) {
                                     await currentUserReference!
                                         .update(createUsersRecordData(
                                       role: UserRole.native_speaker,
@@ -647,6 +656,55 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                               );
                             }
                           },
+                        ),
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          indent: 12,
+                          endIndent: 16,
+                          color: Color(0xFFE7E7E8),
+                        ),
+                        InkWell(
+                          splashColor: Colors.transparent,
+                          focusColor: Colors.transparent,
+                          hoverColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                          onTap: () async {
+                            await _showRateAppSheet();
+                          },
+                          child: Container(
+                            height: 50,
+                            decoration: BoxDecoration(),
+                            child: Padding(
+                              padding:
+                                  EdgeInsetsDirectional.fromSTEB(16, 0, 16, 0),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.max,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    FFLocalizations.of(context).getText(
+                                      'u9y8laa9' /* Как вам приложение? */,
+                                    ),
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'sf pro display',
+                                          fontSize: 15,
+                                          letterSpacing: 0.0,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                  ),
+                                  Icon(
+                                    FFIcons.kchevronRight,
+                                    color: Color(0xFFC5C5C6),
+                                    size: 18,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                         Divider(
                           height: 1,

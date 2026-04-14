@@ -75,14 +75,13 @@ class _FavWidgetState extends State<FavWidget> {
           highlightColor: Colors.transparent,
           onTap: widget.enableNavigation
               ? () async {
-                  context.pushNamed(
-                    NativeSpeakerPageWidget.routeName,
-                    queryParameters: {
-                      'nsUserDocRef': serializeParam(
-                        containerUsersRecord.reference,
-                        ParamType.DocumentReference,
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => NativeSpeakerPageWidget(
+                        nsUserDocRef: containerUsersRecord.reference,
+                        hideDirectCallAction: true,
                       ),
-                    }.withoutNulls,
+                    ),
                   );
                 }
               : null,

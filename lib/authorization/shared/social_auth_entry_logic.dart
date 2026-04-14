@@ -223,6 +223,7 @@ bool _hasStudentRoleSignals(UsersRecord? user) {
       user.hasPurpose() ||
       user.hasPreferences() ||
       user.hasBalanceST() ||
+      user.hasFriends() ||
       user.hasFavoriteNativeSpeakers();
 }
 

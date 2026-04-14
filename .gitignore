@@ -5,11 +5,13 @@
 .flutter-plugins-dependencies
 .npm-cache/
 .vscode/
+node_modules/
 build/
 android/build/
 ios/Flutter/ephemeral/
 
 # Firebase local artifacts
+firestore-debug.log
 firebase-debug.log
 firebase/*.log
 firebase/*-debug.log

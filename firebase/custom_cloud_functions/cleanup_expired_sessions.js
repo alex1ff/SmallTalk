@@ -1,11 +1,103 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { deleteDailyRoom } = require("./daily_room");
+const {
+  buildCompletedPairHistoryWrite,
+} = require("./match_repeat_prevention");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 /*
 АВТОМАТИЧЕСКАЯ ФУНКЦИЯ: cleanupExpiredSessions
 Завершает истекшие активные сессии (запускается по расписанию)
 */
+
+function buildExpiredSessionCleanupPayload({
+  db,
+  sessionId,
+  sessionRef,
+  sessionData = {},
+  endedAtMillis = Date.now(),
+}) {
+  const startTime =
+    sessionData.startedAt?.toMillis?.() ||
+    sessionData.createdAt?.toMillis?.() ||
+    endedAtMillis;
+  const duration = Math.max(
+    0,
+    Math.floor((endedAtMillis - startTime) / 1000),
+  );
+  const pairHistoryWrite = buildCompletedPairHistoryWrite({
+    db,
+    sessionId,
+    sessionRef,
+    sessionData,
+    completedAtMillis: endedAtMillis,
+  });
+  const sessionUpdate = {
+    status: "ended",
+    endedAt: admin.firestore.FieldValue.serverTimestamp(),
+    duration: duration,
+    tutorNavigationTriggered: false,
+    studentNavigationTriggered: false,
+    sessionMetadata: {
+      ...(sessionData.sessionMetadata || {}),
+      endReason: "expired",
+      endedAtTimestamp: endedAtMillis,
+      finalDuration: duration,
+    },
+  };
+
+  if (pairHistoryWrite) {
+    sessionUpdate["matchContext.completedPairId"] = pairHistoryWrite.pairId;
+    sessionUpdate["matchContext.completedDayKey"] = pairHistoryWrite.dayKey;
+    sessionUpdate["matchContext.completedPairHistoryRef"] =
+      pairHistoryWrite.ref;
+  }
+
+  return {
+    duration,
+    pairHistoryWrite,
+    sessionUpdate,
+    tutorId: sessionData.tutorId || null,
+  };
+}
+
+function queueExpiredSessionCleanup({
+  writer,
+  db,
+  doc,
+  endedAtMillis = Date.now(),
+}) {
+  const sessionData = doc.data();
+  const sessionId = doc.id;
+  const cleanupPayload = buildExpiredSessionCleanupPayload({
+    db,
+    sessionId,
+    sessionRef: doc.ref,
+    sessionData,
+    endedAtMillis,
+  });
+
+  writer.update(doc.ref, cleanupPayload.sessionUpdate);
+  if (cleanupPayload.pairHistoryWrite) {
+    writer.set(
+      cleanupPayload.pairHistoryWrite.ref,
+      cleanupPayload.pairHistoryWrite.data,
+      { merge: true },
+    );
+  }
+
+  if (cleanupPayload.tutorId) {
+    writer.update(db.collection("users").doc(cleanupPayload.tutorId), {
+      isInCall: false,
+      isAvailable: true,
+      currentSessionId: admin.firestore.FieldValue.delete(),
+      lastCallEndedAt: admin.firestore.FieldValue.serverTimestamp(),
+      availableAfter: admin.firestore.FieldValue.delete(),
+    });
+  }
+
+  return cleanupPayload;
+}
 
 exports.cleanupExpiredSessions = functions
   .runWith({ secrets: dailySecrets })
@@ -31,71 +123,56 @@ exports.cleanupExpiredSessions = functions
       }
 
       console.log(`⏰ Found ${expiredSessionsQuery.size} expired sessions`);
+      const db = admin.firestore();
+      let cleanedCount = 0;
 
-      // Завершаем каждую истекшую сессию
-      const batch = admin.firestore().batch();
-      const tutorsToRelease = new Set();
+      for (const doc of expiredSessionsQuery.docs) {
+        const cleanupResult = await db.runTransaction(async (transaction) => {
+          const freshSnap = await transaction.get(doc.ref);
+          if (!freshSnap.exists) {
+            return { cleaned: false, dailyRoomName: null };
+          }
 
-      expiredSessionsQuery.docs.forEach((doc) => {
-        const sessionData = doc.data();
-        const sessionId = doc.id;
+          const freshData = freshSnap.data() || {};
+          if (!["active", "connecting"].includes(freshData.status)) {
+            return { cleaned: false, dailyRoomName: null };
+          }
 
-        console.log(`🔚 Auto-ending expired session: ${sessionId}`);
+          const expiresAtMillis =
+            freshData.expiresAt?.toMillis?.() || 0;
+          if (expiresAtMillis > now.toMillis()) {
+            return { cleaned: false, dailyRoomName: null };
+          }
 
-        // Вычисляем длительность
-        const startTime =
-          sessionData.startedAt?.toMillis() ||
-          sessionData.createdAt?.toMillis() ||
-          Date.now();
-        const duration = Math.max(
-          0,
-          Math.floor((Date.now() - startTime) / 1000),
-        );
-
-        // Обновляем сессию
-        batch.update(doc.ref, {
-          status: "ended",
-          endedAt: admin.firestore.FieldValue.serverTimestamp(),
-          duration: duration,
-          tutorNavigationTriggered: false,
-          studentNavigationTriggered: false,
-        });
-
-        // Добавляем преподавателя для освобождения
-        if (sessionData.tutorId) {
-          tutorsToRelease.add(sessionData.tutorId);
-        }
-
-        if (sessionData.dailyRoomName) {
-          deleteDailyRoom(sessionData.dailyRoomName);
-        }
-      });
-
-      // Применяем изменения к сессиям
-      await batch.commit();
-      console.log("✅ All expired sessions marked as ended");
-
-      // Освобождаем преподавателей
-      if (tutorsToRelease.size > 0) {
-        console.log(`👨‍🏫 Releasing ${tutorsToRelease.size} tutors...`);
-
-        const tutorBatch = admin.firestore().batch();
-        tutorsToRelease.forEach((tutorId) => {
-          tutorBatch.update(
-            admin.firestore().collection("users").doc(tutorId),
-            {
-              isInCall: false,
-              isAvailable: true,
-              currentSessionId: admin.firestore.FieldValue.delete(),
-              lastCallEndedAt: admin.firestore.FieldValue.serverTimestamp(),
-              availableAfter: admin.firestore.FieldValue.delete(),
+          console.log(`🔚 Auto-ending expired session: ${doc.id}`);
+          queueExpiredSessionCleanup({
+            writer: transaction,
+            db,
+            doc: {
+              id: doc.id,
+              ref: doc.ref,
+              data: () => freshData,
             },
-          );
+            endedAtMillis: expiresAtMillis || now.toMillis(),
+          });
+
+          return {
+            cleaned: true,
+            dailyRoomName: freshData.dailyRoomName || null,
+          };
         });
 
-        await tutorBatch.commit();
-        console.log("✅ All tutors released");
+        if (!cleanupResult.cleaned) {
+          continue;
+        }
+
+        cleanedCount += 1;
+        if (cleanupResult.dailyRoomName) {
+          deleteDailyRoom(cleanupResult.dailyRoomName);
+        }
       }
+
+      console.log(`✅ Expired sessions marked as ended: ${cleanedCount}`);
 
       console.log("🧹 Expired sessions cleanup completed");
       return null;
@@ -104,3 +181,8 @@ exports.cleanupExpiredSessions = functions
       return null;
     }
   });
+
+exports.__private__ = {
+  buildExpiredSessionCleanupPayload,
+  queueExpiredSessionCleanup,
+};
