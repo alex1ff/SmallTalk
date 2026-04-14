@@ -1,4 +1,4 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { deleteDailyRoom } = require("./daily_room");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];

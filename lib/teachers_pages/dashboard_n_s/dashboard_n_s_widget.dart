@@ -4,6 +4,7 @@ import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/user_match_profile.dart';
 import '/teachers_pages/components/add_inter/add_inter_widget.dart';
 import '/index.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
@@ -86,6 +87,34 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
     return intervalAdded ?? false;
   }
 
+  Widget _buildTeacherAccessPendingRedirect(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      context.goNamed(
+        StudentsDashboardWidget.routeName,
+        queryParameters: {
+          'zn': serializeParam(false, ParamType.bool),
+        }.withoutNulls,
+      );
+    });
+
+    return Scaffold(
+      backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+      body: Center(
+        child: Text(
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Доступ откроется после проверки заявки',
+            enText: 'Access opens after your request is approved',
+          ),
+          textAlign: TextAlign.center,
+          style: FlutterFlowTheme.of(context).bodyMedium,
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -143,6 +172,11 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (currentUserDocument != null &&
+        !canAccessTeacherSurfaces(currentUserDocument)) {
+      return _buildTeacherAccessPendingRedirect(context);
+    }
+
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -268,6 +302,32 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                       ),
                                 ),
                               ],
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          splashColor: Colors.transparent,
+                          focusColor: Colors.transparent,
+                          hoverColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                          onTap: () async {
+                            context.pushNamed(ProfileWidget.routeName);
+                          },
+                          child: Container(
+                            width: 66.0,
+                            height: 66.0,
+                            decoration: BoxDecoration(
+                              color: FlutterFlowTheme.of(context)
+                                  .secondaryBackground,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Align(
+                              alignment: AlignmentDirectional(0.0, 0.0),
+                              child: Icon(
+                                FFIcons.kuser03,
+                                color: FlutterFlowTheme.of(context).primaryText,
+                                size: 20.0,
+                              ),
                             ),
                           ),
                         ),

@@ -15,6 +15,7 @@ import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/permissions_util.dart';
 import '/index.dart';
+import '/services/teacher_verification_request_service.dart';
 import 'native_speaker_onboarding_logic.dart';
 import 'dart:math' as math;
 import 'package:auto_size_text/auto_size_text.dart';
@@ -203,15 +204,44 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
         return;
       }
 
+      final displayName = _resolvedNativeSpeakerName();
+      final aboutMe = _model.aboutMeTextController.text;
+
+      final verificationRequestStatus = await submitTeacherVerificationRequest(
+        userRef: currentUserReference!,
+        displayName: displayName,
+        photoUrl: photoUrl,
+        aboutMe: aboutMe,
+        languageInstruction: _model.langLearn,
+        nativeLanguage: _model.nativeLang,
+        country: _model.country,
+      );
+      if (verificationRequestStatus == null) {
+        await actions.showTopNotification(
+          context,
+          'Не удалось отправить заявку на проверку',
+          '',
+          true,
+        );
+        return;
+      }
+      if (verificationRequestStatus == TeacherAccreditationStatus.rejected) {
+        await actions.showTopNotification(
+          context,
+          'Заявка на проверку была отклонена',
+          '',
+          true,
+        );
+        return;
+      }
+
       await currentUserReference!.update(
         createUsersRecordData(
-          displayName: _resolvedNativeSpeakerName().isEmpty
-              ? null
-              : _resolvedNativeSpeakerName(),
+          displayName: displayName.isEmpty ? null : displayName,
           role: UserRole.native_speaker,
           isProfileComplete: true,
           gender: _model.genderISMALE ? Gender.male : Gender.female,
-          aboutMe: _model.aboutMeTextController.text,
+          aboutMe: aboutMe,
           photoUrl: photoUrl,
           acquaintance: true,
           languageInstructionNS: updateLanguageStruct(
@@ -222,7 +252,6 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
             _model.country,
             clearUnsetFields: false,
           ),
-          verifNS: true,
           nativeLanguageNS: updateLanguageStruct(
             _model.nativeLang,
             clearUnsetFields: false,

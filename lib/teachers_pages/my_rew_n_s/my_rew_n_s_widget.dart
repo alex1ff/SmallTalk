@@ -5,6 +5,8 @@ import '/components/review_card/review_card_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/user_match_profile.dart';
+import '/index.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
@@ -52,6 +54,35 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (currentUserDocument != null &&
+        !canAccessTeacherSurfaces(currentUserDocument)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        context.goNamed(
+          StudentsDashboardWidget.routeName,
+          queryParameters: {
+            'zn': serializeParam(false, ParamType.bool),
+          }.withoutNulls,
+        );
+      });
+
+      return Scaffold(
+        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        body: Center(
+          child: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Отзывы преподавателя доступны после проверки заявки',
+              enText: 'Teacher reviews are available after approval',
+            ),
+            textAlign: TextAlign.center,
+            style: FlutterFlowTheme.of(context).bodyMedium,
+          ),
+        ),
+      );
+    }
+
     return FutureBuilder<List<ReviewsRecord>>(
       future: _model.reviewsFuture,
       builder: (context, snapshot) {

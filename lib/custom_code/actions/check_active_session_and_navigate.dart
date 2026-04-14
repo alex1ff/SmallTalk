@@ -29,54 +29,30 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
       return false;
     }
 
-    final userData = userDoc.data();
-    final rawRole = userData?['role'];
-    String? roleValue;
-    if (rawRole is String) {
-      roleValue = rawRole;
-    } else if (rawRole is Map) {
-      final name = rawRole['name'] ?? rawRole['value'] ?? rawRole['role'];
-      if (name is String) {
-        roleValue = name;
-      }
-    }
-    roleValue ??= rawRole?.toString();
-    final normalizedRole = (roleValue ?? '')
-        .trim()
-        .split('.')
-        .last
-        .toLowerCase()
-        .replaceAll(RegExp(r'[\s-]+'), '_');
+    final studentSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('studentId', isEqualTo: userId)
+        .where('studentNavigationTriggered', isEqualTo: true)
+        .limit(5)
+        .get();
+    final tutorSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('tutorId', isEqualTo: userId)
+        .where('tutorNavigationTriggered', isEqualTo: true)
+        .limit(5)
+        .get();
 
-    final isStudent = normalizedRole == 'student';
-    final isTutor = normalizedRole == 'native_speaker' ||
-        normalizedRole == 'nativespeaker' ||
-        normalizedRole == 'tutor' ||
-        normalizedRole == 'teacher';
-
-    if (!isStudent && !isTutor) {
-      return false;
+    final deduped = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    for (final doc in [...studentSessions.docs, ...tutorSessions.docs]) {
+      deduped[doc.reference.path] = doc;
     }
 
-    Query<Map<String, dynamic>> query =
-        FirebaseFirestore.instance.collection('videoSessions');
-    if (isStudent) {
-      query = query
-          .where('studentId', isEqualTo: userId)
-          .where('studentNavigationTriggered', isEqualTo: true);
-    } else {
-      query = query
-          .where('tutorId', isEqualTo: userId)
-          .where('tutorNavigationTriggered', isEqualTo: true);
-    }
-
-    final activeSessions = await query.limit(5).get();
-    if (activeSessions.docs.isEmpty) {
+    if (deduped.isEmpty) {
       return false;
     }
 
     QueryDocumentSnapshot<Map<String, dynamic>>? sessionDoc;
-    for (final doc in activeSessions.docs) {
+    for (final doc in deduped.values) {
       final status = doc.data()['status'] as String?;
       if (status == null || status == 'active' || status == 'connected') {
         sessionDoc = doc;
@@ -89,7 +65,9 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
     }
 
     final sessionRef = sessionDoc.reference;
-    if (isStudent) {
+    final data = sessionDoc.data();
+    final isRequester = (data['studentId'] as String?) == userId;
+    if (isRequester) {
       await sessionRef.update({
         'studentNavigationTriggered': false,
         'navigationCompletedAt': FieldValue.serverTimestamp(),

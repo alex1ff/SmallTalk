@@ -14,6 +14,8 @@ export '/shared_pages/profile/profile_widget.dart' show ProfileWidget;
 export '/students_pages/words/words_widget.dart' show WordsWidget;
 export '/shared_pages/call_summary/call_summary_widget.dart'
     show CallSummaryWidget;
+export '/shared_pages/chat_thread/chat_thread_widget.dart'
+    show ChatThreadWidget;
 export '/shared_pages/call_details/call_details_widget.dart'
     show CallDetailsWidget;
 export '/shared_pages/video_call_page/video_call_page_widget.dart'

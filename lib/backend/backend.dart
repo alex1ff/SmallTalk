@@ -7,6 +7,9 @@ import 'schema/util/firestore_util.dart';
 
 import 'schema/users_record.dart';
 import 'schema/video_sessions_record.dart';
+import 'schema/conversations_record.dart';
+import 'schema/messages_record.dart';
+import 'schema/chat_utils.dart';
 import 'schema/caption_logs_record.dart';
 import 'schema/user_words_record.dart';
 import 'schema/notifications_record.dart';
@@ -28,7 +31,11 @@ export 'schema/util/firestore_util.dart';
 export 'schema/util/schema_util.dart';
 
 export 'schema/users_record.dart';
+export 'schema/users_friend_utils.dart';
 export 'schema/video_sessions_record.dart';
+export 'schema/conversations_record.dart';
+export 'schema/messages_record.dart';
+export 'schema/chat_utils.dart';
 export 'schema/caption_logs_record.dart';
 export 'schema/user_words_record.dart';
 export 'schema/notifications_record.dart';
@@ -111,6 +118,126 @@ Future<List<VideoSessionsRecord>> queryVideoSessionsRecordOnce({
     queryCollectionOnce(
       VideoSessionsRecord.collection,
       VideoSessionsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<VideoSessionsRecord>> fetchRecentHubCallSessions(
+  String currentUserUid, {
+  int limit = 5,
+}) async {
+  if (currentUserUid.isEmpty) {
+    return const [];
+  }
+
+  final branches = await Future.wait([
+    queryVideoSessionsRecordOnce(
+      queryBuilder: (query) =>
+          query.where('studentId', isEqualTo: currentUserUid),
+    ),
+    queryVideoSessionsRecordOnce(
+      queryBuilder: (query) =>
+          query.where('tutorId', isEqualTo: currentUserUid),
+    ),
+    queryVideoSessionsRecordOnce(
+      queryBuilder: (query) =>
+          query.where('currentTutorId', isEqualTo: currentUserUid),
+    ),
+  ]);
+
+  final dedupedByPath = <String, VideoSessionsRecord>{};
+  for (final branch in branches) {
+    for (final session in branch) {
+      if (session.status != 'ended') {
+        continue;
+      }
+      dedupedByPath.putIfAbsent(session.reference.path, () => session);
+    }
+  }
+
+  final sessions = dedupedByPath.values.toList()
+    ..sort(compareVideoSessionsForHub);
+
+  if (limit > 0 && sessions.length > limit) {
+    return sessions.sublist(0, limit);
+  }
+
+  return sessions;
+}
+
+/// Functions to query ConversationsRecords (as a Stream and as a Future).
+Future<int> queryConversationsRecordCount({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      ConversationsRecord.collection,
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<ConversationsRecord>> queryConversationsRecord({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      ConversationsRecord.collection,
+      ConversationsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<ConversationsRecord>> queryConversationsRecordOnce({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      ConversationsRecord.collection,
+      ConversationsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+/// Functions to query MessagesRecords (as a Stream and as a Future).
+Future<int> queryMessagesRecordCount({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      MessagesRecord.collection(parent),
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<MessagesRecord>> queryMessagesRecord({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      MessagesRecord.collection(parent),
+      MessagesRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<MessagesRecord>> queryMessagesRecordOnce({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      MessagesRecord.collection(parent),
+      MessagesRecord.fromSnapshot,
       queryBuilder: queryBuilder,
       limit: limit,
       singleRecord: singleRecord,

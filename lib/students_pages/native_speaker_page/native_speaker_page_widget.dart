@@ -28,9 +28,11 @@ class NativeSpeakerPageWidget extends StatefulWidget {
   const NativeSpeakerPageWidget({
     super.key,
     required this.nsUserDocRef,
+    this.hideDirectCallAction = false,
   });
 
   final DocumentReference? nsUserDocRef;
+  final bool hideDirectCallAction;
 
   static String routeName = 'NativeSpeakerPage';
   static String routePath = '/nativeSpeakerPage';
@@ -175,6 +177,16 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     );
   }
 
+  DocumentReference? _conversationRefForPeer(DocumentReference? peerRef) {
+    if (currentUserUid.isEmpty || peerRef == null || peerRef.id.isEmpty) {
+      return null;
+    }
+
+    return conversationReferenceForPairId(
+      canonicalConversationPairId(currentUserUid, peerRef.id),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -282,9 +294,14 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         final isBlockedByStudent =
             (currentUserDocument?.blockedUsers.toList() ?? [])
                 .contains(widget.nsUserDocRef);
-        final canStartDirectCall = !nativeSpeakerPageUsersRecord.isInCall &&
+        final canStartDirectCall = !widget.hideDirectCallAction &&
+            !nativeSpeakerPageUsersRecord.isInCall &&
             isAvailableForCalls &&
             !isBlockedByStudent;
+        final conversationRef = _conversationRefForPeer(widget.nsUserDocRef);
+        final canOpenChat = widget.hideDirectCallAction &&
+            userHasFriend(currentUserDocument, widget.nsUserDocRef) &&
+            (conversationRef?.path.isNotEmpty ?? false);
 
         return GestureDetector(
           onTap: () {
@@ -568,16 +585,93 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                             child: _buildReviewsSection(
                                 nativeSpeakerPageUsersRecord),
                           ),
-                          SizedBox(height: 140.0),
+                          SizedBox(
+                            height: canStartDirectCall && canOpenChat
+                                ? 220.0
+                                : (canStartDirectCall || canOpenChat)
+                                    ? 140.0
+                                    : 32.0,
+                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
-                if (canStartDirectCall)
+                if (canStartDirectCall || canOpenChat)
                   Align(
                     alignment: AlignmentDirectional(0.0, 1.0),
-                    child: _buildBottomCallToAction(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (canOpenChat)
+                          StreamBuilder<DocumentSnapshot<Object?>>(
+                            stream: conversationRef!.snapshots(),
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) {
+                                return const SizedBox.shrink();
+                              }
+
+                              final conversationDoc = snapshot.data!;
+                              if (!conversationDoc.exists ||
+                                  conversationDoc.data() == null) {
+                                return const SizedBox.shrink();
+                              }
+
+                              final conversation =
+                                  ConversationsRecord.fromSnapshot(
+                                      conversationDoc);
+                              if (!conversation.isUnlocked) {
+                                return const SizedBox.shrink();
+                              }
+
+                              return Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Color(0x00F2F2F7),
+                                      Color(0xACF2F2F7),
+                                      FlutterFlowTheme.of(context)
+                                          .secondaryBackground
+                                    ],
+                                    stops: [0.0, 0.2, 1.0],
+                                    begin: AlignmentDirectional(0.0, -1.0),
+                                    end: AlignmentDirectional(0, 1.0),
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: EdgeInsetsDirectional.fromSTEB(
+                                      6.0, 12.0, 6.0, 12.0),
+                                  child: ButtonWidget(
+                                    text: FFLocalizations.of(context).getVariableText(
+                                      ruText: 'Открыть чат',
+                                      enText: 'Open chat',
+                                    ),
+                                    loadingText: FFLocalizations.of(context)
+                                        .getVariableText(
+                                      ruText: 'Открываем...',
+                                      enText: 'Opening...',
+                                    ),
+                                    busyStyle: ButtonBusyStyle.spinner,
+                                    keyboardAwarePadding: false,
+                                    padding: EdgeInsets.zero,
+                                    action: () async {
+                                      await Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              ChatThreadWidget(
+                                            conversationRef: conversationRef,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        if (canStartDirectCall) _buildBottomCallToAction(),
+                      ],
+                    ),
                   ),
                 AnimatedBuilder(
                   animation: _scrollController,
@@ -647,17 +741,11 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
           ),
           AuthUserStreamWidget(
             builder: (context) {
-              if ((currentUserDocument?.favoriteNativeSpeakers.toList() ?? [])
-                  .contains(widget.nsUserDocRef)) {
+              if (userHasFriend(currentUserDocument, widget.nsUserDocRef)) {
                 return _buildTopCircleIconButton(
                   onPressed: () async {
                     await currentUserReference!.update({
-                      ...mapToFirestore(
-                        {
-                          'favoriteNativeSpeakers':
-                              FieldValue.arrayRemove([widget.nsUserDocRef]),
-                        },
-                      ),
+                      ...buildRemoveFriendUpdateData(widget.nsUserDocRef!),
                     });
                     safeSetState(() {});
                   },
@@ -671,12 +759,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                 return _buildTopCircleIconButton(
                   onPressed: () async {
                     await currentUserReference!.update({
-                      ...mapToFirestore(
-                        {
-                          'favoriteNativeSpeakers':
-                              FieldValue.arrayUnion([widget.nsUserDocRef]),
-                        },
-                      ),
+                      ...buildAddFriendUpdateData(widget.nsUserDocRef!),
                     });
                     safeSetState(() {});
                   },

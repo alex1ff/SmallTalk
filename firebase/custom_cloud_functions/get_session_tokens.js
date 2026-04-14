@@ -1,4 +1,4 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
   createDailyRoom,
@@ -6,6 +6,7 @@ const {
   getDailyRoom,
   getRoomNameFromUrl,
 } = require("./daily_room");
+const { getRequesterId, isSessionParticipant } = require("./video_sessions_shared");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const PRECREATED_ROOM_VALIDATION_WINDOW_MS = 60 * 1000;
@@ -40,10 +41,11 @@ exports.getSessionTokens = functions
 
   const sessionData = sessionDoc.data();
   const userId = context.auth.uid;
-  const isStudent = sessionData.studentId === userId;
+  const requesterId = getRequesterId(sessionData);
+  const isStudent = requesterId === userId;
   const isTutor = sessionData.tutorId === userId;
 
-  if (!isStudent && !isTutor) {
+  if (!isSessionParticipant(sessionData, userId)) {
     throw new functions.https.HttpsError(
       "permission-denied",
       "Not allowed to access this session",
@@ -92,10 +94,10 @@ exports.getSessionTokens = functions
   if (shouldCreateRoom) {
     const dailyRoom = await createDailyRoom({
       language: sessionData.language || "en",
-      studentId: sessionData.studentId,
+      studentId: requesterId,
       tutorId: sessionData.tutorId,
-      studentName: sessionData.studentInfo?.name || "Student",
-      tutorName: sessionData.tutorInfo?.name || "Tutor",
+      studentName: sessionData.studentInfo?.name || "Caller",
+      tutorName: sessionData.tutorInfo?.name || "Partner",
       expSeconds: 15 * 60,
     });
     roomUrl = dailyRoom.url;

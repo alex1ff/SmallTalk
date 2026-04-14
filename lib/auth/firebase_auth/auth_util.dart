@@ -500,6 +500,9 @@ final authenticatedUserStream = FirebaseAuth.instance
     )
     .map((user) {
   currentUserDocument = user;
+  if (user != null) {
+    unawaited(backfillUserFriendsFromLegacy(user));
+  }
 
   return currentUserDocument;
 }).asBroadcastStream();

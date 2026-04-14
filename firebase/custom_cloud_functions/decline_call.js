@@ -1,6 +1,7 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
+const { isSupportedSessionRole } = require("./video_sessions_shared");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 
@@ -86,11 +87,10 @@ exports.declineCall = functions
         .collection("users")
         .doc(tutorId)
         .get();
-      const allowedRoles = ["tutor", "native_speaker"];
-      if (!tutorDoc.exists || !allowedRoles.includes(tutorDoc.data().role)) {
+      if (!tutorDoc.exists || !isSupportedSessionRole(tutorDoc.data().role)) {
         throw new functions.https.HttpsError(
           "permission-denied",
-          "Only tutors can decline calls",
+          "This user role cannot decline calls",
         );
       }
 

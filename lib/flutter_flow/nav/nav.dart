@@ -275,12 +275,6 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             builder: (context, params) => MyRewNSWidget(),
           ),
           FFRoute(
-            name: FavoriteWidget.routeName,
-            path: FavoriteWidget.routePath,
-            requireAuth: true,
-            builder: (context, params) => FavoriteWidget(),
-          ),
-          FFRoute(
             name: FlashcardWidget.routeName,
             path: FlashcardWidget.routePath,
             requireAuth: true,
@@ -351,6 +345,13 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
               requireAuth: true,
               noTransition: true,
               builder: (context, params) => MyCallsWidget(),
+            ),
+            FFRoute(
+              name: FavoriteWidget.routeName,
+              path: FavoriteWidget.routePath,
+              requireAuth: true,
+              noTransition: true,
+              builder: (context, params) => FavoriteWidget(),
             ),
           ].map((r) => r.toRoute(appStateNotifier)).toList(),
         ),

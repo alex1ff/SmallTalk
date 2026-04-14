@@ -1,10 +1,10 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/api_requests/api_calls.dart';
 import '/backend/backend.dart';
-import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/user_match_profile.dart';
 import '/students_pages/flashcard/flashcard_content_service.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
 import 'dart:async';
@@ -41,7 +41,8 @@ class _NewWordWidgetState extends State<NewWordWidget> {
   late NewWordModel _model;
 
   bool get _canManageDictionary =>
-      currentUserDocument?.role == UserRole.student;
+      currentUserDocument != null &&
+      !canAccessTeacherSurfaces(currentUserDocument);
 
   @override
   void setState(VoidCallback callback) {
@@ -260,11 +261,11 @@ class _NewWordWidgetState extends State<NewWordWidget> {
     final currentUser = currentUserDocument;
     String? roleBasedLanguageCode;
 
-    if (currentUser?.role == UserRole.native_speaker) {
+    if (canAccessTeacherSurfaces(currentUser)) {
       roleBasedLanguageCode = currentUser?.nativeLanguageNS.code;
-    } else if (currentUser?.role == UserRole.student) {
+    } else if (currentUser != null) {
       roleBasedLanguageCode =
-          currentUser?.preferences.preferredNativeLanguage.code;
+          currentUser.preferences.preferredNativeLanguage.code;
     }
 
     final fallbackCodes = <String?>[
@@ -1266,7 +1267,9 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                   final existingWord =
                                                       containerUserWordsRecordList
                                                           .where((e) =>
-                                                              e.entry.firstOrNull
+                                                              e
+                                                                  .entry
+                                                                  .firstOrNull
                                                                   ?.text ==
                                                               primaryEntryText)
                                                           .toList()
@@ -1309,11 +1312,13 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                   _sentencesToSave();
                                               var entriesToSave =
                                                   _dictionaryEntries();
-                                              final addedAt = getCurrentTimestamp;
+                                              final addedAt =
+                                                  getCurrentTimestamp;
                                               var userWordsRecordReference =
                                                   UserWordsRecord.createDoc(
                                                       currentUserReference!);
-                                              await userWordsRecordReference.set({
+                                              await userWordsRecordReference
+                                                  .set({
                                                 ...createUserWordsRecordData(
                                                   addedAt: addedAt,
                                                 ),
@@ -1332,13 +1337,14 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                               });
                                               await FlashcardReviewRepository
                                                   .ensureInitialReviewForWord(
-                                                wordRef: userWordsRecordReference,
+                                                wordRef:
+                                                    userWordsRecordReference,
                                                 addedAt: addedAt,
                                               );
                                               try {
                                                 entriesToSave =
                                                     await FlashcardContentService
-                                                    .enrichWordWithSourceSynonyms(
+                                                        .enrichWordWithSourceSynonyms(
                                                   wordRef:
                                                       userWordsRecordReference,
                                                   entries: entriesToSave,
@@ -1368,8 +1374,8 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                               safeSetState(() {});
                                             },
                                             child: Stack(
-                                              alignment:
-                                                  AlignmentDirectional(0.0, 0.0),
+                                              alignment: AlignmentDirectional(
+                                                  0.0, 0.0),
                                               children: [
                                                 Icon(
                                                   FFIcons.kstar01,

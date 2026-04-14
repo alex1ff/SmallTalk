@@ -278,28 +278,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
                               onTap: () async {
-                                await showModalBottomSheet(
-                                  useRootNavigator: true,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  context: context,
-                                  builder: (context) {
-                                    return WebViewAware(
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          FocusScope.of(context).unfocus();
-                                          FocusManager.instance.primaryFocus
-                                              ?.unfocus();
-                                        },
-                                        child: Padding(
-                                          padding:
-                                              MediaQuery.viewInsetsOf(context),
-                                          child: FiltersWidget(),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ).then((value) => safeSetState(() {}));
+                                context.pushNamed(ProfileWidget.routeName);
                               },
                               child: Container(
                                 width: 66,
@@ -312,7 +291,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                 child: Align(
                                   alignment: AlignmentDirectional(0, 0),
                                   child: Icon(
-                                    FFIcons.ksliders04,
+                                    FFIcons.kuser03,
                                     color: FlutterFlowTheme.of(context)
                                         .primaryText,
                                     size: 20,
@@ -321,6 +300,58 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               ),
                             ),
                           ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsetsDirectional.fromSTEB(6, 6, 6, 0),
+                    child: Align(
+                      alignment: AlignmentDirectional(1, 0),
+                      child: InkWell(
+                        splashColor: Colors.transparent,
+                        focusColor: Colors.transparent,
+                        hoverColor: Colors.transparent,
+                        highlightColor: Colors.transparent,
+                        onTap: () async {
+                          await showModalBottomSheet(
+                            useRootNavigator: true,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            context: context,
+                            builder: (context) {
+                              return WebViewAware(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    FocusScope.of(context).unfocus();
+                                    FocusManager.instance.primaryFocus
+                                        ?.unfocus();
+                                  },
+                                  child: Padding(
+                                    padding: MediaQuery.viewInsetsOf(context),
+                                    child: FiltersWidget(),
+                                  ),
+                                ),
+                              );
+                            },
+                          ).then((value) => safeSetState(() {}));
+                        },
+                        child: Container(
+                          width: 66,
+                          height: 66,
+                          decoration: BoxDecoration(
+                            color: FlutterFlowTheme.of(context)
+                                .secondaryBackground,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Align(
+                            alignment: AlignmentDirectional(0, 0),
+                            child: Icon(
+                              FFIcons.ksliders04,
+                              color: FlutterFlowTheme.of(context).primaryText,
+                              size: 20,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -717,9 +748,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                       ],
                     ),
                   ),
-                  if ((currentUserDocument?.favoriteNativeSpeakers.toList() ??
-                          [])
-                      .isNotEmpty)
+                  if (resolveFriendsForUser(currentUserDocument).isNotEmpty)
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(0, 30, 0, 0),
                       child: AuthUserStreamWidget(
@@ -748,7 +777,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                     children: [
                                       Text(
                                         FFLocalizations.of(context).getText(
-                                          'a4u0etcs' /* Избранные собеседники */,
+                                          'a4u0etcs' /* Друзья */,
                                         ),
                                         style: FlutterFlowTheme.of(context)
                                             .bodyMedium
@@ -782,10 +811,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                 decoration: BoxDecoration(),
                                 child: Builder(
                                   builder: (context) {
-                                    final favs = (currentUserDocument
-                                                ?.favoriteNativeSpeakers
-                                                .toList() ??
-                                            [])
+                                    final favs = resolveFriendsForUser(
+                                            currentUserDocument)
                                         .toList();
 
                                     return ListView.separated(

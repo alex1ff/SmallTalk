@@ -1,10 +1,34 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
 const {
   createDailyRoom,
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
+const {
+  buildMatchProfile,
+  buildSessionUserInfo,
+  extractBlockedIds,
+  isSupportedSessionRole,
+  normalizeRole,
+  readCountryCode,
+  readLanguageCode,
+  readLevelValue,
+  readMatchCountry,
+  readMatchLevelValue,
+  readMatchPriorityScore,
+  resolveActiveConversationLanguage,
+  supportsConversationLanguage,
+} = require("./video_sessions_shared");
+const {
+  buildCandidateRoleCounts,
+  buildRepeatPreventionLogContext,
+  countExcludedRepeatCandidates,
+  filterRepeatCandidates,
+  getRepeatBypassUserIds,
+  loadSameDayRepeatCandidateIds,
+  loadSameDayRepeatCandidateIdsForTransaction,
+} = require("./match_repeat_prevention");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -17,6 +41,62 @@ const MATCH_DEBUG_SAMPLE_RATE = Number.isFinite(matchDebugSampleRateRaw)
   ? Math.min(Math.max(matchDebugSampleRateRaw, 0), 1)
   : 0.1;
 const MAX_TUTOR_DEBUG_SAMPLES = 8;
+const CANDIDATE_QUERY_BUILDERS = [
+  (db, languageCode) =>
+    db.collection("users").where("learningLanguage.code", "==", languageCode),
+  (db, languageCode) =>
+    db
+      .collection("users")
+      .where("language_instruction_NS.code", "==", languageCode),
+  (db, languageCode) =>
+    db.collection("users").where("native_language_NS.code", "==", languageCode),
+];
+
+function isAvailableAfterInFuture(userData = {}, now = new Date()) {
+  const availableAfter = userData.availableAfter;
+  if (!availableAfter || typeof availableAfter.toDate !== "function") {
+    return false;
+  }
+
+  return availableAfter.toDate() > now;
+}
+
+function isTeacherBoostTargetLevel(level) {
+  return readLevelValue(level).toLowerCase() === "fluent";
+}
+
+function getTeacherBoostScore(tutorProfile = {}, teacherBoostRankingApplied) {
+  return teacherBoostRankingApplied && tutorProfile.approvedTeacher ? 1 : 0;
+}
+
+function compareCandidateDetails(leftId, rightId, detailsById) {
+  const left = detailsById[leftId] || {};
+  const right = detailsById[rightId] || {};
+
+  if (left.locationMatch !== right.locationMatch) {
+    return left.locationMatch ? -1 : 1;
+  }
+
+  const leftTeacherBoostScore = Number(left.teacherBoostScore) || 0;
+  const rightTeacherBoostScore = Number(right.teacherBoostScore) || 0;
+  if (leftTeacherBoostScore !== rightTeacherBoostScore) {
+    return rightTeacherBoostScore - leftTeacherBoostScore;
+  }
+
+  if (left.ratingAverage !== right.ratingAverage) {
+    return right.ratingAverage - left.ratingAverage;
+  }
+
+  if (left.ratingCount !== right.ratingCount) {
+    return right.ratingCount - left.ratingCount;
+  }
+
+  if (left.legacyPriorityScore !== right.legacyPriorityScore) {
+    return left.legacyPriorityScore - right.legacyPriorityScore;
+  }
+
+  return String(leftId).localeCompare(String(rightId));
+}
 
 /*
 ОБНОВЛЁННАЯ ФУНКЦИЯ: createVideoSession
@@ -36,46 +116,37 @@ exports.createVideoSession = functions
         );
       }
 
-      const studentId = context.auth.uid;
+      const requesterId = context.auth.uid;
 
       // Получаем параметры из вызова функции
       const {
         language,
         preferredNativeLanguage,
         preferredCountry,
+        preferredPartnerLevel,
         directTutorId: rawDirectTutorId,
+        directUserId: rawDirectUserId,
       } = data;
-
-      if (!language) {
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Language is required",
-        );
-      }
-
-      const normalizedLanguage = String(language).trim().toLowerCase();
-      const normalizedPreferredNativeLanguage =
-        typeof preferredNativeLanguage === "string"
-          ? preferredNativeLanguage.trim().toLowerCase()
-          : "";
-      const normalizedPreferredCountry =
-        typeof preferredCountry === "string" ? preferredCountry.trim() : "";
-      const directTutorId =
-        typeof rawDirectTutorId === "string" ? rawDirectTutorId.trim() : "";
+      const directTutorId = String(
+        rawDirectUserId || rawDirectTutorId || "",
+      ).trim();
       const isDirectTutorCall = directTutorId.length > 0;
-      const tutorRoles = ["tutor", "native_speaker"];
       const shouldSampleTutorDebug = Math.random() < MATCH_DEBUG_SAMPLE_RATE;
       const tutorDebugSamples = [];
       const tutorFilterStats = {
         totalCandidates: 0,
+        selfExcluded: 0,
+        unsupportedRole: 0,
         blockedByStudent: 0,
         blockedByTutor: 0,
         availableAfterInFuture: 0,
         unavailableOrInCall: 0,
-        missingInstructionCode: 0,
-        instructionLanguageMismatch: 0,
+        sameDayRepeat: 0,
+        languageMismatch: 0,
         missingNativeLanguage: 0,
         nativeLanguageMismatch: 0,
+        missingLevel: 0,
+        levelMismatch: 0,
         missingCountry: 0,
         countryMismatch: 0,
         matched: 0,
@@ -87,48 +158,74 @@ exports.createVideoSession = functions
       };
 
       console.log("📹 createVideoSession params", {
-        studentId,
-        requestedLanguage: normalizedLanguage,
+        requesterId,
+        requestedLanguage: readLanguageCode(language) || null,
         matchMode: isDirectTutorCall ? "direct" : "filtered",
         directTutorId: isDirectTutorCall ? directTutorId : null,
-        preferredNativeLanguage: normalizedPreferredNativeLanguage || "any",
-        preferredCountry: normalizedPreferredCountry || "any",
+        preferredNativeLanguage: readLanguageCode(preferredNativeLanguage) || "any",
+        preferredCountry: readCountryCode(preferredCountry) || "any",
+        preferredPartnerLevel: readLevelValue(preferredPartnerLevel) || "any",
       });
 
-      const studentDoc = await admin
+      const requesterDoc = await admin
         .firestore()
         .collection("users")
-        .doc(studentId)
+        .doc(requesterId)
         .get();
 
-      if (!studentDoc.exists) {
-        throw new functions.https.HttpsError("not-found", "Student not found");
+      if (!requesterDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Requester not found");
       }
 
-      const studentData = studentDoc.data();
-      if (studentData.role !== "student") {
+      const requesterData = requesterDoc.data() || {};
+      const requesterRole = normalizeRole(requesterData.role);
+      if (!isSupportedSessionRole(requesterRole)) {
         throw new functions.https.HttpsError(
           "permission-denied",
-          "Only students can create video sessions",
+          "This user role cannot create video sessions",
         );
       }
 
-      const extractBlockedIds = (blockedUsers = []) =>
-        blockedUsers
-        .map((ref) => {
-          if (ref && ref.id) return ref.id;
-          if (typeof ref === "string") return ref;
-          return null;
-        })
-        .filter((id) => id !== null);
+      const resolvedLanguage = resolveActiveConversationLanguage(
+        requesterData,
+        language,
+      );
+      const normalizedLanguage = resolvedLanguage.code;
+      if (!normalizedLanguage) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Language is required",
+        );
+      }
 
-      const studentBlockedUsers = studentData.blockedUsers || [];
-      const studentBlockedIds = extractBlockedIds(studentBlockedUsers);
+      const normalizedPreferredNativeLanguage = readLanguageCode(
+        preferredNativeLanguage,
+      );
+      const normalizedPreferredCountry = readCountryCode(preferredCountry);
+      const normalizedPreferredPartnerLevel = readLevelValue(
+        preferredPartnerLevel,
+      );
+      const teacherBoostRankingApplied = isTeacherBoostTargetLevel(
+        normalizedPreferredPartnerLevel,
+      );
+      const requesterBlockedIds = extractBlockedIds(requesterData.blockedUsers);
+      const requesterInfo = buildSessionUserInfo(
+        requesterData,
+        requesterRole === "student" ? "Student" : "Caller",
+      );
+      const requesterProfile = buildMatchProfile(
+        requesterId,
+        requesterData,
+        normalizedLanguage,
+      );
+      const db = admin.firestore();
+      const repeatBypassUserIds = getRepeatBypassUserIds();
 
       const availableTutors = [];
       const tutorDetails = {};
-      let tutorsQuery = null;
+      let totalQueriedCandidates = 0;
       let directTutorInfo = null;
+      let repeatPreventionContext = null;
 
       if (isDirectTutorCall) {
         const directTutorDoc = await admin
@@ -138,32 +235,39 @@ exports.createVideoSession = functions
           .get();
 
         tutorFilterStats.totalCandidates = 1;
+        totalQueriedCandidates = 1;
 
         if (!directTutorDoc.exists) {
           console.log("📹 createVideoSession direct tutor not found", {
-            studentId,
+            requesterId,
             directTutorId,
           });
           return {
             status: "no_tutors_available",
-            message: "Selected tutor is not available right now",
+            message: "Selected partner is not available right now",
           };
         }
 
         const tutorData = directTutorDoc.data() || {};
-        if (!tutorRoles.includes(tutorData.role)) {
+        const tutorRole = normalizeRole(tutorData.role);
+        if (!isSupportedSessionRole(tutorRole) || directTutorId === requesterId) {
+          if (directTutorId === requesterId) {
+            tutorFilterStats.selfExcluded += 1;
+          } else {
+            tutorFilterStats.unsupportedRole += 1;
+          }
           console.log("📹 createVideoSession direct tutor has invalid role", {
-            studentId,
+            requesterId,
             directTutorId,
             role: tutorData.role || null,
           });
           return {
             status: "no_tutors_available",
-            message: "Selected tutor is not available right now",
+            message: "Selected partner is not available right now",
           };
         }
 
-        if (studentBlockedIds.includes(directTutorId)) {
+        if (requesterBlockedIds.includes(directTutorId)) {
           tutorFilterStats.blockedByStudent += 1;
           addTutorSample({
             tutorId: directTutorId,
@@ -172,12 +276,12 @@ exports.createVideoSession = functions
           });
           return {
             status: "no_tutors_available",
-            message: "Selected tutor is not available right now",
+            message: "Selected partner is not available right now",
           };
         }
 
         const tutorBlockedIds = extractBlockedIds(tutorData.blockedUsers || []);
-        if (tutorBlockedIds.includes(studentId)) {
+        if (tutorBlockedIds.includes(requesterId)) {
           tutorFilterStats.blockedByTutor += 1;
           addTutorSample({
             tutorId: directTutorId,
@@ -186,14 +290,24 @@ exports.createVideoSession = functions
           });
           return {
             status: "no_tutors_available",
-            message: "Selected tutor is not available right now",
+            message: "Selected partner is not available right now",
           };
         }
 
-        if (
-          tutorData.availableAfter &&
-          tutorData.availableAfter.toDate() > new Date()
-        ) {
+        if (!supportsConversationLanguage(tutorData, normalizedLanguage)) {
+          tutorFilterStats.languageMismatch += 1;
+          addTutorSample({
+            tutorId: directTutorId,
+            outcome: "skip",
+            reason: "language_mismatch",
+          });
+          return {
+            status: "no_tutors_available",
+            message: "Selected partner is not available right now",
+          };
+        }
+
+        if (isAvailableAfterInFuture(tutorData)) {
           tutorFilterStats.availableAfterInFuture += 1;
           addTutorSample({
             tutorId: directTutorId,
@@ -202,7 +316,7 @@ exports.createVideoSession = functions
           });
           return {
             status: "no_tutors_available",
-            message: "Selected tutor is not available right now",
+            message: "Selected partner is not available right now",
           };
         }
 
@@ -223,81 +337,192 @@ exports.createVideoSession = functions
           });
           return {
             status: "no_tutors_available",
-            message: "Selected tutor is not available right now",
+            message: "Selected partner is not available right now",
+          };
+        }
+
+        repeatPreventionContext = await loadSameDayRepeatCandidateIds(
+          db,
+          requesterId,
+          [directTutorId],
+          {bypassUserIds: repeatBypassUserIds},
+        );
+        if (repeatPreventionContext.excludedCandidateIds.has(directTutorId)) {
+          tutorFilterStats.sameDayRepeat += 1;
+          addTutorSample({
+            tutorId: directTutorId,
+            outcome: "skip",
+            reason: "same_day_repeat",
+            dayKey: repeatPreventionContext.dayKey,
+          });
+          return {
+            status: "no_tutors_available",
+            message: "Selected partner is not available right now",
+          };
+        }
+
+        const candidateNativeLanguage = readLanguageCode(
+          tutorData.native_language_NS,
+        );
+        if (normalizedPreferredNativeLanguage && !candidateNativeLanguage) {
+          tutorFilterStats.missingNativeLanguage += 1;
+          return {
+            status: "no_tutors_available",
+            message: "Selected partner is not available right now",
+          };
+        }
+        if (
+          normalizedPreferredNativeLanguage &&
+          candidateNativeLanguage !== normalizedPreferredNativeLanguage
+        ) {
+          tutorFilterStats.nativeLanguageMismatch += 1;
+          addTutorSample({
+            tutorId: directTutorId,
+            outcome: "skip",
+            reason: "native_language_mismatch",
+            tutorNativeLanguage: candidateNativeLanguage || null,
+          });
+          return {
+            status: "no_tutors_available",
+            message: "Selected partner is not available right now",
+          };
+        }
+
+        const tutorProfile = buildMatchProfile(
+          directTutorId,
+          tutorData,
+          normalizedLanguage,
+        );
+        const candidateLevel = readMatchLevelValue(tutorData);
+        if (normalizedPreferredPartnerLevel && !candidateLevel) {
+          tutorFilterStats.missingLevel += 1;
+          return {
+            status: "no_tutors_available",
+            message: "Selected partner is not available right now",
+          };
+        }
+        if (
+          normalizedPreferredPartnerLevel &&
+          candidateLevel !== normalizedPreferredPartnerLevel
+        ) {
+          tutorFilterStats.levelMismatch += 1;
+          return {
+            status: "no_tutors_available",
+            message: "Selected partner is not available right now",
+          };
+        }
+        const candidateCountry = readMatchCountry(tutorData);
+        if (normalizedPreferredCountry && !candidateCountry) {
+          tutorFilterStats.missingCountry += 1;
+          return {
+            status: "no_tutors_available",
+            message: "Selected partner is not available right now",
+          };
+        }
+        if (
+          normalizedPreferredCountry &&
+          candidateCountry !== normalizedPreferredCountry
+        ) {
+          tutorFilterStats.countryMismatch += 1;
+          return {
+            status: "no_tutors_available",
+            message: "Selected partner is not available right now",
           };
         }
 
         availableTutors.push(directTutorId);
         tutorFilterStats.matched = 1;
         tutorDetails[directTutorId] = {
-          nativeLanguage: tutorData.native_language_NS?.code || "unknown",
-          country: tutorData.Country_NS?.code || "unknown",
-          rating: tutorData.rating || 0,
-          priorityScore: tutorData.priorityScore || 50,
-          name: tutorData.display_name || "Tutor",
+          role: tutorRole,
+          nativeLanguage: candidateNativeLanguage || "unknown",
+          country: candidateCountry || "unknown",
+          ratingAverage: tutorProfile.ratingAverage,
+          ratingCount: tutorProfile.ratingCount,
+          level: candidateLevel || null,
+          legacyPriorityScore: readMatchPriorityScore(tutorData),
+          teacherBoostScore: getTeacherBoostScore(
+            tutorProfile,
+            teacherBoostRankingApplied,
+          ),
+          locationMatch:
+            !normalizedPreferredCountry ||
+            candidateCountry === normalizedPreferredCountry,
+          approvedTeacher: tutorProfile.approvedTeacher,
+          name: tutorData.display_name || "Partner",
         };
-        directTutorInfo = {
-          name: tutorData.display_name || "Tutor",
-          photo: tutorData.photo_url || null,
-        };
+        directTutorInfo = buildSessionUserInfo(tutorData, "Partner");
         addTutorSample({
           tutorId: directTutorId,
           outcome: "match",
           direct: true,
         });
       } else {
-        const tutorBaseQuery = admin
-          .firestore()
-          .collection("users")
-          .where("role", "in", tutorRoles)
-          .where("language_instruction_NS.code", "==", normalizedLanguage);
+        const candidateQueryResults = await Promise.all(
+          CANDIDATE_QUERY_BUILDERS.map((buildQuery) =>
+            buildQuery(db, normalizedLanguage).get().catch((queryError) => {
+              console.error("❌ Candidate query failed:", queryError.message);
+              throw new functions.https.HttpsError(
+                "failed-precondition",
+                "Candidate query failed. Ensure required Firestore indexes are deployed.",
+              );
+            }),
+          ),
+        );
 
-        let narrowedTutorQuery = tutorBaseQuery;
-        if (normalizedPreferredNativeLanguage) {
-          narrowedTutorQuery = narrowedTutorQuery.where(
-            "native_language_NS.code",
-            "==",
-            normalizedPreferredNativeLanguage,
-          );
+        const candidateDocsById = new Map();
+        for (const snapshot of candidateQueryResults) {
+          snapshot.docs.forEach((doc) => {
+            if (!candidateDocsById.has(doc.id)) {
+              candidateDocsById.set(doc.id, doc);
+            }
+          });
         }
-        if (normalizedPreferredCountry) {
-          narrowedTutorQuery = narrowedTutorQuery.where(
-            "Country_NS.code",
-            "==",
-            normalizedPreferredCountry,
-          );
-        }
 
-        tutorsQuery = await narrowedTutorQuery.get().catch((queryError) => {
-          console.error(
-            "❌ Tutor query failed (no collection-scan fallback):",
-            queryError.message,
-          );
-          throw new functions.https.HttpsError(
-            "failed-precondition",
-            "Tutor query failed. Ensure required Firestore indexes are deployed.",
-          );
-        });
-
-        if (tutorsQuery.empty) {
-          console.log("📹 createVideoSession no tutors for roles", {
-            roles: tutorRoles,
+        totalQueriedCandidates = candidateDocsById.size;
+        if (candidateDocsById.size === 0) {
+          console.log("📹 createVideoSession found no candidates", {
+            normalizedLanguage,
           });
           return {
             status: "no_tutors_available",
-            message: "No tutors available for this language right now",
+            message: "No partners available for this language right now",
           };
         }
 
-        for (const doc of tutorsQuery.docs) {
+        repeatPreventionContext = await loadSameDayRepeatCandidateIds(
+          db,
+          requesterId,
+          Array.from(candidateDocsById.keys()),
+          {bypassUserIds: repeatBypassUserIds},
+        );
+
+        for (const [tutorId, doc] of candidateDocsById.entries()) {
           tutorFilterStats.totalCandidates += 1;
-          const tutorData = doc.data();
-          const tutorId = doc.id;
+          const tutorData = doc.data() || {};
+          const tutorRole = normalizeRole(tutorData.role);
 
-          // === ПРОВЕРКА ЧЕРНЫХ СПИСКОВ (КРИТИЧНО!) ===
+          if (tutorId === requesterId) {
+            tutorFilterStats.selfExcluded += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "self_excluded",
+            });
+            continue;
+          }
 
-          // 1. Проверяем, не заблокировал ли студент этого преподавателя
-          if (studentBlockedIds.includes(tutorId)) {
+          if (!isSupportedSessionRole(tutorRole)) {
+            tutorFilterStats.unsupportedRole += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "unsupported_role",
+              role: tutorData.role || null,
+            });
+            continue;
+          }
+
+          if (requesterBlockedIds.includes(tutorId)) {
             tutorFilterStats.blockedByStudent += 1;
             addTutorSample({
               tutorId,
@@ -307,10 +532,8 @@ exports.createVideoSession = functions
             continue;
           }
 
-          // 2. Проверяем, не заблокировал ли преподаватель этого студента
           const tutorBlockedIds = extractBlockedIds(tutorData.blockedUsers || []);
-
-          if (tutorBlockedIds.includes(studentId)) {
+          if (tutorBlockedIds.includes(requesterId)) {
             tutorFilterStats.blockedByTutor += 1;
             addTutorSample({
               tutorId,
@@ -320,12 +543,17 @@ exports.createVideoSession = functions
             continue;
           }
 
-          // === БАЗОВАЯ ПРОВЕРКА ДОСТУПНОСТИ ===
+          if (!supportsConversationLanguage(tutorData, normalizedLanguage)) {
+            tutorFilterStats.languageMismatch += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "language_mismatch",
+            });
+            continue;
+          }
 
-          if (
-            tutorData.availableAfter &&
-            tutorData.availableAfter.toDate() > new Date()
-          ) {
+          if (isAvailableAfterInFuture(tutorData)) {
             tutorFilterStats.availableAfterInFuture += 1;
             addTutorSample({
               tutorId,
@@ -336,15 +564,13 @@ exports.createVideoSession = functions
           }
 
           const availabilityCheck = evaluateTutorAvailabilityWindow(tutorData);
-          const isAvailable = availabilityCheck.isAvailable;
-
-          if (!isAvailable || tutorData.isInCall) {
+          if (!availabilityCheck.isAvailable || tutorData.isInCall) {
             tutorFilterStats.unavailableOrInCall += 1;
             addTutorSample({
               tutorId,
               outcome: "skip",
               reason: "unavailable_or_in_call",
-              isAvailable: !!isAvailable,
+              isAvailable: !!availabilityCheck.isAvailable,
               isInCall: !!tutorData.isInCall,
               availabilityReason: availabilityCheck.reason,
               tutorLocalTime: availabilityCheck.localTime || null,
@@ -354,133 +580,131 @@ exports.createVideoSession = functions
             continue;
           }
 
-          const instructionLang = tutorData.language_instruction_NS;
-          const instructionCode =
-            instructionLang && typeof instructionLang === "object"
-              ? String(instructionLang.code || "")
-                  .trim()
-                  .toLowerCase()
-              : "";
-
-          if (!instructionCode) {
-            tutorFilterStats.missingInstructionCode += 1;
+          if (repeatPreventionContext.excludedCandidateIds.has(tutorId)) {
+            tutorFilterStats.sameDayRepeat += 1;
             addTutorSample({
               tutorId,
               outcome: "skip",
-              reason: "missing_instruction_language_code",
+              reason: "same_day_repeat",
+              dayKey: repeatPreventionContext.dayKey,
             });
             continue;
           }
 
-          if (instructionCode !== normalizedLanguage) {
-            tutorFilterStats.instructionLanguageMismatch += 1;
+          const candidateNativeLanguage = readLanguageCode(
+            tutorData.native_language_NS,
+          );
+          if (normalizedPreferredNativeLanguage && !candidateNativeLanguage) {
+            tutorFilterStats.missingNativeLanguage += 1;
             addTutorSample({
               tutorId,
               outcome: "skip",
-              reason: "instruction_language_mismatch",
-              instructionCode,
+              reason: "missing_native_language",
             });
             continue;
           }
 
-          // Проверяем соответствие нативному языку (если указан)
-          let nativeLanguageMatch = false;
-          if (normalizedPreferredNativeLanguage) {
-            // Получаем код нативного языка преподавателя
-            const tutorNativeLanguage = tutorData.native_language_NS;
-
-            if (tutorNativeLanguage && typeof tutorNativeLanguage === "object") {
-              const nativeLanguageCode = String(tutorNativeLanguage.code || "")
-                .trim()
-                .toLowerCase();
-              nativeLanguageMatch =
-                nativeLanguageCode === normalizedPreferredNativeLanguage;
-              if (!nativeLanguageMatch) {
-                tutorFilterStats.nativeLanguageMismatch += 1;
-                addTutorSample({
-                  tutorId,
-                  outcome: "skip",
-                  reason: "native_language_mismatch",
-                  tutorNativeLanguage: nativeLanguageCode,
-                });
-              }
-            } else {
-              tutorFilterStats.missingNativeLanguage += 1;
-              addTutorSample({
-                tutorId,
-                outcome: "skip",
-                reason: "missing_native_language",
-              });
-            }
-          } else {
-            // Если студент не указал предпочтение, любой язык подходит
-            nativeLanguageMatch = true;
-          }
-
-          // Проверяем соответствие локации/стране (если указана)
-          let countryMatch = false;
-          if (normalizedPreferredCountry) {
-            // Получаем код страны преподавателя
-            const tutorCountry = tutorData.Country_NS;
-
-            if (tutorCountry && typeof tutorCountry === "object") {
-              const countryCode = tutorCountry.code;
-              countryMatch = countryCode === normalizedPreferredCountry;
-              if (!countryMatch) {
-                tutorFilterStats.countryMismatch += 1;
-                addTutorSample({
-                  tutorId,
-                  outcome: "skip",
-                  reason: "country_mismatch",
-                  tutorCountry: countryCode,
-                });
-              }
-            } else {
-              tutorFilterStats.missingCountry += 1;
-              addTutorSample({
-                tutorId,
-                outcome: "skip",
-                reason: "missing_country",
-              });
-            }
-          } else {
-            // Если студент не указал предпочтение, любая страна подходит
-            countryMatch = true;
-          }
-
-          // Если оба фильтра совпали (или не были указаны), добавляем преподавателя
-          if (nativeLanguageMatch && countryMatch) {
-            availableTutors.push(tutorId);
-            tutorFilterStats.matched += 1;
-
-            // Сохраняем детали для потенциальной приоритизации
-            tutorDetails[tutorId] = {
-              nativeLanguage: tutorData.native_language_NS?.code || "unknown",
-              country: tutorData.Country_NS?.code || "unknown",
-              rating: tutorData.rating || 0,
-              priorityScore: tutorData.priorityScore || 50,
-              name: tutorData.display_name || "Tutor",
-            };
-            addTutorSample({
-              tutorId,
-              outcome: "match",
-              priorityScore: tutorDetails[tutorId].priorityScore,
-            });
-          } else {
+          if (
+            normalizedPreferredNativeLanguage &&
+            candidateNativeLanguage !== normalizedPreferredNativeLanguage
+          ) {
+            tutorFilterStats.nativeLanguageMismatch += 1;
             addTutorSample({
               tutorId,
               outcome: "skip",
-              reason: "preference_mismatch",
-              nativeLanguageMatch,
-              countryMatch,
+              reason: "native_language_mismatch",
+              tutorNativeLanguage: candidateNativeLanguage || null,
             });
+            continue;
           }
+
+          const tutorProfile = buildMatchProfile(
+            tutorId,
+            tutorData,
+            normalizedLanguage,
+          );
+          const candidateLevel = readMatchLevelValue(tutorData);
+          if (normalizedPreferredPartnerLevel && !candidateLevel) {
+            tutorFilterStats.missingLevel += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "missing_level",
+            });
+            continue;
+          }
+
+          if (
+            normalizedPreferredPartnerLevel &&
+            candidateLevel !== normalizedPreferredPartnerLevel
+          ) {
+            tutorFilterStats.levelMismatch += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "level_mismatch",
+              tutorLevel: candidateLevel || null,
+            });
+            continue;
+          }
+          const candidateCountry = readMatchCountry(tutorData);
+          if (normalizedPreferredCountry && !candidateCountry) {
+            tutorFilterStats.missingCountry += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "missing_country",
+            });
+            continue;
+          }
+
+          if (
+            normalizedPreferredCountry &&
+            candidateCountry !== normalizedPreferredCountry
+          ) {
+            tutorFilterStats.countryMismatch += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "country_mismatch",
+              tutorCountry: candidateCountry || null,
+            });
+            continue;
+          }
+
+          availableTutors.push(tutorId);
+          tutorFilterStats.matched += 1;
+          tutorDetails[tutorId] = {
+            role: tutorRole,
+            nativeLanguage: candidateNativeLanguage || "unknown",
+            country: candidateCountry || "unknown",
+            ratingAverage: tutorProfile.ratingAverage,
+            ratingCount: tutorProfile.ratingCount,
+            level: candidateLevel || null,
+            legacyPriorityScore: readMatchPriorityScore(tutorData),
+            teacherBoostScore: getTeacherBoostScore(
+              tutorProfile,
+              teacherBoostRankingApplied,
+            ),
+            locationMatch:
+              !normalizedPreferredCountry ||
+              candidateCountry === normalizedPreferredCountry,
+            approvedTeacher: tutorProfile.approvedTeacher,
+            name: tutorData.display_name || "Partner",
+          };
+          addTutorSample({
+            tutorId,
+            outcome: "match",
+            legacyPriorityScore: tutorDetails[tutorId].legacyPriorityScore,
+            ratingAverage: tutorDetails[tutorId].ratingAverage,
+          });
         }
       }
 
-      const totalTutorsQueried = isDirectTutorCall ? 1 : tutorsQuery.size;
+      const totalTutorsQueried = totalQueriedCandidates;
       const filteringSummary = {
-        studentId,
+        requesterId,
+        requesterRole,
         requestedLanguage: normalizedLanguage,
         matchMode: isDirectTutorCall ? "direct" : "filtered",
         directTutorId: isDirectTutorCall ? directTutorId : null,
@@ -490,24 +714,32 @@ exports.createVideoSession = functions
         preferredCountry: isDirectTutorCall
           ? "skipped_for_direct_call"
           : (normalizedPreferredCountry || "any"),
+        preferredPartnerLevel: normalizedPreferredPartnerLevel || "any",
         totalTutorsQueried,
         totalCandidatesChecked: tutorFilterStats.totalCandidates,
         matchedTutors: tutorFilterStats.matched,
         rejected: {
+          selfExcluded: tutorFilterStats.selfExcluded,
+          unsupportedRole: tutorFilterStats.unsupportedRole,
           blockedByStudent: tutorFilterStats.blockedByStudent,
           blockedByTutor: tutorFilterStats.blockedByTutor,
           availableAfterInFuture: tutorFilterStats.availableAfterInFuture,
           unavailableOrInCall: tutorFilterStats.unavailableOrInCall,
-          missingInstructionCode: tutorFilterStats.missingInstructionCode,
-          instructionLanguageMismatch:
-            tutorFilterStats.instructionLanguageMismatch,
+          sameDayRepeat: tutorFilterStats.sameDayRepeat,
+          languageMismatch: tutorFilterStats.languageMismatch,
           missingNativeLanguage: tutorFilterStats.missingNativeLanguage,
           nativeLanguageMismatch: tutorFilterStats.nativeLanguageMismatch,
+          missingLevel: tutorFilterStats.missingLevel,
+          levelMismatch: tutorFilterStats.levelMismatch,
           missingCountry: tutorFilterStats.missingCountry,
           countryMismatch: tutorFilterStats.countryMismatch,
         },
         sampledDebugEnabled: shouldSampleTutorDebug,
       };
+      if (repeatPreventionContext) {
+        filteringSummary.sameDayRepeatPrevention =
+          buildRepeatPreventionLogContext(repeatPreventionContext);
+      }
       if (shouldSampleTutorDebug && tutorDebugSamples.length > 0) {
         filteringSummary.sample = tutorDebugSamples;
       }
@@ -515,32 +747,33 @@ exports.createVideoSession = functions
 
       if (availableTutors.length === 0) {
         console.log("📹 createVideoSession no matching tutors after filtering", {
-          studentId,
+          requesterId,
           requestedLanguage: normalizedLanguage,
           matchMode: isDirectTutorCall ? "direct" : "filtered",
           directTutorId: isDirectTutorCall ? directTutorId : null,
           preferredNativeLanguage: normalizedPreferredNativeLanguage || "any",
           preferredCountry: normalizedPreferredCountry || "any",
+          preferredPartnerLevel: normalizedPreferredPartnerLevel || "any",
         });
         return {
           status: "no_tutors_available",
           message: isDirectTutorCall
-            ? "Selected tutor is not available right now"
-            : "No tutors available matching your preferences. Try adjusting your filters.",
+            ? "Selected partner is not available right now"
+            : "No partners are available matching your preferences. Try adjusting your filters.",
         };
       }
 
       if (!isDirectTutorCall) {
-        availableTutors.sort((a, b) => {
-          const scoreA = tutorDetails[a].priorityScore;
-          const scoreB = tutorDetails[b].priorityScore;
-          return scoreA - scoreB;
-        });
+        availableTutors.sort((a, b) => compareCandidateDetails(a, b, tutorDetails));
         console.log("📊 Matched tutors after sorting", {
           count: availableTutors.length,
           topTutorPreview: availableTutors.slice(0, 3).map((id) => ({
             tutorId: id,
-            priorityScore: tutorDetails[id].priorityScore,
+            locationMatch: tutorDetails[id].locationMatch,
+            approvedTeacher: tutorDetails[id].approvedTeacher,
+            teacherBoostScore: tutorDetails[id].teacherBoostScore,
+            ratingAverage: tutorDetails[id].ratingAverage,
+            legacyPriorityScore: tutorDetails[id].legacyPriorityScore,
           })),
         });
       }
@@ -556,9 +789,9 @@ exports.createVideoSession = functions
       try {
         const dailyRoom = await createDailyRoom({
           language: normalizedLanguage,
-          studentId,
+          studentId: requesterId,
           tutorId: null,
-          studentName: studentData.display_name || "Student",
+          studentName: requesterInfo.name || "Caller",
           tutorName: "Tutor",
           expSeconds: 15 * 60,
         });
@@ -576,24 +809,51 @@ exports.createVideoSession = functions
       }
 
       const sessionData = {
-        studentId,
-        language,
+        studentId: requesterId,
+        participantIds: [requesterId],
+        language: normalizedLanguage,
         status: "searching",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
 
         // Предпочтения студента (для логов и аналитики)
         studentPreferences: {
-          nativeLanguage: preferredNativeLanguage || null,
-          country: preferredCountry || null,
+          nativeLanguage: normalizedPreferredNativeLanguage || null,
+          country: normalizedPreferredCountry || null,
         },
 
         // Для поиска
         triedTutors: [],
         availableTutors, // Уже отсортированный массив
-        studentInfo: {
-          name: studentData.display_name || "Student",
-          photo: studentData.photo_url || null,
+        studentInfo: requesterInfo,
+        matchContext: {
+          version: "v2_all_to_all",
+          requesterId,
+          requesterRole,
+          requestedLanguage: normalizedLanguage,
+          requestedLanguageSource: resolvedLanguage.source || null,
+          directCandidateId: isDirectTutorCall ? directTutorId : null,
+          requesterProfile,
+          filters: {
+            preferredNativeLanguage: normalizedPreferredNativeLanguage || null,
+            preferredCountry: normalizedPreferredCountry || null,
+            preferredPartnerLevel: normalizedPreferredPartnerLevel || null,
+          },
+          ranking: {
+            friendPriorityApplied: false,
+            locationApplied: !!normalizedPreferredCountry,
+            levelApplied: !!normalizedPreferredPartnerLevel,
+            teacherBoostApplied:
+              !isDirectTutorCall && teacherBoostRankingApplied,
+            internalRankingScore: 0,
+            legacyPriorityUsedAsTiebreaker: true,
+          },
+          candidatePoolSize: availableTutors.length,
+          candidateIds: availableTutors,
+          candidateRoleCounts: buildCandidateRoleCounts(
+            availableTutors,
+            tutorDetails,
+          ),
         },
 
         [STUDENT_REVIEW_FLAG_FIELD]: false,
@@ -615,22 +875,83 @@ exports.createVideoSession = functions
         };
       }
 
-      const sessionRef = await admin
-        .firestore()
-        .collection("videoSessions")
-        .add(sessionData);
+      const sessionRef = db.collection("videoSessions").doc();
+      const creation = await db.runTransaction(async (transaction) => {
+        const finalRepeatPreventionContext =
+          await loadSameDayRepeatCandidateIdsForTransaction(
+            transaction,
+            db,
+            requesterId,
+            availableTutors,
+            {bypassUserIds: repeatBypassUserIds},
+          );
+        const finalAvailableTutors = filterRepeatCandidates(
+          availableTutors,
+          finalRepeatPreventionContext,
+        );
+
+        if (finalAvailableTutors.length === 0) {
+          return {
+            created: false,
+            repeatPreventionContext: finalRepeatPreventionContext,
+          };
+        }
+
+        const finalSessionData = {
+          ...sessionData,
+          availableTutors: finalAvailableTutors,
+          matchContext: {
+            ...sessionData.matchContext,
+            candidatePoolSize: finalAvailableTutors.length,
+            candidateIds: finalAvailableTutors,
+            candidateRoleCounts: buildCandidateRoleCounts(
+              finalAvailableTutors,
+              tutorDetails,
+            ),
+          },
+        };
+        transaction.set(sessionRef, finalSessionData);
+        return {
+          created: true,
+          sessionData: finalSessionData,
+          matchedTutors: finalAvailableTutors.length,
+          repeatPreventionContext: finalRepeatPreventionContext,
+        };
+      });
+
+      if (!creation.created) {
+        const excludedCount = countExcludedRepeatCandidates(
+          creation.repeatPreventionContext,
+        );
+        console.log("📹 createVideoSession final repeat guard blocked session", {
+          requesterId,
+          requestedLanguage: normalizedLanguage,
+          matchMode: isDirectTutorCall ? "direct" : "filtered",
+          excludedCount,
+          sameDayRepeatPrevention: buildRepeatPreventionLogContext(
+            creation.repeatPreventionContext,
+          ),
+        });
+        return {
+          status: "no_tutors_available",
+          message: isDirectTutorCall
+            ? "Selected partner is not available right now"
+            : "No partners are available matching your preferences. Try adjusting your filters.",
+        };
+      }
+
       console.log("✅ Video session created:", sessionRef.id);
 
       // Уведомляем первого преподавателя
-      await sendNotificationToNextTutor(sessionRef.id, sessionData);
+      await sendNotificationToNextTutor(sessionRef.id, creation.sessionData);
 
       return {
         status: "searching",
         sessionId: sessionRef.id,
         message: isDirectTutorCall
-          ? "Calling selected tutor..."
-          : "Searching for available tutor...",
-        matchedTutors: availableTutors.length,
+          ? "Calling selected partner..."
+          : "Searching for available partner...",
+        matchedTutors: creation.matchedTutors,
       };
     } catch (error) {
       console.error("❌ Error creating video session:", error);
