@@ -31,6 +31,33 @@ function toMillis(value) {
   return Number.isFinite(numericValue) ? numericValue : 0;
 }
 
+function shouldProcessExpiredEndReason({
+  sessionData = {},
+  endReason,
+  requestTimestamp = Date.now(),
+  clockSkewGraceMs = 2000,
+}) {
+  if (String(endReason || "").trim() !== "expired") {
+    return true;
+  }
+
+  const sessionPolicy = sessionData.sessionPolicy;
+  if (
+    !sessionPolicy ||
+    typeof sessionPolicy !== "object" ||
+    Array.isArray(sessionPolicy)
+  ) {
+    return true;
+  }
+
+  const expiresAtMillis = toMillis(sessionData.expiresAt);
+  if (expiresAtMillis <= 0) {
+    return true;
+  }
+
+  return requestTimestamp + clockSkewGraceMs >= expiresAtMillis;
+}
+
 /*
 endSession
 Завершает активную видео сессию, списывает баланс студента,
@@ -110,6 +137,20 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           "invalid-argument",
           `Session cannot be ended. Current status: ${sessionData.status}`,
         );
+      }
+
+      if (
+        !shouldProcessExpiredEndReason({
+          sessionData,
+          endReason,
+          requestTimestamp,
+        })
+      ) {
+        return {
+          status: "ignored_expired_end",
+          message: "Session limit has not been reached",
+          sessionId,
+        };
       }
 
       const requesterId = getRequesterId(sessionData);
@@ -271,6 +312,10 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     });
 
     if (txResult.status === "already_ended") {
+      return txResult;
+    }
+
+    if (txResult.status !== "ended") {
       return txResult;
     }
 
@@ -531,3 +576,8 @@ async function cancelAllSessionNotifications(sessionId) {
     console.error("❌ Error canceling session notifications:", error);
   }
 }
+
+exports.__private__ = {
+  shouldProcessExpiredEndReason,
+  toMillis,
+};

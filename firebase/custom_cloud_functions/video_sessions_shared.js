@@ -18,6 +18,136 @@ function readStoredMatchProfile(userData = {}) {
   return {};
 }
 
+const UNIVERSAL_SESSION_POLICY = Object.freeze({
+  baseLimitSeconds: 5 * 60,
+  warningLeadSeconds: 60,
+  maxExtensionCount: 1,
+  extensionSeconds: 5 * 60,
+  extensionRequests: {},
+  extensionApproved: false,
+  effectiveLimitSeconds: 5 * 60,
+});
+const LEGACY_ACTIVE_SESSION_MAX_DURATION_MS = 60 * 60 * 1000;
+
+function readPositiveInteger(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    return fallback;
+  }
+  return Math.floor(number);
+}
+
+function readNonNegativeInteger(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) {
+    return fallback;
+  }
+  return Math.floor(number);
+}
+
+function readExtensionRequests(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return {...value};
+}
+
+function buildUniversalSessionPolicy(policy = {}) {
+  const baseLimitSeconds = readPositiveInteger(
+    policy.baseLimitSeconds,
+    UNIVERSAL_SESSION_POLICY.baseLimitSeconds,
+  );
+  const warningLeadSeconds = Math.min(
+    readPositiveInteger(
+      policy.warningLeadSeconds,
+      UNIVERSAL_SESSION_POLICY.warningLeadSeconds,
+    ),
+    baseLimitSeconds,
+  );
+  const maxExtensionCount = readNonNegativeInteger(
+    policy.maxExtensionCount,
+    UNIVERSAL_SESSION_POLICY.maxExtensionCount,
+  );
+  const extensionSeconds = readPositiveInteger(
+    policy.extensionSeconds,
+    UNIVERSAL_SESSION_POLICY.extensionSeconds,
+  );
+  const effectiveLimitSeconds = Math.max(
+    baseLimitSeconds,
+    readPositiveInteger(
+      policy.effectiveLimitSeconds,
+      UNIVERSAL_SESSION_POLICY.effectiveLimitSeconds,
+    ),
+  );
+
+  return {
+    baseLimitSeconds,
+    warningLeadSeconds,
+    maxExtensionCount,
+    extensionSeconds,
+    extensionRequests: readExtensionRequests(policy.extensionRequests),
+    extensionApproved: policy.extensionApproved === true,
+    effectiveLimitSeconds,
+  };
+}
+
+function getSessionPolicyEffectiveLimitSeconds(policy = {}) {
+  return buildUniversalSessionPolicy(policy).effectiveLimitSeconds;
+}
+
+function getSessionPolicyExpiresAt(policy = {}, nowMillis = Date.now()) {
+  const safeNowMillis = Number.isFinite(Number(nowMillis))
+    ? Number(nowMillis)
+    : Date.now();
+  return new Date(
+    safeNowMillis + getSessionPolicyEffectiveLimitSeconds(policy) * 1000,
+  );
+}
+
+function readPolicyBackedSessionPolicy(sessionData = {}) {
+  const policy = sessionData.sessionPolicy;
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) {
+    return null;
+  }
+  return buildUniversalSessionPolicy(policy);
+}
+
+function buildInitialSessionPolicyState(nowMillis = Date.now()) {
+  const sessionPolicy = buildUniversalSessionPolicy();
+  return {
+    sessionPolicy,
+    expiresAt: getSessionPolicyExpiresAt(sessionPolicy, nowMillis),
+    maxDurationMs:
+      getSessionPolicyEffectiveLimitSeconds(sessionPolicy) * 1000,
+  };
+}
+
+function buildAcceptedSessionPolicyState(
+  sessionData = {},
+  nowMillis = Date.now(),
+) {
+  const sessionPolicy = readPolicyBackedSessionPolicy(sessionData);
+  if (!sessionPolicy) {
+    const safeNowMillis = Number.isFinite(Number(nowMillis))
+      ? Number(nowMillis)
+      : Date.now();
+    return {
+      sessionPolicy: null,
+      expiresAt: new Date(
+        safeNowMillis + LEGACY_ACTIVE_SESSION_MAX_DURATION_MS,
+      ),
+      maxDurationMs: LEGACY_ACTIVE_SESSION_MAX_DURATION_MS,
+    };
+  }
+
+  return {
+    sessionPolicy,
+    expiresAt: getSessionPolicyExpiresAt(sessionPolicy, nowMillis),
+    maxDurationMs:
+      getSessionPolicyEffectiveLimitSeconds(sessionPolicy) * 1000,
+  };
+}
+
 function readStoredCodeList(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -527,7 +657,11 @@ function getSessionParticipantIds(sessionData = {}) {
     }
   });
 
-  [getRequesterId(sessionData), sessionData.tutorId, sessionData.currentTutorId]
+  if (ids.length >= 2) {
+    return ids;
+  }
+
+  [getRequesterId(sessionData), getAssignedResponderId(sessionData)]
     .filter(Boolean)
     .forEach((value) => {
       const normalized = normalizeString(value);
@@ -554,14 +688,19 @@ function isRequesterForSession(sessionData = {}, userId) {
 }
 
 module.exports = {
+  buildAcceptedSessionPolicyState,
+  buildInitialSessionPolicyState,
   buildMatchProfile,
   buildStoredMatchProfile,
   buildSessionUserInfo,
+  buildUniversalSessionPolicy,
   extractBlockedIds,
   getAssignedResponderId,
   getLegacyPriorityScore,
   hasLegacyMatchProfileSource,
   getRequesterId,
+  getSessionPolicyEffectiveLimitSeconds,
+  getSessionPolicyExpiresAt,
   getSessionParticipantIds,
   isApprovedTeacher,
   isRequesterForSession,

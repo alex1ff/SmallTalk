@@ -3,11 +3,12 @@ import '/backend/backend.dart';
 import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/students_pages/components/new_word/new_word_widget.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
+import '/shared_pages/learning/caption_word_flow.dart';
+import '/shared_pages/review_flow/review_submission_helper.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -217,8 +218,13 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     _didNavigateToSummary = true;
 
     final sessionRef = widget.videoDocRef;
-    final isRequester = currentUserUid == session?.studentId;
-    final userId = isRequester ? session?.tutorId : session?.studentId;
+    final participantResolution = session == null
+        ? null
+        : resolveSessionReviewParticipant(
+            sessionData: session.snapshotData,
+            currentUserId: currentUserUid,
+          );
+    final userId = participantResolution?.counterpartUserId;
 
     final userRef =
         _isValidUserId(userId) ? functions.stringToRef(userId!.trim()) : null;
@@ -276,6 +282,11 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
               videoCallPageVideoSessionsRecord?.language,
             ) ??
             'en';
+        final rawSessionPolicy =
+            videoCallPageVideoSessionsRecord?.snapshotData['sessionPolicy'];
+        final sessionPolicy = rawSessionPolicy is Map
+            ? Map<String, dynamic>.from(rawSessionPolicy)
+            : null;
         final sessionStatus =
             _nonEmpty(videoCallPageVideoSessionsRecord?.status);
         final isStudent = currentUserUid ==
@@ -350,6 +361,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                 tokenRefreshCallback: () async {
                   return await _fetchSessionTokens(force: true);
                 },
+                sessionExpiresAt: videoCallPageVideoSessionsRecord?.expiresAt,
+                sessionPolicy: sessionPolicy,
                 deepgramTokenRefreshCallback: () async {
                   return await _fetchDeepgramToken(force: true);
                 },
@@ -373,9 +386,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           },
                           child: Padding(
                             padding: MediaQuery.viewInsetsOf(context),
-                            child: NewWordWidget(
+                            child: buildLiveCaptionWordSheet(
                               word: word,
-                              langCode: resolvedLanguage,
+                              languageCode: resolvedLanguage,
                               sentence: sentence,
                               contextText: contextText,
                             ),
@@ -385,7 +398,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                     },
                   ).then((value) => safeSetState(() {}));
                 },
-                endCallCallback: () async {
+                endCallCallback: (endReason) async {
                   unawaited(
                     () async {
                       try {
@@ -393,6 +406,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                             .httpsCallable('endSession')
                             .call({
                           "sessionId": widget.videoDocRef!.id,
+                          if (endReason != null && endReason.isNotEmpty)
+                            "endReason": endReason,
                         });
                         _model.cloudFunctiona1y =
                             EndSessionCloudFunctionCallResponse(

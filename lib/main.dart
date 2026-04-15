@@ -78,7 +78,7 @@ class MyApp extends StatefulWidget {
       context.findAncestorStateOfType<_MyAppState>()!;
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Locale? _locale = FFLocalizations.getStoredLocale();
 
   ThemeMode _themeMode = ThemeMode.system;
@@ -123,9 +123,25 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  Future<void> _refreshAuthUserOnResume() async {
+    if (!loggedIn) {
+      return;
+    }
+
+    try {
+      await authManager.refreshUser();
+      if (mounted) {
+        safeSetState(() {});
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to refresh Firebase Auth user on resume: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _appStateNotifier = AppStateNotifier.instance;
     _router = createRouter(_appStateNotifier);
@@ -147,7 +163,15 @@ class _MyAppState extends State<MyApp> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshAuthUserOnResume());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     authUserSub.cancel();
     _userStreamSub?.cancel();
     _jwtTokenSub?.cancel();

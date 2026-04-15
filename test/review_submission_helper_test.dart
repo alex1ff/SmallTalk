@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -106,6 +108,72 @@ void main() {
         ),
         'alice__bob%5F%5Fcarol',
       );
+    });
+  });
+
+  group('session review participant resolution', () {
+    test('prefers participantIds plus generalized requester/responder fields', () {
+      final resolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'participantIds': ['user-a'],
+          'matchContext': {
+            'requesterId': 'user-a',
+            'acceptedResponderId': 'user-b',
+          },
+        },
+        currentUserId: 'user-a',
+      );
+
+      expect(resolution.isParticipant, isTrue);
+      expect(resolution.isRequester, isTrue);
+      expect(resolution.isResponder, isFalse);
+      expect(resolution.counterpartUserId, 'user-b');
+    });
+
+    test('falls back to unique counterpart from participantIds', () {
+      final resolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'participantIds': ['user-a', 'user-b'],
+        },
+        currentUserId: 'user-b',
+      );
+
+      expect(resolution.isParticipant, isTrue);
+      expect(resolution.counterpartUserId, 'user-a');
+      expect(resolution.isRequester, isFalse);
+      expect(resolution.isResponder, isFalse);
+    });
+
+    test('fails closed when current user is not a session participant', () {
+      final resolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'participantIds': ['user-a', 'user-b'],
+          'studentId': 'user-a',
+          'currentTutorId': 'user-b',
+        },
+        currentUserId: 'user-c',
+      );
+
+      expect(resolution.isParticipant, isFalse);
+      expect(resolution.counterpartUserId, isNull);
+    });
+
+    test('Call Details wires counterpart resolution through the shared helper', () {
+      final source = File(
+        'lib/shared_pages/call_details/call_details_widget.dart',
+      ).readAsStringSync();
+
+      expect(source, contains('resolveSessionReviewParticipant('));
+      expect(source, contains('_participantResolution(session).counterpartUserId'));
+    });
+
+    test('Video Call summary routing uses the shared counterpart resolution', () {
+      final source = File(
+        'lib/shared_pages/video_call_page/video_call_page_widget.dart',
+      ).readAsStringSync();
+
+      expect(source, contains('resolveSessionReviewParticipant('));
+      expect(source, contains("participantResolution?.counterpartUserId"));
     });
   });
 

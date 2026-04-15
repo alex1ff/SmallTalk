@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-04-14T09:45:19.841Z",
+  "startedAt": "2026-04-14T19:39:31.581Z",
   "projectId": "demo-smalltalk",
   "emulators": {
     "firestore": "127.0.0.1:8080",
@@ -210,19 +210,19 @@
     },
     "endSessionConcurrency": {
       "pass": true,
-      "sessionId": "audit_session_1776159921748",
+      "sessionId": "audit_session_1776195573875",
       "invocation": [
         {
           "caller": "student",
           "status": "fulfilled",
-          "responseStatus": "ended",
-          "message": "Session ended successfully"
+          "responseStatus": "already_ended",
+          "message": "Session was already ended"
         },
         {
           "caller": "tutor",
           "status": "fulfilled",
-          "responseStatus": "already_ended",
-          "message": "Session was already ended"
+          "responseStatus": "ended",
+          "message": "Session ended successfully"
         }
       ],
       "transactionCounts": {
@@ -243,18 +243,18 @@
         "eligibleProcessed": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "unlock_session_1776159926222",
-          "pairId": "unlock_student_1776159926222_unlock_tutor_1776159926222",
+          "sessionId": "unlock_session_1776195578744",
+          "pairId": "unlock_student_1776195578744_unlock_tutor_1776195578744",
           "eventStatus": "processed",
           "eventReason": "processed_unlocked",
-          "conversationPath": "conversations/unlock_student_1776159926222_unlock_tutor_1776159926222",
+          "conversationPath": "conversations/unlock_student_1776195578744_unlock_tutor_1776195578744",
           "failure": null
         },
         "existingConversationReuse": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "reuse_session_1776159926222",
-          "pairId": "reuse_student_1776159926222_reuse_tutor_1776159926222",
+          "sessionId": "reuse_session_1776195578744",
+          "pairId": "reuse_student_1776195578744_reuse_tutor_1776195578744",
           "eventStatus": "processed",
           "eventReason": "processed_existing_conversation",
           "unlockRefPreserved": true,
@@ -263,8 +263,8 @@
         "ignoredIneligible": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "ignored_session_1776159926222",
-          "pairId": "ignored_student_1776159926222_ignored_tutor_1776159926222",
+          "sessionId": "ignored_session_1776195578744",
+          "pairId": "ignored_student_1776195578744_ignored_tutor_1776195578744",
           "eventStatus": "ignored",
           "eventReason": "ignored_not_connected",
           "conversationCreated": false,
@@ -273,8 +273,8 @@
         "missingSessionFailed": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "missing_session_1776159926222",
-          "pairId": "missing_student_1776159926222_missing_tutor_1776159926222",
+          "sessionId": "missing_session_1776195578744",
+          "pairId": "missing_student_1776195578744_missing_tutor_1776195578744",
           "eventStatus": "failed",
           "eventReason": "failed_exception",
           "conversationCreated": false,
@@ -286,19 +286,92 @@
     "createVideoSessionMatrix": {
       "pass": true,
       "failure": null,
-      "scenario": "native_speaker requester can build all-to-all candidate pool",
-      "responseStatus": "searching",
-      "sessionId": "dfKMKNNzzJ0hflnk3NUw",
-      "participantIds": [
-        "audit_matrix_requester_1776159927353"
-      ],
-      "candidateIds": [
-        "audit_matrix_speaker_1776159927353",
-        "audit_matrix_student_1776159927353"
-      ],
-      "candidateRoleCounts": {
-        "native_speaker": 1,
-        "student": 1
+      "scenario": "student and native_speaker requesters can build all-to-all candidate pools",
+      "scenarios": {
+        "nativeSpeakerRequester": {
+          "pass": true,
+          "failure": null,
+          "scenario": "native_speaker requester can build all-to-all candidate pool",
+          "responseStatus": "searching",
+          "sessionId": "ltgwvr7DKTfOh8S94zYP",
+          "participantIds": [
+            "audit_matrix_native_requester_requester_1776195579907"
+          ],
+          "candidateIds": [
+            "audit_matrix_native_requester_speaker_1776195579907",
+            "audit_matrix_native_requester_student_1776195579907"
+          ],
+          "candidateRoleCounts": {
+            "native_speaker": 1,
+            "student": 1
+          }
+        },
+        "studentRequester": {
+          "pass": true,
+          "failure": null,
+          "scenario": "student requester can build all-to-all candidate pool",
+          "responseStatus": "searching",
+          "sessionId": "KNzXNbXQbHe4S4dqD3cg",
+          "participantIds": [
+            "audit_matrix_student_requester_requester_1776195579907"
+          ],
+          "candidateIds": [
+            "audit_matrix_student_requester_speaker_1776195579907",
+            "audit_matrix_student_requester_student_1776195579907"
+          ],
+          "candidateRoleCounts": {
+            "native_speaker": 1,
+            "student": 1
+          }
+        },
+        "studentStudentPair": {
+          "pass": true,
+          "failure": null,
+          "scenario": "student requester can match an explicit student-student pair",
+          "responseStatus": "searching",
+          "sessionId": "evhlpuF6A09BvY2M7itP",
+          "participantIds": [
+            "audit_matrix_student_student_pair_requester_1776195579907"
+          ],
+          "candidateIds": [
+            "audit_matrix_student_student_pair_student_1776195579907"
+          ],
+          "candidateRoleCounts": {
+            "student": 1
+          }
+        },
+        "studentNativeSpeakerPair": {
+          "pass": true,
+          "failure": null,
+          "scenario": "student requester can match an explicit student-native_speaker pair",
+          "responseStatus": "searching",
+          "sessionId": "bFCHanhyfZtYanp5olTu",
+          "participantIds": [
+            "audit_matrix_student_native_pair_requester_1776195579907"
+          ],
+          "candidateIds": [
+            "audit_matrix_student_native_pair_speaker_1776195579907"
+          ],
+          "candidateRoleCounts": {
+            "native_speaker": 1
+          }
+        },
+        "nativeSpeakerNativeSpeakerPair": {
+          "pass": true,
+          "failure": null,
+          "scenario": "native_speaker requester can match an explicit native_speaker-native_speaker pair",
+          "responseStatus": "searching",
+          "sessionId": "DWqnGjtdSk05Rf8MESxq",
+          "participantIds": [
+            "audit_matrix_native_native_pair_requester_1776195579907"
+          ],
+          "candidateIds": [
+            "audit_matrix_native_native_pair_speaker_1776195579907"
+          ],
+          "candidateRoleCounts": {
+            "native_speaker": 1
+          }
+        }
       }
     },
     "sameDayRepeatPrevention": {
@@ -307,7 +380,7 @@
       "scenarios": {
         "completedConnectedExcluded": {
           "pass": true,
-          "sessionId": "repeat_completed_session_1776159927433",
+          "sessionId": "repeat_completed_session_1776195580415",
           "historyCreated": true,
           "directStatus": "no_tutors_available",
           "poolExcludedCompletedCandidate": true,
@@ -316,14 +389,14 @@
         },
         "neverConnectedDoesNotCount": {
           "pass": true,
-          "sessionId": "repeat_never_session_1776159927433",
+          "sessionId": "repeat_never_session_1776195580415",
           "historyCreated": false,
           "directStatus": "searching",
           "failure": null
         },
         "cancelledDoesNotCount": {
           "pass": true,
-          "sessionId": "repeat_cancelled_session_1776159927433",
+          "sessionId": "repeat_cancelled_session_1776195580415",
           "historyCreated": false,
           "directStatus": "searching",
           "failure": null
@@ -339,13 +412,13 @@
       "pass": true,
       "failure": null,
       "scenario": "preferred partner level filters pool and direct calls",
-      "poolSessionId": "8RC5k2Bigweklzuk0Qa2",
+      "poolSessionId": "dBHrt0zshybPuP66q6yF",
       "poolCandidateIds": [
-        "level_fluent_1776159927891"
+        "level_fluent_1776195580926"
       ],
       "directMismatchStatus": "no_tutors_available",
       "directMatchStatus": "searching",
-      "directMatchSessionId": "pOYZiPDPQKa2IZ4yGN9Y",
+      "directMatchSessionId": "iXdf4bBR2pLO94xCmSmu",
       "matchContextFilters": {
         "preferredNativeLanguage": null,
         "preferredCountry": null,
@@ -361,12 +434,12 @@
       "pass": true,
       "failure": null,
       "scenario": "approved teacher boost ranks Fluent approved teachers first",
-      "sessionId": "81KbKwn6Pton745Cn6kF",
+      "sessionId": "9MKPnaKCGdx9Bz2zEmuz",
       "candidateIds": [
-        "teacher_boost_approved_1776159928042",
-        "teacher_boost_pending_1776159928042",
-        "teacher_boost_rejected_1776159928042",
-        "level_fluent_1776159927891"
+        "teacher_boost_approved_1776195581113",
+        "teacher_boost_pending_1776195581113",
+        "teacher_boost_rejected_1776195581113",
+        "level_fluent_1776195580926"
       ],
       "ranking": {
         "friendPriorityApplied": false,
@@ -385,7 +458,7 @@
         "approvedRequest": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_teacher_request_approved_1776159928191",
+          "userId": "audit_teacher_request_approved_1776195581246",
           "userStatus": "approved",
           "verifNS": true,
           "matchProfile": {
@@ -410,7 +483,7 @@
         "rejectedRequestClearsLegacy": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_teacher_request_rejected_1776159928191",
+          "userId": "audit_teacher_request_rejected_1776195581246",
           "userStatus": "rejected",
           "verifNS": false,
           "matchProfile": {
@@ -441,7 +514,7 @@
         "studentProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_student_1776159929000",
+          "userId": "audit_match_student_1776195582056",
           "matchProfile": {
             "country": "BR",
             "role": "student",
@@ -463,7 +536,7 @@
         "nativeSpeakerProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_native_1776159929000",
+          "userId": "audit_match_native_1776195582056",
           "matchProfile": {
             "country": "US",
             "role": "native_speaker",
@@ -486,7 +559,7 @@
         "rejectedTeacherProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_rejected_teacher_1776159929000",
+          "userId": "audit_match_rejected_teacher_1776195582056",
           "matchProfile": {
             "country": null,
             "role": "native_speaker",
@@ -508,7 +581,7 @@
         "storedOnlyProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_stored_only_1776159929000",
+          "userId": "audit_match_stored_only_1776195582056",
           "matchProfile": {
             "version": "v1",
             "role": "native_speaker",
@@ -535,10 +608,10 @@
       "concurrency": 5,
       "successCount": 20,
       "errorCount": 0,
-      "p50_ms": 195,
-      "p95_ms": 378,
-      "max_ms": 383,
-      "avg_ms": 257.9,
+      "p50_ms": 252,
+      "p95_ms": 430,
+      "max_ms": 431,
+      "avg_ms": 323.65,
       "logLines": 200,
       "errorLines": 20,
       "responseStatuses": {
@@ -547,5 +620,5 @@
       "failure": null
     }
   },
-  "finishedAt": "2026-04-14T09:45:31.145Z"
+  "finishedAt": "2026-04-14T19:39:44.496Z"
 }

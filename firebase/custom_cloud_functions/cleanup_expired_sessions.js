@@ -102,7 +102,7 @@ function queueExpiredSessionCleanup({
 exports.cleanupExpiredSessions = functions
   .runWith({ secrets: dailySecrets })
   .pubsub
-  .schedule("every 5 minutes")
+  .schedule("every 1 minutes")
   .onRun(async () => {
     console.log("🧹 Cleaning up expired sessions...");
 

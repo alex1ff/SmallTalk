@@ -14,6 +14,9 @@ exports.processExpiredNotifications =
   processExpiredNotifications.processExpiredNotifications;
 const endSession = require("./end_session.js");
 exports.endSession = endSession.endSession;
+const requestSessionExtension = require("./request_session_extension.js");
+exports.requestSessionExtension =
+  requestSessionExtension.requestSessionExtension;
 const cleanupExpiredSessions = require("./cleanup_expired_sessions.js");
 exports.cleanupExpiredSessions = cleanupExpiredSessions.cleanupExpiredSessions;
 const getSessionTokens = require("./get_session_tokens.js");

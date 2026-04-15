@@ -781,8 +781,13 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                                       child: Text(
                                                         FFLocalizations.of(
                                                                 context)
-                                                            .getText(
-                                                          '2gz8zlq9' /* В избранное */,
+                                                            .getVariableText(
+                                                          ruText: effectiveFav
+                                                              ? 'Убрать из друзей'
+                                                              : 'Добавить в друзья',
+                                                          enText: effectiveFav
+                                                              ? 'Remove from friends'
+                                                              : 'Add to friends',
                                                         ),
                                                         style:
                                                             FlutterFlowTheme.of(

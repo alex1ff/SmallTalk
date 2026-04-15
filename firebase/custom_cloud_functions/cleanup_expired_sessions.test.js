@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const admin = require("firebase-admin");
 const {
   getUtcDayKey,
@@ -178,4 +180,13 @@ test("queueExpiredSessionCleanup writes repeat history and release updates", () 
     writerOperations.find((operation) => operation.ref.path === "users/teacher-b")?.type,
     "update",
   );
+});
+
+test("cleanupExpiredSessions runs every minute as an expiry backstop", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "cleanup_expired_sessions.js"),
+    "utf8",
+  );
+
+  assert.match(source, /\.schedule\("every 1 minutes"\)/);
 });

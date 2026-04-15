@@ -1,6 +1,11 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
-const {buildStoredMatchProfile} = require("./video_sessions_shared");
+const {
+  buildStoredMatchProfile,
+  getAssignedResponderId,
+  getRequesterId,
+  getSessionParticipantIds,
+} = require("./video_sessions_shared");
 
 const MAX_COMMENT_LENGTH = 1000;
 const RECENT_SESSION_LOOKUP_WINDOW_MS = 1000 * 60 * 60 * 24 * 14;
@@ -164,12 +169,68 @@ function buildSessionCandidateRefs(db, sessionId, sessionPath) {
   return candidateRefs;
 }
 
+function isMutualParticipantSession(sessionData = {}, userId, otherUserId) {
+  const normalizedUserId = normalizeSessionId(userId);
+  const normalizedOtherUserId = normalizeSessionId(otherUserId);
+  if (
+    !normalizedUserId ||
+    !normalizedOtherUserId ||
+    normalizedUserId === normalizedOtherUserId
+  ) {
+    return false;
+  }
+
+  const participantIds = getSessionParticipantIds(sessionData);
+  return (
+    participantIds.length === 2 &&
+    participantIds.includes(normalizedUserId) &&
+    participantIds.includes(normalizedOtherUserId)
+  );
+}
+
+function resolveReviewParticipants(sessionData = {}, userId) {
+  const normalizedUserId = normalizeSessionId(userId);
+  const participantIds = getSessionParticipantIds(sessionData);
+  const requesterId = getRequesterId(sessionData);
+  const responderId = getAssignedResponderId(sessionData);
+
+  if (!normalizedUserId || !participantIds.includes(normalizedUserId)) {
+    return {
+      isParticipant: false,
+      isStudent: false,
+      isTutor: false,
+      participantIds,
+      requesterId,
+      responderId,
+      targetUserId: null,
+    };
+  }
+
+  const targetUserId = participantIds.length === 2 ?
+    participantIds.find((participantId) => participantId !== normalizedUserId) ||
+      null :
+    null;
+
+  return {
+    isParticipant: true,
+    isStudent: requesterId === normalizedUserId,
+    isTutor: responderId === normalizedUserId,
+    participantIds,
+    requesterId,
+    responderId,
+    targetUserId,
+  };
+}
+
 async function findRecentMutualSessionRef(db, userId, otherUserId) {
   if (!otherUserId) {
     return null;
   }
 
-  const [asStudentSnap, asTutorSnap] = await Promise.all([
+  const [byParticipantSnap, asStudentSnap, asTutorSnap] = await Promise.all([
+    db.collection("videoSessions")
+      .where("participantIds", "array-contains", userId)
+      .get(),
     db.collection("videoSessions").where("studentId", "==", userId).get(),
     db.collection("videoSessions").where("tutorId", "==", userId).get(),
   ]);
@@ -177,20 +238,13 @@ async function findRecentMutualSessionRef(db, userId, otherUserId) {
   const candidateSessions = new Map();
   const nowMs = Date.now();
 
-  for (const doc of [...asStudentSnap.docs, ...asTutorSnap.docs]) {
+  for (const doc of [
+    ...byParticipantSnap.docs,
+    ...asStudentSnap.docs,
+    ...asTutorSnap.docs,
+  ]) {
     const sessionData = doc.data() || {};
-    const studentId =
-      typeof sessionData.studentId === "string" ?
-        sessionData.studentId.trim() :
-        "";
-    const tutorId =
-      typeof sessionData.tutorId === "string" ?
-        sessionData.tutorId.trim() :
-        "";
-    const isParticipantMatch =
-      (studentId === userId && tutorId === otherUserId) ||
-      (studentId === otherUserId && tutorId === userId);
-    if (!isParticipantMatch) {
+    if (!isMutualParticipantSession(sessionData, userId, otherUserId)) {
       continue;
     }
 
@@ -343,18 +397,15 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
       }
 
       const sessionData = sessionSnap.data() || {};
-      const isStudent = sessionData.studentId === userId;
-      const isTutor = sessionData.tutorId === userId;
-      if (!isStudent && !isTutor) {
+      const reviewParticipants = resolveReviewParticipants(sessionData, userId);
+      if (!reviewParticipants.isParticipant) {
         throw new functions.https.HttpsError(
           "permission-denied",
           "You are not a participant of this session",
         );
       }
 
-      const targetUserId = isStudent ?
-        sessionData.tutorId :
-        sessionData.studentId;
+      const targetUserId = reviewParticipants.targetUserId;
       if (!targetUserId || typeof targetUserId !== "string") {
         throw new functions.https.HttpsError(
           "failed-precondition",
@@ -408,8 +459,8 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
       const currentTotal = Number(targetRating.totalReviews || 0);
       const currentAverage = Number(targetRating.average || 0);
       const reviewSessionUpdate = buildReviewSessionUpdate({
-        isStudent,
-        isTutor,
+        isStudent: reviewParticipants.isStudent,
+        isTutor: reviewParticipants.isTutor,
         reviewRef: existingReviewSnap?.ref || reviewRef,
       });
 
@@ -493,3 +544,9 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
     );
   }
 });
+
+exports.__private__ = {
+  buildPairReviewId,
+  isMutualParticipantSession,
+  resolveReviewParticipants,
+};
