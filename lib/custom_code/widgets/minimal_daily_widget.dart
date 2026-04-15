@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_import, unused_import
+
 // Automatic FlutterFlow imports
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
@@ -22,7 +24,10 @@ import 'package:web_socket_channel/io.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '/services/voip_service.dart';
+import '/shared_pages/learning/interactive_caption_text.dart';
+import 'session_limit_ui.dart' as session_limit_ui;
 
 // VideoQuality enum simplified - only auto mode needed
 // Daily Adaptive Bitrate handles all quality adjustments automatically
@@ -104,7 +109,6 @@ class _CallState {
   }
 }
 
-@immutable
 enum _CaptionPhase {
   interim,
   finalCaption;
@@ -312,6 +316,8 @@ class MinimalDailyWidget extends StatefulWidget {
     this.meetingToken,
     this.tokenRefreshCallback,
     this.sessionStatus,
+    this.sessionExpiresAt,
+    this.sessionPolicy,
     this.isStudent,
     this.deepgramCredential,
     @Deprecated(
@@ -334,6 +340,8 @@ class MinimalDailyWidget extends StatefulWidget {
   final String? meetingToken;
   final Future<String?> Function()? tokenRefreshCallback;
   final String? sessionStatus;
+  final DateTime? sessionExpiresAt;
+  final Map<String, dynamic>? sessionPolicy;
   final bool? isStudent;
   final String? deepgramCredential;
   @Deprecated('Use deepgramCredential for both temporary tokens and API keys.')
@@ -343,7 +351,7 @@ class MinimalDailyWidget extends StatefulWidget {
   final String deepgramLanguage;
   final Future Function(String word, String sentence, String contextText)?
       actionCallback;
-  final Future Function()? endCallCallback;
+  final Future<void> Function(String? endReason)? endCallCallback;
   final String? username;
   final Future Function()? participantLeftCallback;
 
@@ -391,6 +399,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Timer? _remoteLeftTimer;
   bool _remoteLeftNotified = false;
   bool _userRequestedEnd = false;
+  bool _sessionExtensionRequestInFlight = false;
 
   // Call duration timer
   Timer? _durationTimer;
@@ -400,6 +409,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   final ValueNotifier<_CallCheckpointNotice?> _callCheckpointNoticeNotifier =
       ValueNotifier<_CallCheckpointNotice?>(null);
   final Set<int> _shownCallCheckpointMinutes = <int>{};
+  DateTime? _sessionLimitWarningShownFor;
+  DateTime? _sessionLimitAutoEndedFor;
   final Map<ParticipantId, String> _remoteParticipantUiSignatures = {};
   int _localCaptionClearGeneration = 0;
   int _localCaptionUtteranceId = 0;
@@ -456,6 +467,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   static const int _deepgramCloseWaitMs = 100;
   static const int _maxChatMessages = 200;
   static const int _callCheckpointNoticeDurationMs = 4000;
+  static const int _sessionLimitWarningLeadSeconds = 60;
+  static const int _sessionLimitAutoEndGraceSeconds = 2;
   static const double _chatWideBreakpoint = 720;
   static const List<_CallCheckpointNotice> _callCheckpointNotices =
       <_CallCheckpointNotice>[
@@ -2824,11 +2837,22 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
     if (oldWidget.sessionId != widget.sessionId) {
       _sessionStartedMarked = false;
+      _sessionLimitWarningShownFor = null;
+      _sessionLimitAutoEndedFor = null;
+      _sessionExtensionRequestInFlight = false;
       _resetCallCheckpointNotice(clearHistory: true);
       _pendingCaptionLogEntries.clear();
       _persistedCaptionLogIds.clear();
       _cancelTrackedTimer(_captionLogFlushTimer);
       _captionLogFlushTimer = null;
+    }
+    if (oldWidget.sessionExpiresAt != widget.sessionExpiresAt) {
+      _sessionLimitWarningShownFor = null;
+      _sessionLimitAutoEndedFor = null;
+      _clearSessionLimitWarningNotice();
+      if (_state.connectionState == ConnectionState.connected) {
+        _setCallDurationValue(_callDurationNotifier.value);
+      }
     }
 
     final oldUrl = oldWidget.roomUrl;
@@ -2909,7 +2933,145 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (_callDurationNotifier.value != totalSeconds) {
       _callDurationNotifier.value = totalSeconds;
     }
-    _maybeShowCallCheckpointNotice(totalSeconds);
+    if (_hasSessionLimitCountdown) {
+      _maybeAutoEndAtSessionLimit();
+      _maybeShowSessionLimitWarning();
+    } else {
+      _maybeShowCallCheckpointNotice(totalSeconds);
+    }
+  }
+
+  bool get _hasSessionLimitCountdown {
+    return widget.sessionExpiresAt != null &&
+        widget.sessionPolicy != null &&
+        widget.sessionPolicy!.isNotEmpty;
+  }
+
+  int _remainingSessionLimitSeconds([DateTime? now]) {
+    return session_limit_ui.resolveSessionLimitRemainingSeconds(
+      widget.sessionExpiresAt,
+      now: now,
+    );
+  }
+
+  bool get _currentUserRequestedSessionExtension {
+    return session_limit_ui.hasUserRequestedSessionExtension(
+      widget.sessionPolicy,
+      currentUserUid,
+    );
+  }
+
+  bool get _otherParticipantRequestedSessionExtension {
+    return session_limit_ui.hasOtherParticipantRequestedSessionExtension(
+      widget.sessionPolicy,
+      currentUserUid,
+    );
+  }
+
+  bool get _shouldShowSessionExtensionSurface {
+    return _hasSessionLimitCountdown &&
+        session_limit_ui.shouldShowSessionExtensionSurface(
+          sessionPolicy: widget.sessionPolicy,
+          expiresAt: widget.sessionExpiresAt,
+          currentUserId: currentUserUid,
+        );
+  }
+
+  bool get _canRequestSessionExtension {
+    final sessionId = widget.sessionId?.trim();
+    return sessionId != null &&
+        sessionId.isNotEmpty &&
+        !_sessionExtensionRequestInFlight &&
+        session_limit_ui.canCurrentUserRequestSessionExtension(
+          sessionPolicy: widget.sessionPolicy,
+          expiresAt: widget.sessionExpiresAt,
+          currentUserId: currentUserUid,
+        );
+  }
+
+  int get _sessionExtensionSeconds {
+    return session_limit_ui
+        .resolveSessionExtensionSeconds(widget.sessionPolicy);
+  }
+
+  Future<void> _requestSessionExtension() async {
+    final sessionId = widget.sessionId?.trim();
+    if (!_canRequestSessionExtension ||
+        sessionId == null ||
+        sessionId.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _sessionExtensionRequestInFlight = true;
+    });
+
+    try {
+      await FirebaseFunctions.instance
+          .httpsCallable('requestSessionExtension')
+          .call({
+        'sessionId': sessionId,
+      });
+    } on FirebaseFunctionsException catch (error) {
+      _showCallCheckpointNotice(
+        _CallCheckpointNotice(
+          minutes: -2,
+          title: 'Продление не выполнено',
+          subtitle: error.code == 'failed-precondition'
+              ? 'Лимит уже недоступен или звонок уже продлён.'
+              : 'Не удалось отправить согласие на продление.',
+          accentColor: const Color(0xFFFF6B6B),
+        ),
+      );
+    } catch (_) {
+      _showCallCheckpointNotice(
+        const _CallCheckpointNotice(
+          minutes: -2,
+          title: 'Продление не выполнено',
+          subtitle: 'Не удалось отправить согласие на продление.',
+          accentColor: Color(0xFFFF6B6B),
+        ),
+      );
+    } finally {
+      if (mounted && !_disposed) {
+        setState(() {
+          _sessionExtensionRequestInFlight = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _requestAutoEndAtSessionLimit() async {
+    final targetExpiresAt = widget.sessionExpiresAt;
+    final sessionId = widget.sessionId?.trim();
+    if (sessionId == null || sessionId.isEmpty) {
+      _clearSessionLimitAutoEndMarker(targetExpiresAt);
+      return;
+    }
+
+    try {
+      final response =
+          await FirebaseFunctions.instance.httpsCallable('endSession').call({
+        'sessionId': sessionId,
+        'endReason': 'expired',
+      });
+      final status = response.data is Map
+          ? (response.data['status']?.toString() ?? '')
+          : '';
+      if (session_limit_ui.shouldRetainAutoEndMarkerForResponseStatus(
+        status,
+      )) {
+        // Hold the marker until Firestore delivers the new expiry/state.
+        // Otherwise the local timer can spam repeated expired-end requests
+        // during the extension race window.
+        return;
+      }
+    } catch (error) {
+      _clearSessionLimitAutoEndMarker(targetExpiresAt);
+      if (kDebugMode) {
+        print('Session auto-end request failed: $error');
+      }
+    }
   }
 
   String _formatDuration(int totalSeconds) {
@@ -2919,6 +3081,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   void _maybeShowCallCheckpointNotice(int totalSeconds) {
+    if (_hasSessionLimitCountdown) {
+      return;
+    }
     if (widget.isStudent != true) {
       return;
     }
@@ -2930,6 +3095,60 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _shownCallCheckpointMinutes.add(notice.minutes);
         _showCallCheckpointNotice(notice);
       }
+    }
+  }
+
+  void _maybeShowSessionLimitWarning() {
+    final expiresAt = widget.sessionExpiresAt;
+    if (!session_limit_ui.shouldShowSessionLimitWarning(
+      expiresAt: expiresAt,
+      warnedForExpiresAt: _sessionLimitWarningShownFor,
+      warningLeadSeconds: _sessionLimitWarningLeadSeconds,
+    )) {
+      return;
+    }
+
+    _sessionLimitWarningShownFor = expiresAt;
+    _showCallCheckpointNotice(
+      const _CallCheckpointNotice(
+        minutes: -1,
+        title: 'Осталась 1 минута',
+        subtitle: 'Звонок завершится по лимиту, если продление не одобрено.',
+        accentColor: Color(0xFFFFB020),
+      ),
+    );
+  }
+
+  void _maybeAutoEndAtSessionLimit() {
+    final status = widget.sessionStatus?.trim().toLowerCase();
+    if (_userRequestedEnd ||
+        status == 'ended' ||
+        status == 'cancelled' ||
+        !session_limit_ui.shouldAutoEndSession(
+          expiresAt: widget.sessionExpiresAt,
+          autoEndedForExpiresAt: _sessionLimitAutoEndedFor,
+          graceSeconds: _sessionLimitAutoEndGraceSeconds,
+        )) {
+      return;
+    }
+
+    _sessionLimitAutoEndedFor = widget.sessionExpiresAt;
+    unawaited(_requestAutoEndAtSessionLimit());
+  }
+
+  void _clearSessionLimitAutoEndMarker(DateTime? expiresAt) {
+    if (expiresAt == null) {
+      _sessionLimitAutoEndedFor = null;
+      return;
+    }
+    if (_sessionLimitAutoEndedFor?.isAtSameMomentAs(expiresAt) == true) {
+      _sessionLimitAutoEndedFor = null;
+    }
+  }
+
+  void _clearSessionLimitWarningNotice() {
+    if (_callCheckpointNoticeNotifier.value?.minutes == -1) {
+      _resetCallCheckpointNotice();
     }
   }
 
@@ -3182,7 +3401,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 ),
 
               if (_state.connectionState == ConnectionState.connected &&
-                  widget.isStudent == true)
+                  (widget.isStudent == true || _hasSessionLimitCountdown))
                 Positioned(
                   top: 48,
                   left: 16,
@@ -3191,6 +3410,17 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                     child: _buildCallCheckpointNoticeOverlay(
                       viewportWidth: viewportWidth,
                     ),
+                  ),
+                ),
+
+              if (_state.connectionState == ConnectionState.connected &&
+                  _shouldShowSessionExtensionSurface)
+                Positioned(
+                  top: 112,
+                  left: 16,
+                  right: 16,
+                  child: _buildSessionExtensionOverlay(
+                    viewportWidth: viewportWidth,
                   ),
                 ),
 
@@ -3324,26 +3554,77 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   Widget _buildCallDurationBadge() {
     return RepaintBoundary(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: ValueListenableBuilder<int>(
-          valueListenable: _callDurationNotifier,
-          builder: (context, totalSeconds, _) {
-            return Text(
-              _formatDuration(totalSeconds),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0.5,
-              ),
-            );
-          },
-        ),
+      child: ValueListenableBuilder<int>(
+        valueListenable: _callDurationNotifier,
+        builder: (context, totalSeconds, _) {
+          final hasCountdown = _hasSessionLimitCountdown;
+          final remainingSeconds = _remainingSessionLimitSeconds();
+          final displaySeconds = hasCountdown ? remainingSeconds : totalSeconds;
+          final isWarning = hasCountdown &&
+              remainingSeconds > 0 &&
+              remainingSeconds <= _sessionLimitWarningLeadSeconds;
+          final accentColor =
+              isWarning ? const Color(0xFFFFB020) : Colors.white;
+
+          return Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: hasCountdown ? 11 : 12,
+              vertical: hasCountdown ? 7 : 6,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: isWarning ? 0.68 : 0.45),
+              borderRadius: BorderRadius.circular(16),
+              border: hasCountdown
+                  ? Border.all(
+                      color: accentColor.withValues(alpha: 0.44),
+                      width: 1,
+                    )
+                  : null,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (hasCountdown) ...[
+                  Icon(
+                    Icons.timer_outlined,
+                    color: accentColor,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _formatDuration(displaySeconds),
+                      style: TextStyle(
+                        color: accentColor,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                        height: 1.0,
+                      ),
+                    ),
+                    if (hasCountdown) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'до лимита',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.2,
+                          height: 1.0,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -3457,6 +3738,156 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSessionExtensionOverlay({
+    required double viewportWidth,
+  }) {
+    final maxWidth = math.min(360.0, math.max(0.0, viewportWidth - 32));
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: _buildSessionExtensionCard(),
+      ),
+    );
+  }
+
+  Widget _buildSessionExtensionCard() {
+    final extensionMinutes = (_sessionExtensionSeconds / 60).round();
+    final hasOwnRequest = _currentUserRequestedSessionExtension;
+    final hasOtherRequest = _otherParticipantRequestedSessionExtension;
+    final accentColor = hasOtherRequest && !hasOwnRequest
+        ? const Color(0xFF3DDC97)
+        : const Color(0xFFFFB020);
+    final title = hasOtherRequest && !hasOwnRequest
+        ? 'Собеседник хочет продлить'
+        : hasOwnRequest
+            ? 'Ждём согласия собеседника'
+            : 'Продлить разговор?';
+    final subtitle = hasOtherRequest && !hasOwnRequest
+        ? 'Подтвердите +$extensionMinutes минут, чтобы лимит стал 10 минут.'
+        : hasOwnRequest
+            ? 'Ваше согласие сохранено. Звонок продлится, когда второй участник согласится.'
+            : 'Можно добавить +$extensionMinutes минут, если оба участника согласятся до конца лимита.';
+    final buttonLabel = hasOtherRequest && !hasOwnRequest
+        ? 'Подтвердить +$extensionMinutes мин'
+        : 'Продлить на +$extensionMinutes мин';
+
+    return RepaintBoundary(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.78),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: accentColor.withValues(alpha: 0.42),
+            width: 1.1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.22),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    hasOwnRequest && !hasOtherRequest
+                        ? Icons.hourglass_top_rounded
+                        : Icons.timer_outlined,
+                    color: accentColor,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.78),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (!hasOwnRequest) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _sessionExtensionRequestInFlight
+                      ? null
+                      : _requestSessionExtension,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accentColor,
+                    foregroundColor: Colors.black,
+                    disabledBackgroundColor:
+                        accentColor.withValues(alpha: 0.55),
+                    disabledForegroundColor:
+                        Colors.black.withValues(alpha: 0.7),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _sessionExtensionRequestInFlight
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.black),
+                          ),
+                        )
+                      : Text(
+                          buttonLabel,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -3786,87 +4217,21 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       );
     }
 
-    final spans = <InlineSpan>[];
-    for (final token in _splitCaptionDisplayTokens(displayText)) {
-      final normalizedWord = _normalizeCaptionLookupWord(token);
-      if (normalizedWord.isEmpty) {
-        spans.add(TextSpan(text: token, style: textStyle));
-        continue;
-      }
-
-      spans.add(
-        WidgetSpan(
-          alignment: PlaceholderAlignment.baseline,
-          baseline: TextBaseline.alphabetic,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                unawaited(
-                  widget.actionCallback?.call(
-                    normalizedWord,
-                    fullText,
-                    fullText,
-                  ),
-                );
-              },
-              child: Text(
-                token,
-                style: textStyle,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return RichText(
+    return InteractiveCaptionText(
+      text: displayText,
+      style: textStyle,
+      mode: InteractiveCaptionTextMode.tokenSplit,
+      onWordTap: (word) {
+        return widget.actionCallback!.call(
+          word,
+          fullText,
+          fullText,
+        );
+      },
       maxLines: 2,
       overflow: TextOverflow.fade,
       softWrap: true,
-      text: TextSpan(
-        style: textStyle,
-        children: spans,
-      ),
     );
-  }
-
-  List<String> _splitCaptionDisplayTokens(String text) {
-    return RegExp(r'\s+|[^\s]+')
-        .allMatches(text)
-        .map((match) => match.group(0) ?? '')
-        .where((token) => token.isNotEmpty)
-        .toList(growable: false);
-  }
-
-  String _normalizeCaptionLookupWord(String rawToken) {
-    final trimmedToken = rawToken.trim();
-    if (trimmedToken.isEmpty) {
-      return '';
-    }
-
-    final runes = trimmedToken.runes.toList(growable: false);
-    var start = 0;
-    var end = runes.length - 1;
-
-    while (start <= end && !_isCaptionLookupRune(runes[start])) {
-      start += 1;
-    }
-    while (end >= start && !_isCaptionLookupRune(runes[end])) {
-      end -= 1;
-    }
-
-    if (start > end) {
-      return '';
-    }
-
-    return String.fromCharCodes(runes.sublist(start, end + 1));
-  }
-
-  bool _isCaptionLookupRune(int rune) {
-    final character = String.fromCharCode(rune);
-    return RegExp(r'[0-9A-Za-z\u00C0-\u024F\u0400-\u04FF]').hasMatch(character);
   }
 
   String _truncateCaptionForOverlay(String rawText) {
@@ -3923,7 +4288,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _buildControlButton(
           icon: Icons.call_end,
           isActive: true,
-          onPressed: _endCall,
+          onPressed: () => _endCall(endReason: 'user_ended'),
           isEndCall: true,
         ),
       ],
@@ -4435,7 +4800,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Loading indicator removed in favor of unified connecting overlay
 
   /// End call and cleanup - cleanup BEFORE navigating away
-  Future<void> _endCall() async {
+  Future<void> _endCall({String? endReason}) async {
     try {
       _userRequestedEnd = true;
       unawaited(_endSystemCallUi());
@@ -4444,7 +4809,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       await _cleanup(leaveCall: true);
 
       // 2. Then invoke the callback which navigates away
-      await widget.endCallCallback?.call();
+      await widget.endCallCallback?.call(endReason);
     } catch (e) {
       if (kDebugMode) print('End call callback failed: $e');
       if (mounted && !_disposed) {

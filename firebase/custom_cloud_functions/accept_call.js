@@ -9,6 +9,7 @@ const {
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
 const {
+  buildAcceptedSessionPolicyState,
   buildSessionUserInfo,
   getRequesterId,
   isSupportedSessionRole,
@@ -18,6 +19,35 @@ const {
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const PRECREATED_ROOM_VALIDATION_WINDOW_MS = 60 * 1000;
+
+function buildAcceptCallPolicyUpdateFields(
+  sessionData = {},
+  nowMillis = Date.now(),
+) {
+  const policyState = buildAcceptedSessionPolicyState(sessionData, nowMillis);
+  const sessionUpdateFields = {
+    expiresAt: admin.firestore.Timestamp.fromDate(policyState.expiresAt),
+  };
+  if (policyState.sessionPolicy) {
+    sessionUpdateFields.sessionPolicy = policyState.sessionPolicy;
+  }
+  return {
+    policyState,
+    sessionUpdateFields,
+  };
+}
+
+function buildAcceptCallResponseSessionData(sessionData = {}) {
+  return {
+    language: sessionData.language,
+    startedAt:
+      sessionData.startedAt?.toMillis?.() ||
+      sessionData.startedAt ||
+      null,
+    maxDuration:
+      buildAcceptedSessionPolicyState(sessionData).maxDurationMs,
+  };
+}
 
 exports.acceptCall = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
@@ -173,14 +203,7 @@ exports.acceptCall = functions
           roomName: existingRoomName || null,
           meetingToken: existingMeetingToken || null,
           studentInfo: sessionData.studentInfo || null,
-          sessionData: {
-            language: sessionData.language,
-            startedAt:
-              sessionData.startedAt?.toMillis?.() ||
-              sessionData.startedAt ||
-              null,
-            maxDuration: 3600000,
-          },
+          sessionData: buildAcceptCallResponseSessionData(sessionData),
         };
       }
 
@@ -406,9 +429,8 @@ exports.acceptCall = functions
 
       // === 6. ОБНОВЛЕНИЕ СЕССИИ В ТРАНЗАКЦИИ ===
       console.log("🔄 Updating session and user statuses in transaction...");
-      const activeExpiresAt = admin.firestore.Timestamp.fromDate(
-        new Date(Date.now() + 60 * 60 * 1000),
-      );
+      const activePolicyUpdate =
+        buildAcceptCallPolicyUpdateFields(sessionData);
       const txnResult = await admin
         .firestore()
         .runTransaction(async (transaction) => {
@@ -447,7 +469,7 @@ exports.acceptCall = functions
             // Добавляем данные Daily.co
             dailyRoomUrl: roomUrl,
             dailyRoomName: roomName,
-            expiresAt: activeExpiresAt,
+            expiresAt: activePolicyUpdate.sessionUpdateFields.expiresAt,
             acceptingTutorId: admin.firestore.FieldValue.delete(),
             acceptingAt: admin.firestore.FieldValue.delete(),
 
@@ -470,6 +492,10 @@ exports.acceptCall = functions
               "Partner",
             ),
           };
+          if (activePolicyUpdate.sessionUpdateFields.sessionPolicy) {
+            sessionUpdate.sessionPolicy =
+              activePolicyUpdate.sessionUpdateFields.sessionPolicy;
+          }
 
           // Store student meeting token in session for faster student join
           if (studentMeetingToken) {
@@ -524,12 +550,7 @@ exports.acceptCall = functions
           roomName: existingRoomName || null,
           meetingToken: existingMeetingToken || null,
           studentInfo: existing.studentInfo || null,
-          sessionData: {
-            language: existing.language,
-            startedAt:
-              existing.startedAt?.toMillis?.() || existing.startedAt || null,
-            maxDuration: 3600000,
-          },
+          sessionData: buildAcceptCallResponseSessionData(existing),
         };
       }
 
@@ -572,11 +593,11 @@ exports.acceptCall = functions
           photo:
             sessionData.studentInfo?.photo || studentData.photo_url || null,
         },
-        sessionData: {
+        sessionData: buildAcceptCallResponseSessionData({
           language: sessionData.language,
           startedAt: null,
-          maxDuration: 3600000, // 1 час в миллисекундах
-        },
+          sessionPolicy: activePolicyUpdate.policyState.sessionPolicy,
+        }),
       };
 
       console.log("📤 Returning response:", {
@@ -828,3 +849,8 @@ async function cancelOtherNotifications(sessionId, acceptedTutorId) {
     console.error("❌ Error canceling other notifications:", error);
   }
 }
+
+exports.__private__ = {
+  buildAcceptCallPolicyUpdateFields,
+  buildAcceptCallResponseSessionData,
+};

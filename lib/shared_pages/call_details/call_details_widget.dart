@@ -9,14 +9,13 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
+import '/shared_pages/learning/caption_word_flow.dart';
+import '/shared_pages/learning/interactive_caption_text.dart';
 import '/shared_pages/review_flow/review_submission_helper.dart';
 import '/services/user_match_profile.dart';
 import '/students_pages/native_speaker_page/native_speaker_page_widget.dart';
-import '/students_pages/components/new_word/new_word_widget.dart';
-import '/students_pages/components/woed/woed_widget.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:easy_debounce/easy_debounce.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
@@ -64,14 +63,52 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     super.dispose();
   }
 
-  bool _isTeacherForSession(VideoSessionsRecord session) {
-    final tutorId = session.tutorId.trim();
-    if (tutorId.isNotEmpty && tutorId == currentUserUid) {
-      return true;
+  SessionReviewParticipantResolution _participantResolution(
+    VideoSessionsRecord session,
+  ) {
+    return resolveSessionReviewParticipant(
+      sessionData: session.snapshotData,
+      currentUserId: currentUserUid,
+    );
+  }
+
+  Map<String, dynamic> _sessionMatchContext(VideoSessionsRecord session) {
+    final rawMatchContext = session.snapshotData['matchContext'];
+    if (rawMatchContext is Map) {
+      return rawMatchContext.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
     }
 
-    final studentId = session.studentId.trim();
-    if (studentId.isNotEmpty && studentId == currentUserUid) {
+    return const <String, dynamic>{};
+  }
+
+  String _acceptedResponderName(VideoSessionsRecord session) {
+    final matchContext = _sessionMatchContext(session);
+    final acceptedResponderInfo = matchContext['acceptedResponderInfo'];
+    if (acceptedResponderInfo is! Map) {
+      return '';
+    }
+
+    return (acceptedResponderInfo['name'] as String? ?? '').trim();
+  }
+
+  String _acceptedResponderPhotoUrl(VideoSessionsRecord session) {
+    final matchContext = _sessionMatchContext(session);
+    final acceptedResponderInfo = matchContext['acceptedResponderInfo'];
+    if (acceptedResponderInfo is! Map) {
+      return '';
+    }
+
+    return (acceptedResponderInfo['photo'] as String? ?? '').trim();
+  }
+
+  bool _isTeacherForSession(VideoSessionsRecord session) {
+    final resolution = _participantResolution(session);
+    if (resolution.isResponder) {
+      return true;
+    }
+    if (resolution.isRequester) {
       return false;
     }
 
@@ -360,15 +397,12 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
             },
             child: Padding(
               padding: MediaQuery.viewInsetsOf(context),
-              child: existingWord != null
-                  ? WoedWidget(
-                      word: existingWord,
-                    )
-                  : NewWordWidget(
-                      word: selectedWord,
-                      langCode: session.language,
-                      sentence: log.text,
-                    ),
+              child: buildSavedCaptionWordSheet(
+                existingWord: existingWord,
+                word: selectedWord,
+                languageCode: session.language,
+                sentence: log.text,
+              ),
             ),
           ),
         );
@@ -454,9 +488,10 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               ],
             ),
             const SizedBox(height: 10.0),
-            _InteractiveCaptionLogText(
+            InteractiveCaptionText(
               text: log.text,
               style: textStyle,
+              mode: InteractiveCaptionTextMode.wordScan,
               onWordTap: (word) => _openCaptionLogWordSheet(
                 context,
                 session: session,
@@ -791,10 +826,8 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   }
 
   DocumentReference? _counterpartReference(VideoSessionsRecord session) {
-    final counterpartId =
-        (_isTeacherForSession(session) ? session.studentId : session.tutorId)
-            .trim();
-    if (counterpartId.isEmpty) {
+    final counterpartId = _participantResolution(session).counterpartUserId;
+    if (counterpartId == null || counterpartId.isEmpty) {
       return null;
     }
 
@@ -806,12 +839,35 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   }
 
   String _counterpartName(BuildContext context, VideoSessionsRecord session) {
-    final rawName = (_isTeacherForSession(session)
-            ? session.studentInfo.name
-            : session.tutorInfo.name)
-        .trim();
+    final resolution = _participantResolution(session);
+    final counterpartId = resolution.counterpartUserId;
+
+    String rawName = '';
+    if (resolution.isResponder ||
+        (counterpartId != null && counterpartId == session.studentId.trim())) {
+      rawName = session.studentInfo.name.trim();
+    } else if (resolution.isRequester ||
+        (counterpartId != null &&
+            {
+              session.tutorId.trim(),
+              session.currentTutorId.trim(),
+              resolveSessionResponderId(session.snapshotData) ?? '',
+            }.contains(counterpartId))) {
+      rawName = session.tutorInfo.name.trim();
+      if (rawName.isEmpty) {
+        rawName = _acceptedResponderName(session);
+      }
+    }
+
     if (rawName.isNotEmpty) {
       return rawName;
+    }
+
+    if (counterpartId != null && counterpartId.isNotEmpty) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Собеседник',
+        enText: 'Partner',
+      );
     }
 
     return FFLocalizations.of(context).getVariableText(
@@ -821,10 +877,28 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   }
 
   String _counterpartPhotoUrl(VideoSessionsRecord session) {
-    return (_isTeacherForSession(session)
-            ? session.studentInfo.photo
-            : session.tutorInfo.photo)
-        .trim();
+    final resolution = _participantResolution(session);
+    final counterpartId = resolution.counterpartUserId;
+
+    if (resolution.isResponder ||
+        (counterpartId != null && counterpartId == session.studentId.trim())) {
+      return session.studentInfo.photo.trim();
+    }
+
+    if (resolution.isRequester ||
+        (counterpartId != null &&
+            {
+              session.tutorId.trim(),
+              session.currentTutorId.trim(),
+              resolveSessionResponderId(session.snapshotData) ?? '',
+            }.contains(counterpartId))) {
+      final tutorPhotoUrl = session.tutorInfo.photo.trim();
+      return tutorPhotoUrl.isNotEmpty
+          ? tutorPhotoUrl
+          : _acceptedResponderPhotoUrl(session);
+    }
+
+    return '';
   }
 
   bool _transactionMatchesCurrentSession(
@@ -1532,103 +1606,6 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
             },
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _InteractiveCaptionLogText extends StatefulWidget {
-  const _InteractiveCaptionLogText({
-    required this.text,
-    required this.style,
-    required this.onWordTap,
-  });
-
-  final String text;
-  final TextStyle style;
-  final Future<void> Function(String word) onWordTap;
-
-  @override
-  State<_InteractiveCaptionLogText> createState() =>
-      _InteractiveCaptionLogTextState();
-}
-
-class _InteractiveCaptionLogTextState
-    extends State<_InteractiveCaptionLogText> {
-  static final RegExp _wordPattern = RegExp(
-    r"[A-Za-zА-Яа-яЁёÀ-ÖØ-öø-ÿ0-9]+(?:['’`-][A-Za-zА-Яа-яЁёÀ-ÖØ-öø-ÿ0-9]+)*",
-  );
-
-  final List<TapGestureRecognizer> _recognizers = <TapGestureRecognizer>[];
-
-  @override
-  void dispose() {
-    _disposeRecognizers();
-    super.dispose();
-  }
-
-  void _disposeRecognizers() {
-    for (final recognizer in _recognizers) {
-      recognizer.dispose();
-    }
-    _recognizers.clear();
-  }
-
-  List<InlineSpan> _buildSpans() {
-    _disposeRecognizers();
-
-    final spans = <InlineSpan>[];
-    var currentIndex = 0;
-    final matches = _wordPattern.allMatches(widget.text);
-
-    for (final match in matches) {
-      if (match.start > currentIndex) {
-        spans.add(
-          TextSpan(
-            text: widget.text.substring(currentIndex, match.start),
-          ),
-        );
-      }
-
-      final word = match.group(0);
-      if (word != null && word.isNotEmpty) {
-        final recognizer = TapGestureRecognizer()
-          ..onTap = () {
-            widget.onWordTap(word);
-          };
-        _recognizers.add(recognizer);
-        spans.add(
-          TextSpan(
-            text: word,
-            recognizer: recognizer,
-          ),
-        );
-      }
-
-      currentIndex = match.end;
-    }
-
-    if (currentIndex < widget.text.length) {
-      spans.add(
-        TextSpan(
-          text: widget.text.substring(currentIndex),
-        ),
-      );
-    }
-
-    if (spans.isEmpty) {
-      spans.add(TextSpan(text: widget.text));
-    }
-
-    return spans;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Text.rich(
-      TextSpan(
-        style: widget.style,
-        children: _buildSpans(),
       ),
     );
   }

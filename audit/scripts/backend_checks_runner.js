@@ -1444,12 +1444,9 @@ async function runCreateVideoSessionMatrixCheck() {
   const result = {
     pass: false,
     failure: null,
-    scenario: "native_speaker requester can build all-to-all candidate pool",
-    responseStatus: null,
-    sessionId: null,
-    participantIds: [],
-    candidateIds: [],
-    candidateRoleCounts: {},
+    scenario:
+      "student and native_speaker requesters can build all-to-all candidate pools",
+    scenarios: {},
   };
 
   if (!adminApp.getApps().length) {
@@ -1463,65 +1460,55 @@ async function runCreateVideoSessionMatrixCheck() {
   );
 
   const runId = Date.now();
-  const requesterId = `audit_matrix_requester_${runId}`;
-  const studentCandidateId = `audit_matrix_student_${runId}`;
-  const speakerCandidateId = `audit_matrix_speaker_${runId}`;
-  const offLanguageCandidateId = `audit_matrix_other_${runId}`;
 
-  try {
-    await db.collection("users").doc(requesterId).set({
-      role: "native_speaker",
-      display_name: "Matrix Requester",
-      blockedUsers: [],
-      learningLanguage: { code: "en" },
-      native_language_NS: { code: "ru" },
-      language_instruction_NS: { code: "es" },
-      rating: { average: 4.7, totalReviews: 12 },
-    });
+  async function runScenario({
+    scenarioKey,
+    scenarioDescription,
+    languageCode,
+    requesterData,
+    studentCandidateData,
+    speakerCandidateData,
+    offLanguageCandidateData,
+    expectedRequesterRole,
+  }) {
+    const requesterId = `audit_matrix_${scenarioKey}_requester_${runId}`;
+    const studentCandidateId = `audit_matrix_${scenarioKey}_student_${runId}`;
+    const speakerCandidateId = `audit_matrix_${scenarioKey}_speaker_${runId}`;
+    const offLanguageCandidateId = `audit_matrix_${scenarioKey}_other_${runId}`;
+    const scenarioResult = {
+      pass: false,
+      failure: null,
+      scenario: scenarioDescription,
+      responseStatus: null,
+      sessionId: null,
+      participantIds: [],
+      candidateIds: [],
+      candidateRoleCounts: {},
+    };
+
+    await db.collection("users").doc(requesterId).set(requesterData);
 
     const batch = db.batch();
-    batch.set(db.collection("users").doc(studentCandidateId), {
-      role: "student",
-      display_name: "Matrix Student",
-      blockedUsers: [],
-      learningLanguage: { code: "en" },
-      rating: { average: 4.1, totalReviews: 3 },
-      availabilityToday: { enabled: true },
-      Country_NS: { code: "DE" },
-    });
-    batch.set(db.collection("users").doc(speakerCandidateId), {
-      role: "native_speaker",
-      display_name: "Matrix Speaker",
-      blockedUsers: [],
-      learningLanguage: { code: "fr" },
-      language_instruction_NS: { code: "en" },
-      native_language_NS: { code: "en" },
-      rating: { average: 4.9, totalReviews: 24 },
-      availabilityToday: { enabled: true },
-      Country_NS: { code: "US" },
-    });
-    batch.set(db.collection("users").doc(offLanguageCandidateId), {
-      role: "native_speaker",
-      display_name: "Matrix Other",
-      blockedUsers: [],
-      language_instruction_NS: { code: "it" },
-      native_language_NS: { code: "it" },
-      availabilityToday: { enabled: true },
-    });
+    batch.set(db.collection("users").doc(studentCandidateId), studentCandidateData);
+    batch.set(db.collection("users").doc(speakerCandidateId), speakerCandidateData);
+    batch.set(
+      db.collection("users").doc(offLanguageCandidateId),
+      offLanguageCandidateData,
+    );
     await batch.commit();
 
     const response = await wrappedCreateVideoSession(
       {
-        language: "en",
+        language: languageCode,
       },
       { auth: { uid: requesterId } },
     );
 
-    result.responseStatus = response?.status || null;
-    result.sessionId = response?.sessionId || null;
+    scenarioResult.responseStatus = response?.status || null;
+    scenarioResult.sessionId = response?.sessionId || null;
     if (!response?.sessionId) {
-      result.failure = "createVideoSession did not return a sessionId.";
-      return result;
+      scenarioResult.failure = "createVideoSession did not return a sessionId.";
+      return scenarioResult;
     }
 
     const sessionSnap = await db
@@ -1529,22 +1516,22 @@ async function runCreateVideoSessionMatrixCheck() {
       .doc(response.sessionId)
       .get();
     if (!sessionSnap.exists) {
-      result.failure = "Session document was not created.";
-      return result;
+      scenarioResult.failure = "Session document was not created.";
+      return scenarioResult;
     }
 
     const sessionData = sessionSnap.data() || {};
-    const participantIds = Array.isArray(sessionData.participantIds) ?
-      sessionData.participantIds :
-      [];
-    const candidateIds = Array.isArray(sessionData.availableTutors) ?
-      sessionData.availableTutors :
-      [];
+    const participantIds = Array.isArray(sessionData.participantIds)
+      ? sessionData.participantIds
+      : [];
+    const candidateIds = Array.isArray(sessionData.availableTutors)
+      ? sessionData.availableTutors
+      : [];
     const matchContext = sessionData.matchContext || {};
 
-    result.participantIds = participantIds;
-    result.candidateIds = candidateIds;
-    result.candidateRoleCounts = matchContext.candidateRoleCounts || {};
+    scenarioResult.participantIds = participantIds;
+    scenarioResult.candidateIds = candidateIds;
+    scenarioResult.candidateRoleCounts = matchContext.candidateRoleCounts || {};
 
     const hasExpectedCandidates =
       candidateIds.includes(studentCandidateId) &&
@@ -1555,19 +1542,358 @@ async function runCreateVideoSessionMatrixCheck() {
     const hasExpectedContext =
       sessionData.studentId === requesterId &&
       matchContext.version === "v2_all_to_all" &&
-      matchContext.requesterRole === "native_speaker" &&
-      matchContext.requestedLanguage === "en" &&
+      matchContext.requesterRole === expectedRequesterRole &&
+      matchContext.requestedLanguage === languageCode &&
       Array.isArray(matchContext.candidateIds) &&
-      matchContext.candidateIds.length >= 2;
+      matchContext.candidateIds.includes(studentCandidateId) &&
+      matchContext.candidateIds.includes(speakerCandidateId) &&
+      matchContext.candidateRoleCounts?.student === 1 &&
+      matchContext.candidateRoleCounts?.native_speaker === 1;
+    const hasExpectedSessionPolicy =
+      sessionData.sessionPolicy?.baseLimitSeconds === 300 &&
+      sessionData.sessionPolicy?.warningLeadSeconds === 60 &&
+      sessionData.sessionPolicy?.maxExtensionCount === 1 &&
+      sessionData.sessionPolicy?.extensionSeconds === 300 &&
+      sessionData.sessionPolicy?.effectiveLimitSeconds === 300 &&
+      typeof sessionData.expiresAt?.toDate === "function";
 
-    result.pass = response.status === "searching" &&
+    scenarioResult.pass =
+      response.status === "searching" &&
       hasExpectedParticipants &&
       hasExpectedCandidates &&
-      hasExpectedContext;
+      hasExpectedContext &&
+      hasExpectedSessionPolicy;
 
-    if (!result.pass) {
-      result.failure =
+    if (!scenarioResult.pass) {
+      scenarioResult.failure =
         "All-to-all matchmaking session participantIds/context did not match expectations.";
+    }
+
+    return scenarioResult;
+  }
+
+  async function runPairScenario({
+    scenarioKey,
+    scenarioDescription,
+    languageCode,
+    requesterData,
+    matchingCandidateKey,
+    matchingCandidateData,
+    offLanguageCandidateData,
+    expectedRequesterRole,
+    expectedCandidateRole,
+  }) {
+    const requesterId = `audit_matrix_${scenarioKey}_requester_${runId}`;
+    const matchingCandidateId =
+      `audit_matrix_${scenarioKey}_${matchingCandidateKey}_${runId}`;
+    const offLanguageCandidateId = `audit_matrix_${scenarioKey}_other_${runId}`;
+    const scenarioResult = {
+      pass: false,
+      failure: null,
+      scenario: scenarioDescription,
+      responseStatus: null,
+      sessionId: null,
+      participantIds: [],
+      candidateIds: [],
+      candidateRoleCounts: {},
+    };
+
+    await db.collection("users").doc(requesterId).set(requesterData);
+
+    const batch = db.batch();
+    batch.set(
+      db.collection("users").doc(matchingCandidateId),
+      matchingCandidateData,
+    );
+    batch.set(
+      db.collection("users").doc(offLanguageCandidateId),
+      offLanguageCandidateData,
+    );
+    await batch.commit();
+
+    const response = await wrappedCreateVideoSession(
+      {
+        language: languageCode,
+      },
+      { auth: { uid: requesterId } },
+    );
+
+    scenarioResult.responseStatus = response?.status || null;
+    scenarioResult.sessionId = response?.sessionId || null;
+    if (!response?.sessionId) {
+      scenarioResult.failure = "createVideoSession did not return a sessionId.";
+      return scenarioResult;
+    }
+
+    const sessionSnap = await db
+      .collection("videoSessions")
+      .doc(response.sessionId)
+      .get();
+    if (!sessionSnap.exists) {
+      scenarioResult.failure = "Session document was not created.";
+      return scenarioResult;
+    }
+
+    const sessionData = sessionSnap.data() || {};
+    const participantIds = Array.isArray(sessionData.participantIds)
+      ? sessionData.participantIds
+      : [];
+    const candidateIds = Array.isArray(sessionData.availableTutors)
+      ? sessionData.availableTutors
+      : [];
+    const matchContext = sessionData.matchContext || {};
+    const candidateRoleCounts = matchContext.candidateRoleCounts || {};
+
+    scenarioResult.participantIds = participantIds;
+    scenarioResult.candidateIds = candidateIds;
+    scenarioResult.candidateRoleCounts = candidateRoleCounts;
+
+    const hasExpectedCandidates =
+      candidateIds.length === 1 &&
+      candidateIds[0] === matchingCandidateId &&
+      !candidateIds.includes(offLanguageCandidateId);
+    const hasExpectedParticipants =
+      participantIds.length === 1 && participantIds[0] === requesterId;
+    const hasExpectedContext =
+      sessionData.studentId === requesterId &&
+      matchContext.version === "v2_all_to_all" &&
+      matchContext.requesterRole === expectedRequesterRole &&
+      matchContext.requestedLanguage === languageCode &&
+      Array.isArray(matchContext.candidateIds) &&
+      matchContext.candidateIds.length === 1 &&
+      matchContext.candidateIds[0] === matchingCandidateId &&
+      candidateRoleCounts?.[expectedCandidateRole] === 1 &&
+      Object.keys(candidateRoleCounts).length === 1;
+    const hasExpectedSessionPolicy =
+      sessionData.sessionPolicy?.baseLimitSeconds === 300 &&
+      sessionData.sessionPolicy?.warningLeadSeconds === 60 &&
+      sessionData.sessionPolicy?.maxExtensionCount === 1 &&
+      sessionData.sessionPolicy?.extensionSeconds === 300 &&
+      sessionData.sessionPolicy?.effectiveLimitSeconds === 300 &&
+      typeof sessionData.expiresAt?.toDate === "function";
+
+    scenarioResult.pass =
+      response.status === "searching" &&
+      hasExpectedParticipants &&
+      hasExpectedCandidates &&
+      hasExpectedContext &&
+      hasExpectedSessionPolicy;
+
+    if (!scenarioResult.pass) {
+      scenarioResult.failure =
+        "Pairwise matchmaking session participantIds/context did not match expectations.";
+    }
+
+    return scenarioResult;
+  }
+
+  try {
+    result.scenarios.nativeSpeakerRequester = await runScenario({
+      scenarioKey: "native_requester",
+      scenarioDescription:
+        "native_speaker requester can build all-to-all candidate pool",
+      languageCode: "en",
+      requesterData: {
+        role: "native_speaker",
+        display_name: "Matrix Requester",
+        blockedUsers: [],
+        learningLanguage: { code: "en" },
+        native_language_NS: { code: "ru" },
+        language_instruction_NS: { code: "es" },
+        rating: { average: 4.7, totalReviews: 12 },
+      },
+      studentCandidateData: {
+        role: "student",
+        display_name: "Matrix Student",
+        blockedUsers: [],
+        learningLanguage: { code: "en" },
+        rating: { average: 4.1, totalReviews: 3 },
+        availabilityToday: { enabled: true },
+        Country_NS: { code: "DE" },
+      },
+      speakerCandidateData: {
+        role: "native_speaker",
+        display_name: "Matrix Speaker",
+        blockedUsers: [],
+        learningLanguage: { code: "es" },
+        language_instruction_NS: { code: "en" },
+        native_language_NS: { code: "en" },
+        rating: { average: 4.9, totalReviews: 24 },
+        availabilityToday: { enabled: true },
+        Country_NS: { code: "US" },
+      },
+      offLanguageCandidateData: {
+        role: "native_speaker",
+        display_name: "Matrix Other",
+        blockedUsers: [],
+        language_instruction_NS: { code: "it" },
+        native_language_NS: { code: "it" },
+        availabilityToday: { enabled: true },
+      },
+      expectedRequesterRole: "native_speaker",
+    });
+
+    result.scenarios.studentRequester = await runScenario({
+      scenarioKey: "student_requester",
+      scenarioDescription:
+        "student requester can build all-to-all candidate pool",
+      languageCode: "fr",
+      requesterData: {
+        role: "student",
+        display_name: "Matrix Student Requester",
+        blockedUsers: [],
+        learningLanguage: { code: "fr" },
+        native_language_NS: { code: "ru" },
+        rating: { average: 4.5, totalReviews: 8 },
+      },
+      studentCandidateData: {
+        role: "student",
+        display_name: "Matrix Student Peer",
+        blockedUsers: [],
+        learningLanguage: { code: "fr" },
+        rating: { average: 4.2, totalReviews: 4 },
+        availabilityToday: { enabled: true },
+        Country_NS: { code: "DE" },
+      },
+      speakerCandidateData: {
+        role: "native_speaker",
+        display_name: "Matrix Student Speaker",
+        blockedUsers: [],
+        language_instruction_NS: { code: "fr" },
+        native_language_NS: { code: "fr" },
+        rating: { average: 4.8, totalReviews: 19 },
+        availabilityToday: { enabled: true },
+        Country_NS: { code: "CA" },
+      },
+      offLanguageCandidateData: {
+        role: "native_speaker",
+        display_name: "Matrix Student Other",
+        blockedUsers: [],
+        language_instruction_NS: { code: "it" },
+        native_language_NS: { code: "it" },
+        availabilityToday: { enabled: true },
+      },
+      expectedRequesterRole: "student",
+    });
+
+    result.scenarios.studentStudentPair = await runPairScenario({
+      scenarioKey: "student_student_pair",
+      scenarioDescription:
+        "student requester can match an explicit student-student pair",
+      languageCode: "de",
+      requesterData: {
+        role: "student",
+        display_name: "Matrix Student Student Requester",
+        blockedUsers: [],
+        learningLanguage: { code: "de" },
+        native_language_NS: { code: "ru" },
+        rating: { average: 4.0, totalReviews: 6 },
+      },
+      matchingCandidateKey: "student",
+      matchingCandidateData: {
+        role: "student",
+        display_name: "Matrix Student Student Peer",
+        blockedUsers: [],
+        learningLanguage: { code: "de" },
+        rating: { average: 4.3, totalReviews: 5 },
+        availabilityToday: { enabled: true },
+        Country_NS: { code: "DE" },
+      },
+      offLanguageCandidateData: {
+        role: "native_speaker",
+        display_name: "Matrix Student Student Other",
+        blockedUsers: [],
+        language_instruction_NS: { code: "it" },
+        native_language_NS: { code: "it" },
+        availabilityToday: { enabled: true },
+      },
+      expectedRequesterRole: "student",
+      expectedCandidateRole: "student",
+    });
+
+    result.scenarios.studentNativeSpeakerPair = await runPairScenario({
+      scenarioKey: "student_native_pair",
+      scenarioDescription:
+        "student requester can match an explicit student-native_speaker pair",
+      languageCode: "pt",
+      requesterData: {
+        role: "student",
+        display_name: "Matrix Student Native Requester",
+        blockedUsers: [],
+        learningLanguage: { code: "pt" },
+        native_language_NS: { code: "ru" },
+        rating: { average: 4.1, totalReviews: 7 },
+      },
+      matchingCandidateKey: "speaker",
+      matchingCandidateData: {
+        role: "native_speaker",
+        display_name: "Matrix Student Native Speaker",
+        blockedUsers: [],
+        language_instruction_NS: { code: "pt" },
+        native_language_NS: { code: "pt" },
+        rating: { average: 4.6, totalReviews: 14 },
+        availabilityToday: { enabled: true },
+        Country_NS: { code: "BR" },
+      },
+      offLanguageCandidateData: {
+        role: "native_speaker",
+        display_name: "Matrix Student Native Other",
+        blockedUsers: [],
+        language_instruction_NS: { code: "it" },
+        native_language_NS: { code: "it" },
+        availabilityToday: { enabled: true },
+      },
+      expectedRequesterRole: "student",
+      expectedCandidateRole: "native_speaker",
+    });
+
+    result.scenarios.nativeSpeakerNativeSpeakerPair = await runPairScenario({
+      scenarioKey: "native_native_pair",
+      scenarioDescription:
+        "native_speaker requester can match an explicit native_speaker-native_speaker pair",
+      languageCode: "ja",
+      requesterData: {
+        role: "native_speaker",
+        display_name: "Matrix Native Native Requester",
+        blockedUsers: [],
+        learningLanguage: { code: "ja" },
+        native_language_NS: { code: "ru" },
+        language_instruction_NS: { code: "es" },
+        rating: { average: 4.4, totalReviews: 11 },
+      },
+      matchingCandidateKey: "speaker",
+      matchingCandidateData: {
+        role: "native_speaker",
+        display_name: "Matrix Native Native Speaker",
+        blockedUsers: [],
+        language_instruction_NS: { code: "ja" },
+        native_language_NS: { code: "ja" },
+        rating: { average: 4.9, totalReviews: 18 },
+        availabilityToday: { enabled: true },
+        Country_NS: { code: "JP" },
+      },
+      offLanguageCandidateData: {
+        role: "student",
+        display_name: "Matrix Native Native Other",
+        blockedUsers: [],
+        learningLanguage: { code: "it" },
+        availabilityToday: { enabled: true },
+        Country_NS: { code: "IT" },
+      },
+      expectedRequesterRole: "native_speaker",
+      expectedCandidateRole: "native_speaker",
+    });
+
+    result.pass = Object.values(result.scenarios).every(
+      (scenario) => scenario?.pass === true,
+    );
+    if (!result.pass) {
+      const failedScenario = Object.values(result.scenarios).find(
+        (scenario) => scenario?.pass !== true,
+      );
+      result.failure =
+        failedScenario?.failure ||
+        "One or more createVideoSession matrix scenarios failed.";
     }
   } catch (error) {
     result.failure = String(error);

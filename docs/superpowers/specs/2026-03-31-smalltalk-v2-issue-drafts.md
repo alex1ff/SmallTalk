@@ -103,6 +103,11 @@ Technical notes:
 - update dashboard/detail/post-call labels where needed
 - avoid adding a separate bottom `Друзья` tab
 
+Hardening note (2026-04-14):
+
+- Handwritten Chats and post-call surfaces now use friend wording for user-facing CTAs, while legacy internal route/model identifiers such as `favorite` remain compatibility details only.
+- This keeps the patch narrow and avoids unnecessary FlutterFlow-generated churn.
+
 ### Issue 2.3 - Remove direct-call affordances from friend surfaces
 
 Type: Flutter  
@@ -518,6 +523,11 @@ Technical notes:
 
 - use Firebase Auth `emailVerified`
 
+Hardening note (2026-04-14):
+
+- Profile now surfaces Firebase Auth email verification state and provides a resend action for unverified email users.
+- The surface is explicitly soft and does not block calls, chats, profile usage, or teacher verification requests.
+
 ### Issue 8.2 - Refresh email verification state on app resume and return flows
 
 Type: Flutter  
@@ -535,6 +545,11 @@ Acceptance criteria:
 Technical notes:
 
 - use current auth refresh patterns
+
+Hardening note (2026-04-14):
+
+- The app root now refreshes the Firebase Auth user on `AppLifecycleState.resumed`, and the profile surface also provides a manual status refresh action.
+- Users do not need to log out/in after confirming their email.
 
 ## Epic 9. Live Learning Tools
 
@@ -556,6 +571,10 @@ Technical notes:
 
 - preserve current live caption rendering
 
+Hardening note (2026-04-14):
+
+- Live subtitle taps were already implemented in handwritten Flutter; this tranche moved token splitting and lookup-word normalization into a shared helper and added focused tests for punctuation, Unicode, and fail-closed non-word tokens.
+
 ### Issue 9.2 - Route live subtitle tokens into the add-word flow
 
 Type: Flutter  
@@ -573,6 +592,13 @@ Acceptance criteria:
 Technical notes:
 
 - include source session/caption context where available
+
+Hardening note (2026-04-14):
+
+- The live call page already routes tapped subtitle tokens into `NewWordWidget` with the tapped word plus current caption text as `sentence` and `contextText`.
+- This tranche added focused regression coverage only for extracted helper/widget surfaces reused by that flow: shared caption tokenization, interactive caption rendering, and modal payload builders.
+- This tranche did not add page-level integration tests for the surrounding live-call wiring.
+- No structured subtitle provenance fields were added; the current implementation passes text context only.
 
 ## Epic 10. Post-Call Learning Tools
 
@@ -594,6 +620,10 @@ Technical notes:
 
 - use existing `captionLogs`
 
+Hardening note (2026-04-14):
+
+- Call Details already rendered saved subtitle logs through a tappable word surface; this tranche aligned that renderer with the shared caption tokenization helper and added regression coverage for word segmentation and punctuation preservation.
+
 ### Issue 10.2 - Connect saved subtitle tokens to dictionary and flashcards
 
 Type: Flutter  
@@ -612,6 +642,13 @@ Technical notes:
 
 - do not replace the flashcard engine
 
+Hardening note (2026-04-14):
+
+- Saved subtitle taps already opened the existing word sheet and add-word flow.
+- This tranche added focused regression coverage only for extracted helper/widget surfaces reused by that flow: shared caption tokenization, interactive caption rendering, and modal payload builders.
+- This tranche did not add page-level integration tests for the surrounding Call Details wiring.
+- Dictionary persistence and flashcard generation continue to use the existing `userWords` and flashcard pipeline without introducing a new backend contract.
+
 ## Epic 11. Session Policy
 
 ### Issue 11.1 - Persist universal session limit policy on session creation
@@ -625,7 +662,7 @@ Store the universal 5-minute base session policy and extension contract when a m
 
 Acceptance criteria:
 
-- Every session stores 5-minute base policy
+- Every new policy-backed session stores 5-minute base policy
 - Warning lead is stored as 60 seconds
 - One +5-minute extension is represented in session metadata
 - Policy does not depend on friend status
@@ -633,6 +670,13 @@ Acceptance criteria:
 Technical notes:
 
 - recommended fields: `baseLimitSeconds`, `warningLeadSeconds`, `maxExtensionCount`, `extensionSeconds`, `effectiveLimitSeconds`
+
+Hardening note (2026-04-14):
+
+- `createVideoSession` now writes a normalized `sessionPolicy` snapshot to each new `videoSessions` document with the universal 5-minute base limit, 60-second warning lead, one +5-minute extension allowance, extension request state, and current effective limit.
+- `acceptCall` now derives the active session expiry and callable `sessionData.maxDuration` from the stored policy for policy-backed sessions rather than the legacy 1-hour constant.
+- Pre-existing sessions without `sessionPolicy` keep the legacy fallback, so the new contract is only applied to new policy-backed sessions.
+- The policy helper is backend-owned and does not read friend status, so duration remains independent of the social graph.
 
 ### Issue 11.2 - Add in-call countdown and 1-minute warning
 
@@ -645,13 +689,19 @@ Expose countdown behavior inside the active call experience and notify users 1 m
 
 Acceptance criteria:
 
-- Warning appears 1 minute before current limit
-- Countdown starts from 5-minute base policy
+- Warning appears 1 minute before the current limit on new policy-backed sessions
+- Countdown starts from the 5-minute base policy on new policy-backed sessions
 - Countdown updates correctly if mutual extension is approved
 
 Technical notes:
 
 - final extension visual treatment follows the upcoming design
+
+Hardening note (2026-04-14):
+
+- `VideoCallPageWidget` now passes the participant-gated `videoSessions.expiresAt` value into the active Daily call widget.
+- `MinimalDailyWidget` now shows a countdown-to-limit badge for policy-backed sessions and triggers a one-time warning overlay when 60 seconds remain.
+- If `expiresAt` changes after a future mutual extension flow, the countdown resets from the updated server value; legacy sessions without `expiresAt` keep the old elapsed-time checkpoint behavior.
 
 ### Issue 11.3 - Enforce session end at the configured limit
 
@@ -664,13 +714,19 @@ Terminate sessions according to stored session policy.
 
 Acceptance criteria:
 
-- Session ends at 5 minutes when extension is not mutually approved
-- Session ends at 10 minutes after one approved extension
+- New policy-backed session ends at 5 minutes when extension is not mutually approved
+- New policy-backed session ends at 10 minutes after one approved extension
 - End flow remains consistent with current call teardown behavior
 
 Technical notes:
 
 - integrate with existing `endSession` behavior
+
+Hardening note (2026-04-14):
+
+- `MinimalDailyWidget` now auto-ends policy-backed calls when the stored `expiresAt` limit is reached and forwards `endReason: expired` into the existing `endSession` callable path.
+- `cleanupExpiredSessions` now runs every minute as a server backstop so disconnected clients do not leave policy-backed sessions active indefinitely.
+- Legacy sessions without `sessionPolicy` / policy-backed `expiresAt` stay on the fallback teardown path.
 
 ### Issue 11.4 - Implement mutual 5-minute call extension flow
 
@@ -692,6 +748,15 @@ Technical notes:
 
 - UI visuals are design-dependent; backend/session contract is fixed
 
+Hardening note (2026-04-14):
+
+- `requestSessionExtension` now provides the one-time mutual extension write path for new policy-backed sessions only.
+- Each participant can record consent once per session; the first consent leaves the session pending, and the second consent atomically sets `sessionPolicy.extensionApproved = true`, moves `effectiveLimitSeconds` to 600, and extends `expiresAt` by 300 seconds from the stored deadline.
+- The live call UI now reads raw `sessionPolicy` from the participant-gated session stream and exposes a minimal in-call consent CTA without widening generated model wrappers.
+- `endSession` now ignores stale `endReason = expired` requests when the stored `expiresAt` has already moved forward, preventing an outdated client-side timeout from ending an already-extended call.
+- Focused backend contract assertions for Session Policy currently come from the Functions JS tests already in this repo, including `video_sessions_shared.test.js`, `session_policy_live_surfaces.test.js`, `request_session_extension.test.js`, `end_session.test.js`, and `cleanup_expired_sessions.test.js`.
+- Focused Flutter helper assertions for Session Policy currently come from `session_limit_ui_test.dart`; this repo still does not have a dedicated `MinimalDailyWidget` integration harness for the live countdown / auto-end / extension wiring, so these notes do not imply full release-regression confidence on their own.
+
 ## Epic 12. Review And Relationship Flow
 
 ### Issue 12.1 - Rename post-call favorite action to add to friends
@@ -705,13 +770,18 @@ Update the post-call summary flow so the relationship CTA uses friend semantics 
 
 Acceptance criteria:
 
-- CTA says `Добавить в друзья`
+- CTA uses friend add/remove semantics, including `Добавить в друзья` for unsaved pairs
 - Relationship write uses the new friends model
 - Direct call behavior is not introduced
 
 Technical notes:
 
 - preserve current review flow
+
+Hardening note (2026-04-14):
+
+- The post-call relationship CTA now uses friend add/remove wording in handwritten UI and still writes through the existing friends helper contract.
+- No direct-call behavior is reintroduced as part of this copy alignment tranche.
 
 ### Issue 12.2 - Keep review submission intact after session model changes
 
@@ -731,6 +801,11 @@ Acceptance criteria:
 Technical notes:
 
 - update session participant resolution as needed
+
+Hardening note (2026-04-14):
+
+- Review submission now resolves the partner through participant-aware session resolution in the backend callable and handwritten Flutter review surfaces, including call-details target resolution and post-call summary routing.
+- Canonical directional pair-review storage, legacy review fallback, rating aggregation, and existing validation rules remain unchanged.
 
 ### Issue 12.3 - Add post-call open-chat CTA for unlocked pairs
 
@@ -775,6 +850,15 @@ Technical notes:
 
 - include regression for existing teacher payment/earning/withdrawal flows
 
+Regression note (2026-04-15):
+
+- `test/regression/qa1_release_surface_contracts_test.dart` now locks the missing QA.1 UI/source contracts for the `Чаты` hub empty/unlocked states, locked/non-participant chat thread fail-closed behavior, soft email verification profile surface, and approved-teacher-only finance withdrawal access.
+- Targeted Flutter analysis passed across the auth/onboarding, review, chat, call, learning, session-limit, teacher finance, and profile seams.
+- Targeted Flutter tests passed across auth/onboarding, route smoke, review helper, caption/dictionary word flow, flashcard logic/widgets, session-limit UI, teacher accreditation/preference helpers, and QA.1 release surface contracts.
+- Targeted Functions tests passed for review submission, end-session, request-extension, cleanup-expired-session, repeat-prevention, session-policy, and matchmaking contracts.
+- A fresh passing `npm run backend:checks` rerun provides live emulator-backed verification for Firestore rules, session teardown and billing idempotency, conversation unlock/empty-event handling, teacher verification and withdrawal gates, user match-profile sync, matchmaking matrix, repeat-prevention/tester bypass, partner-level filtering, teacher boost, and load smoke. The results are recorded in `audit/backend_checks_results.json`.
+- `Issue QA.1` is complete. The older `audit/retest_checklist.md` remains a separate physical-device/performance retest artifact, not an open SmallTalk V2 backlog gate.
+
 ### Issue QA.2 - Matchmaking matrix validation
 
 Type: QA  
@@ -786,12 +870,20 @@ Validate the new matching matrix across role combinations, repeat-prevention cas
 
 Acceptance criteria:
 
-- `student-student`, `student-native_speaker`, `native_speaker-native_speaker` verified
-- same-day repeat prevention verified
-- tester allow-list bypass verified
-- Fluent approved-teacher boost verified
-- 5-minute base duration and mutual 10-minute maximum verified
+- live callable/emulator-backed validation covers `student-student`, `student-native_speaker`, and `native_speaker-native_speaker` pairwise combinations
+- live callable/emulator-backed validation covers mixed `student` and `native_speaker` candidate pools for both `student` and `native_speaker` requesters
+- live callable/emulator-backed validation covers same-day repeat prevention
+- live callable/emulator-backed validation covers tester allow-list bypass
+- live callable/emulator-backed validation covers Fluent approved-teacher boost
+- live callable/emulator-backed validation covers 5-minute base duration and mutual 10-minute maximum
 
 Technical notes:
 
 - no friend-priority QA is required because that scope was removed
+
+Hardening note (2026-04-14):
+
+- `create_video_session_matrix.test.js` now adds helper-level backend assertions around supported-role normalization, Fluent-only teacher boost scoring/ranking, and source-level presence of the repeat-prevention and session-policy hooks inside `createVideoSession`.
+- Existing focused backend tests continue to exercise/assert same-day repeat prevention and tester allow-list bypass (`match_repeat_prevention.test.js`) plus the 5-minute base / mutual 10-minute policy path (`video_sessions_shared.test.js`, `session_policy_live_surfaces.test.js`, `request_session_extension.test.js`, and `end_session.test.js`).
+- A fresh passing `npm run backend:checks` rerun now provides live emulator-backed verification of explicit `student-student`, `student-native_speaker`, and `native_speaker-native_speaker` pairwise scenarios, plus mixed candidate-pool scenarios for both `student` and `native_speaker` requesters, same-day repeat prevention, tester allow-list bypass, preferred partner level filtering, Fluent approved-teacher boost, and the 5-minute base to mutual 10-minute session-policy path. The results are recorded in `audit/backend_checks_results.json`.
+- `Issue QA.2` is complete. Broader release confidence across auth, VoIP, chats, reviews, dictionary, and teacher finance remains tracked under `Issue QA.1`.

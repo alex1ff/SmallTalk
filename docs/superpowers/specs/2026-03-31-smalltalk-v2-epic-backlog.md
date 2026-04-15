@@ -67,10 +67,16 @@ Dependencies:
 
 - Epic 1 for `Чаты` entry point
 
+Execution note (2026-04-14):
+
+- `users.friends` now dual-reads and syncs with legacy `favoriteNativeSpeakers`.
+- The `Чаты` hub owns the friends surface, direct-call affordances are removed from friend surfaces, and friend messaging remains unlock-gated.
+- The remaining user-facing post-call relationship CTA now uses friend add/remove wording, so Epic 2 is complete without requiring internal route/model renames away from legacy `favorite` identifiers.
+
 Acceptance criteria:
 
 - Existing favorites survive migration as friends
-- UI consistently says `Друзья` / `Добавить в друзья`
+- UI consistently uses friend terminology with add/remove friend wording instead of favorite wording
 - Friends are one-way follows
 - Friend surfaces do not offer direct calls
 - Friend surfaces show message CTA only when messaging is unlocked
@@ -286,6 +292,12 @@ Dependencies:
 
 - Firebase Auth
 
+Execution note (2026-04-14):
+
+- Profile now shows a soft Firebase Auth email verification status surface with resend and manual refresh actions.
+- App resume now refreshes the Firebase Auth user so users can return from their email client without logging out/in.
+- Email verification remains informational only; it does not gate calling, messaging, profile usage, or teacher verification request submission.
+
 Acceptance criteria:
 
 - User can see unverified/verified state
@@ -315,6 +327,13 @@ Dependencies:
 
 - existing live caption rendering
 - existing add-word flow
+
+Execution note (2026-04-14):
+
+- Live subtitle token taps and add-word routing were already present in handwritten Flutter before this tranche.
+- This tranche only extracted and tested shared helper/widget surfaces reused by that page path: shared caption tokenization, interactive caption rendering, and modal payload builders.
+- This repo still does not have dedicated page-level integration tests for the surrounding live-call wiring.
+- The current live flow passes the tapped word plus caption text into the existing add-word modal; it does not add structured subtitle provenance beyond that text context.
 
 Acceptance criteria:
 
@@ -347,6 +366,13 @@ Dependencies:
 - existing `captionLogs`
 - existing call details page
 - existing add-word flow
+
+Execution note (2026-04-14):
+
+- Saved subtitle logs in Call Details were already tappable and already routed into the existing dictionary/add-word flow before this tranche.
+- This tranche only extracted and tested shared helper/widget surfaces reused by that page path: shared caption tokenization, interactive caption rendering, and modal payload builders.
+- This repo still does not have dedicated page-level integration tests for the surrounding Call Details wiring.
+- Existing dictionary and flashcard persistence remain unchanged, so saved subtitle taps continue to flow through the current `userWords` and flashcard pipeline.
 
 Acceptance criteria:
 
@@ -385,13 +411,24 @@ Dependencies:
 - Epic 5 for session metadata
 - final UI mockup for extension screen visuals
 
+Execution note (2026-04-14):
+
+- New video sessions now persist a `sessionPolicy` contract with 300-second base limit, 60-second warning lead, one 300-second extension allowance, extension request state, and 300-second current effective limit.
+- Accepting a policy-backed call now derives active `expiresAt` and callable `sessionData.maxDuration` from the stored policy instead of the legacy 1-hour response constant.
+- Pre-existing sessions without `sessionPolicy` keep the legacy fallback, so this tranche applies the new contract only to new policy-backed sessions.
+- The active call UI now uses the participant-gated `videoSessions.expiresAt` value for an in-call countdown and one-minute warning overlay.
+- Policy-backed active calls now auto-trigger the existing `endSession` teardown path when the stored limit is reached, while `cleanupExpiredSessions` runs every minute as a server backstop for disconnected clients.
+- Policy-backed active calls now support a one-time mutual +5-minute extension: each participant can consent once, the extension applies only after both agree, `expiresAt` moves forward by 300 seconds atomically, and stale `endReason=expired` requests are ignored if the session limit has already moved.
+- Focused backend contract assertions for Session Policy currently come from the Functions JS tests already in this repo, including `video_sessions_shared.test.js`, `session_policy_live_surfaces.test.js`, `request_session_extension.test.js`, `end_session.test.js`, and `cleanup_expired_sessions.test.js`.
+- Focused Flutter helper assertions for Session Policy currently come from `session_limit_ui_test.dart`; this repo still does not have a dedicated `MinimalDailyWidget` integration harness for the live countdown / auto-end / extension wiring, so this note does not imply full release-regression confidence by itself.
+
 Acceptance criteria:
 
-- Every session starts with 5-minute policy
-- Warning appears 1 minute before limit
-- Session extends by 5 minutes only after both participants agree
-- Session ends at 5 minutes without mutual approval
-- Session ends at 10 minutes after one approved extension
+- Every new policy-backed session starts with 5-minute policy
+- Warning appears 1 minute before limit on new policy-backed sessions
+- New policy-backed session extends by 5 minutes only after both participants agree
+- New policy-backed session ends at 5 minutes without mutual approval
+- New policy-backed session ends at 10 minutes after one approved extension
 
 Impacted systems:
 
@@ -420,6 +457,12 @@ Dependencies:
 - Epic 2 for friends model
 - Epic 3 for messaging unlock
 
+Execution note (2026-04-14):
+
+- The post-call relationship CTA now uses friend semantics and the unlocked-pair chat CTA is already in place.
+- Review submission now resolves the correct partner through participant-aware backend and handwritten Flutter paths, while preserving canonical pair reviews, rating aggregation, and existing validation.
+- Epic 12 is complete; broader regression confidence remains tracked under QA.1.
+
 Acceptance criteria:
 
 - User can rate the partner after a call
@@ -434,6 +477,12 @@ Impacted systems:
 - conversations data
 
 ## QA And Release
+
+Execution note (2026-04-15):
+
+- `Issue QA.2` now has both focused backend/helper assertions and a fresh passing live emulator-backed `npm run backend:checks` run covering explicit `student-student`, `student-native_speaker`, and `native_speaker-native_speaker` pairwise scenarios, mixed candidate-pool scenarios for both `student` and `native_speaker` requesters, same-day repeat prevention, partner-level filtering, teacher boost ranking, and the 5-minute to mutual 10-minute session-policy path.
+- `Issue QA.1` now has a targeted release-regression bundle covering auth/onboarding, VoIP/session teardown, reviews, dictionary/flashcards, `Чаты` unlock/empty-state contracts, approved-teacher finance access, soft email verification, and teacher payment/earning/withdrawal flows.
+- `Issue QA.1` and `Issue QA.2` are complete; no SmallTalk V2 QA/release backlog gate remains open.
 
 Acceptance criteria:
 

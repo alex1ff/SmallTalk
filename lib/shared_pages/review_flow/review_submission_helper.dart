@@ -50,6 +50,136 @@ class ReviewSubmissionResult {
   final DocumentReference? reviewRef;
 }
 
+class SessionReviewParticipantResolution {
+  const SessionReviewParticipantResolution({
+    required this.currentUserId,
+    required this.participantIds,
+    required this.isParticipant,
+    this.requesterId,
+    this.responderId,
+    this.counterpartUserId,
+  });
+
+  final String currentUserId;
+  final List<String> participantIds;
+  final bool isParticipant;
+  final String? requesterId;
+  final String? responderId;
+  final String? counterpartUserId;
+
+  bool get isRequester => requesterId != null && requesterId == currentUserId;
+  bool get isResponder => responderId != null && responderId == currentUserId;
+  bool get hasCounterpart => counterpartUserId != null;
+}
+
+String _normalizeSessionParticipantId(dynamic rawValue) {
+  if (rawValue is! String) {
+    return '';
+  }
+
+  return rawValue.trim();
+}
+
+Map<String, dynamic> _sessionMatchContext(Map<String, dynamic> sessionData) {
+  final rawMatchContext = sessionData['matchContext'];
+  if (rawMatchContext is Map) {
+    return rawMatchContext.map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
+  }
+
+  return const <String, dynamic>{};
+}
+
+String? resolveSessionRequesterId(Map<String, dynamic> sessionData) {
+  final matchContext = _sessionMatchContext(sessionData);
+  final requesterId = _normalizeSessionParticipantId(
+    sessionData['studentId'] ??
+        matchContext['requesterId'] ??
+        sessionData['requesterId'],
+  );
+  return requesterId.isNotEmpty ? requesterId : null;
+}
+
+String? resolveSessionResponderId(Map<String, dynamic> sessionData) {
+  final matchContext = _sessionMatchContext(sessionData);
+  final responderId = _normalizeSessionParticipantId(
+    sessionData['tutorId'] ??
+        sessionData['currentTutorId'] ??
+        matchContext['acceptedResponderId'],
+  );
+  return responderId.isNotEmpty ? responderId : null;
+}
+
+List<String> resolveSessionParticipantIds(Map<String, dynamic> sessionData) {
+  final participantIds = <String>[];
+
+  void addParticipant(dynamic rawValue) {
+    final normalizedValue = _normalizeSessionParticipantId(rawValue);
+    if (normalizedValue.isEmpty || participantIds.contains(normalizedValue)) {
+      return;
+    }
+    participantIds.add(normalizedValue);
+  }
+
+  final rawParticipantIds = sessionData['participantIds'];
+  if (rawParticipantIds is Iterable) {
+    for (final participantId in rawParticipantIds) {
+      addParticipant(participantId);
+    }
+  }
+
+  if (participantIds.length >= 2) {
+    return participantIds;
+  }
+
+  addParticipant(resolveSessionRequesterId(sessionData));
+  addParticipant(resolveSessionResponderId(sessionData));
+
+  return participantIds;
+}
+
+SessionReviewParticipantResolution resolveSessionReviewParticipant({
+  required Map<String, dynamic> sessionData,
+  required String currentUserId,
+}) {
+  final normalizedCurrentUserId = currentUserId.trim();
+  final participantIds = resolveSessionParticipantIds(sessionData);
+  final requesterId = resolveSessionRequesterId(sessionData);
+  final responderId = resolveSessionResponderId(sessionData);
+
+  if (normalizedCurrentUserId.isEmpty ||
+      !participantIds.contains(normalizedCurrentUserId)) {
+    return SessionReviewParticipantResolution(
+      currentUserId: normalizedCurrentUserId,
+      participantIds: participantIds,
+      isParticipant: false,
+      requesterId: requesterId,
+      responderId: responderId,
+    );
+  }
+
+  String? counterpartUserId;
+  if (participantIds.length == 2) {
+    counterpartUserId = participantIds.firstWhere(
+      (participantId) => participantId != normalizedCurrentUserId,
+      orElse: () => '',
+    );
+    if (counterpartUserId.isEmpty) {
+      counterpartUserId = null;
+    }
+  }
+
+  return SessionReviewParticipantResolution(
+    currentUserId: normalizedCurrentUserId,
+    participantIds: participantIds,
+    isParticipant: true,
+    requesterId: requesterId,
+    responderId: responderId,
+    counterpartUserId: counterpartUserId,
+  );
+}
+
 String _encodePairReviewComponent(String userId) {
   return Uri.encodeComponent(userId.trim()).replaceAll('_', '%5F');
 }

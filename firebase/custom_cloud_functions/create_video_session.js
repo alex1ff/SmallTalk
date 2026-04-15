@@ -6,6 +6,7 @@ const {
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
 const {
+  buildInitialSessionPolicyState,
   buildMatchProfile,
   buildSessionUserInfo,
   extractBlockedIds,
@@ -51,6 +52,16 @@ const CANDIDATE_QUERY_BUILDERS = [
   (db, languageCode) =>
     db.collection("users").where("native_language_NS.code", "==", languageCode),
 ];
+
+function buildCreateSessionPolicyFields(nowMillis = Date.now()) {
+  const sessionPolicyState = buildInitialSessionPolicyState(nowMillis);
+  return {
+    expiresAt: admin.firestore.Timestamp.fromDate(
+      sessionPolicyState.expiresAt,
+    ),
+    sessionPolicy: sessionPolicyState.sessionPolicy,
+  };
+}
 
 function isAvailableAfterInFuture(userData = {}, now = new Date()) {
   const availableAfter = userData.availableAfter;
@@ -779,8 +790,7 @@ exports.createVideoSession = functions
       }
 
       // Создаем videoSession
-      const expiresAt = new Date();
-      expiresAt.setMinutes(expiresAt.getMinutes() + 5);
+      const sessionPolicyFields = buildCreateSessionPolicyFields();
 
       let precreatedRoomUrl = null;
       let precreatedRoomName = null;
@@ -814,7 +824,7 @@ exports.createVideoSession = functions
         language: normalizedLanguage,
         status: "searching",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+        ...sessionPolicyFields,
 
         // Предпочтения студента (для логов и аналитики)
         studentPreferences: {
@@ -1062,6 +1072,13 @@ async function sendVoipPushToTutor(tutorId, callData) {
     return null;
   }
 }
+
+exports.__private__ = {
+  buildCreateSessionPolicyFields,
+  compareCandidateDetails,
+  getTeacherBoostScore,
+  isTeacherBoostTargetLevel,
+};
 
 async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) {
   try {
