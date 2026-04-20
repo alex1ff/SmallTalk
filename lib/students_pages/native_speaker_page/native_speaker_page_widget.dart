@@ -604,23 +604,28 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (canOpenChat)
-                          StreamBuilder<DocumentSnapshot<Object?>>(
-                            stream: conversationRef!.snapshots(),
+                          StreamBuilder<List<ConversationsRecord>>(
+                            stream: queryConversationsRecord(
+                              queryBuilder: (query) => query.where(
+                                'participantIds',
+                                arrayContains: currentUserUid,
+                              ),
+                            ),
                             builder: (context, snapshot) {
                               if (!snapshot.hasData) {
                                 return const SizedBox.shrink();
                               }
 
-                              final conversationDoc = snapshot.data!;
-                              if (!conversationDoc.exists ||
-                                  conversationDoc.data() == null) {
-                                return const SizedBox.shrink();
+                              ConversationsRecord? conversation;
+                              for (final candidate in snapshot.data!) {
+                                if (candidate.pairId == conversationRef!.id) {
+                                  conversation = candidate;
+                                  break;
+                                }
                               }
 
-                              final conversation =
-                                  ConversationsRecord.fromSnapshot(
-                                      conversationDoc);
-                              if (!conversation.isUnlocked) {
+                              if (conversation == null ||
+                                  !conversation.isUnlocked) {
                                 return const SizedBox.shrink();
                               }
 
@@ -642,7 +647,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                   padding: EdgeInsetsDirectional.fromSTEB(
                                       6.0, 12.0, 6.0, 12.0),
                                   child: ButtonWidget(
-                                    text: FFLocalizations.of(context).getVariableText(
+                                    text: FFLocalizations.of(context)
+                                        .getVariableText(
                                       ruText: 'Открыть чат',
                                       enText: 'Open chat',
                                     ),
@@ -796,7 +802,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
           padding: EdgeInsetsDirectional.fromSTEB(6.0, 12.0, 6.0, 35.0),
           child: ButtonWidget(
             text: FFLocalizations.of(context).getText(
-              '2sabsnp2' /* Начать small talk */,
+              '2sabsnp2' /* Начать разговор */,
             ),
             loadingText: FFLocalizations.of(context).getVariableText(
               ruText: 'Подключаем...',

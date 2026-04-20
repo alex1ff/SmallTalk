@@ -255,40 +255,59 @@ Future<List<SelectedFile>?> selectFiles({
   String? storageFolderPath,
   List<String>? allowedExtensions,
   bool multiFile = false,
+  int? maxFiles,
+  int? maxFileSizeBytes,
 }) async {
   final pickedFiles = await FilePicker.platform.pickFiles(
     type: allowedExtensions != null ? FileType.custom : FileType.any,
     allowedExtensions: allowedExtensions,
-    withData: true,
+    withData: isWeb,
     allowMultiple: multiFile,
   );
   if (pickedFiles == null || pickedFiles.files.isEmpty) {
     return null;
   }
   if (multiFile) {
-    return Future.wait(pickedFiles.files.asMap().entries.map((e) async {
+    final acceptedFiles = pickedFiles.files
+        .where(
+          (file) =>
+              (file.bytes != null || file.path != null) &&
+              (maxFileSizeBytes == null || file.size <= maxFileSizeBytes),
+        )
+        .take(maxFiles ?? pickedFiles.files.length)
+        .toList(growable: false);
+    if (acceptedFiles.isEmpty) {
+      return null;
+    }
+
+    return Future.wait(acceptedFiles.asMap().entries.map((e) async {
       final index = e.key;
       final file = e.value;
+      final bytes = file.bytes ?? await XFile(file.path!).readAsBytes();
       final storagePath =
           _getStoragePath(storageFolderPath, file.name, false, index);
       return SelectedFile(
         storagePath: storagePath,
         filePath: isWeb ? null : file.path,
-        bytes: file.bytes!,
+        bytes: bytes,
         originalFilename: file.name,
       );
     }));
   }
   final file = pickedFiles.files.first;
-  if (file.bytes == null) {
+  if (maxFileSizeBytes != null && file.size > maxFileSizeBytes) {
     return null;
   }
+  if (file.bytes == null && file.path == null) {
+    return null;
+  }
+  final bytes = file.bytes ?? await XFile(file.path!).readAsBytes();
   final storagePath = _getStoragePath(storageFolderPath, file.name, false);
   return [
     SelectedFile(
       storagePath: storagePath,
       filePath: isWeb ? null : file.path,
-      bytes: file.bytes!,
+      bytes: bytes,
       originalFilename: file.name,
     )
   ];

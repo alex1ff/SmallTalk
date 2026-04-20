@@ -235,20 +235,25 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
       canonicalConversationPairId(currentUserUid, targetRef.id),
     );
 
-    return StreamBuilder<DocumentSnapshot<Object?>>(
-      stream: conversationRef.snapshots(),
+    return StreamBuilder<List<ConversationsRecord>>(
+      stream: queryConversationsRecord(
+        queryBuilder: (query) =>
+            query.where('participantIds', arrayContains: currentUserUid),
+      ),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const SizedBox.shrink();
         }
 
-        final doc = snapshot.data!;
-        if (!doc.exists || doc.data() == null) {
-          return const SizedBox.shrink();
+        ConversationsRecord? conversation;
+        for (final candidate in snapshot.data!) {
+          if (candidate.pairId == conversationRef.id) {
+            conversation = candidate;
+            break;
+          }
         }
 
-        final conversation = ConversationsRecord.fromSnapshot(doc);
-        if (!conversation.isUnlocked) {
+        if (conversation == null || !conversation.isUnlocked) {
           return const SizedBox.shrink();
         }
 

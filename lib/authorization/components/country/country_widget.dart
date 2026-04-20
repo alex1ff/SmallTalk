@@ -1,5 +1,4 @@
 import '/authorization/components/country_card/country_card_widget.dart';
-import '/backend/backend.dart';
 import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -27,6 +26,13 @@ class CountryWidget extends StatefulWidget {
 
 class _CountryWidgetState extends State<CountryWidget> {
   late CountryModel _model;
+  late final List<CountryStruct> _countries = functions.countriesList();
+  late final List<CountryStruct> _popularCountries = _buildPopularCountries();
+  TextSearch<CountryStruct>? _countrySearchIndex;
+  String? _countrySearchLocaleCode;
+  String? _cachedSearchQuery;
+  String? _cachedSearchLocaleCode;
+  List<CountryStruct> _cachedSearchResults = const [];
 
   @override
   void setState(VoidCallback callback) {
@@ -50,8 +56,59 @@ class _CountryWidgetState extends State<CountryWidget> {
     super.dispose();
   }
 
+  void _ensureCountrySearchIndex(BuildContext context) {
+    final localeCode = FFLocalizations.of(context).languageCode;
+    if (_countrySearchIndex != null && _countrySearchLocaleCode == localeCode) {
+      return;
+    }
+
+    _countrySearchIndex = TextSearch(
+      _countries
+          .map(
+            (country) => TextSearchItem.fromTerms(
+              country,
+              [
+                localeCode == 'ru' ? country.nameRu : country.nameEn,
+              ],
+            ),
+          )
+          .toList(),
+    );
+    _countrySearchLocaleCode = localeCode;
+    _cachedSearchQuery = null;
+    _cachedSearchLocaleCode = null;
+  }
+
+  List<CountryStruct> _searchCountries(BuildContext context, String query) {
+    _ensureCountrySearchIndex(context);
+
+    final localeCode = _countrySearchLocaleCode;
+    if (_cachedSearchQuery == query && _cachedSearchLocaleCode == localeCode) {
+      return _cachedSearchResults;
+    }
+
+    final results = _countrySearchIndex!.fastSearch(query).take(10).toList();
+    _cachedSearchQuery = query;
+    _cachedSearchLocaleCode = localeCode;
+    _cachedSearchResults = results;
+    return results;
+  }
+
+  List<CountryStruct> _buildPopularCountries() {
+    return _countries
+        .where((country) => country.isPopular)
+        .toList()
+        .sortedList(keyOf: (country) => country.index, desc: false)
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final searchText = (_model.search4TextController?.text ?? '').trim();
+    final countriesToDisplay = searchText.isNotEmpty
+        ? _searchCountries(context, searchText)
+        : _popularCountries;
+
     return Column(
       mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.start,
@@ -97,30 +154,7 @@ class _CountryWidgetState extends State<CountryWidget> {
                           '_model.search4TextController',
                           Duration(milliseconds: 0),
                           () async {
-                            safeSetState(() {
-                              _model.simpleSearchResults = TextSearch(
-                                      (FFLocalizations.of(context)
-                                                      .languageCode ==
-                                                  'ru'
-                                              ? functions
-                                                  .countriesList()
-                                                  .map((e) => e.nameRu)
-                                                  .toList()
-                                              : functions
-                                                  .countriesList()
-                                                  .map((e) => e.nameEn)
-                                                  .toList() as List)
-                                          .cast<String>()
-                                          .map((str) =>
-                                              TextSearchItem.fromTerms(
-                                                  str, [str]))
-                                          .toList())
-                                  .search(_model.search4TextController.text)
-                                  .map((r) => r.object)
-                                  .take(10)
-                                  .toList();
-                              ;
-                            });
+                            safeSetState(() {});
                           },
                         ),
                         autofocus: false,
@@ -145,36 +179,10 @@ class _CountryWidgetState extends State<CountryWidget> {
                           focusedBorder: InputBorder.none,
                           errorBorder: InputBorder.none,
                           focusedErrorBorder: InputBorder.none,
-                          suffixIcon: _model
-                                  .search4TextController!.text.isNotEmpty
+                          suffixIcon: searchText.isNotEmpty
                               ? InkWell(
                                   onTap: () async {
                                     _model.search4TextController?.clear();
-                                    safeSetState(() {
-                                      _model.simpleSearchResults = TextSearch(
-                                              (FFLocalizations.of(context)
-                                                              .languageCode ==
-                                                          'ru'
-                                                      ? functions
-                                                          .countriesList()
-                                                          .map((e) => e.nameRu)
-                                                          .toList()
-                                                      : functions
-                                                          .countriesList()
-                                                          .map((e) => e.nameEn)
-                                                          .toList() as List)
-                                                  .cast<String>()
-                                                  .map((str) =>
-                                                      TextSearchItem.fromTerms(
-                                                          str, [str]))
-                                                  .toList())
-                                          .search(
-                                              _model.search4TextController.text)
-                                          .map((r) => r.object)
-                                          .take(10)
-                                          .toList();
-                                      ;
-                                    });
                                     safeSetState(() {});
                                   },
                                   child: Icon(
@@ -214,76 +222,28 @@ class _CountryWidgetState extends State<CountryWidget> {
         ),
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
-          child: Builder(
-            builder: (context) {
-              if (_model.search4TextController.text != '') {
-                return Builder(
-                  builder: (context) {
-                    final lang4 = _model.simpleSearchResults.toList();
-
-                    return ListView.separated(
-                      padding: EdgeInsets.zero,
-                      primary: false,
-                      shrinkWrap: true,
-                      scrollDirection: Axis.vertical,
-                      itemCount: lang4.length,
-                      separatorBuilder: (_, __) => SizedBox(height: 6.0),
-                      itemBuilder: (context, lang4Index) {
-                        final lang4Item = lang4[lang4Index];
-                        return CountryCardWidget(
-                          key: Key('Key0co_${lang4Index}_of_${lang4.length}'),
-                          lang: functions
-                              .countriesList()
-                              .where((e) =>
-                                  (e.nameEn == lang4Item) ||
-                                  (lang4Item == e.nameRu))
-                              .toList()
-                              .firstOrNull!,
-                          currentSelected: widget.selected,
-                          callbackAction: (selectedLangData) async {
-                            await widget.action?.call(
-                              selectedLangData,
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                );
-              } else {
-                return Builder(
-                  builder: (context) {
-                    final lang44 = functions
-                        .countriesList()
-                        .where((e) => e.isPopular)
-                        .toList()
-                        .sortedList(keyOf: (e) => e.index, desc: false)
-                        .toList();
-
-                    return ListView.separated(
-                      padding: EdgeInsets.zero,
-                      primary: false,
-                      shrinkWrap: true,
-                      scrollDirection: Axis.vertical,
-                      itemCount: lang44.length,
-                      separatorBuilder: (_, __) => SizedBox(height: 6.0),
-                      itemBuilder: (context, lang44Index) {
-                        final lang44Item = lang44[lang44Index];
-                        return CountryCardWidget(
-                          key: Key('Keyyni_${lang44Index}_of_${lang44.length}'),
-                          lang: lang44Item,
-                          currentSelected: widget.selected,
-                          callbackAction: (selectedLangData) async {
-                            await widget.action?.call(
-                              selectedLangData,
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                );
-              }
+          child: ListView.separated(
+            padding: EdgeInsets.zero,
+            primary: false,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            scrollDirection: Axis.vertical,
+            itemCount: countriesToDisplay.length,
+            separatorBuilder: (_, __) => SizedBox(height: 6.0),
+            itemBuilder: (context, countryIndex) {
+              final countryItem = countriesToDisplay[countryIndex];
+              return CountryCardWidget(
+                key: ValueKey<String>(
+                  '${countryItem.code}|${countryItem.nameEn}|${countryItem.nameRu}',
+                ),
+                lang: countryItem,
+                currentSelected: widget.selected,
+                callbackAction: (selectedLangData) async {
+                  await widget.action?.call(
+                    selectedLangData,
+                  );
+                },
+              );
             },
           ),
         ),

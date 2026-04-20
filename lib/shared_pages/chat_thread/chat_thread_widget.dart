@@ -8,7 +8,10 @@ import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/call_details/call_details_widget.dart';
+import '/shared_pages/call_history/call_history_utils.dart';
 
+import 'chat_call_event_card.dart';
 import 'chat_thread_model.dart';
 export 'chat_thread_model.dart';
 
@@ -192,6 +195,143 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     );
   }
 
+  bool _isPermissionDenied(Object? error) =>
+      error is FirebaseException && error.code == 'permission-denied';
+
+  Widget _buildChatUnavailableState(
+    BuildContext context, {
+    required Object? error,
+  }) {
+    return Scaffold(
+      key: scaffoldKey,
+      backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+      body: Center(
+        child: SizedBox(
+          height: 500.0,
+          child: EmptyWidget(
+            txt: _isPermissionDenied(error)
+                ? FFLocalizations.of(context).getVariableText(
+                    ruText: 'У вас нет доступа к этому чату.',
+                    enText: 'You do not have access to this chat.',
+                  )
+                : FFLocalizations.of(context).getVariableText(
+                    ruText: 'Не удалось загрузить чат. Попробуйте позже.',
+                    enText: 'Could not load this chat. Please try again later.',
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessagesUnavailableState(
+    BuildContext context, {
+    required Object? error,
+  }) {
+    return Center(
+      child: SizedBox(
+        height: 260.0,
+        child: EmptyWidget(
+          txt: _isPermissionDenied(error)
+              ? FFLocalizations.of(context).getVariableText(
+                  ruText: 'У вас нет доступа к сообщениям этого чата.',
+                  enText: 'You do not have access to this chat history.',
+                )
+              : FFLocalizations.of(context).getVariableText(
+                  ruText: 'Не удалось загрузить сообщения.',
+                  enText: 'Could not load messages.',
+                ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openCallEvent(MessagesRecord message) async {
+    final sessionRef = message.sessionRef;
+    if (sessionRef == null) {
+      _showUnavailableCallDetailsSnackBar();
+      return;
+    }
+
+    try {
+      final sessionSnap = await sessionRef.get();
+      if (!sessionSnap.exists) {
+        _showUnavailableCallDetailsSnackBar();
+        return;
+      }
+    } catch (error) {
+      debugPrint(
+        'Failed to resolve call event session ${sessionRef.path}: $error',
+      );
+      _showUnavailableCallDetailsSnackBar();
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    context.pushNamed(
+      CallDetailsWidget.routeName,
+      queryParameters: {
+        'videoDocRef': serializeParam(
+          sessionRef,
+          ParamType.DocumentReference,
+        ),
+      }.withoutNulls,
+    );
+  }
+
+  void _showUnavailableCallDetailsSnackBar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Не удалось открыть детали звонка.',
+            enText: 'Unable to open call details.',
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatCallEventDetails(MessagesRecord message) {
+    final startedAtLabel = formatSessionStartedAtFromDateTime(
+      context,
+      message.callStartedAt,
+    );
+    final durationLabel =
+        formatDurationLabel(context, message.callDurationSeconds);
+
+    if (message.hasCallStartedAt() && message.hasCallDurationSeconds()) {
+      return '$startedAtLabel • $durationLabel';
+    }
+
+    if (message.hasCallStartedAt()) {
+      return startedAtLabel;
+    }
+
+    if (message.hasCallDurationSeconds()) {
+      return durationLabel;
+    }
+
+    return _formatMessageTimestamp(message.createdAt);
+  }
+
+  Widget _buildCallEventMessageCard(
+    BuildContext context, {
+    required MessagesRecord message,
+  }) {
+    return ChatCallEventCard(
+      title: FFLocalizations.of(context).getVariableText(
+        ruText: 'Видео-звонок',
+        enText: 'Video call',
+      ),
+      details: _formatCallEventDetails(message),
+      onTap: () => _openCallEvent(message),
+    );
+  }
+
   Widget _buildMessageBubble(
     BuildContext context, {
     required MessagesRecord message,
@@ -355,7 +495,17 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       builder: (context) => StreamBuilder<DocumentSnapshot<Object?>>(
         stream: conversationRef.snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError || !snapshot.hasData) {
+          if (snapshot.hasError) {
+            debugPrint(
+              'ChatThreadWidget: conversation stream error for ${conversationRef.path}: ${snapshot.error}',
+            );
+            return _buildChatUnavailableState(
+              context,
+              error: snapshot.error,
+            );
+          }
+
+          if (!snapshot.hasData) {
             return _buildLoadingState(context);
           }
 
@@ -364,7 +514,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
             return _buildEmptyState(context);
           }
 
-          final conversation = ConversationsRecord.fromSnapshot(conversationDoc);
+          final conversation =
+              ConversationsRecord.fromSnapshot(conversationDoc);
           final currentRef = currentUserReference;
           if (currentRef == null ||
               !conversation.participantIds.contains(currentUserUid) ||
@@ -382,6 +533,16 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
           return FutureBuilder<UsersRecord>(
             future: _getUserFuture(partnerRef),
             builder: (context, partnerSnapshot) {
+              if (partnerSnapshot.hasError) {
+                debugPrint(
+                  'ChatThreadWidget: partner load failed for ${partnerRef.path}: ${partnerSnapshot.error}',
+                );
+                return _buildChatUnavailableState(
+                  context,
+                  error: partnerSnapshot.error,
+                );
+              }
+
               if (!partnerSnapshot.hasData) {
                 return _buildLoadingState(context);
               }
@@ -390,12 +551,13 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
               return Scaffold(
                 key: scaffoldKey,
-                backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+                backgroundColor:
+                    FlutterFlowTheme.of(context).secondaryBackground,
                 body: Stack(
                   children: [
                     Padding(
-                      padding:
-                          const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                      padding: const EdgeInsetsDirectional.fromSTEB(
+                          6.0, 0.0, 6.0, 0.0),
                       child: Column(
                         children: [
                           _buildHeader(context, partner: partner),
@@ -407,14 +569,24 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                     messagesRecord.orderBy('createdAt'),
                               ),
                               builder: (context, messagesSnapshot) {
+                                if (messagesSnapshot.hasError) {
+                                  debugPrint(
+                                    'ChatThreadWidget: messages stream error for ${conversation.reference.path}: ${messagesSnapshot.error}',
+                                  );
+                                  return _buildMessagesUnavailableState(
+                                    context,
+                                    error: messagesSnapshot.error,
+                                  );
+                                }
+
                                 if (!messagesSnapshot.hasData) {
                                   return Center(
                                     child: SizedBox(
                                       width: 50.0,
                                       height: 50.0,
                                       child: SpinKitCircle(
-                                        color:
-                                            FlutterFlowTheme.of(context).secondary,
+                                        color: FlutterFlowTheme.of(context)
+                                            .secondary,
                                         size: 50.0,
                                       ),
                                     ),
@@ -424,7 +596,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                 final messages = messagesSnapshot.data!.toList()
                                   ..sort(compareMessagesForThread);
 
-                                if (_lastRenderedMessageCount != messages.length) {
+                                if (_lastRenderedMessageCount !=
+                                    messages.length) {
                                   _lastRenderedMessageCount = messages.length;
                                   _scheduleScrollToBottom();
                                 }
@@ -434,7 +607,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                     child: Padding(
                                       padding: const EdgeInsets.all(24.0),
                                       child: Text(
-                                        FFLocalizations.of(context).getVariableText(
+                                        FFLocalizations.of(context)
+                                            .getVariableText(
                                           ruText:
                                               'Чат открыт. Напишите первое сообщение.',
                                           enText:
@@ -458,8 +632,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
                                 return ListView.builder(
                                   controller: _messagesScrollController,
-                                  padding:
-                                      const EdgeInsetsDirectional.fromSTEB(
+                                  padding: const EdgeInsetsDirectional.fromSTEB(
                                     12.0,
                                     12.0,
                                     12.0,
@@ -468,6 +641,13 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                   itemCount: messages.length,
                                   itemBuilder: (context, index) {
                                     final message = messages[index];
+                                    if (messageIsCallEvent(message)) {
+                                      return _buildCallEventMessageCard(
+                                        context,
+                                        message: message,
+                                      );
+                                    }
+
                                     return _buildMessageBubble(
                                       context,
                                       message: message,
@@ -517,14 +697,14 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                   maxLines: 4,
                                   minLines: 1,
                                   decoration: InputDecoration(
-                                    hintText:
-                                        FFLocalizations.of(context).getVariableText(
+                                    hintText: FFLocalizations.of(context)
+                                        .getVariableText(
                                       ruText: 'Написать сообщение',
                                       enText: 'Write a message',
                                     ),
                                     filled: true,
-                                    fillColor:
-                                        FlutterFlowTheme.of(context).primaryBackground,
+                                    fillColor: FlutterFlowTheme.of(context)
+                                        .primaryBackground,
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(24.0),
                                       borderSide: BorderSide.none,

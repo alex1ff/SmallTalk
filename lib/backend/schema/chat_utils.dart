@@ -6,6 +6,8 @@ import '/backend/schema/util/firestore_util.dart';
 import '/backend/schema/video_sessions_record.dart';
 
 const String kConversationMessageTypeText = 'text';
+const String kConversationMessageTypeCallEvent = 'call_event';
+const String kConversationCallKindVideo = 'video';
 
 String canonicalConversationPairId(String uidA, String uidB) {
   if (uidA == uidB) {
@@ -49,11 +51,27 @@ bool conversationIsUnreadForUser(
   ConversationsRecord? conversation,
   String currentUserUid,
 ) {
-  if (conversation == null || !conversation.hasLastMessageAt()) {
+  if (conversation == null) {
     return false;
   }
 
-  if (conversation.lastMessageSenderId == currentUserUid) {
+  final unreadAt =
+      conversation.lastUnreadMessageAt ?? conversation.lastMessageAt;
+  final unreadSenderId = conversation.lastUnreadMessageSenderId ??
+      conversation.lastMessageSenderId;
+  final hasUnreadAnchor = conversation.hasLastUnreadMessageAt() &&
+      conversation.hasLastUnreadMessageSenderId();
+
+  if (!hasUnreadAnchor &&
+      conversation.lastMessageType == kConversationMessageTypeCallEvent) {
+    return false;
+  }
+
+  if (unreadAt == null) {
+    return false;
+  }
+
+  if (unreadSenderId == null || unreadSenderId == currentUserUid) {
     return false;
   }
 
@@ -62,8 +80,11 @@ bool conversationIsUnreadForUser(
     return true;
   }
 
-  return readAt.isBefore(conversation.lastMessageAt!);
+  return readAt.isBefore(unreadAt);
 }
+
+bool messageIsCallEvent(MessagesRecord? message) =>
+    message?.type == kConversationMessageTypeCallEvent;
 
 int compareConversationsForInbox(
   ConversationsRecord a,

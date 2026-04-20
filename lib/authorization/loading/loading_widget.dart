@@ -1,4 +1,5 @@
 import '/auth/firebase_auth/auth_util.dart';
+import '/authorization/acquaintance_s_t_u_d_e_n_t/student_onboarding_logic.dart';
 import '/authorization/components/native_speaker_entry_toggle.dart';
 import '/authorization/shared/social_auth_entry_logic.dart';
 import '/backend/backend.dart';
@@ -8,6 +9,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
+import '/services/user_match_profile.dart';
 import '/services/voip_service.dart';
 import 'loading_route_logic.dart';
 import 'dart:async';
@@ -61,13 +63,16 @@ class _LoadingWidgetState extends State<LoadingWidget> {
       return false;
     }
 
-    return user?.hasAcquaintance() == true &&
-        user?.acquaintance == true &&
-        user?.hasDisplayName() == true &&
-        user!.displayName.trim().isNotEmpty &&
-        user.hasPhotoUrl() &&
-        user.photoUrl.trim().isNotEmpty &&
-        user.hasLearningLanguage();
+    return hasCompletedStudentOnboardingContract(
+      acquaintance:
+          user?.hasAcquaintance() == true && user?.acquaintance == true,
+      displayName: user?.hasDisplayName() == true ? user?.displayName : null,
+      gender: user?.hasGender() == true ? user?.gender : null,
+      level: user?.hasLevel() == true ? user?.level : null,
+      learningLanguage:
+          user?.hasLearningLanguage() == true ? user?.learningLanguage : null,
+      country: user?.hasCountryNS() == true ? user?.countryNS : null,
+    );
   }
 
   LoadingRouteDestination? _resolveDestinationForUser(
@@ -82,8 +87,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
           : null,
       hasInferredStudentProfileCompletion:
           _hasInferredStudentProfileCompletion(userDocument),
-      isTeacherAccreditationApproved:
-          userDocument?.isTeacherAccreditationApproved ?? false,
+      canUseNativeSpeakerShell: canUseNativeSpeakerShell(userDocument),
     );
   }
 
@@ -154,10 +158,12 @@ class _LoadingWidgetState extends State<LoadingWidget> {
         );
         return;
       case LoadingRouteDestination.acquaintanceStudentResume:
+        // The student flow is now compact and editable, so resume reopens the
+        // first step instead of relying on legacy raw step indexes.
         context.goNamed(
           AcquaintanceSTUDENTWidget.routeName,
           queryParameters: {
-            'index': serializeParam(4, ParamType.int),
+            'index': serializeParam(0, ParamType.int),
           }.withoutNulls,
         );
         return;

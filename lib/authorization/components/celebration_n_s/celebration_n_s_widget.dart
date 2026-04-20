@@ -136,8 +136,11 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                                             ),
                                             Text(
                                               FFLocalizations.of(context)
-                                                  .getText(
-                                                'wvb1ct99' /* ваш профиль готов */,
+                                                  .getVariableText(
+                                                ruText:
+                                                    'ваша заявка отправлена',
+                                                enText:
+                                                    'your application has been submitted',
                                               ),
                                               textAlign: TextAlign.start,
                                               style:
@@ -165,8 +168,10 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                                     padding: EdgeInsetsDirectional.fromSTEB(
                                         0.0, 24.0, 0.0, 0.0),
                                     child: Text(
-                                      FFLocalizations.of(context).getText(
-                                        'i6itymsj' /* Теперь вы можете: */,
+                                      FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText: 'Что дальше:',
+                                        enText: 'What happens next:',
                                       ),
                                       textAlign: TextAlign.start,
                                       style: FlutterFlowTheme.of(context)
@@ -211,8 +216,11 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                                           ),
                                         ),
                                         Text(
-                                          FFLocalizations.of(context).getText(
-                                            'm3qrtm7o' /* Принимать запросы от учеников */,
+                                          FFLocalizations.of(context)
+                                              .getVariableText(
+                                            ruText: 'Мы проверяем вашу заявку',
+                                            enText:
+                                                'We’re reviewing your application',
                                           ),
                                           style: FlutterFlowTheme.of(context)
                                               .bodyMedium
@@ -258,8 +266,12 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                                           ),
                                         ),
                                         Text(
-                                          FFLocalizations.of(context).getText(
-                                            'u052xfsi' /* Зарабатывать на разговорах */,
+                                          FFLocalizations.of(context)
+                                              .getVariableText(
+                                            ruText:
+                                                'После одобрения вы сможете зарабатывать на разговорах',
+                                            enText:
+                                                'After approval, you’ll be able to earn from calls',
                                           ),
                                           style: FlutterFlowTheme.of(context)
                                               .bodyMedium
@@ -305,8 +317,12 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                                           ),
                                         ),
                                         Text(
-                                          FFLocalizations.of(context).getText(
-                                            'ig33jmve' /* Получать отзывы и рейтинг */,
+                                          FFLocalizations.of(context)
+                                              .getVariableText(
+                                            ruText:
+                                                'После одобрения вы сможете получать отзывы и рейтинг',
+                                            enText:
+                                                'After approval, you’ll be able to receive reviews and ratings',
                                           ),
                                           style: FlutterFlowTheme.of(context)
                                               .bodyMedium
@@ -323,8 +339,12 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                                     padding: EdgeInsetsDirectional.fromSTEB(
                                         0.0, 24.0, 0.0, 0.0),
                                     child: Text(
-                                      FFLocalizations.of(context).getText(
-                                        'ymgeslpv' /* Ученики уже могут найти вас и ... */,
+                                      FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText:
+                                            'Мы сообщим, когда проверка завершится и вы сможете выйти онлайн, принимать звонки, выводить деньги и зарабатывать в приложении.',
+                                        enText:
+                                            'We’ll notify you once the review is complete and you can go online, accept calls, withdraw earnings, and work in the app.',
                                       ),
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium

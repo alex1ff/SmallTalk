@@ -1,10 +1,12 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/student_onboarding_logic.dart';
 import 'package:small_talk/backend/schema/enums/enums.dart';
 import 'package:small_talk/backend/schema/structs/index.dart';
-import 'package:small_talk/flutter_flow/uploaded_file.dart';
+
+CountryStruct _country([String code = 'US']) => CountryStruct(
+      code: code,
+      nameEn: code,
+    );
 
 void main() {
   group('buildStudentOnboardingInitialState', () {
@@ -14,187 +16,337 @@ void main() {
         nameEn: 'Spanish',
         alternateCodes: <String>['spa'],
       );
-      final preferredNativeLanguage = LanguageStruct(
-        code: 'en',
-        nameEn: 'English',
-      );
-      final preferredLocation = CountryStruct(
-        code: 'US',
-        nameEn: 'United States',
-        flag: 'us',
-      );
-      final purpose = <String>['Travel', 'Work'];
 
       final initialState = buildStudentOnboardingInitialState(
         displayName: '  Alice  ',
         gender: Gender.female,
         level: Level.Intermediate,
         learningLanguage: learningLanguage,
-        purpose: purpose,
-        preferences: PreferencesStruct(
-          preferredNativeLanguage: preferredNativeLanguage,
-          preferredLocation: preferredLocation,
-        ),
-        photoUrl: ' https://cdn.example.com/photo.jpg ',
+        country: _country('ES'),
       );
 
       learningLanguage.code = 'de';
       learningLanguage.alternateCodes.add('ger');
-      preferredNativeLanguage.nameEn = 'German';
-      preferredLocation.code = 'DE';
-      purpose.add('Culture');
 
       expect(initialState.displayName, 'Alice');
       expect(initialState.genderMale, isFalse);
       expect(initialState.level, Level.Intermediate);
       expect(initialState.learningLanguage?.code, 'es');
       expect(initialState.learningLanguage?.alternateCodes, <String>['spa']);
-      expect(initialState.preferredNativeLanguage?.code, 'en');
-      expect(initialState.preferredLocation?.code, 'US');
-      expect(initialState.purpose, <String>['Travel', 'Work']);
-      expect(initialState.photoUrl, 'https://cdn.example.com/photo.jpg');
+      expect(initialState.country?.code, 'ES');
     });
 
-    test('uses safe defaults for incomplete profiles', () {
+    test('exposes widget-safe defaults for missing draft fields', () {
       final initialState = buildStudentOnboardingInitialState(
         displayName: null,
         gender: null,
         level: null,
         learningLanguage: null,
-        purpose: null,
-        preferences: null,
-        photoUrl: null,
+        country: null,
       );
 
       expect(initialState.displayName, isEmpty);
       expect(initialState.genderMale, isTrue);
-      expect(initialState.level, Level.Basic);
+      expect(initialState.level, defaultStudentOnboardingLevel);
       expect(initialState.learningLanguage, isNull);
-      expect(initialState.purpose, isEmpty);
-      expect(initialState.preferredNativeLanguage, isNull);
-      expect(initialState.preferredLocation, isNull);
-      expect(initialState.photoUrl, isEmpty);
+      expect(initialState.country, isNull);
     });
   });
 
-  group('student onboarding completion helpers', () {
-    test('requires either uploaded bytes or an existing remote photo', () {
-      expect(
-        hasStudentCompletionPhoto(
-          localPhoto: null,
-          existingPhotoUrl: null,
-        ),
-        isFalse,
-      );
-
-      expect(
-        hasStudentCompletionPhoto(
-          localPhoto: FFUploadedFile(
-            bytes: Uint8List.fromList(<int>[1, 2, 3]),
-          ),
-          existingPhotoUrl: '',
-        ),
-        isTrue,
-      );
-
-      expect(
-        hasStudentCompletionPhoto(
-          localPhoto: null,
-          existingPhotoUrl: ' https://cdn.example.com/photo.jpg ',
-        ),
-        isTrue,
-      );
-    });
-
-    test('accepts only meaningful language and country selections', () {
-      expect(hasLanguageSelection(null), isFalse);
-      expect(hasLanguageSelection(LanguageStruct()), isFalse);
-      expect(
-        hasLanguageSelection(
-          LanguageStruct(
-            code: 'en',
-          ),
-        ),
-        isTrue,
-      );
-
-      expect(hasCountrySelection(null), isFalse);
-      expect(hasCountrySelection(CountryStruct()), isFalse);
-      expect(
-        hasCountrySelection(
-          CountryStruct(
-            code: 'US',
-          ),
-        ),
-        isTrue,
-      );
-    });
-
-    test('clone helpers return null for empty selections', () {
-      expect(cloneLanguageSelection(LanguageStruct()), isNull);
-      expect(cloneCountrySelection(CountryStruct()), isNull);
-    });
-
-    test('builds full 8-step displayed flow when name and photo are visible',
+  group('student onboarding contract helpers', () {
+    test('updates drafts immutably and preserves legacy language selections',
         () {
+      final original = buildStudentOnboardingDraft(
+        displayName: null,
+        gender: null,
+        level: null,
+        learningLanguage: null,
+        country: null,
+      );
+      final legacyLanguage = LanguageStruct(
+        code: 'kk',
+        model: 'kaz-Latn',
+        alternateCodes: <String>['kaz'],
+      );
+
+      final updated = updateStudentOnboardingDraft(
+        original,
+        displayName: '  Alice  ',
+        gender: Gender.female,
+        level: Level.Fluent,
+        learningLanguage: legacyLanguage,
+        country: _country('KZ'),
+      );
+
+      legacyLanguage.code = 'ru';
+      legacyLanguage.alternateCodes.add('rus');
+
+      expect(original.displayName, isEmpty);
+      expect(original.gender, isNull);
+      expect(original.level, isNull);
+      expect(original.learningLanguage, isNull);
+      expect(original.country, isNull);
+
+      expect(updated.displayName, 'Alice');
+      expect(updated.gender, Gender.female);
+      expect(updated.level, Level.Fluent);
+      expect(updated.learningLanguage?.code, 'kk');
+      expect(updated.learningLanguage?.alternateCodes, <String>['kaz']);
+      expect(updated.country?.code, 'KZ');
+
+      final cleared = updateStudentOnboardingDraft(
+        updated,
+        learningLanguage: null,
+        country: null,
+      );
+      expect(cleared.learningLanguage, isNull);
+      expect(cleared.country, isNull);
+      expect(updated.learningLanguage?.code, 'kk');
+    });
+
+    test('validates required fields while treating level as Basic by default',
+        () {
+      final validation = validateStudentOnboardingDraft(
+        buildStudentOnboardingDraft(
+          displayName: ' ',
+          gender: null,
+          level: null,
+          learningLanguage: LanguageStruct(),
+          country: null,
+        ),
+      );
+
+      expect(
+        validation.missingPages,
+        <StudentOnboardingPage>[
+          StudentOnboardingPage.name,
+          StudentOnboardingPage.gender,
+          StudentOnboardingPage.learningLanguage,
+          StudentOnboardingPage.country,
+        ],
+      );
+      expect(validation.isComplete, isFalse);
+    });
+
+    test('builds payloads with normalized defaults and legacy languages', () {
+      final payload = buildStudentOnboardingPayload(
+        buildStudentOnboardingDraft(
+          displayName: '  Alice  ',
+          gender: null,
+          level: null,
+          learningLanguage: LanguageStruct(
+            code: 'kk',
+            model: 'kaz-Latn',
+            alternateCodes: <String>['kaz'],
+          ),
+          country: _country('KZ'),
+        ),
+      );
+
+      expect(payload.displayName, 'Alice');
+      expect(payload.gender, Gender.male);
+      expect(payload.level, defaultStudentOnboardingLevel);
+      expect(payload.learningLanguage?.code, 'kk');
+      expect(payload.learningLanguage?.alternateCodes, <String>['kaz']);
+      expect(payload.country?.code, 'KZ');
+    });
+
+    test('builds firestore updates for the student onboarding contract', () {
+      final updateData = buildStudentOnboardingUpdateData(
+        payload: buildStudentOnboardingPayload(
+          buildStudentOnboardingDraft(
+            displayName: ' Alice ',
+            gender: Gender.female,
+            level: Level.Intermediate,
+            learningLanguage: LanguageStruct(
+              code: 'ja',
+              alternateCodes: <String>['jpn'],
+            ),
+            country: _country('JP'),
+          ),
+        ),
+        markProfileComplete: true,
+      );
+
+      expect(updateData['display_name'], 'Alice');
+      expect(updateData['Acquaintance'], isTrue);
+      expect(updateData['isProfileComplete'], isTrue);
+      expect(updateData['learningLanguage.code'], 'ja');
+      expect(updateData['learningLanguage.alternateCodes'], <String>['jpn']);
+      expect(updateData['Country_NS.code'], 'JP');
+      expect(updateData.containsKey('photo_url'), isFalse);
+    });
+
+    test('validates page-level messages', () {
+      expect(
+        validateStudentOnboardingPage(
+          page: StudentOnboardingPage.name,
+          draft: buildStudentOnboardingDraft(
+            displayName: '',
+            gender: Gender.male,
+            level: Level.Basic,
+            learningLanguage: LanguageStruct(code: 'en'),
+            country: _country(),
+          ),
+        ),
+        'Пожалуйста, представьтесь',
+      );
+
+      expect(
+        validateStudentOnboardingPage(
+          page: StudentOnboardingPage.name,
+          draft: buildStudentOnboardingDraft(
+            displayName: 'John123',
+            gender: Gender.male,
+            level: Level.Basic,
+            learningLanguage: LanguageStruct(code: 'en'),
+            country: _country(),
+          ),
+        ),
+        'Неверное имя',
+      );
+
+      for (final validName in <String>[
+        'José Ángel',
+        'Mary-Jane',
+        'O’Connor',
+        '李',
+      ]) {
+        expect(
+          validateStudentOnboardingPage(
+            page: StudentOnboardingPage.name,
+            draft: buildStudentOnboardingDraft(
+              displayName: validName,
+              gender: Gender.male,
+              level: Level.Basic,
+              learningLanguage: LanguageStruct(code: 'en'),
+              country: _country(),
+            ),
+          ),
+          isNull,
+        );
+      }
+
+      expect(
+        validateStudentOnboardingPage(
+          page: StudentOnboardingPage.learningLanguage,
+          draft: buildStudentOnboardingDraft(
+            displayName: 'Alice',
+            gender: Gender.female,
+            level: Level.Basic,
+            learningLanguage: null,
+            country: _country(),
+          ),
+        ),
+        'Выберите язык из списка',
+      );
+
+      expect(
+        validateStudentOnboardingPage(
+          page: StudentOnboardingPage.country,
+          draft: buildStudentOnboardingDraft(
+            displayName: 'Alice',
+            gender: Gender.female,
+            level: Level.Basic,
+            learningLanguage: LanguageStruct(code: 'en'),
+            country: null,
+          ),
+        ),
+        'Выберите страну из списка',
+      );
+    });
+
+    test('filters allowed languages by primary and alternate codes', () {
+      final result = filterAllowedLearningLanguages(
+        allLanguages: <LanguageStruct>[
+          LanguageStruct(code: 'en', nameEn: 'English'),
+          LanguageStruct(code: 'ru', nameEn: 'Russian'),
+          LanguageStruct(code: 'ja', alternateCodes: <String>['jpn']),
+        ],
+        allowedCodes: const <String>['ru', 'jpn'],
+      );
+
+      expect(
+        result.map((language) => language.code).toList(),
+        <String>['ru', 'ja'],
+      );
+    });
+
+    test('accepts legacy non-en-ru learning languages in completion contract',
+        () {
+      expect(
+        hasCompletedStudentOnboardingContract(
+          acquaintance: true,
+          displayName: 'Alice',
+          gender: Gender.female,
+          level: Level.Fluent,
+          learningLanguage: LanguageStruct(
+            code: 'kk',
+            alternateCodes: <String>['kaz'],
+          ),
+          country: _country('KZ'),
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('student onboarding navigation helpers', () {
+    test('builds a 4-step flow when the name page is visible', () {
       final pages = buildVisibleStudentPages(
         showName: true,
-        showPhoto: true,
+        showPhoto: false,
       );
 
-      expect(pages.length, 9);
-      expect(studentDisplayedTotalSteps(visiblePages: pages), 8);
-      expect(pages.first, StudentOnboardingPage.name);
-      expect(pages.last, StudentOnboardingPage.preferredLocation);
-    });
-
-    test('reduces displayed steps when only name is hidden', () {
-      final pages = buildVisibleStudentPages(
-        showName: false,
-        showPhoto: true,
-      );
-
-      expect(studentDisplayedTotalSteps(visiblePages: pages), 7);
-      expect(pages, isNot(contains(StudentOnboardingPage.name)));
       expect(
-        resolveStudentInitialPage(
-          requestedRawIndex: 0,
-          visiblePages: pages,
-        ),
-        StudentOnboardingPage.gender.index,
+        pages,
+        <StudentOnboardingPage>[
+          StudentOnboardingPage.name,
+          StudentOnboardingPage.gender,
+          StudentOnboardingPage.learningLanguage,
+          StudentOnboardingPage.country,
+          StudentOnboardingPage.level,
+        ],
       );
+      expect(studentDisplayedTotalSteps(visiblePages: pages), 5);
     });
 
-    test('reduces displayed steps when name and photo are hidden', () {
+    test('supports legacy resume indices while keeping legacy pages hidden',
+        () {
       final pages = buildVisibleStudentPages(
         showName: false,
         showPhoto: false,
       );
 
-      expect(studentDisplayedTotalSteps(visiblePages: pages), 6);
-      expect(pages, isNot(contains(StudentOnboardingPage.name)));
-      expect(pages, isNot(contains(StudentOnboardingPage.photo)));
-    });
-
-    test('keeps interstitial page non-counted in progress', () {
-      final pages = buildVisibleStudentPages(
-        showName: false,
-        showPhoto: true,
-      );
-
       expect(
-        studentDisplayedCurrentStep(
-          currentRawIndex: StudentOnboardingPage.interstitial.index,
+        pages,
+        <StudentOnboardingPage>[
+          StudentOnboardingPage.gender,
+          StudentOnboardingPage.learningLanguage,
+          StudentOnboardingPage.country,
+          StudentOnboardingPage.level,
+        ],
+      );
+      expect(
+        resolveStudentInitialPage(
+          requestedRawIndex: 4,
           visiblePages: pages,
         ),
-        3,
+        StudentOnboardingPage.level.index,
       );
       expect(
         studentDisplayedCurrentStep(
-          currentRawIndex: StudentOnboardingPage.preferredNativeLanguage.index,
+          currentRawIndex: StudentOnboardingPage.level.index,
           visiblePages: pages,
         ),
-        6,
+        4,
+      );
+      expect(
+        isStudentLastVisiblePage(
+          currentRawIndex: StudentOnboardingPage.level.index,
+          visiblePages: pages,
+        ),
+        isTrue,
       );
     });
   });

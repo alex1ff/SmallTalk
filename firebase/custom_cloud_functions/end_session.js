@@ -58,6 +58,55 @@ function shouldProcessExpiredEndReason({
   return requestTimestamp + clockSkewGraceMs >= expiresAtMillis;
 }
 
+function buildStudentCallCharge({
+  userId,
+  currentMinutes,
+  currentSmallTalks,
+  duration,
+  formattedDuration,
+}) {
+  const safeCurrentMinutes = Number(currentMinutes || 0);
+  const safeCurrentSmallTalks = Number(currentSmallTalks || 0);
+  const freeMinuteApplied = safeCurrentMinutes > 0 || safeCurrentSmallTalks > 0;
+  const billableDuration = freeMinuteApplied ?
+    Math.max(0, duration - 60) :
+    duration;
+  const billableMinutes = parseFloat((billableDuration / 60).toFixed(4));
+  const amountST = parseFloat((billableMinutes / 10).toFixed(4));
+  const newMinutes = parseFloat(
+    Math.max(0, safeCurrentMinutes - billableMinutes).toFixed(4),
+  );
+  const newSmallTalks = parseFloat((newMinutes / 10).toFixed(2));
+
+  return {
+    userId,
+    currentMinutes: safeCurrentMinutes,
+    currentSmallTalks: safeCurrentSmallTalks,
+    freeMinuteApplied,
+    billableDuration,
+    billableMinutes,
+    amountST,
+    newMinutes,
+    newSmallTalks,
+    formattedDuration,
+  };
+}
+
+function resolveTeacherEarningUserId({
+  requesterId,
+  requesterRole,
+  responderId,
+  acceptedResponderRole,
+}) {
+  if (normalizeRole(requesterRole) === "native_speaker") {
+    return requesterId || null;
+  }
+  if (normalizeRole(acceptedResponderRole) === "native_speaker") {
+    return responderId || null;
+  }
+  return null;
+}
+
 /*
 endSession
 Завершает активную видео сессию, списывает баланс студента,
@@ -177,34 +226,68 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       const analyticsDurationMinutes = parseFloat(
         tutorDurationMinutes.toFixed(1),
       );
-      const acceptedResponderRole = normalizeRole(
-        sessionData.matchContext?.acceptedResponderRole,
-      );
-      const hasExplicitResponderRole = acceptedResponderRole.length > 0;
-      const responderEligibleForPayout =
-        !!sessionData.tutorId &&
-        (!hasExplicitResponderRole || acceptedResponderRole !== "student");
+      const formattedDuration = formatDuration(duration);
+
+      const requesterDocRef = db.collection("users").doc(sessionData.studentId);
+      const requesterDoc = await transaction.get(requesterDocRef);
+      const requesterData = requesterDoc.exists ? requesterDoc.data() : {};
+      const responderDocRef = sessionData.tutorId ?
+        db.collection("users").doc(sessionData.tutorId) :
+        null;
+      const responderDoc = responderDocRef ?
+        await transaction.get(responderDocRef) :
+        null;
+      const responderData = responderDoc?.exists ? responderDoc.data() : {};
+      const requesterRole =
+        normalizeRole(sessionData.matchContext?.requesterRole) ||
+        normalizeRole(requesterData.role);
+      const acceptedResponderRole =
+        normalizeRole(sessionData.matchContext?.acceptedResponderRole) ||
+        normalizeRole(responderData.role);
       const tutorEarning = parseFloat(
         (tutorDurationMinutes * TUTOR_RATE_PER_MINUTE).toFixed(2),
       );
-      const formattedDuration = formatDuration(duration);
-
-      const studentDocRef = db.collection("users").doc(sessionData.studentId);
-      const studentDoc = await transaction.get(studentDocRef);
-      const studentData = studentDoc.exists ? studentDoc.data() : {};
-      const currentMinutes = Number(studentData?.balanceST?.minutes || 0);
-      const currentSmallTalks = Number(studentData?.balanceST?.smallTalks || 0);
-
-      // Free minute: first 60 seconds free when student has positive balance
-      const freeMinuteApplied = currentMinutes > 0 || currentSmallTalks > 0;
-      const billableDuration = freeMinuteApplied ? Math.max(0, duration - 60) : duration;
-      const billableMinutes = parseFloat((billableDuration / 60).toFixed(4));
-      const amountST = parseFloat((billableMinutes / 10).toFixed(4));
-
-      const newMinutes = parseFloat(
-        Math.max(0, currentMinutes - billableMinutes).toFixed(4),
+      const teacherEarningUserId = resolveTeacherEarningUserId({
+        requesterId: sessionData.studentId,
+        requesterRole,
+        responderId: sessionData.tutorId || null,
+        acceptedResponderRole,
+      });
+      const chargeRecords = [];
+      if (requesterRole === "student") {
+        chargeRecords.push(buildStudentCallCharge({
+          userId: sessionData.studentId,
+          currentMinutes: requesterData?.balanceST?.minutes,
+          currentSmallTalks: requesterData?.balanceST?.smallTalks,
+          duration,
+          formattedDuration,
+        }));
+      }
+      if (
+        acceptedResponderRole === "student" &&
+        sessionData.tutorId &&
+        sessionData.tutorId !== sessionData.studentId
+      ) {
+        chargeRecords.push(buildStudentCallCharge({
+          userId: sessionData.tutorId,
+          currentMinutes: responderData?.balanceST?.minutes,
+          currentSmallTalks: responderData?.balanceST?.smallTalks,
+          duration,
+          formattedDuration,
+        }));
+      }
+      const teacherEligibleForPayout =
+        !!teacherEarningUserId && chargeRecords.length > 0;
+      const responderEligibleForPayout =
+        teacherEligibleForPayout && acceptedResponderRole === "native_speaker";
+      const amountST = parseFloat(
+        chargeRecords
+          .reduce((total, charge) => total + charge.amountST, 0)
+          .toFixed(4),
       );
-      const newSmallTalks = parseFloat((newMinutes / 10).toFixed(2));
+      const freeMinuteApplied = chargeRecords.some(
+        (charge) => charge.freeMinuteApplied,
+      );
 
       console.log(
         "⏱️ Session duration:",
@@ -216,27 +299,20 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       );
       console.log("👤 Ended by:", endedByRole, endedBy);
       console.log(
-        "💰 Responder earning:",
-        responderEligibleForPayout ? tutorEarning : 0,
+        "💰 Teacher earning:",
+        teacherEligibleForPayout ? tutorEarning : 0,
         "RUB",
       );
       console.log(
-        "🎁 Free minute applied:",
-        freeMinuteApplied,
-        "| Billable:",
-        billableDuration,
-        "s /",
-        billableMinutes,
-        "min",
-      );
-      console.log(
-        "📉 Student balance:",
-        currentMinutes,
-        "→",
-        newMinutes,
-        "minutes,",
-        newSmallTalks,
-        "ST",
+        "📉 Student charges:",
+        chargeRecords.map((charge) => ({
+          userId: charge.userId,
+          currentMinutes: charge.currentMinutes,
+          newMinutes: charge.newMinutes,
+          billableMinutes: charge.billableMinutes,
+          amountST: charge.amountST,
+          freeMinuteApplied: charge.freeMinuteApplied,
+        })),
       );
 
       const pairHistoryWrite = buildCompletedPairHistoryWrite({
@@ -252,8 +328,11 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         duration: duration,
         durationMinutes: tutorDurationMinutes,
         freeMinuteApplied: freeMinuteApplied,
+        chargedParticipantIds: chargeRecords.map((charge) => charge.userId),
         tutorNavigationTriggered: false,
         studentNavigationTriggered: false,
+        "matchContext.teacherEarningUserId": teacherEarningUserId,
+        "matchContext.teacherEligibleForPayout": teacherEligibleForPayout,
         "matchContext.responderEligibleForPayout": responderEligibleForPayout,
       };
 
@@ -284,13 +363,15 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         });
       }
 
-      transaction.update(studentDocRef, {
-        "balanceST.minutes": newMinutes,
-        "balanceST.smallTalks": newSmallTalks,
+      chargeRecords.forEach((charge) => {
+        transaction.update(db.collection("users").doc(charge.userId), {
+          "balanceST.minutes": charge.newMinutes,
+          "balanceST.smallTalks": charge.newSmallTalks,
+        });
       });
 
       console.log(
-        "✅ Transaction completed - session ended, tutor released, student charged",
+        "✅ Transaction completed - session ended and participant balances updated",
       );
       return {
         status: "ended",
@@ -303,10 +384,15 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         freeMinuteApplied,
         analyticsDurationMinutes,
         tutorDurationMinutes,
-        tutorEarning: responderEligibleForPayout ? tutorEarning : 0,
+        tutorEarning: teacherEligibleForPayout ? tutorEarning : 0,
         formattedDuration,
         studentId: sessionData.studentId,
         tutorId: sessionData.tutorId || null,
+        requesterRole,
+        acceptedResponderRole,
+        chargeRecords,
+        teacherEarningUserId,
+        teacherEligibleForPayout,
         responderEligibleForPayout,
       };
     });
@@ -333,33 +419,36 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     // ─── BACKGROUND OPERATIONS (non-blocking for UX) ──────────────────────
     console.log("📊 Running background billing, stats & notifications...");
 
-    const studentRef = db.collection("users").doc(txResult.studentId);
-    const tutorRef = txResult.tutorId
-      ? db.collection("users").doc(txResult.tutorId)
+    const teacherEarningRef = txResult.teacherEarningUserId
+      ? db.collection("users").doc(txResult.teacherEarningUserId)
       : null;
     const todayStr = new Date().toISOString().slice(0, 10); // "2026-02-15"
 
     const backgroundTasks = [];
 
-    // a) Student transaction document
-    backgroundTasks.push(
-      db.collection("transactions").add({
-        userId: studentRef,
-        type: "call_charge",
-        status: "completed",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        amount_ST: Number(txResult.amountST),
-        callDuration: txResult.formattedDuration,
-        sessionId: sessionId,
-        freeMinuteApplied: txResult.freeMinuteApplied,
-      }).catch((e) => console.error("❌ Student transaction doc failed:", e))
-    );
+    // a) Student transaction documents. Student-student sessions charge both
+    // participants but do not create any earning transaction.
+    for (const charge of txResult.chargeRecords || []) {
+      const chargedUserRef = db.collection("users").doc(charge.userId);
+      backgroundTasks.push(
+        db.collection("transactions").add({
+          userId: chargedUserRef,
+          type: "call_charge",
+          status: "completed",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          amount_ST: Number(charge.amountST),
+          callDuration: charge.formattedDuration,
+          sessionId: sessionId,
+          freeMinuteApplied: charge.freeMinuteApplied,
+        }).catch((e) => console.error("❌ Student transaction doc failed:", e))
+      );
+    }
 
-    // b) Tutor balance update + c) Tutor transaction document
-    if (tutorRef && txResult.responderEligibleForPayout) {
+    // b) Teacher balance update + c) teacher transaction document
+    if (teacherEarningRef && txResult.teacherEligibleForPayout) {
       // b) Increment tutor balance
       backgroundTasks.push(
-        tutorRef.update({
+        teacherEarningRef.update({
           balance_NS: admin.firestore.FieldValue.increment(txResult.tutorEarning),
         }).catch((e) => console.error("❌ Tutor balance update failed:", e))
       );
@@ -367,7 +456,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       // c) Tutor transaction document
       backgroundTasks.push(
         db.collection("transactions").add({
-          userId: tutorRef,
+          userId: teacherEarningRef,
           type: "earning",
           status: "completed",
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -390,44 +479,47 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     );
 
     // e) Student stats (all-time + today)
-    backgroundTasks.push(
-      db.runTransaction(async (t) => {
-        const ref = studentRef.collection("stats").doc("allTime");
-        const snap = await t.get(ref);
-        const d = snap.exists ? snap.data() : {};
-        const newSec = (d.totalDurationSeconds || 0) + txResult.duration;
-        t.set(ref, {
-          totalCalls: (d.totalCalls || 0) + 1,
-          totalDurationSeconds: newSec,
-          totalMinutes: formatSecondsToMinStr(newSec),
-          isAllTime: true,
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }).catch((e) => console.error("❌ Student allTime stats failed:", e))
-    );
-
-    backgroundTasks.push(
-      db.runTransaction(async (t) => {
-        const ref = studentRef.collection("stats").doc(todayStr);
-        const snap = await t.get(ref);
-        const d = snap.exists ? snap.data() : {};
-        const newSec = (d.durationSecondsToday || 0) + txResult.duration;
-        t.set(ref, {
-          callsToday: (d.callsToday || 0) + 1,
-          durationSecondsToday: newSec,
-          minutesToday: formatSecondsToMinStr(newSec),
-          date: new Date(todayStr + "T00:00:00Z"),
-          isAllTime: false,
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }).catch((e) => console.error("❌ Student today stats failed:", e))
-    );
-
-    // f) Tutor stats (all-time + today)
-    if (tutorRef && txResult.responderEligibleForPayout) {
+    for (const charge of txResult.chargeRecords || []) {
+      const chargedUserRef = db.collection("users").doc(charge.userId);
       backgroundTasks.push(
         db.runTransaction(async (t) => {
-          const ref = tutorRef.collection("stats").doc("allTime");
+          const ref = chargedUserRef.collection("stats").doc("allTime");
+          const snap = await t.get(ref);
+          const d = snap.exists ? snap.data() : {};
+          const newSec = (d.totalDurationSeconds || 0) + txResult.duration;
+          t.set(ref, {
+            totalCalls: (d.totalCalls || 0) + 1,
+            totalDurationSeconds: newSec,
+            totalMinutes: formatSecondsToMinStr(newSec),
+            isAllTime: true,
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }).catch((e) => console.error("❌ Student allTime stats failed:", e))
+      );
+
+      backgroundTasks.push(
+        db.runTransaction(async (t) => {
+          const ref = chargedUserRef.collection("stats").doc(todayStr);
+          const snap = await t.get(ref);
+          const d = snap.exists ? snap.data() : {};
+          const newSec = (d.durationSecondsToday || 0) + txResult.duration;
+          t.set(ref, {
+            callsToday: (d.callsToday || 0) + 1,
+            durationSecondsToday: newSec,
+            minutesToday: formatSecondsToMinStr(newSec),
+            date: new Date(todayStr + "T00:00:00Z"),
+            isAllTime: false,
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }).catch((e) => console.error("❌ Student today stats failed:", e))
+      );
+    }
+
+    // f) Teacher stats (all-time + today)
+    if (teacherEarningRef && txResult.teacherEligibleForPayout) {
+      backgroundTasks.push(
+        db.runTransaction(async (t) => {
+          const ref = teacherEarningRef.collection("stats").doc("allTime");
           const snap = await t.get(ref);
           const d = snap.exists ? snap.data() : {};
           const newSec = (d.totalDurationSeconds || 0) + txResult.duration;
@@ -444,7 +536,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
 
       backgroundTasks.push(
         db.runTransaction(async (t) => {
-          const ref = tutorRef.collection("stats").doc(todayStr);
+          const ref = teacherEarningRef.collection("stats").doc(todayStr);
           const snap = await t.get(ref);
           const d = snap.exists ? snap.data() : {};
           const newSec = (d.durationSecondsToday || 0) + txResult.duration;
@@ -578,6 +670,8 @@ async function cancelAllSessionNotifications(sessionId) {
 }
 
 exports.__private__ = {
+  buildStudentCallCharge,
+  resolveTeacherEarningUserId,
   shouldProcessExpiredEndReason,
   toMillis,
 };

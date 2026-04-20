@@ -2,10 +2,11 @@ import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'package:flutter/material.dart';
-import 'country_card_model.dart';
 export 'country_card_model.dart';
 
-class CountryCardWidget extends StatefulWidget {
+class CountryCardWidget extends StatelessWidget {
+  static const double selectionIndicatorSize = 25.0;
+
   const CountryCardWidget({
     super.key,
     required this.lang,
@@ -18,50 +19,28 @@ class CountryCardWidget extends StatefulWidget {
   final Future Function(CountryStruct selectedLangData)? callbackAction;
 
   @override
-  State<CountryCardWidget> createState() => _CountryCardWidgetState();
-}
-
-class _CountryCardWidgetState extends State<CountryCardWidget> {
-  late CountryCardModel _model;
-
-  bool get _hasFlag => (widget.lang?.flag ?? '').trim().isNotEmpty;
-
-  @override
-  void setState(VoidCallback callback) {
-    super.setState(callback);
-    _model.onUpdate();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _model = createModel(context, () => CountryCardModel());
-  }
-
-  @override
-  void dispose() {
-    _model.maybeDispose();
-
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final theme = FlutterFlowTheme.of(context);
+    final lang = this.lang;
+    final isSelected = lang == currentSelected;
+    final hasFlag = (lang?.flag ?? '').trim().isNotEmpty;
+    final localization = FFLocalizations.of(context);
+
     return InkWell(
       splashColor: Colors.transparent,
       focusColor: Colors.transparent,
       hoverColor: Colors.transparent,
       highlightColor: Colors.transparent,
       onTap: () async {
-        await widget.callbackAction?.call(
-          widget.lang!,
+        await callbackAction?.call(
+          lang!,
         );
       },
       child: Container(
         width: double.infinity,
         height: 60.0,
         decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
+          color: theme.primaryBackground,
           borderRadius: BorderRadius.circular(26.0),
         ),
         child: Padding(
@@ -73,25 +52,24 @@ class _CountryCardWidgetState extends State<CountryCardWidget> {
                 width: 52.0,
                 height: 52.0,
                 decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
+                  color: theme.secondaryBackground,
                   borderRadius: BorderRadius.circular(22.0),
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),
-                  child: _hasFlag
+                  child: hasFlag
                       ? Text(
-                          widget.lang!.flag,
+                          lang!.flag,
                           textAlign: TextAlign.center,
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'sf pro display',
-                                    fontSize: 22.0,
-                                    letterSpacing: 0.0,
-                                  ),
+                          style: theme.bodyMedium.override(
+                            fontFamily: 'sf pro display',
+                            fontSize: 22.0,
+                            letterSpacing: 0.0,
+                          ),
                         )
                       : Icon(
                           Icons.public_outlined,
-                          color: FlutterFlowTheme.of(context).secondaryText,
+                          color: theme.secondaryText,
                           size: 24.0,
                         ),
                 ),
@@ -100,26 +78,28 @@ class _CountryCardWidgetState extends State<CountryCardWidget> {
                 child: Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 8.0, 0.0),
                   child: Text(
-                    FFLocalizations.of(context).getVariableText(
-                      ruText: widget.lang?.nameRu,
-                      enText: widget.lang?.nameEn,
+                    localization.getVariableText(
+                      ruText: lang?.nameRu,
+                      enText: lang?.nameEn,
                     ),
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          fontSize: 16.0,
-                          letterSpacing: 0.0,
-                        ),
+                    style: theme.bodyMedium.override(
+                      fontFamily: 'sf pro display',
+                      fontSize: 16.0,
+                      letterSpacing: 0.0,
+                    ),
                   ),
                 ),
               ),
-              if (widget.lang == widget.currentSelected)
+              if (isSelected)
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 8.0, 0.0),
                   child: Container(
-                    width: 30.0,
-                    height: 30.0,
+                    key: const ValueKey<String>(
+                        'country_card_selected_indicator'),
+                    width: selectionIndicatorSize,
+                    height: selectionIndicatorSize,
                     decoration: BoxDecoration(
-                      color: FlutterFlowTheme.of(context).success,
+                      color: theme.success,
                       shape: BoxShape.circle,
                     ),
                     child: Align(

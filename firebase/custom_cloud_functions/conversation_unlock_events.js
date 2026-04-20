@@ -2,12 +2,16 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {FieldPath, FieldValue} = require("firebase-admin/firestore");
 const {
+  buildCallEventMessageId,
+  buildCallEventMessagePayload,
   buildConversationSeed,
   buildUnlockEventPayload,
+  conversationMatchesUnlockParticipants,
   getChatsRolloutTimestamp,
   getMaintenanceCursorState,
   getMaintenanceJobRef,
   getRepairPageSize,
+  isEligibleCallEventSession,
   getUnlockEligibility,
   getUnlockParticipants,
   isStaleUnlockPending,
@@ -66,7 +70,21 @@ exports.repairMissingConversationUnlockEvents = functions
     }
 
     for (const sessionDoc of pageSnap.docs) {
-      await repairUnlockEventForSession(sessionDoc.ref, sessionDoc.data() || {});
+      const sessionData = sessionDoc.data() || {};
+      const repairOutcome = await repairUnlockEventForSession(
+        sessionDoc.ref,
+        sessionData,
+      );
+      if (repairOutcome?.shouldEnsureCallEvent) {
+        await maybeWriteCallEventForProcessedOutcome({
+          db,
+          eventRef: repairOutcome.eventRef,
+          sessionId: sessionDoc.id,
+          sessionRef: sessionDoc.ref,
+          sessionData,
+          conversationRef: repairOutcome.conversationRef,
+        });
+      }
     }
 
     const lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
@@ -205,11 +223,25 @@ async function processPendingUnlockEvent(eventRef, sessionId) {
 
       return {
         status: "processed",
+        conversationRef,
+        sessionRef,
+        sessionData,
       };
     });
 
     if (!outcome) {
       return null;
+    }
+
+    if (outcome.status === "processed") {
+      await maybeWriteCallEventForProcessedOutcome({
+        db,
+        eventRef,
+        sessionId,
+        sessionRef: outcome.sessionRef,
+        sessionData: outcome.sessionData,
+        conversationRef: outcome.conversationRef,
+      });
     }
 
     return outcome;
@@ -318,6 +350,151 @@ async function repairUnlockEventForSession(sessionRef, sessionData) {
       return { action: "reset_failed" };
     }
 
-    return { action: "noop", status: eventData.status || "unknown" };
+    return {
+      action: "noop",
+      status: eventData.status || "unknown",
+      shouldEnsureCallEvent:
+        String(eventData.status || "") === "processed" &&
+        !eventData.callEventWrittenAt &&
+        !eventData.callEventSkipReason &&
+        !!eventData.conversationRef,
+      eventRef,
+      conversationRef: eventData.conversationRef || null,
+    };
   });
 }
+
+async function ensureCallEventMessageForProcessedConversation({
+  db,
+  eventRef,
+  sessionId,
+  sessionRef,
+  sessionData,
+  conversationRef,
+}) {
+  const eligibility = getUnlockEligibility(sessionData);
+  if (!eligibility.eligible) {
+    return { status: "skipped_ineligible_session", reason: eligibility.reason };
+  }
+
+  const messageRef = conversationRef
+    .collection("messages")
+    .doc(buildCallEventMessageId(sessionId));
+  const messagePayload = buildCallEventMessagePayload({
+    sessionId,
+    sessionRef,
+    sessionData,
+  });
+
+  return db.runTransaction(async (transaction) => {
+    const conversationSnap = await transaction.get(conversationRef);
+    if (!conversationSnap.exists || conversationSnap.data()?.isUnlocked !== true) {
+      return { status: "skipped_missing_conversation" };
+    }
+
+    const conversationData = conversationSnap.data() || {};
+    const conversationMatchesSession =
+      conversationRef.id === eligibility.pairId &&
+      conversationMatchesUnlockParticipants(
+        {
+          ...conversationData,
+          pairId: conversationData.pairId || conversationRef.id,
+        },
+        eligibility,
+      );
+    if (!conversationMatchesSession) {
+      transaction.set(
+        eventRef,
+        {
+          callEventSkipReason: "conversation_pair_mismatch",
+          callEventErrorCode: FieldValue.delete(),
+          callEventErrorMessage: FieldValue.delete(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return { status: "skipped_conversation_pair_mismatch" };
+    }
+
+    const messageSnap = await transaction.get(messageRef);
+    if (!messageSnap.exists) {
+      transaction.set(messageRef, messagePayload);
+    }
+
+    transaction.set(
+      eventRef,
+      {
+        callEventMessageRef: messageRef,
+        callEventWrittenAt: FieldValue.serverTimestamp(),
+        callEventSkipReason: FieldValue.delete(),
+        callEventErrorCode: FieldValue.delete(),
+        callEventErrorMessage: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    return {
+      status: messageSnap.exists ? "already_exists" : "created",
+      messageRef,
+    };
+  });
+}
+
+async function maybeWriteCallEventForProcessedOutcome({
+  db,
+  eventRef,
+  sessionId,
+  sessionRef,
+  sessionData,
+  conversationRef,
+}) {
+  if (!conversationRef) {
+    return { status: "skipped_missing_conversation_ref" };
+  }
+
+  if (!isEligibleCallEventSession(sessionData)) {
+    await eventRef.set(
+      {
+        callEventSkipReason: "ignored_pre_call_event_rollout",
+        callEventErrorCode: FieldValue.delete(),
+        callEventErrorMessage: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return { status: "skipped_pre_call_event_rollout" };
+  }
+
+  try {
+    return await ensureCallEventMessageForProcessedConversation({
+      db,
+      eventRef,
+      sessionId,
+      sessionRef,
+      sessionData,
+      conversationRef,
+    });
+  } catch (error) {
+    await eventRef.set(
+      {
+        callEventErrorCode: error?.code || "internal",
+        callEventErrorMessage: error?.message || "Unknown error",
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    console.error("❌ Error creating conversation call event:", {
+      sessionId,
+      message: error?.message || "Unknown error",
+    });
+    return { status: "failed" };
+  }
+}
+
+exports.__private__ = {
+  ensureCallEventMessageForProcessedConversation,
+  maybeWriteCallEventForProcessedOutcome,
+  processPendingUnlockEvent,
+  repairUnlockEventForSession,
+};

@@ -560,16 +560,16 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Top up',
     },
     'a3nqo0ec': {
-      'ru': 'Диалог с носителем \nязыка в один клик',
-      'en': 'Chat with a native speaker\nin one click',
+      'ru': 'Найди собеседника\nдля практики',
+      'en': 'Find a partner\nto practice with',
     },
     'crtk35jr': {
       'ru': 'Первая минута бесплатно!',
       'en': 'The first minute is free!',
     },
     'flmz1vkr': {
-      'ru': 'Начать small talk',
-      'en': 'Start a small talk',
+      'ru': 'Начать разговор',
+      'en': 'Start conversation',
     },
     'a4u0etcs': {
       'ru': 'Друзья',
@@ -929,8 +929,8 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Reviews',
     },
     '2sabsnp2': {
-      'ru': 'Начать small talk',
-      'en': 'Start a small talk',
+      'ru': 'Начать разговор',
+      'en': 'Start conversation',
     },
     '1b1w4r9j': {
       'ru': '',

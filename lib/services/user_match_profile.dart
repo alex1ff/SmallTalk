@@ -1,6 +1,12 @@
 import '/backend/schema/enums/enums.dart';
 import '/backend/schema/users_record.dart';
 
+enum TeacherTrackProfileAction {
+  apply,
+  reapply,
+  none,
+}
+
 Map<String, dynamic> _storedMatchProfile(UsersRecord? user) {
   final rawMatchProfile = user?.snapshotData['matchProfile'];
   if (rawMatchProfile is Map<String, dynamic>) {
@@ -28,9 +34,10 @@ String? _normalizedLanguageCode(Object? value) {
 }
 
 bool _hasLegacyConversationLanguage(UsersRecord? user) {
-  return _normalizedLanguageCode(user?.learningLanguage.code) != null ||
-      _normalizedLanguageCode(user?.languageInstructionNS.code) != null ||
-      _normalizedLanguageCode(user?.nativeLanguageNS.code) != null;
+  if (user?.role == UserRole.native_speaker) {
+    return _normalizedLanguageCode(user?.languageInstructionNS.code) != null;
+  }
+  return _normalizedLanguageCode(user?.learningLanguage.code) != null;
 }
 
 List<String> resolveUserSupportedConversationLanguages(UsersRecord? user) {
@@ -43,9 +50,11 @@ List<String> resolveUserSupportedConversationLanguages(UsersRecord? user) {
     }
   }
 
-  addCode(user?.learningLanguage.code);
-  addCode(user?.languageInstructionNS.code);
-  addCode(user?.nativeLanguageNS.code);
+  if (user?.role == UserRole.native_speaker) {
+    addCode(user?.languageInstructionNS.code);
+  } else {
+    addCode(user?.learningLanguage.code);
+  }
 
   final matchProfile = _storedMatchProfile(user);
   final supportedLanguages = matchProfile['supportedLanguages'];
@@ -107,8 +116,59 @@ bool isUserApprovedTeacher(UsersRecord? user) =>
     resolveUserTeacherAccreditationStatus(user) ==
     TeacherAccreditationStatus.approved;
 
+bool hasPendingTeacherVerification(UsersRecord? user) =>
+    user != null && hasPendingTeacherVerificationFromData(user.snapshotData);
+
+bool canRestoreNativeSpeakerTrack(
+  UsersRecord? user, {
+  TeacherAccreditationStatus? requestStatus,
+}) {
+  if (user == null) {
+    return false;
+  }
+
+  if (isUserApprovedTeacher(user) || hasPendingTeacherVerification(user)) {
+    return true;
+  }
+
+  return requestStatus == TeacherAccreditationStatus.pending;
+}
+
+bool shouldMirrorPendingTeacherStatusOnRestore(
+  UsersRecord? user, {
+  TeacherAccreditationStatus? requestStatus,
+}) {
+  if (user == null) {
+    return false;
+  }
+
+  if (hasPendingTeacherVerification(user)) {
+    return true;
+  }
+
+  return requestStatus == TeacherAccreditationStatus.pending;
+}
+
+bool canUseNativeSpeakerShell(UsersRecord? user) =>
+    user?.role == UserRole.native_speaker &&
+    (isUserApprovedTeacher(user) || hasPendingTeacherVerification(user));
+
 bool canAccessTeacherSurfaces(UsersRecord? user) =>
     user?.role == UserRole.native_speaker && isUserApprovedTeacher(user);
+
+TeacherTrackProfileAction resolveTeacherTrackProfileAction(UsersRecord? user) {
+  if (user?.role == UserRole.student) {
+    return TeacherTrackProfileAction.apply;
+  }
+
+  if (user?.role == UserRole.native_speaker &&
+      resolveExplicitTeacherAccreditationStatusFromData(user!.snapshotData) ==
+          TeacherAccreditationStatus.rejected) {
+    return TeacherTrackProfileAction.reapply;
+  }
+
+  return TeacherTrackProfileAction.none;
+}
 
 double resolveUserMatchRatingAverage(UsersRecord? user) {
   if (user?.snapshotData.containsKey('rating') ?? false) {

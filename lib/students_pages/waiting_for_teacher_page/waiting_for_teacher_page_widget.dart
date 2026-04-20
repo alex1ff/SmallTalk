@@ -4,6 +4,7 @@ import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
+import '/services/partner_filter_preferences.dart';
 import '/services/user_match_profile.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -223,18 +224,17 @@ class _WaitingForTeacherPageWidgetState
     final language = _nonEmpty(resolveUserActiveConversationLanguage(user));
     if (language == null) return null;
 
-    final preferredNativeLanguage =
-        _nonEmpty(user.preferences.preferredNativeLanguage.code);
     final preferredCountry = _nonEmpty(user.preferences.preferredLocation.code);
     final preferredPartnerLevel = _nonEmpty(
-      user.preferences.preferredPartnerLevel?.name,
+      resolveEffectivePreferredPartnerLevelName(
+        preferredPartnerLevel: user.preferences.preferredPartnerLevel,
+        currentUserLevel: resolveUserMatchLevel(user),
+      ),
     );
 
     return {
       'language': language,
       if (_isDirectTutorCall) 'directTutorId': _nonEmpty(widget.targetTutorId),
-      if (!_isDirectTutorCall && preferredNativeLanguage != null)
-        'preferredNativeLanguage': preferredNativeLanguage,
       if (!_isDirectTutorCall && preferredCountry != null)
         'preferredCountry': preferredCountry,
       if (!_isDirectTutorCall && preferredPartnerLevel != null)

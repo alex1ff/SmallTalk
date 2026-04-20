@@ -30,6 +30,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final _userFutureCache = <String, Future<UsersRecord>>{};
   final _recentCallsFutureCache = <String, Future<List<VideoSessionsRecord>>>{};
+  int _selectedChatTabIndex = 0;
 
   Future<UsersRecord> _getUserFuture(DocumentReference ref) {
     return _userFutureCache.putIfAbsent(
@@ -45,6 +46,20 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
         currentUid,
         limit: 5,
       ),
+    );
+  }
+
+  Stream<_ConversationsLoadState> _watchConversationsForUser(
+      String currentUid) {
+    if (currentUid.isEmpty) {
+      return Stream.value(const _ConversationsLoadState());
+    }
+
+    return queryConversationsRecord(
+      queryBuilder: (query) =>
+          query.where('participantIds', arrayContains: currentUid),
+    ).map(
+      (conversations) => _ConversationsLoadState(conversations: conversations),
     );
   }
 
@@ -98,6 +113,26 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
         builder: (context) =>
             ChatThreadWidget(conversationRef: conversation.reference),
       ),
+    );
+  }
+
+  String _conversationSubtitle(
+      BuildContext context, ConversationsRecord conversation) {
+    if (conversation.lastMessageType == kConversationMessageTypeCallEvent) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Видео-звонок',
+        enText: 'Video call',
+      );
+    }
+
+    final lastMessageText = (conversation.lastMessageText ?? '').trim();
+    if (lastMessageText.isNotEmpty) {
+      return lastMessageText;
+    }
+
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Чат открыт',
+      enText: 'Chat unlocked',
     );
   }
 
@@ -200,6 +235,101 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
+  Widget _chatTabButton(
+    BuildContext context, {
+    required int index,
+    required String label,
+  }) {
+    final selected = _selectedChatTabIndex == index;
+
+    return Expanded(
+      child: InkWell(
+        splashColor: Colors.transparent,
+        focusColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        onTap: () async {
+          if (_selectedChatTabIndex == index) {
+            return;
+          }
+          setState(() => _selectedChatTabIndex = index);
+        },
+        child: Container(
+          width: double.infinity,
+          height: 100.0,
+          decoration: BoxDecoration(
+            color: valueOrDefault<Color>(
+              selected
+                  ? FlutterFlowTheme.of(context).secondaryBackground
+                  : Colors.transparent,
+              selected
+                  ? FlutterFlowTheme.of(context).secondaryBackground
+                  : Colors.transparent,
+            ),
+            borderRadius: BorderRadius.circular(24.0),
+            shape: BoxShape.rectangle,
+          ),
+          child: Align(
+            alignment: const AlignmentDirectional(0.0, 0.0),
+            child: Text(
+              label,
+              style: FlutterFlowTheme.of(context).bodyMedium.override(
+                    fontFamily: 'sf pro display',
+                    color: valueOrDefault<Color>(
+                      selected
+                          ? FlutterFlowTheme.of(context).primaryText
+                          : FlutterFlowTheme.of(context).secondaryText,
+                      selected
+                          ? FlutterFlowTheme.of(context).primaryText
+                          : FlutterFlowTheme.of(context).secondaryText,
+                    ),
+                    letterSpacing: 0.0,
+                  ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatsTabBar(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(10.0, 8.0, 10.0, 12.0),
+      child: Container(
+        width: double.infinity,
+        height: 40.0,
+        decoration: BoxDecoration(
+          color: FlutterFlowTheme.of(context).primaryBackground,
+          borderRadius: BorderRadius.circular(100.0),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(2.0),
+          child: Row(
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              _chatTabButton(
+                context,
+                index: 0,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Сообщения',
+                  enText: 'Messages',
+                ),
+              ),
+              _chatTabButton(
+                context,
+                index: 1,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Друзья',
+                  enText: 'Friends',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _conversationCard(
     BuildContext context, {
     required ConversationsRecord conversation,
@@ -212,23 +342,27 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     return FutureBuilder<UsersRecord>(
       future: _getUserFuture(partnerRef),
       builder: (context, partnerSnapshot) {
-        if (!partnerSnapshot.hasData) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6.0),
-            child: _buildLoadingState(context),
+        if (partnerSnapshot.hasError) {
+          debugPrint(
+            'FavoriteWidget: failed to load partner ${partnerRef.path}: ${partnerSnapshot.error}',
           );
+          return _buildInlineNotice(
+            context,
+            text: FFLocalizations.of(context).getVariableText(
+              ruText: 'Не удалось загрузить этот чат.',
+              enText: 'Could not load this chat.',
+            ),
+          );
+        }
+
+        if (!partnerSnapshot.hasData) {
+          return _conversationLoadingCard(context);
         }
 
         final partner = partnerSnapshot.data!;
         final unread =
             conversationIsUnreadForUser(conversation, currentUserUid);
-        final lastMessageText = (conversation.lastMessageText ?? '').trim();
-        final subtitle = lastMessageText.isNotEmpty
-            ? lastMessageText
-            : FFLocalizations.of(context).getVariableText(
-                ruText: 'Чат открыт',
-                enText: 'Chat unlocked',
-              );
+        final subtitle = _conversationSubtitle(context, conversation);
 
         return InkWell(
           splashColor: Colors.transparent,
@@ -610,14 +744,254 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
-  Widget _buildEmptyHubState(BuildContext context) {
+  Widget _buildEmptyListState(
+    BuildContext context, {
+    required String text,
+  }) {
     return Center(
       child: SizedBox(
-        height: 500.0,
+        height: 360.0,
         child: EmptyWidget(
-          txt: FFLocalizations.of(context).getVariableText(
-            ruText: 'Пусто. У вас пока нет звонков и сообщений',
-            enText: 'Empty. You do not have calls or messages yet',
+          txt: text,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessagesTabContent(
+    BuildContext context, {
+    required bool conversationsLoading,
+    required bool conversationsLoadFailed,
+    required bool conversationsAccessDenied,
+    required List<ConversationsRecord> conversations,
+  }) {
+    if (conversationsLoading) {
+      return _buildMessagesLoadingList(context);
+    }
+
+    if (conversationsLoadFailed) {
+      return _buildInlineNotice(
+        context,
+        text: conversationsAccessDenied
+            ? FFLocalizations.of(context).getVariableText(
+                ruText: 'Чаты пока недоступны для этого аккаунта.',
+                enText: 'Chats are not available for this account yet.',
+              )
+            : FFLocalizations.of(context).getVariableText(
+                ruText: 'Не удалось загрузить сообщения. Попробуйте позже.',
+                enText: 'Could not load messages. Please try again later.',
+              ),
+      );
+    }
+
+    if (conversations.isEmpty) {
+      return _buildEmptyListState(
+        context,
+        text: FFLocalizations.of(context).getVariableText(
+          ruText: 'У вас пока нет сообщений.',
+          enText: 'You do not have messages yet.',
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: conversations
+          .map(
+            (conversation) => _conversationCard(
+              context,
+              conversation: conversation,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Widget _buildMessagesLoadingList(BuildContext context) {
+    return Column(
+      children: List.generate(
+        4,
+        (_) => _conversationLoadingCard(context),
+      ),
+    );
+  }
+
+  Widget _conversationLoadingCard(BuildContext context) {
+    final placeholderColor = FlutterFlowTheme.of(context).secondaryBackground;
+
+    Widget placeholder({
+      required double width,
+      required double height,
+      required double radius,
+    }) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: placeholderColor,
+          borderRadius: BorderRadius.circular(radius),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 6.0),
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).primaryBackground,
+        borderRadius: BorderRadius.circular(26.0),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10.0),
+        child: Row(
+          children: [
+            placeholder(
+              width: 54.0,
+              height: 54.0,
+              radius: 20.0,
+            ),
+            Expanded(
+              child: Padding(
+                padding:
+                    const EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 0.0, 0.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    placeholder(
+                      width: 140.0,
+                      height: 14.0,
+                      radius: 20.0,
+                    ),
+                    const SizedBox(height: 8.0),
+                    placeholder(
+                      width: 210.0,
+                      height: 12.0,
+                      radius: 20.0,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 10.0),
+              child: placeholder(
+                width: 42.0,
+                height: 12.0,
+                radius: 20.0,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFriendsTabContent(
+    BuildContext context, {
+    required List<DocumentReference> friends,
+    required Map<String, ConversationsRecord> unlockedByPairId,
+  }) {
+    if (friends.isEmpty) {
+      return _buildEmptyListState(
+        context,
+        text: FFLocalizations.of(context).getVariableText(
+          ruText: 'У вас пока нет друзей.',
+          enText: 'You do not have friends yet.',
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: friends.map((friendRef) {
+        final pairId = canonicalConversationPairId(
+          currentUserUid,
+          friendRef.id,
+        );
+        final conversation = unlockedByPairId[pairId];
+        return FutureBuilder<UsersRecord>(
+          future: _getUserFuture(friendRef),
+          builder: (context, friendSnapshot) {
+            if (friendSnapshot.hasError) {
+              debugPrint(
+                'FavoriteWidget: failed to load friend ${friendRef.path}: ${friendSnapshot.error}',
+              );
+              return _buildInlineNotice(
+                context,
+                text: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Не удалось загрузить друга.',
+                  enText: 'Could not load this friend.',
+                ),
+              );
+            }
+
+            if (!friendSnapshot.hasData) {
+              return _friendLoadingCard(context);
+            }
+
+            return _friendCard(
+              context,
+              friend: friendSnapshot.data!,
+              conversation: conversation,
+            );
+          },
+        );
+      }).toList(),
+    );
+  }
+
+  bool _isPermissionDenied(Object? error) =>
+      error is FirebaseException && error.code == 'permission-denied';
+
+  Widget _buildInlineNotice(
+    BuildContext context, {
+    required String text,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 10.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(14.0, 12.0, 14.0, 12.0),
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).primaryBackground,
+        borderRadius: BorderRadius.circular(20.0),
+      ),
+      child: Text(
+        text,
+        style: FlutterFlowTheme.of(context).bodyMedium.override(
+              fontFamily: 'sf pro display',
+              color: FlutterFlowTheme.of(context).secondaryText,
+              fontSize: 14.0,
+              letterSpacing: 0.0,
+            ),
+      ),
+    );
+  }
+
+  Widget _friendLoadingCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: 74.0,
+      margin: const EdgeInsets.only(bottom: 6.0),
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).primaryBackground,
+        borderRadius: BorderRadius.circular(26.0),
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Загружаем друга...',
+              enText: 'Loading friend...',
+            ),
+            style: FlutterFlowTheme.of(context).bodyMedium.override(
+                  fontFamily: 'sf pro display',
+                  color: FlutterFlowTheme.of(context).secondaryText,
+                  fontSize: 14.0,
+                  letterSpacing: 0.0,
+                ),
           ),
         ),
       ),
@@ -656,43 +1030,61 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     return _buildLoadingState(context);
                   }
 
-                  return StreamBuilder<List<ConversationsRecord>>(
-                    stream: queryConversationsRecord(
-                      queryBuilder: (conversationsRecord) =>
-                          conversationsRecord.where(
-                        'participantIds',
-                        arrayContains: currentUserUid,
-                      ),
-                    ),
+                  final friends =
+                      resolveFriendsForUser(currentUserDocument).toList();
+
+                  return StreamBuilder<_ConversationsLoadState>(
+                    stream: _watchConversationsForUser(currentUserUid),
                     builder: (context, conversationsSnapshot) {
-                      if (!conversationsSnapshot.hasData) {
-                        return _buildLoadingState(context);
+                      if (conversationsSnapshot.hasError) {
+                        debugPrint(
+                          'FavoriteWidget: conversations stream error: ${conversationsSnapshot.error}',
+                        );
                       }
 
-                      final conversations = conversationsSnapshot.data!
-                          .where((conversation) => conversation.isUnlocked)
-                          .toList()
-                        ..sort(compareConversationsForInbox);
+                      final conversationsState = conversationsSnapshot.data;
+                      final conversationsError = conversationsSnapshot.error;
+                      final conversationsLoading =
+                          conversationsSnapshot.connectionState ==
+                                  ConnectionState.waiting &&
+                              conversationsState == null &&
+                              !conversationsSnapshot.hasError;
+                      final conversationsLoadFailed =
+                          conversationsSnapshot.hasError;
+                      final conversationsAccessDenied =
+                          _isPermissionDenied(conversationsError);
+
+                      final conversations = conversationsState != null
+                          ? (() {
+                              final loadedConversations = conversationsState
+                                  .conversations
+                                  .where(
+                                      (conversation) => conversation.isUnlocked)
+                                  .toList();
+                              loadedConversations.sort(
+                                compareConversationsForInbox,
+                              );
+                              return loadedConversations;
+                            })()
+                          : <ConversationsRecord>[];
 
                       final unlockedByPairId = {
                         for (final conversation in conversations)
                           conversation.pairId: conversation,
                       };
-                      final friends =
-                          resolveFriendsForUser(currentUserDocument).toList();
-                      final showHubEmptyState = conversations.isEmpty;
-
                       return FutureBuilder<List<VideoSessionsRecord>>(
                         future: _getRecentCallsFuture(currentUserUid),
                         builder: (context, callsSnapshot) {
-                          if (!callsSnapshot.hasData) {
-                            return _buildLoadingState(context);
+                          if (callsSnapshot.hasError) {
+                            debugPrint(
+                              'FavoriteWidget: recent calls future error: ${callsSnapshot.error}',
+                            );
                           }
 
-                          final calls = callsSnapshot.data!;
+                          final calls =
+                              callsSnapshot.data ?? <VideoSessionsRecord>[];
                           final showCalls = calls.isNotEmpty;
-                          final showEmptyState =
-                              showHubEmptyState && !showCalls;
+                          final showFriendsTab = _selectedChatTabIndex == 1;
 
                           return Stack(
                             children: [
@@ -701,93 +1093,24 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const SizedBox(height: 115.0),
-                                    if (showEmptyState)
-                                      _buildEmptyHubState(context),
-                                    if (conversations.isNotEmpty) ...[
-                                      _sectionHeader(
+                                    _buildChatsTabBar(context),
+                                    if (showFriendsTab)
+                                      _buildFriendsTabContent(
                                         context,
-                                        title: FFLocalizations.of(context)
-                                            .getVariableText(
-                                          ruText: 'Сообщения',
-                                          enText: 'Messages',
-                                        ),
-                                        subtitle:
-                                            conversations.length.toString(),
-                                      ),
-                                      ...conversations.map(
-                                        (conversation) => _conversationCard(
-                                          context,
-                                          conversation: conversation,
-                                        ),
-                                      ),
-                                    ],
-                                    _sectionHeader(
-                                      context,
-                                      title: FFLocalizations.of(context)
-                                          .getVariableText(
-                                        ruText: 'Друзья',
-                                        enText: 'Friends',
-                                      ),
-                                      subtitle: friends.length.toString(),
-                                    ),
-                                    if (friends.isEmpty)
-                                      Padding(
-                                        padding: const EdgeInsetsDirectional
-                                            .fromSTEB(
-                                          10.0,
-                                          0.0,
-                                          10.0,
-                                          10.0,
-                                        ),
-                                        child: Text(
-                                          FFLocalizations.of(context)
-                                              .getVariableText(
-                                            ruText: 'Пока нет друзей.',
-                                            enText:
-                                                'You do not have friends yet.',
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                fontSize: 14.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
+                                        friends: friends,
+                                        unlockedByPairId: unlockedByPairId,
                                       )
                                     else
-                                      ...friends.map((friendRef) {
-                                        final pairId =
-                                            canonicalConversationPairId(
-                                          currentUserUid,
-                                          friendRef.id,
-                                        );
-                                        final conversation =
-                                            unlockedByPairId[pairId];
-                                        return FutureBuilder<UsersRecord>(
-                                          future: _getUserFuture(friendRef),
-                                          builder: (context, friendSnapshot) {
-                                            if (!friendSnapshot.hasData) {
-                                              return Padding(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                  vertical: 6.0,
-                                                ),
-                                                child:
-                                                    _buildLoadingState(context),
-                                              );
-                                            }
-                                            return _friendCard(
-                                              context,
-                                              friend: friendSnapshot.data!,
-                                              conversation: conversation,
-                                            );
-                                          },
-                                        );
-                                      }),
+                                      _buildMessagesTabContent(
+                                        context,
+                                        conversationsLoading:
+                                            conversationsLoading,
+                                        conversationsLoadFailed:
+                                            conversationsLoadFailed,
+                                        conversationsAccessDenied:
+                                            conversationsAccessDenied,
+                                        conversations: conversations,
+                                      ),
                                     if (showCalls) ...[
                                       _sectionHeader(
                                         context,
@@ -824,4 +1147,12 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       ),
     );
   }
+}
+
+class _ConversationsLoadState {
+  const _ConversationsLoadState({
+    this.conversations = const <ConversationsRecord>[],
+  });
+
+  final List<ConversationsRecord> conversations;
 }

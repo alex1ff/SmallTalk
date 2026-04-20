@@ -49,9 +49,9 @@ const CANDIDATE_QUERY_BUILDERS = [
     db
       .collection("users")
       .where("language_instruction_NS.code", "==", languageCode),
-  (db, languageCode) =>
-    db.collection("users").where("native_language_NS.code", "==", languageCode),
 ];
+const HIGH_LEVEL_TEACHER_PRIORITY_GROUP_SIZE = 5;
+const HIGH_LEVEL_TEACHER_PRIORITY_TEACHER_SLOTS = 4;
 
 function buildCreateSessionPolicyFields(nowMillis = Date.now()) {
   const sessionPolicyState = buildInitialSessionPolicyState(nowMillis);
@@ -78,6 +78,65 @@ function isTeacherBoostTargetLevel(level) {
 
 function getTeacherBoostScore(tutorProfile = {}, teacherBoostRankingApplied) {
   return teacherBoostRankingApplied && tutorProfile.approvedTeacher ? 1 : 0;
+}
+
+function orderCandidatesWithTeacherPriority(
+  candidateIds = [],
+  detailsById = {},
+  teacherPriorityApplied = false,
+) {
+  const sortedCandidateIds = [...candidateIds].sort((a, b) =>
+    compareCandidateDetails(a, b, detailsById));
+  if (!teacherPriorityApplied) {
+    return sortedCandidateIds;
+  }
+
+  const approvedTeachers = sortedCandidateIds.filter(
+    (id) => detailsById[id]?.approvedTeacher === true,
+  );
+  const otherCandidates = sortedCandidateIds.filter(
+    (id) => detailsById[id]?.approvedTeacher !== true,
+  );
+  if (approvedTeachers.length === 0 || otherCandidates.length === 0) {
+    return sortedCandidateIds;
+  }
+
+  const ordered = [];
+  let teacherIndex = 0;
+  let otherIndex = 0;
+  while (
+    teacherIndex < approvedTeachers.length ||
+    otherIndex < otherCandidates.length
+  ) {
+    for (
+      let slot = 0;
+      slot < HIGH_LEVEL_TEACHER_PRIORITY_TEACHER_SLOTS &&
+      teacherIndex < approvedTeachers.length;
+      slot += 1
+    ) {
+      ordered.push(approvedTeachers[teacherIndex]);
+      teacherIndex += 1;
+    }
+
+    const groupHasOtherSlot =
+      HIGH_LEVEL_TEACHER_PRIORITY_TEACHER_SLOTS <
+      HIGH_LEVEL_TEACHER_PRIORITY_GROUP_SIZE;
+    if (groupHasOtherSlot && otherIndex < otherCandidates.length) {
+      ordered.push(otherCandidates[otherIndex]);
+      otherIndex += 1;
+    }
+
+    if (teacherIndex >= approvedTeachers.length) {
+      ordered.push(...otherCandidates.slice(otherIndex));
+      break;
+    }
+    if (otherIndex >= otherCandidates.length) {
+      ordered.push(...approvedTeachers.slice(teacherIndex));
+      break;
+    }
+  }
+
+  return ordered;
 }
 
 function compareCandidateDetails(leftId, rightId, detailsById) {
@@ -132,7 +191,6 @@ exports.createVideoSession = functions
       // Получаем параметры из вызова функции
       const {
         language,
-        preferredNativeLanguage,
         preferredCountry,
         preferredPartnerLevel,
         directTutorId: rawDirectTutorId,
@@ -154,8 +212,7 @@ exports.createVideoSession = functions
         unavailableOrInCall: 0,
         sameDayRepeat: 0,
         languageMismatch: 0,
-        missingNativeLanguage: 0,
-        nativeLanguageMismatch: 0,
+        unapprovedTeacher: 0,
         missingLevel: 0,
         levelMismatch: 0,
         missingCountry: 0,
@@ -173,7 +230,6 @@ exports.createVideoSession = functions
         requestedLanguage: readLanguageCode(language) || null,
         matchMode: isDirectTutorCall ? "direct" : "filtered",
         directTutorId: isDirectTutorCall ? directTutorId : null,
-        preferredNativeLanguage: readLanguageCode(preferredNativeLanguage) || "any",
         preferredCountry: readCountryCode(preferredCountry) || "any",
         preferredPartnerLevel: readLevelValue(preferredPartnerLevel) || "any",
       });
@@ -209,9 +265,6 @@ exports.createVideoSession = functions
         );
       }
 
-      const normalizedPreferredNativeLanguage = readLanguageCode(
-        preferredNativeLanguage,
-      );
       const normalizedPreferredCountry = readCountryCode(preferredCountry);
       const normalizedPreferredPartnerLevel = readLevelValue(
         preferredPartnerLevel,
@@ -372,38 +425,23 @@ exports.createVideoSession = functions
           };
         }
 
-        const candidateNativeLanguage = readLanguageCode(
-          tutorData.native_language_NS,
+        const tutorProfile = buildMatchProfile(
+          directTutorId,
+          tutorData,
+          normalizedLanguage,
         );
-        if (normalizedPreferredNativeLanguage && !candidateNativeLanguage) {
-          tutorFilterStats.missingNativeLanguage += 1;
-          return {
-            status: "no_tutors_available",
-            message: "Selected partner is not available right now",
-          };
-        }
-        if (
-          normalizedPreferredNativeLanguage &&
-          candidateNativeLanguage !== normalizedPreferredNativeLanguage
-        ) {
-          tutorFilterStats.nativeLanguageMismatch += 1;
+        if (tutorRole === "native_speaker" && !tutorProfile.approvedTeacher) {
+          tutorFilterStats.unapprovedTeacher += 1;
           addTutorSample({
             tutorId: directTutorId,
             outcome: "skip",
-            reason: "native_language_mismatch",
-            tutorNativeLanguage: candidateNativeLanguage || null,
+            reason: "unapproved_teacher",
           });
           return {
             status: "no_tutors_available",
             message: "Selected partner is not available right now",
           };
         }
-
-        const tutorProfile = buildMatchProfile(
-          directTutorId,
-          tutorData,
-          normalizedLanguage,
-        );
         const candidateLevel = readMatchLevelValue(tutorData);
         if (normalizedPreferredPartnerLevel && !candidateLevel) {
           tutorFilterStats.missingLevel += 1;
@@ -445,7 +483,6 @@ exports.createVideoSession = functions
         tutorFilterStats.matched = 1;
         tutorDetails[directTutorId] = {
           role: tutorRole,
-          nativeLanguage: candidateNativeLanguage || "unknown",
           country: candidateCountry || "unknown",
           ratingAverage: tutorProfile.ratingAverage,
           ratingCount: tutorProfile.ratingCount,
@@ -602,38 +639,20 @@ exports.createVideoSession = functions
             continue;
           }
 
-          const candidateNativeLanguage = readLanguageCode(
-            tutorData.native_language_NS,
-          );
-          if (normalizedPreferredNativeLanguage && !candidateNativeLanguage) {
-            tutorFilterStats.missingNativeLanguage += 1;
-            addTutorSample({
-              tutorId,
-              outcome: "skip",
-              reason: "missing_native_language",
-            });
-            continue;
-          }
-
-          if (
-            normalizedPreferredNativeLanguage &&
-            candidateNativeLanguage !== normalizedPreferredNativeLanguage
-          ) {
-            tutorFilterStats.nativeLanguageMismatch += 1;
-            addTutorSample({
-              tutorId,
-              outcome: "skip",
-              reason: "native_language_mismatch",
-              tutorNativeLanguage: candidateNativeLanguage || null,
-            });
-            continue;
-          }
-
           const tutorProfile = buildMatchProfile(
             tutorId,
             tutorData,
             normalizedLanguage,
           );
+          if (tutorRole === "native_speaker" && !tutorProfile.approvedTeacher) {
+            tutorFilterStats.unapprovedTeacher += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "unapproved_teacher",
+            });
+            continue;
+          }
           const candidateLevel = readMatchLevelValue(tutorData);
           if (normalizedPreferredPartnerLevel && !candidateLevel) {
             tutorFilterStats.missingLevel += 1;
@@ -687,7 +706,6 @@ exports.createVideoSession = functions
           tutorFilterStats.matched += 1;
           tutorDetails[tutorId] = {
             role: tutorRole,
-            nativeLanguage: candidateNativeLanguage || "unknown",
             country: candidateCountry || "unknown",
             ratingAverage: tutorProfile.ratingAverage,
             ratingCount: tutorProfile.ratingCount,
@@ -719,9 +737,6 @@ exports.createVideoSession = functions
         requestedLanguage: normalizedLanguage,
         matchMode: isDirectTutorCall ? "direct" : "filtered",
         directTutorId: isDirectTutorCall ? directTutorId : null,
-        preferredNativeLanguage: isDirectTutorCall
-          ? "skipped_for_direct_call"
-          : (normalizedPreferredNativeLanguage || "any"),
         preferredCountry: isDirectTutorCall
           ? "skipped_for_direct_call"
           : (normalizedPreferredCountry || "any"),
@@ -738,8 +753,7 @@ exports.createVideoSession = functions
           unavailableOrInCall: tutorFilterStats.unavailableOrInCall,
           sameDayRepeat: tutorFilterStats.sameDayRepeat,
           languageMismatch: tutorFilterStats.languageMismatch,
-          missingNativeLanguage: tutorFilterStats.missingNativeLanguage,
-          nativeLanguageMismatch: tutorFilterStats.nativeLanguageMismatch,
+          unapprovedTeacher: tutorFilterStats.unapprovedTeacher,
           missingLevel: tutorFilterStats.missingLevel,
           levelMismatch: tutorFilterStats.levelMismatch,
           missingCountry: tutorFilterStats.missingCountry,
@@ -762,7 +776,6 @@ exports.createVideoSession = functions
           requestedLanguage: normalizedLanguage,
           matchMode: isDirectTutorCall ? "direct" : "filtered",
           directTutorId: isDirectTutorCall ? directTutorId : null,
-          preferredNativeLanguage: normalizedPreferredNativeLanguage || "any",
           preferredCountry: normalizedPreferredCountry || "any",
           preferredPartnerLevel: normalizedPreferredPartnerLevel || "any",
         });
@@ -775,7 +788,12 @@ exports.createVideoSession = functions
       }
 
       if (!isDirectTutorCall) {
-        availableTutors.sort((a, b) => compareCandidateDetails(a, b, tutorDetails));
+        const orderedTutors = orderCandidatesWithTeacherPriority(
+          availableTutors,
+          tutorDetails,
+          teacherBoostRankingApplied,
+        );
+        availableTutors.splice(0, availableTutors.length, ...orderedTutors);
         console.log("📊 Matched tutors after sorting", {
           count: availableTutors.length,
           topTutorPreview: availableTutors.slice(0, 3).map((id) => ({
@@ -828,7 +846,6 @@ exports.createVideoSession = functions
 
         // Предпочтения студента (для логов и аналитики)
         studentPreferences: {
-          nativeLanguage: normalizedPreferredNativeLanguage || null,
           country: normalizedPreferredCountry || null,
         },
 
@@ -845,7 +862,6 @@ exports.createVideoSession = functions
           directCandidateId: isDirectTutorCall ? directTutorId : null,
           requesterProfile,
           filters: {
-            preferredNativeLanguage: normalizedPreferredNativeLanguage || null,
             preferredCountry: normalizedPreferredCountry || null,
             preferredPartnerLevel: normalizedPreferredPartnerLevel || null,
           },
@@ -1078,6 +1094,7 @@ exports.__private__ = {
   compareCandidateDetails,
   getTeacherBoostScore,
   isTeacherBoostTargetLevel,
+  orderCandidatesWithTeacherPriority,
 };
 
 async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) {

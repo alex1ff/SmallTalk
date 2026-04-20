@@ -1,6 +1,7 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
+import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/user_match_profile.dart';
@@ -77,8 +78,31 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
             Container(
               width: 45.0,
               height: 45.0,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
+                boxShadow: const [
+                  BoxShadow(
+                    blurRadius: 7.0,
+                    color: Color(0x0D2C2C2C),
+                    offset: Offset(
+                      0.0,
+                      2.0,
+                    ),
+                  )
+                ],
                 shape: BoxShape.circle,
+              ),
+              child: FlutterFlowIconButton(
+                borderRadius: 70.0,
+                buttonSize: 45.0,
+                fillColor: Colors.white,
+                icon: Icon(
+                  FFIcons.kchevronLeft,
+                  color: FlutterFlowTheme.of(context).primaryText,
+                  size: 20.0,
+                ),
+                onPressed: () async {
+                  context.safePop();
+                },
               ),
             ),
             Text(
@@ -93,13 +117,7 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
                     fontWeight: FontWeight.normal,
                   ),
             ),
-            Container(
-              width: 45.0,
-              height: 45.0,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-              ),
-            ),
+            const SizedBox(width: 45.0),
           ],
         ),
       ),

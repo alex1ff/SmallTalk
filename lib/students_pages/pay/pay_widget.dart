@@ -14,6 +14,7 @@ import '/index.dart';
 import 'package:collection/collection.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:easy_debounce/easy_debounce.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -39,8 +40,10 @@ class PayWidget extends StatefulWidget {
 }
 
 class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
+  static List<PackagesRecord>? _packagesMemoryCache;
+  static Future<List<PackagesRecord>>? _packagesInFlightFuture;
+
   late PayModel _model;
-  late Future<List<PackagesRecord>> _packagesFuture;
   bool _isCreatingPaymentSession = false;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
@@ -51,13 +54,9 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _model = createModel(context, () => PayModel());
-    _packagesFuture = queryPackagesRecordOnce();
-    _packagesFuture.then((packages) {
-      if (!mounted || packages.isEmpty || _model.tarifDoc != null) {
-        return;
-      }
-      safeSetState(() => _model.tarifDoc = packages.first);
-    });
+    _model.packagesFuture ??= _getPackagesFuture(
+      forceRefresh: _packagesMemoryCache != null,
+    );
 
     _model.nameTextController ??= TextEditingController();
     _model.nameFocusNode ??= FocusNode();
@@ -91,6 +90,76 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
     _model.dispose();
 
     super.dispose();
+  }
+
+  Future<List<PackagesRecord>> _getPackagesFuture({
+    bool forceRefresh = false,
+  }) {
+    final cachedPackages = _packagesMemoryCache;
+    if (!forceRefresh && cachedPackages != null) {
+      return SynchronousFuture<List<PackagesRecord>>(cachedPackages);
+    }
+
+    final inFlightFuture = _packagesInFlightFuture;
+    if (inFlightFuture != null) {
+      return inFlightFuture;
+    }
+
+    late final Future<List<PackagesRecord>> packagesFuture;
+    packagesFuture = queryPackagesRecordOnce().then((packages) {
+      final normalizedPackages = List<PackagesRecord>.unmodifiable(packages);
+      if (normalizedPackages.isNotEmpty) {
+        _packagesMemoryCache = normalizedPackages;
+      } else {
+        _packagesMemoryCache = null;
+      }
+      return normalizedPackages;
+    }).whenComplete(() {
+      if (identical(_packagesInFlightFuture, packagesFuture)) {
+        _packagesInFlightFuture = null;
+      }
+    });
+
+    _packagesInFlightFuture = packagesFuture;
+    return packagesFuture;
+  }
+
+  PackagesRecord? _effectiveSelectedPackage([
+    List<PackagesRecord>? packages,
+  ]) {
+    final availablePackages = packages ?? _packagesMemoryCache ?? const [];
+    if (availablePackages.isEmpty) {
+      return _model.tarifDoc;
+    }
+
+    final selectedReferencePath = _model.tarifDoc?.reference.path;
+    if (selectedReferencePath == null) {
+      return availablePackages.first;
+    }
+
+    return availablePackages.firstWhereOrNull(
+          (record) => record.reference.path == selectedReferencePath,
+        ) ??
+        availablePackages.first;
+  }
+
+  Future<PackagesRecord?> _resolveSelectedPackageForCheckout() async {
+    if (_packagesInFlightFuture != null) {
+      try {
+        final packages = await (_model.packagesFuture ??= _getPackagesFuture());
+        return _effectiveSelectedPackage(packages);
+      } catch (_) {
+        return _effectiveSelectedPackage();
+      }
+    }
+
+    final currentSelection = _effectiveSelectedPackage();
+    if (currentSelection != null) {
+      return currentSelection;
+    }
+
+    final packages = await (_model.packagesFuture ??= _getPackagesFuture());
+    return _effectiveSelectedPackage(packages);
   }
 
   String? _normalizeVisibleErrorMessage(String? rawMessage) {
@@ -333,7 +402,7 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
       return;
     }
 
-    final selectedPackage = _model.tarifDoc;
+    final selectedPackage = await _resolveSelectedPackageForCheckout();
     if (selectedPackage == null) {
       if (animationsMap['columnOnActionTriggerAnimation'] != null) {
         animationsMap['columnOnActionTriggerAnimation']!
@@ -447,7 +516,8 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                             padding:
                                 EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
                             child: FutureBuilder<List<PackagesRecord>>(
-                              future: _packagesFuture,
+                              future: _model.packagesFuture,
+                              initialData: _packagesMemoryCache,
                               builder: (context, snapshot) {
                                 // Customize what your widget looks like when it's loading.
                                 if (!snapshot.hasData) {
@@ -455,6 +525,10 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                 }
                                 List<PackagesRecord>
                                     listViewPackagesRecordList = snapshot.data!;
+                                final effectiveSelectedPackage =
+                                    _effectiveSelectedPackage(
+                                  listViewPackagesRecordList,
+                                );
 
                                 return Column(
                                   mainAxisSize: MainAxisSize.min,
@@ -491,9 +565,9 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                               height: 90,
                                               decoration: BoxDecoration(
                                                 color: listViewPackagesRecord
-                                                            .reference ==
-                                                        _model
-                                                            .tarifDoc?.reference
+                                                            .reference.path ==
+                                                        effectiveSelectedPackage
+                                                            ?.reference.path
                                                     ? FlutterFlowTheme.of(
                                                             context)
                                                         .primary
@@ -503,15 +577,14 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                                 borderRadius:
                                                     BorderRadius.circular(26),
                                                 border: Border.all(
-                                                  color:
-                                                      listViewPackagesRecord
-                                                                  .reference ==
-                                                              _model.tarifDoc
-                                                                  ?.reference
-                                                          ? FlutterFlowTheme.of(
-                                                                  context)
-                                                              .primaryText
-                                                          : Colors.transparent,
+                                                  color: listViewPackagesRecord
+                                                              .reference.path ==
+                                                          effectiveSelectedPackage
+                                                              ?.reference.path
+                                                      ? FlutterFlowTheme.of(
+                                                              context)
+                                                          .primaryText
+                                                      : Colors.transparent,
                                                   width: 1,
                                                 ),
                                               ),
@@ -540,10 +613,10 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                                               .override(
                                                                 fontFamily:
                                                                     'Cool',
-                                                                color: listViewPackagesRecord
-                                                                            .reference ==
-                                                                        _model.tarifDoc
+                                                                color: listViewPackagesRecord.reference.path ==
+                                                                        effectiveSelectedPackage
                                                                             ?.reference
+                                                                            .path
                                                                     ? FlutterFlowTheme.of(
                                                                             context)
                                                                         .primaryBackground
@@ -566,10 +639,10 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                                               .override(
                                                                 fontFamily:
                                                                     'Cool',
-                                                                color: listViewPackagesRecord
-                                                                            .reference ==
-                                                                        _model.tarifDoc
+                                                                color: listViewPackagesRecord.reference.path ==
+                                                                        effectiveSelectedPackage
                                                                             ?.reference
+                                                                            .path
                                                                     ? FlutterFlowTheme.of(
                                                                             context)
                                                                         .primaryBackground
@@ -606,10 +679,10 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                                                   fontFamily:
                                                                       'sf pro display',
                                                                   color: listViewPackagesRecord
-                                                                              .reference ==
-                                                                          _model
-                                                                              .tarifDoc
+                                                                              .reference.path ==
+                                                                          effectiveSelectedPackage
                                                                               ?.reference
+                                                                              .path
                                                                       ? FlutterFlowTheme.of(
                                                                               context)
                                                                           .success
@@ -638,10 +711,10 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                                                   fontFamily:
                                                                       'sf pro display',
                                                                   color: listViewPackagesRecord
-                                                                              .reference ==
-                                                                          _model
-                                                                              .tarifDoc
+                                                                              .reference.path ==
+                                                                          effectiveSelectedPackage
                                                                               ?.reference
+                                                                              .path
                                                                       ? FlutterFlowTheme.of(
                                                                               context)
                                                                           .primaryBackground
@@ -668,8 +741,9 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                                               ),
                                             ),
                                             if (listViewPackagesRecord
-                                                    .reference ==
-                                                _model.tarifDoc?.reference)
+                                                    .reference.path ==
+                                                effectiveSelectedPackage
+                                                    ?.reference.path)
                                               Padding(
                                                 padding: EdgeInsetsDirectional
                                                     .fromSTEB(0, 0, 2, 0),
@@ -1236,33 +1310,44 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
                   ),
                   child: Padding(
                     padding: EdgeInsetsDirectional.fromSTEB(6, 12, 6, 35),
-                    child: ButtonWidget(
-                      text: FFLocalizations.of(context).getText(
-                        '5visqusd' /* Оплатить */,
-                      ),
-                      loadingText: FFLocalizations.of(context).getVariableText(
-                        ruText: 'Создаем оплату...',
-                        enText: 'Creating payment...',
-                      ),
-                      busyStyle: ButtonBusyStyle.spinner,
-                      keyboardAwarePadding: false,
-                      padding: EdgeInsets.zero,
-                      trailingContent: _model.tarifDoc != null
-                          ? Text(
-                              '${_model.tarifDoc!.price.toString()}₽',
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'sf pro display',
-                                    color: FlutterFlowTheme.of(context)
-                                        .secondaryText,
-                                    fontSize: 15,
-                                    letterSpacing: 0.0,
-                                  ),
-                            )
-                          : null,
-                      action: () async {
-                        await _handlePayPressed();
+                    child: FutureBuilder<List<PackagesRecord>>(
+                      future: _model.packagesFuture,
+                      initialData: _packagesMemoryCache,
+                      builder: (context, snapshot) {
+                        final effectiveSelectedPackage = snapshot.hasData
+                            ? _effectiveSelectedPackage(snapshot.data!)
+                            : _effectiveSelectedPackage();
+
+                        return ButtonWidget(
+                          text: FFLocalizations.of(context).getText(
+                            '5visqusd' /* Оплатить */,
+                          ),
+                          loadingText:
+                              FFLocalizations.of(context).getVariableText(
+                            ruText: 'Создаем оплату...',
+                            enText: 'Creating payment...',
+                          ),
+                          busyStyle: ButtonBusyStyle.spinner,
+                          keyboardAwarePadding: false,
+                          padding: EdgeInsets.zero,
+                          trailingContent: effectiveSelectedPackage != null
+                              ? Text(
+                                  '${effectiveSelectedPackage.price.toString()}₽',
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        color: FlutterFlowTheme.of(context)
+                                            .secondaryText,
+                                        fontSize: 15,
+                                        letterSpacing: 0.0,
+                                      ),
+                                )
+                              : null,
+                          action: () async {
+                            await _handlePayPressed();
+                          },
+                        );
                       },
                     ),
                   ),

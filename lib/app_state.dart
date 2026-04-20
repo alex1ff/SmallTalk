@@ -39,6 +39,7 @@ class FFAppState extends ChangeNotifier {
               .withoutNulls
               .toList() ??
           _languagesList;
+      _bumpLanguagesListRevision();
     });
     _safeInit(() {
       _isNativeSpeaker =
@@ -90,11 +91,18 @@ class FFAppState extends ChangeNotifier {
     ),
   ];
   List<LanguageStruct> _languagesList = [];
+  int _languagesListRevision = 0;
   List<LanguageStruct> get languagesList => _languagesList;
+  int get languagesListRevision => _languagesListRevision;
   set languagesList(List<LanguageStruct> value) {
     _languagesList = value;
+    _bumpLanguagesListRevision();
     prefs.setStringList(
         'ff_languagesList', value.map((x) => x.serialize()).toList());
+  }
+
+  void _bumpLanguagesListRevision() {
+    _languagesListRevision += 1;
   }
 
   Future<void> _loadDefaultLanguagesFromAsset() async {
@@ -113,31 +121,37 @@ class FFAppState extends ChangeNotifier {
 
       if (parsedLanguages.isNotEmpty) {
         _languagesList = List<LanguageStruct>.from(parsedLanguages);
+        _bumpLanguagesListRevision();
       } else if (_languagesList.isEmpty) {
         _languagesList = List<LanguageStruct>.from(_fallbackLanguagesCatalog);
+        _bumpLanguagesListRevision();
       }
     } catch (e) {
       debugPrint('FFAppState: Failed to load language catalog asset: $e');
       if (_languagesList.isEmpty) {
         _languagesList = List<LanguageStruct>.from(_fallbackLanguagesCatalog);
+        _bumpLanguagesListRevision();
       }
     }
   }
 
   void addToLanguagesList(LanguageStruct value) {
     languagesList.add(value);
+    _bumpLanguagesListRevision();
     prefs.setStringList(
         'ff_languagesList', _languagesList.map((x) => x.serialize()).toList());
   }
 
   void removeFromLanguagesList(LanguageStruct value) {
     languagesList.remove(value);
+    _bumpLanguagesListRevision();
     prefs.setStringList(
         'ff_languagesList', _languagesList.map((x) => x.serialize()).toList());
   }
 
   void removeAtIndexFromLanguagesList(int index) {
     languagesList.removeAt(index);
+    _bumpLanguagesListRevision();
     prefs.setStringList(
         'ff_languagesList', _languagesList.map((x) => x.serialize()).toList());
   }
@@ -147,12 +161,14 @@ class FFAppState extends ChangeNotifier {
     LanguageStruct Function(LanguageStruct) updateFn,
   ) {
     languagesList[index] = updateFn(_languagesList[index]);
+    _bumpLanguagesListRevision();
     prefs.setStringList(
         'ff_languagesList', _languagesList.map((x) => x.serialize()).toList());
   }
 
   void insertAtIndexInLanguagesList(int index, LanguageStruct value) {
     languagesList.insert(index, value);
+    _bumpLanguagesListRevision();
     prefs.setStringList(
         'ff_languagesList', _languagesList.map((x) => x.serialize()).toList());
   }

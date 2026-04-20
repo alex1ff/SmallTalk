@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const assert = require('node:assert/strict');
 const { createRequire } = require('module');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
@@ -390,6 +391,15 @@ async function runRulesChecks() {
       );
     });
 
+    await check('Firestore self teacher pending status update allowed', async () => {
+      await assertSucceeds(
+        userA.firestore().doc('users/userA').update({
+          teacherAccreditationStatus: 'pending',
+          verif_NS: false,
+        }),
+      );
+    });
+
     await check('Firestore self legacy teacher verification update denied', async () => {
       await assertFails(
         userA.firestore().doc('users/userA').update({
@@ -431,6 +441,13 @@ async function runRulesChecks() {
           nativeLanguage: { code: 'ru' },
           country: { code: 'US' },
           aboutMe: 'Request bio',
+          accreditation: {
+            teachingExperience: '1_3_years',
+            teachingFormats: ['conversation', 'grammar'],
+            qualificationProof: 'certificate',
+            teachingMethod: 'Short method description',
+            acceptedTeacherRules: true,
+          },
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         }),
@@ -441,6 +458,15 @@ async function runRulesChecks() {
       await assertSucceeds(
         teacherRequestRef.update({
           aboutMe: 'Updated request bio',
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    await check('Firestore self teacher verification request review fields denied', async () => {
+      await assertFails(
+        teacherRequestRef.update({
+          reviewComment: 'Looks good',
           updatedAt: serverTimestamp(),
         }),
       );
@@ -633,6 +659,37 @@ async function runRulesChecks() {
 
     await check('Chat participant conversation read allowed', async () => {
       await assertSucceeds(userA.firestore().doc('conversations/userA_userB').get());
+    });
+
+    await check('Chat missing conversation get returns not found for signed-in user', async () => {
+      const snapshot = await assertSucceeds(
+        userA.firestore().doc('conversations/userA_userD').get(),
+      );
+      assert.equal(snapshot.exists, false);
+    });
+
+    await check('Chat conversations collection query denied', async () => {
+      await assertFails(
+        userA
+          .firestore()
+          .collection('conversations')
+          .where('participantIds', 'array-contains', 'userA')
+          .get(),
+      );
+    });
+
+    await check('Chat conversations collection scan denied', async () => {
+      await assertFails(userA.firestore().collection('conversations').get());
+    });
+
+    await check('Chat conversations query for another participant denied', async () => {
+      await assertFails(
+        userA
+          .firestore()
+          .collection('conversations')
+          .where('participantIds', 'array-contains', 'userB')
+          .get(),
+      );
     });
 
     await check('Chat non-participant conversation read denied', async () => {
@@ -1699,7 +1756,8 @@ async function runCreateVideoSessionMatrixCheck() {
         blockedUsers: [],
         learningLanguage: { code: "en" },
         native_language_NS: { code: "ru" },
-        language_instruction_NS: { code: "es" },
+        language_instruction_NS: { code: "en" },
+        teacherAccreditationStatus: "approved",
         rating: { average: 4.7, totalReviews: 12 },
       },
       studentCandidateData: {
@@ -1718,6 +1776,7 @@ async function runCreateVideoSessionMatrixCheck() {
         learningLanguage: { code: "es" },
         language_instruction_NS: { code: "en" },
         native_language_NS: { code: "en" },
+        teacherAccreditationStatus: "approved",
         rating: { average: 4.9, totalReviews: 24 },
         availabilityToday: { enabled: true },
         Country_NS: { code: "US" },
@@ -1728,6 +1787,7 @@ async function runCreateVideoSessionMatrixCheck() {
         blockedUsers: [],
         language_instruction_NS: { code: "it" },
         native_language_NS: { code: "it" },
+        teacherAccreditationStatus: "approved",
         availabilityToday: { enabled: true },
       },
       expectedRequesterRole: "native_speaker",
@@ -1761,6 +1821,7 @@ async function runCreateVideoSessionMatrixCheck() {
         blockedUsers: [],
         language_instruction_NS: { code: "fr" },
         native_language_NS: { code: "fr" },
+        teacherAccreditationStatus: "approved",
         rating: { average: 4.8, totalReviews: 19 },
         availabilityToday: { enabled: true },
         Country_NS: { code: "CA" },
@@ -1771,6 +1832,7 @@ async function runCreateVideoSessionMatrixCheck() {
         blockedUsers: [],
         language_instruction_NS: { code: "it" },
         native_language_NS: { code: "it" },
+        teacherAccreditationStatus: "approved",
         availabilityToday: { enabled: true },
       },
       expectedRequesterRole: "student",
@@ -1805,6 +1867,7 @@ async function runCreateVideoSessionMatrixCheck() {
         blockedUsers: [],
         language_instruction_NS: { code: "it" },
         native_language_NS: { code: "it" },
+        teacherAccreditationStatus: "approved",
         availabilityToday: { enabled: true },
       },
       expectedRequesterRole: "student",
@@ -1831,6 +1894,7 @@ async function runCreateVideoSessionMatrixCheck() {
         blockedUsers: [],
         language_instruction_NS: { code: "pt" },
         native_language_NS: { code: "pt" },
+        teacherAccreditationStatus: "approved",
         rating: { average: 4.6, totalReviews: 14 },
         availabilityToday: { enabled: true },
         Country_NS: { code: "BR" },
@@ -1841,6 +1905,7 @@ async function runCreateVideoSessionMatrixCheck() {
         blockedUsers: [],
         language_instruction_NS: { code: "it" },
         native_language_NS: { code: "it" },
+        teacherAccreditationStatus: "approved",
         availabilityToday: { enabled: true },
       },
       expectedRequesterRole: "student",
@@ -1858,7 +1923,8 @@ async function runCreateVideoSessionMatrixCheck() {
         blockedUsers: [],
         learningLanguage: { code: "ja" },
         native_language_NS: { code: "ru" },
-        language_instruction_NS: { code: "es" },
+        language_instruction_NS: { code: "ja" },
+        teacherAccreditationStatus: "approved",
         rating: { average: 4.4, totalReviews: 11 },
       },
       matchingCandidateKey: "speaker",
@@ -1868,6 +1934,7 @@ async function runCreateVideoSessionMatrixCheck() {
         blockedUsers: [],
         language_instruction_NS: { code: "ja" },
         native_language_NS: { code: "ja" },
+        teacherAccreditationStatus: "approved",
         rating: { average: 4.9, totalReviews: 18 },
         availabilityToday: { enabled: true },
         Country_NS: { code: "JP" },
@@ -1966,6 +2033,9 @@ async function runSameDayRepeatPreventionCheck() {
       learningLanguage: { code: 'en' },
       language_instruction_NS: { code: 'en' },
       native_language_NS: { code: 'en' },
+      ...(role === 'native_speaker'
+        ? { teacherAccreditationStatus: 'approved' }
+        : {}),
       availabilityToday: { enabled: true },
       isInCall: false,
       isAvailable: true,
@@ -2226,6 +2296,7 @@ async function runPartnerLevelFilterCheck() {
       blockedUsers: [],
       language_instruction_NS: { code: 'en' },
       native_language_NS: { code: 'en' },
+      teacherAccreditationStatus: 'approved',
       availabilityToday: { enabled: true },
       level: 'Basic',
       isInCall: false,
@@ -2236,6 +2307,7 @@ async function runPartnerLevelFilterCheck() {
       blockedUsers: [],
       language_instruction_NS: { code: 'en' },
       native_language_NS: { code: 'en' },
+      teacherAccreditationStatus: 'approved',
       availabilityToday: { enabled: true },
       level: 'Fluent',
       isInCall: false,
@@ -2341,6 +2413,7 @@ async function runTeacherBoostRankingCheck() {
   const approvedTeacherId = `teacher_boost_approved_${runId}`;
   const pendingTeacherId = `teacher_boost_pending_${runId}`;
   const rejectedTeacherId = `teacher_boost_rejected_${runId}`;
+  const studentPeerId = `teacher_boost_student_${runId}`;
 
   function fluentCandidateData(displayName, status, ratingAverage) {
     return {
@@ -2381,6 +2454,16 @@ async function runTeacherBoostRankingCheck() {
       .collection('users')
       .doc(rejectedTeacherId)
       .set(fluentCandidateData('Rejected Teacher', 'rejected', 4.9));
+    await db.collection('users').doc(studentPeerId).set({
+      role: 'student',
+      display_name: 'Fluent Student Peer',
+      blockedUsers: [],
+      learningLanguage: { code: 'en' },
+      availabilityToday: { enabled: true },
+      level: 'Fluent',
+      rating: { average: 5.0, totalReviews: 20 },
+      isInCall: false,
+    });
 
     const response = await wrappedCreateVideoSession(
       {
@@ -2402,13 +2485,14 @@ async function runTeacherBoostRankingCheck() {
     result.pass =
       response?.status === 'searching' &&
       result.candidateIds[0] === approvedTeacherId &&
-      result.candidateIds.includes(pendingTeacherId) &&
-      result.candidateIds.includes(rejectedTeacherId) &&
+      result.candidateIds.includes(studentPeerId) &&
+      !result.candidateIds.includes(pendingTeacherId) &&
+      !result.candidateIds.includes(rejectedTeacherId) &&
       sessionData.matchContext?.ranking?.teacherBoostApplied === true &&
       sessionData.matchContext?.ranking?.levelApplied === true;
     if (!result.pass) {
       result.failure =
-        'Approved Fluent teacher did not rank first while preserving non-approved eligibility.';
+        'Approved Fluent teacher did not rank first or unapproved teachers were not excluded.';
     }
   } catch (error) {
     result.failure = String(error);

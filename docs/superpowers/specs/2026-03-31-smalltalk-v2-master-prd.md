@@ -79,7 +79,8 @@ This PRD is grounded in the current codebase, where several requested features a
 - Matching inputs are:
   - active conversation language
   - preferred partner location
-  - preferred partner level bucket
+  - preferred partner level bucket; in the general queue, an unset explicit
+    preference defaults to the requester's effective profile level
   - partner review rating
   - approved teacher boost for advanced-level requests
   - reserved zero-value slot for future internal app ranking
@@ -92,8 +93,11 @@ This PRD is grounded in the current codebase, where several requested features a
 - Registration process is the same for all users.
 - Teacher functionality remains in the app, including payments, earnings, withdrawals, and teacher-only sections.
 - Teacher status is assigned manually through the existing Firebase-connected admin process.
-- The user creates a verification document in the database.
-- Admin reviews that document and manually approves or rejects it.
+- The user creates a teacher verification request in the database.
+- That request can include accreditation metadata such as teaching experience,
+  one or more qualification proof types, and attached evidence-file storage
+  paths.
+- Admin reviews that request and manually approves or rejects it.
 - Approved teacher status opens teacher sections and activates teacher boost in matching.
 - Non-approved users can remain in the general user pool but must not receive teacher-only access or teacher boost.
 
@@ -127,7 +131,7 @@ This PRD is grounded in the current codebase, where several requested features a
 Add or normalize:
 
 - `friends: List<DocumentReference<users>>`
-- teacher accreditation status driven by the existing verification-document/admin process
+- teacher accreditation status driven by the existing teacher verification request/admin process
 - optional teacher access flags only if needed to preserve compatibility with existing `native_speaker` pages
 
 Migration:
@@ -183,7 +187,7 @@ Update callable contract:
 
 Use the existing Firebase-connected admin flow:
 
-- user creates a verification document
+- user creates a teacher verification request
 - admin approves/rejects manually
 - approved status opens teacher sections
 - approved status gates teacher payments/earnings/withdrawals access where applicable
@@ -194,7 +198,7 @@ Use the existing Firebase-connected admin flow:
 ### Journey A: User starts a call from Home
 
 1. User opens Home.
-2. User sets conversation filters: language, partner location, partner level bucket.
+2. User sets conversation filters: language, partner location, partner level bucket. Home defaults partner level to the user's effective profile level unless the user selects an explicit partner level.
 3. App sends the request to `createVideoSession`.
 4. Backend builds the eligible all-to-all candidate pool.
 5. Backend excludes blocked/unavailable/in-call users and same-day completed pairs unless tester allow-list bypass applies.
@@ -227,8 +231,8 @@ Use the existing Firebase-connected admin flow:
 ### Journey E: Teacher status approval
 
 1. Any user registers through the same general registration process.
-2. User creates a teacher verification document.
-3. Admin reviews that document in the existing Firebase-connected admin process.
+2. User creates a teacher verification request.
+3. Admin reviews that request in the existing Firebase-connected admin process.
 4. Approved status opens teacher sections and teacher payment/earnings/withdrawal functionality.
 5. Approved teachers receive boost for advanced-level matching.
 

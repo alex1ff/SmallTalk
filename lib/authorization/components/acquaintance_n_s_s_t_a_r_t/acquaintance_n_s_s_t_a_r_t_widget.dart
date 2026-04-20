@@ -328,17 +328,33 @@ class _AcquaintanceNSSTARTWidgetState extends State<AcquaintanceNSSTARTWidget> {
                                 padding: EdgeInsetsDirectional.fromSTEB(
                                     6.0, 0.0, 6.0, 0.0),
                                 action: () async {
-                                  Navigator.pop(context);
+                                  final navigatorState =
+                                      appNavigatorKey.currentState;
+                                  final navigatorContext =
+                                      appNavigatorKey.currentContext;
+                                  navigatorState?.pop();
 
-                                  context.pushNamed(
-                                    AcquaintanceNSWidget.routeName,
-                                    queryParameters: {
-                                      'index': serializeParam(
-                                        1,
-                                        ParamType.int,
-                                      ),
-                                    }.withoutNulls,
-                                  );
+                                  if (navigatorContext != null) {
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                      if (!navigatorContext.mounted) {
+                                        return;
+                                      }
+                                      navigatorContext.pushNamed(
+                                        AcquaintanceNSWidget.routeName,
+                                        queryParameters: {
+                                          'index': serializeParam(
+                                            0,
+                                            ParamType.int,
+                                          ),
+                                          'entrySource': serializeParam(
+                                            'profile',
+                                            ParamType.String,
+                                          ),
+                                        }.withoutNulls,
+                                      );
+                                    });
+                                  }
                                 },
                               ),
                             ),

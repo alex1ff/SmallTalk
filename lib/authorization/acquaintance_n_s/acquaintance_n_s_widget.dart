@@ -1,39 +1,58 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/components/country/country_widget.dart';
-import '/authorization/components/lang/lang_widget.dart';
 import '/backend/backend.dart';
 import '/backend/firebase_storage/storage.dart';
 import '/backend/schema/enums/enums.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
-import '/flutter_flow/flutter_flow_swipeable_stack.dart';
+import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/flutter_flow/upload_data.dart';
-import 'dart:async';
-import '/custom_code/actions/index.dart' as actions;
-import '/custom_code/widgets/index.dart' as custom_widgets;
-import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/permissions_util.dart';
+import '/flutter_flow/upload_data.dart';
 import '/index.dart';
 import '/services/teacher_verification_request_service.dart';
+import '/services/user_match_profile.dart';
 import 'native_speaker_onboarding_logic.dart';
-import 'dart:math' as math;
-import 'package:auto_size_text/auto_size_text.dart';
+import 'widgets/native_speaker_onboarding_about_me_step.dart';
+import 'widgets/native_speaker_onboarding_accreditation_step.dart';
+import 'widgets/native_speaker_onboarding_country_step.dart';
+import 'widgets/native_speaker_onboarding_language_instruction_step.dart';
+import 'widgets/native_speaker_onboarding_name_step.dart';
+import 'widgets/native_speaker_onboarding_native_language_step.dart';
+import 'widgets/native_speaker_onboarding_photo_step.dart';
+import '/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_bottom_bar.dart';
+import '/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_gender_step.dart';
+import '/authorization/components/lang/lang_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'acquaintance_n_s_model.dart';
 export 'acquaintance_n_s_model.dart';
+
+const int _kMaxQualificationEvidenceFiles = 5;
+const int _kMaxQualificationEvidenceFileSizeBytes = 10 * 1024 * 1024;
+
+class _NativeSpeakerUploadedPhoto {
+  const _NativeSpeakerUploadedPhoto({
+    required this.url,
+    this.storagePath,
+  });
+
+  final String url;
+  final String? storagePath;
+}
 
 class AcquaintanceNSWidget extends StatefulWidget {
   const AcquaintanceNSWidget({
     super.key,
     required this.index,
+    this.entrySource,
+    this.teacherVerificationRequestLoader,
   });
 
   final int? index;
+  final String? entrySource;
+  final Future<Map<String, dynamic>?> Function()?
+      teacherVerificationRequestLoader;
 
   static String routeName = 'Acquaintance_NS';
   static String routePath = '/acquaintanceNS';
@@ -44,10 +63,40 @@ class AcquaintanceNSWidget extends StatefulWidget {
 
 class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
   late AcquaintanceNSModel _model;
+  final ValueNotifier<int> _currentPageIndexNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<bool> _isPageTransitionInProgressNotifier =
+      ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _genderMaleNotifier = ValueNotifier<bool>(true);
+  final ValueNotifier<LanguageStruct?> _languageInstructionNotifier =
+      ValueNotifier<LanguageStruct?>(null);
+  final ValueNotifier<LanguageStruct?> _nativeLanguageNotifier =
+      ValueNotifier<LanguageStruct?>(null);
+  final ValueNotifier<CountryStruct?> _countryNotifier =
+      ValueNotifier<CountryStruct?>(null);
+  final ValueNotifier<String?> _teachingExperienceNotifier =
+      ValueNotifier<String?>(null);
+  final ValueNotifier<List<String>> _qualificationProofsNotifier =
+      ValueNotifier<List<String>>(<String>[]);
+  final ValueNotifier<List<NativeSpeakerEvidenceFile>>
+      _qualificationEvidenceFilesNotifier =
+      ValueNotifier<List<NativeSpeakerEvidenceFile>>(
+    const <NativeSpeakerEvidenceFile>[],
+  );
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
+
   bool _isSubmitting = false;
+  bool _didPrecacheOnboardingAssets = false;
+  bool _didPrewarmLanguageSelectorCache = false;
+  bool _didEditTeachingExperience = false;
+  bool _didEditQualificationProofs = false;
+  int _currentPageIndex = 0;
   String _existingPhotoUrl = '';
+  final Set<String> _removedQualificationEvidenceStoragePaths = <String>{};
+
+  late final NativeSpeakerOnboardingEntrySource _entrySource;
+  late final List<NativeSpeakerOnboardingPage> _visiblePages;
+  late final int _effectiveInitialPage;
 
   bool get _hasSocialPrefillProvider =>
       FirebaseAuth.instance.currentUser?.providerData.any(
@@ -68,49 +117,493 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
   bool get _shouldShowPhotoStep =>
       !(_canUseSocialPrefill && _existingPhotoUrl.trim().isNotEmpty);
 
-  List<NativeSpeakerOnboardingPage> get _visiblePages =>
-      buildVisibleNativeSpeakerPages(
-        showName: _shouldShowNameStep,
-        showPhoto: _shouldShowPhotoStep,
-      );
-
-  int get _effectiveInitialPage => resolveNativeSpeakerInitialPage(
-        requestedRawIndex: valueOrDefault<int>(widget.index, 0),
-        visiblePages: _visiblePages,
-      );
-
   NativeSpeakerOnboardingPage get _currentPage =>
-      NativeSpeakerOnboardingPage.values[_model.pageViewCurrentIndex];
+      NativeSpeakerOnboardingPage.values[_currentPageIndex];
 
-  int get _displayedCurrentStep => nativeSpeakerDisplayedStep(
-        currentRawIndex: _model.pageViewCurrentIndex,
+  NativeSpeakerOnboardingDraft get _draft => buildNativeSpeakerOnboardingDraft(
+        displayName: _model.nameTextController?.text,
+        languageInstruction: _languageInstructionNotifier.value,
+        nativeLanguage: _nativeLanguageNotifier.value,
+        gender: _genderMaleNotifier.value ? Gender.male : Gender.female,
+        country: _countryNotifier.value,
+        aboutMe: _model.aboutMeTextController?.text,
+        teachingExperience: _teachingExperienceNotifier.value,
+        qualificationProofs: _qualificationProofsNotifier.value,
+        qualificationProof: null,
+        localQualificationFiles: _model.qualificationProofFiles,
+        existingQualificationFiles: _qualificationEvidenceFilesNotifier.value,
+        localPhoto: _model.avatar,
+        existingPhotoUrl: _existingPhotoUrl,
+      );
+
+  int get _displayedTotalSteps =>
+      nativeSpeakerDisplayedTotalSteps(visiblePages: _visiblePages);
+
+  bool get _isLastPage => isNativeSpeakerLastVisiblePage(
+        currentRawIndex: _currentPageIndex,
         visiblePages: _visiblePages,
       );
 
-  int get _displayedTotalSteps => _visiblePages.length;
-
-  bool get _isLastVisiblePage => isNativeSpeakerLastVisiblePage(
-        currentRawIndex: _model.pageViewCurrentIndex,
+  bool get _isAtFirstVisiblePage => isFirstVisibleNativeSpeakerPage(
+        currentRawIndex: _currentPageIndex,
         visiblePages: _visiblePages,
       );
 
-  String _resolvedNativeSpeakerName() {
-    final typedName = _model.nameTextController.text.trim();
-    if (typedName.isNotEmpty) {
-      return typedName;
+  int? get _previousVisiblePage => previousVisibleNativeSpeakerPage(
+        currentRawIndex: _currentPageIndex,
+        visiblePages: _visiblePages,
+      );
+
+  bool get _canExitOnSystemBack =>
+      _entrySource == NativeSpeakerOnboardingEntrySource.profile &&
+      _isAtFirstVisiblePage;
+
+  void _setCurrentPageIndex(int index) {
+    _currentPageIndex = index;
+    if (_currentPageIndexNotifier.value != index) {
+      _currentPageIndexNotifier.value = index;
     }
-    return currentUserDisplayName.trim();
   }
 
-  Future<String?> _uploadNativeSpeakerPhotoIfNeeded() async {
-    if (!(_model.avatar?.bytes?.isNotEmpty ?? false)) {
-      return _existingPhotoUrl.trim().isEmpty ? null : _existingPhotoUrl.trim();
+  void _hydrateNativeSpeakerStateFromProfile() {
+    final initialState = buildNativeSpeakerOnboardingInitialState(
+      displayName: currentUserDisplayName,
+      languageInstruction: currentUserDocument?.languageInstructionNS,
+      nativeLanguage: currentUserDocument?.nativeLanguageNS,
+      gender: currentUserDocument?.gender,
+      country: currentUserDocument?.countryNS,
+      aboutMe: currentUserDocument?.aboutMe,
+      existingPhotoUrl: currentUserPhoto,
+    );
+
+    if ((_model.nameTextController?.text.trim().isEmpty ?? true) &&
+        initialState.displayName.isNotEmpty) {
+      _model.nameTextController?.text = initialState.displayName;
     }
 
-    safeSetState(() => _model.isDataUploading_uploadData5az = true);
+    if ((_model.aboutMeTextController?.text.trim().isEmpty ?? true) &&
+        initialState.aboutMe.isNotEmpty) {
+      _model.aboutMeTextController?.text = initialState.aboutMe;
+    }
+
+    _genderMaleNotifier.value = initialState.genderMale;
+    _languageInstructionNotifier.value =
+        cloneNativeSpeakerLanguageSelection(initialState.languageInstruction);
+    _nativeLanguageNotifier.value =
+        cloneNativeSpeakerLanguageSelection(initialState.nativeLanguage);
+    _countryNotifier.value =
+        cloneNativeSpeakerCountrySelection(initialState.country);
+    _existingPhotoUrl = initialState.existingPhotoUrl;
+  }
+
+  Future<void> _showValidationError(String message) async {
+    await actions.showTopNotification(
+      context,
+      message,
+      '',
+      true,
+    );
+  }
+
+  Future<void> _hydrateAccreditationStateFromVerificationRequest() async {
+    try {
+      Map<String, dynamic>? snapshotData;
+      if (widget.teacherVerificationRequestLoader != null) {
+        snapshotData = await widget.teacherVerificationRequestLoader!.call();
+      } else {
+        final userRef = currentUserReference;
+        if (userRef == null) {
+          return;
+        }
+        final snapshot =
+            await teacherVerificationRequestRefForUser(userRef.id).get();
+        snapshotData = snapshot.data();
+      }
+
+      final hydratedState = parseNativeSpeakerAccreditationState(
+        snapshotData?['accreditation'],
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (!_didEditTeachingExperience &&
+          (_teachingExperienceNotifier.value?.trim().isEmpty ?? true) &&
+          hydratedState.teachingExperience != null &&
+          hydratedState.teachingExperience!.isNotEmpty) {
+        _teachingExperienceNotifier.value = hydratedState.teachingExperience;
+      }
+      if (!_didEditQualificationProofs &&
+          _qualificationProofsNotifier.value.isEmpty &&
+          hydratedState.qualificationProofs.isNotEmpty) {
+        _qualificationProofsNotifier.value = hydratedState.qualificationProofs;
+      }
+      if (hydratedState.evidenceFiles.isNotEmpty) {
+        final filteredHydratedEvidenceFiles = hydratedState.evidenceFiles
+            .where(
+              (file) => !_removedQualificationEvidenceStoragePaths.contains(
+                file.storagePath,
+              ),
+            )
+            .toList(growable: false);
+        final mergedEvidenceFiles = mergeNativeSpeakerEvidenceFiles(
+          _qualificationEvidenceFilesNotifier.value,
+          filteredHydratedEvidenceFiles,
+        );
+        if (!listEquals(
+          _qualificationEvidenceFilesNotifier.value,
+          mergedEvidenceFiles,
+        )) {
+          _qualificationEvidenceFilesNotifier.value = mergedEvidenceFiles;
+        }
+      }
+    } catch (error) {
+      debugPrint(
+        'AcquaintanceNSWidget: failed to hydrate accreditation answers: $error',
+      );
+    }
+  }
+
+  void _closeKeyboard() {
+    FocusScope.of(context).unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  Future<void> _animateToVisiblePage(int? targetPage) async {
+    final pageViewController = _model.pageViewController;
+    if (targetPage == null ||
+        pageViewController == null ||
+        _isPageTransitionInProgressNotifier.value) {
+      return;
+    }
+
+    _isPageTransitionInProgressNotifier.value = true;
+    try {
+      await pageViewController.animateToPage(
+        targetPage,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.ease,
+      );
+    } finally {
+      if (mounted) {
+        _isPageTransitionInProgressNotifier.value = false;
+      }
+    }
+  }
+
+  Future<void> _goToNextPage() async {
+    await _animateToVisiblePage(
+      nextVisibleNativeSpeakerPage(
+        currentRawIndex: _currentPageIndex,
+        visiblePages: _visiblePages,
+      ),
+    );
+  }
+
+  Future<void> _goToPreviousPage() async {
+    await _animateToVisiblePage(
+      previousVisibleNativeSpeakerPage(
+        currentRawIndex: _currentPageIndex,
+        visiblePages: _visiblePages,
+      ),
+    );
+  }
+
+  Future<void> _handleSystemBack() async {
+    if (_isPageTransitionInProgressNotifier.value) {
+      return;
+    }
+
+    if (_previousVisiblePage != null) {
+      _closeKeyboard();
+      await _goToPreviousPage();
+      return;
+    }
+
+    if (_canExitOnSystemBack) {
+      await Navigator.of(context).maybePop();
+    }
+  }
+
+  Future<void> _pickPhoto() async {
+    if (_isSubmitting || _model.isPickingAvatar) {
+      return;
+    }
+
+    final selectedMedia = await selectMedia(
+      maxWidth: 500.0,
+      maxHeight: 500.0,
+      imageQuality: 95,
+      mediaSource: MediaSource.photoGallery,
+      multiImage: false,
+    );
+    if (selectedMedia == null ||
+        !selectedMedia.every((media) => validateFileFormat(
+              media.storagePath,
+              context,
+            ))) {
+      return;
+    }
+
+    safeSetState(() => _model.isPickingAvatar = true);
+    try {
+      final selectedUploadedFiles = selectedMedia
+          .map(
+            (media) => FFUploadedFile(
+              name: media.storagePath.split('/').last,
+              bytes: media.bytes,
+              height: media.dimensions?.height,
+              width: media.dimensions?.width,
+              blurHash: media.blurHash,
+              originalFilename: media.originalFilename,
+            ),
+          )
+          .toList(growable: false);
+
+      if (selectedUploadedFiles.length == selectedMedia.length &&
+          selectedUploadedFiles.isNotEmpty) {
+        safeSetState(() {
+          _model.pickedAvatarFile = selectedUploadedFiles.first;
+          _model.avatar = selectedUploadedFiles.first;
+        });
+      }
+    } finally {
+      if (mounted) {
+        safeSetState(() => _model.isPickingAvatar = false);
+      }
+    }
+  }
+
+  String? _qualificationProofStorageFolderPath() {
+    final userRef = currentUserReference;
+    if (userRef == null) {
+      return null;
+    }
+    return 'users/${userRef.id}/teacher_verification/qualification_proofs';
+  }
+
+  Future<void> _pickQualificationProofFiles() async {
+    if (_isSubmitting || _model.isPickingQualificationFiles) {
+      return;
+    }
+
+    final storageFolderPath = _qualificationProofStorageFolderPath();
+    if (storageFolderPath == null) {
+      return;
+    }
+
+    final currentAttachedFilesCount =
+        _qualificationEvidenceFilesNotifier.value.length +
+            _model.qualificationProofFiles.length;
+    final remainingSlots =
+        _kMaxQualificationEvidenceFiles - currentAttachedFilesCount;
+    if (remainingSlots <= 0) {
+      await _showValidationError('Можно прикрепить не больше 5 файлов');
+      return;
+    }
+
+    safeSetState(() => _model.isPickingQualificationFiles = true);
+    try {
+      final selectedFiles = await selectFiles(
+        storageFolderPath: storageFolderPath,
+        allowedExtensions: const <String>[
+          'pdf',
+          'jpg',
+          'jpeg',
+          'png',
+          'heic',
+          'heif',
+          'doc',
+          'docx',
+        ],
+        multiFile: true,
+        maxFiles: remainingSlots,
+        maxFileSizeBytes: _kMaxQualificationEvidenceFileSizeBytes,
+      );
+      if (selectedFiles == null || selectedFiles.isEmpty) {
+        await _showValidationError(
+          'Файлы не выбраны или превышают 10 МБ',
+        );
+        return;
+      }
+
+      final uploadedFiles = selectedFiles
+          .map(
+            (file) => FFUploadedFile(
+              name: file.storagePath.split('/').last,
+              bytes: file.bytes,
+              height: file.dimensions?.height,
+              width: file.dimensions?.width,
+              blurHash: file.blurHash,
+              originalFilename: file.originalFilename,
+            ),
+          )
+          .toList(growable: false);
+      safeSetState(() {
+        _model.qualificationProofFiles = <FFUploadedFile>[
+          ..._model.qualificationProofFiles,
+          ...uploadedFiles,
+        ];
+      });
+    } finally {
+      if (mounted) {
+        safeSetState(() => _model.isPickingQualificationFiles = false);
+      }
+    }
+  }
+
+  void _removeLocalQualificationProofFileAt(int index) {
+    if (index < 0 || index >= _model.qualificationProofFiles.length) {
+      return;
+    }
+    safeSetState(() {
+      final updatedFiles =
+          _model.qualificationProofFiles.toList(growable: true);
+      updatedFiles.removeAt(index);
+      _model.qualificationProofFiles = updatedFiles;
+    });
+  }
+
+  void _removeExistingQualificationEvidenceFileAt(int index) {
+    final currentFiles = _qualificationEvidenceFilesNotifier.value;
+    if (index < 0 || index >= currentFiles.length) {
+      return;
+    }
+    _removedQualificationEvidenceStoragePaths
+        .add(currentFiles[index].storagePath);
+    final updatedFiles = currentFiles.toList(growable: true)..removeAt(index);
+    _qualificationEvidenceFilesNotifier.value =
+        cloneNativeSpeakerEvidenceFiles(updatedFiles);
+  }
+
+  Future<List<NativeSpeakerEvidenceFile>?>
+      _uploadQualificationProofFilesIfNeeded() async {
+    final existingFiles = cloneNativeSpeakerEvidenceFiles(
+      _qualificationEvidenceFilesNotifier.value,
+    );
+    if (_model.qualificationProofFiles.isEmpty) {
+      return existingFiles;
+    }
+
+    final storageFolderPath = _qualificationProofStorageFolderPath();
+    if (storageFolderPath == null) {
+      return null;
+    }
+
+    safeSetState(() => _model.isUploadingQualificationFiles = true);
+    try {
+      final selectedFiles = selectedFilesFromUploadedFiles(
+        _model.qualificationProofFiles,
+        storageFolderPath: storageFolderPath,
+        isMultiData: true,
+      );
+      final uploadResults = await Future.wait(
+        selectedFiles.map(
+          (file) async => uploadDataAndGetStoragePath(
+            file.storagePath,
+            file.bytes,
+          ),
+        ),
+      );
+      final uploadedStoragePaths = uploadResults
+          .where((path) => path != null)
+          .map((path) => path!)
+          .toList(growable: false);
+
+      if (uploadedStoragePaths.length != selectedFiles.length) {
+        await _deleteQualificationEvidenceFiles(
+          uploadedStoragePaths
+              .map(
+                (storagePath) => NativeSpeakerEvidenceFile(
+                  name: '',
+                  storagePath: storagePath,
+                ),
+              )
+              .toList(growable: false),
+        );
+        return null;
+      }
+
+      final uploadedFiles = <NativeSpeakerEvidenceFile>[
+        ...existingFiles,
+        for (var index = 0; index < uploadedStoragePaths.length; index++)
+          NativeSpeakerEvidenceFile(
+            name: _model.qualificationProofFiles[index].originalFilename
+                    .trim()
+                    .isNotEmpty
+                ? _model.qualificationProofFiles[index].originalFilename.trim()
+                : ((_model.qualificationProofFiles[index].name ?? '').trim()),
+            storagePath: uploadedStoragePaths[index],
+          ),
+      ];
+      return cloneNativeSpeakerEvidenceFiles(uploadedFiles);
+    } finally {
+      if (mounted) {
+        safeSetState(() => _model.isUploadingQualificationFiles = false);
+      }
+    }
+  }
+
+  Future<void> _deleteQualificationEvidenceFiles(
+    Iterable<NativeSpeakerEvidenceFile> files,
+  ) async {
+    final pathsToDelete = files
+        .map((file) => file.storagePath.trim())
+        .where((path) => path.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (pathsToDelete.isEmpty) {
+      return;
+    }
+
+    await Future.wait(
+      pathsToDelete.map((storagePath) async {
+        try {
+          await deleteStorageObject(storagePath);
+        } catch (error) {
+          debugPrint(
+            'AcquaintanceNSWidget: failed to delete evidence file '
+            '$storagePath: $error',
+          );
+        }
+      }),
+    );
+  }
+
+  Future<void> _deleteUploadedNativeSpeakerPhoto(String storagePath) async {
+    final normalizedPath = storagePath.trim();
+    if (normalizedPath.isEmpty) {
+      return;
+    }
+
+    try {
+      await deleteStorageObject(normalizedPath);
+    } catch (error) {
+      debugPrint(
+        'AcquaintanceNSWidget: failed to delete uploaded profile photo '
+        '$normalizedPath: $error',
+      );
+    }
+  }
+
+  bool _isTeacherVerificationRequestError(Object error) =>
+      isTeacherVerificationRequestSubmissionError(error);
+
+  Future<_NativeSpeakerUploadedPhoto?>
+      _uploadNativeSpeakerPhotoIfNeeded() async {
+    if (!(_model.avatar?.bytes?.isNotEmpty ?? false)) {
+      final existingUrl = _existingPhotoUrl.trim();
+      return existingUrl.isEmpty
+          ? null
+          : _NativeSpeakerUploadedPhoto(url: existingUrl);
+    }
+
+    safeSetState(() => _model.isUploadingAvatar = true);
     final selectedUploadedFiles = <FFUploadedFile>[_model.avatar!];
     final selectedMedia = selectedFilesFromUploadedFiles(selectedUploadedFiles);
     final downloadUrls = <String>[];
+
     try {
       downloadUrls.addAll(
         (await Future.wait(
@@ -124,7 +617,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
       );
     } finally {
       if (mounted) {
-        safeSetState(() => _model.isDataUploading_uploadData5az = false);
+        safeSetState(() => _model.isUploadingAvatar = false);
       }
     }
 
@@ -133,158 +626,430 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     }
 
     final uploadedUrl = downloadUrls.first;
+    final uploadedStoragePath = selectedMedia.first.storagePath.trim();
     safeSetState(() {
-      _model.uploadedLocalFile_uploadData5az = selectedUploadedFiles.first;
-      _model.uploadedFileUrl_uploadData5az = uploadedUrl;
+      _model.uploadedAvatarFile = selectedUploadedFiles.first;
+      _model.uploadedAvatarUrl = uploadedUrl;
     });
-    return uploadedUrl;
-  }
-
-  Future<void> _goToNextVisiblePage() async {
-    final nextPage = nextVisibleNativeSpeakerPage(
-      currentRawIndex: _model.pageViewCurrentIndex,
-      visiblePages: _visiblePages,
-    );
-    if (nextPage == null) {
-      return;
-    }
-
-    await _model.pageViewController?.animateToPage(
-      nextPage,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.ease,
+    return _NativeSpeakerUploadedPhoto(
+      url: uploadedUrl,
+      storagePath: uploadedStoragePath.isEmpty ? null : uploadedStoragePath,
     );
   }
 
-  Future<void> _goToPreviousVisiblePage() async {
-    final previousPage = previousVisibleNativeSpeakerPage(
-      currentRawIndex: _model.pageViewCurrentIndex,
-      visiblePages: _visiblePages,
-    );
-    if (previousPage == null) {
-      return;
-    }
-
-    await _model.pageViewController?.animateToPage(
-      previousPage,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.ease,
-    );
-  }
-
-  Future<void> _finishNativeSpeakerOnboarding() async {
-    if (_isSubmitting) {
-      return;
-    }
-    if (!hasNativeSpeakerCompletionPhoto(
-      localPhoto: _model.avatar,
-      existingPhotoUrl: _existingPhotoUrl,
-    )) {
-      await actions.showTopNotification(
-        context,
-        'Загрузите фото профиля',
-        '',
-        true,
-      );
-      return;
+  Future<TeacherAccreditationStatus?> _saveNativeSpeakerProfile() async {
+    final userRef = currentUserReference;
+    if (userRef == null || _isSubmitting) {
+      return null;
     }
 
     safeSetState(() => _isSubmitting = true);
+    final previousQualificationEvidenceFiles = cloneNativeSpeakerEvidenceFiles(
+      _qualificationEvidenceFilesNotifier.value,
+    );
+    var newlyUploadedQualificationEvidenceFiles =
+        const <NativeSpeakerEvidenceFile>[];
+    var newlyUploadedPhotoStoragePath = '';
+    TeacherAccreditationStatus? savedStatus;
+    var verificationRequestWriteFailed = false;
+    var shouldPreserveUploadedAssetsOnFailure = false;
     try {
-      final photoUrl = await _uploadNativeSpeakerPhotoIfNeeded();
-      if (photoUrl == null ||
-          photoUrl.isEmpty ||
-          currentUserReference == null) {
-        await actions.showTopNotification(
-          context,
-          'Не удалось сохранить фото профиля',
-          '',
-          true,
+      final shouldUploadQualificationFiles =
+          shouldRequireNativeSpeakerQualificationFiles(
+        _qualificationProofsNotifier.value,
+      );
+      final qualificationEvidenceFiles = shouldUploadQualificationFiles
+          ? await _uploadQualificationProofFilesIfNeeded()
+          : const <NativeSpeakerEvidenceFile>[];
+      if (shouldUploadQualificationFiles &&
+          qualificationEvidenceFiles == null) {
+        await _showValidationError('Не удалось загрузить файлы подтверждения');
+        return null;
+      }
+      final resolvedQualificationEvidenceFiles =
+          qualificationEvidenceFiles ?? const <NativeSpeakerEvidenceFile>[];
+      newlyUploadedQualificationEvidenceFiles =
+          resolvedQualificationEvidenceFiles
+              .where(
+                (file) => !previousQualificationEvidenceFiles.any(
+                  (previousFile) =>
+                      previousFile.storagePath == file.storagePath,
+                ),
+              )
+              .toList(growable: false);
+
+      final uploadedPhoto = await _uploadNativeSpeakerPhotoIfNeeded();
+      newlyUploadedPhotoStoragePath = uploadedPhoto?.storagePath ?? '';
+      final photoUrl = uploadedPhoto?.url ?? '';
+      if (photoUrl.isEmpty) {
+        await _deleteQualificationEvidenceFiles(
+          newlyUploadedQualificationEvidenceFiles,
         );
-        return;
+        await _showValidationError('Не удалось сохранить фото профиля');
+        return null;
       }
 
-      final displayName = _resolvedNativeSpeakerName();
-      final aboutMe = _model.aboutMeTextController.text;
-
-      final verificationRequestStatus = await submitTeacherVerificationRequest(
-        userRef: currentUserReference!,
-        displayName: displayName,
-        photoUrl: photoUrl,
-        aboutMe: aboutMe,
-        languageInstruction: _model.langLearn,
-        nativeLanguage: _model.nativeLang,
-        country: _model.country,
+      final submissionDraft = updateNativeSpeakerOnboardingDraft(
+        _draft,
+        localQualificationFiles: const <FFUploadedFile>[],
+        existingQualificationFiles: resolvedQualificationEvidenceFiles,
       );
-      if (verificationRequestStatus == null) {
-        await actions.showTopNotification(
-          context,
-          'Не удалось отправить заявку на проверку',
-          '',
-          true,
+      final payload = buildNativeSpeakerOnboardingPayload(
+        draft: submissionDraft,
+        photoUrl: photoUrl,
+      );
+
+      TeacherAccreditationStatus? verificationRequestStatus;
+      try {
+        verificationRequestStatus = await submitTeacherVerificationRequest(
+          userRef: userRef,
+          displayName: payload.displayName ?? '',
+          photoUrl: payload.photoUrl,
+          aboutMe: payload.aboutMe,
+          languageInstruction: payload.languageInstruction,
+          nativeLanguage: payload.nativeLanguage,
+          country: payload.country,
+          accreditation: payload.accreditation,
         );
-        return;
+      } catch (error) {
+        debugPrint(
+          'AcquaintanceNSWidget: teacher verification request write failed: '
+          '$error',
+        );
+        if (_isTeacherVerificationRequestError(error)) {
+          verificationRequestWriteFailed = true;
+          shouldPreserveUploadedAssetsOnFailure =
+              isTeacherVerificationRequestAmbiguousWriteError(error);
+          debugPrint(
+            'AcquaintanceNSWidget: teacher verification request failed at the '
+            'request write phase.',
+          );
+        }
+        rethrow;
+      }
+      if (verificationRequestStatus == null) {
+        await _deleteQualificationEvidenceFiles(
+          newlyUploadedQualificationEvidenceFiles,
+        );
+        await _showValidationError('Не удалось отправить заявку на проверку');
+        return null;
       }
       if (verificationRequestStatus == TeacherAccreditationStatus.rejected) {
-        await actions.showTopNotification(
-          context,
-          'Заявка на проверку была отклонена',
-          '',
-          true,
+        await _deleteQualificationEvidenceFiles(
+          newlyUploadedQualificationEvidenceFiles,
         );
-        return;
+        await _showValidationError('Заявка на проверку была отклонена');
+        return null;
+      }
+      shouldPreserveUploadedAssetsOnFailure =
+          verificationRequestStatus == TeacherAccreditationStatus.pending;
+
+      try {
+        await userRef.update(
+          buildNativeSpeakerOnboardingUpdateData(
+            payload: payload,
+            markProfileComplete: true,
+            switchToNativeSpeakerRole: true,
+            teacherAccreditationStatus:
+                verificationRequestStatus == TeacherAccreditationStatus.pending
+                    ? TeacherAccreditationStatus.pending
+                    : null,
+          ),
+        );
+      } catch (error) {
+        debugPrint('AcquaintanceNSWidget: user profile update failed: $error');
+        rethrow;
       }
 
-      await currentUserReference!.update(
-        createUsersRecordData(
-          displayName: displayName.isEmpty ? null : displayName,
-          role: UserRole.native_speaker,
-          isProfileComplete: true,
-          gender: _model.genderISMALE ? Gender.male : Gender.female,
-          aboutMe: aboutMe,
-          photoUrl: photoUrl,
-          acquaintance: true,
-          languageInstructionNS: updateLanguageStruct(
-            _model.langLearn,
-            clearUnsetFields: false,
-          ),
-          countryNS: updateCountryStruct(
-            _model.country,
-            clearUnsetFields: false,
-          ),
-          nativeLanguageNS: updateLanguageStruct(
-            _model.nativeLang,
-            clearUnsetFields: false,
-          ),
-        ),
+      savedStatus = verificationRequestStatus;
+      _existingPhotoUrl = payload.photoUrl;
+      _qualificationEvidenceFilesNotifier.value =
+          cloneNativeSpeakerEvidenceFiles(
+        resolvedQualificationEvidenceFiles,
       );
-      _existingPhotoUrl = photoUrl;
-
-      if (!mounted) {
-        return;
+      _removedQualificationEvidenceStoragePaths.clear();
+      safeSetState(() {
+        _model.qualificationProofFiles = <FFUploadedFile>[];
+      });
+      final detachedQualificationEvidenceFiles =
+          previousQualificationEvidenceFiles
+              .where(
+                (file) => !resolvedQualificationEvidenceFiles.any(
+                  (currentFile) => currentFile.storagePath == file.storagePath,
+                ),
+              )
+              .toList(growable: false);
+      await _deleteQualificationEvidenceFiles(
+        detachedQualificationEvidenceFiles,
+      );
+      return savedStatus;
+    } catch (error) {
+      if (!shouldPreserveUploadedAssetsOnFailure) {
+        await _deleteQualificationEvidenceFiles(
+          newlyUploadedQualificationEvidenceFiles,
+        );
       }
-
-      context.goNamed(
-        DashboardNSWidget.routeName,
-        queryParameters: {
-          'zn': serializeParam(
-            true,
-            ParamType.bool,
-          ),
-        }.withoutNulls,
+      debugPrint('AcquaintanceNSWidget: failed to save profile: $error');
+      await _showValidationError(
+        verificationRequestWriteFailed
+            ? 'Не удалось отправить заявку на проверку. Попробуйте позже.'
+            : 'Не удалось сохранить профиль',
       );
-    } catch (_) {
-      await actions.showTopNotification(
-        context,
-        'Не удалось сохранить профиль',
-        '',
-        true,
-      );
+      return null;
     } finally {
+      if (!shouldPreserveUploadedAssetsOnFailure &&
+          savedStatus == null &&
+          newlyUploadedPhotoStoragePath.isNotEmpty) {
+        await _deleteUploadedNativeSpeakerPhoto(newlyUploadedPhotoStoragePath);
+      }
       if (mounted) {
         safeSetState(() => _isSubmitting = false);
       }
     }
+  }
+
+  Future<void> _handleAdvance() async {
+    if (_isPageTransitionInProgressNotifier.value) {
+      return;
+    }
+
+    _closeKeyboard();
+    final validationMessage = validateNativeSpeakerOnboardingPage(
+      page: _currentPage,
+      draft: _draft,
+    );
+    if (validationMessage != null) {
+      await _showValidationError(validationMessage);
+      return;
+    }
+
+    if (_isLastPage) {
+      final savedStatus = await _saveNativeSpeakerProfile();
+      if (!mounted || savedStatus == null) {
+        return;
+      }
+      var shouldOpenNativeSpeakerDashboard =
+          savedStatus != TeacherAccreditationStatus.rejected;
+      if (savedStatus != TeacherAccreditationStatus.rejected &&
+          currentUserReference != null) {
+        try {
+          final refreshedUser = await UsersRecord.getDocumentOnce(
+            currentUserReference!,
+          );
+          shouldOpenNativeSpeakerDashboard =
+              canUseNativeSpeakerShell(refreshedUser) ||
+                  refreshedUser.isTeacherAccreditationApproved ||
+                  shouldOpenNativeSpeakerDashboard;
+        } catch (error) {
+          debugPrint(
+            'AcquaintanceNSWidget: failed to refresh post-save user state: '
+            '$error',
+          );
+        }
+      }
+      context.goNamed(
+        shouldOpenNativeSpeakerDashboard
+            ? DashboardNSWidget.routeName
+            : StudentsDashboardWidget.routeName,
+        queryParameters: {
+          'zn': serializeParam(true, ParamType.bool),
+        }.withoutNulls,
+      );
+      return;
+    }
+
+    await _goToNextPage();
+  }
+
+  List<Widget> _buildStepPages() {
+    final accreditationListenable = Listenable.merge(
+      <Listenable>[
+        _teachingExperienceNotifier,
+        _qualificationProofsNotifier,
+        _qualificationEvidenceFilesNotifier,
+      ],
+    );
+
+    return <Widget>[
+      _shouldShowNameStep
+          ? NativeSpeakerOnboardingNameStep(
+              controller: _model.nameTextController!,
+              focusNode: _model.nameFocusNode!,
+              onSubmitted: _handleAdvance,
+            )
+          : const SizedBox.shrink(),
+      ValueListenableBuilder<LanguageStruct?>(
+        valueListenable: _languageInstructionNotifier,
+        builder: (context, selectedLanguage, _) =>
+            NativeSpeakerOnboardingLanguageInstructionStep(
+          selectedLanguage: selectedLanguage,
+          onChanged: (lang) async {
+            _languageInstructionNotifier.value =
+                cloneNativeSpeakerLanguageSelection(lang);
+          },
+        ),
+      ),
+      ValueListenableBuilder<LanguageStruct?>(
+        valueListenable: _nativeLanguageNotifier,
+        builder: (context, selectedLanguage, _) =>
+            NativeSpeakerOnboardingNativeLanguageStep(
+          selectedLanguage: selectedLanguage,
+          onChanged: (lang) async {
+            _nativeLanguageNotifier.value =
+                cloneNativeSpeakerLanguageSelection(lang);
+          },
+        ),
+      ),
+      ValueListenableBuilder<bool>(
+        valueListenable: _genderMaleNotifier,
+        builder: (context, genderMale, _) => StudentOnboardingGenderStep(
+          genderMale: genderMale,
+          onChanged: (nextValue) {
+            if (_genderMaleNotifier.value == nextValue) {
+              return;
+            }
+            _genderMaleNotifier.value = nextValue;
+          },
+        ),
+      ),
+      ValueListenableBuilder<CountryStruct?>(
+        valueListenable: _countryNotifier,
+        builder: (context, selectedCountry, _) =>
+            NativeSpeakerOnboardingCountryStep(
+          selectedCountry: selectedCountry,
+          onChanged: (country) async {
+            _countryNotifier.value =
+                cloneNativeSpeakerCountrySelection(country);
+          },
+        ),
+      ),
+      NativeSpeakerOnboardingAboutMeStep(
+        controller: _model.aboutMeTextController!,
+        focusNode: _model.aboutMeFocusNode!,
+        onSubmitted: _handleAdvance,
+      ),
+      AnimatedBuilder(
+        animation: accreditationListenable,
+        builder: (context, _) => NativeSpeakerOnboardingAccreditationStep(
+          teachingExperience: _teachingExperienceNotifier.value,
+          qualificationProofs: _qualificationProofsNotifier.value,
+          localQualificationFiles: _model.qualificationProofFiles,
+          existingQualificationFiles: _qualificationEvidenceFilesNotifier.value,
+          isPickingFiles: _model.isPickingQualificationFiles,
+          isUploadingFiles:
+              _model.isUploadingQualificationFiles || _isSubmitting,
+          onTeachingExperienceChanged: (value) {
+            _didEditTeachingExperience = true;
+            if (_teachingExperienceNotifier.value == value) {
+              return;
+            }
+            _teachingExperienceNotifier.value = value;
+          },
+          onQualificationProofsChanged: (value) {
+            final normalizedProofs =
+                normalizeNativeSpeakerQualificationProofs(value);
+            _didEditQualificationProofs = true;
+            if (listEquals(
+                _qualificationProofsNotifier.value, normalizedProofs)) {
+              return;
+            }
+            _qualificationProofsNotifier.value = normalizedProofs;
+          },
+          onPickFiles: _pickQualificationProofFiles,
+          onRemoveLocalFile: _removeLocalQualificationProofFileAt,
+          onRemoveExistingFile: _removeExistingQualificationEvidenceFileAt,
+        ),
+      ),
+      _shouldShowPhotoStep
+          ? Builder(
+              builder: (context) => NativeSpeakerOnboardingPhotoStep(
+                localPhoto: _model.avatar,
+                existingPhotoUrl: _existingPhotoUrl,
+                enabled: !_isSubmitting && !_model.isPickingAvatar,
+                onPickPhoto: _pickPhoto,
+              ),
+            )
+          : const SizedBox.shrink(),
+    ];
+  }
+
+  void _precacheOnboardingAssets() {
+    const assetPaths = <String>[
+      'assets/images/group_11712753102.webp',
+      'assets/images/group_1171275311.webp',
+      'assets/images/33_2.webp',
+      'assets/images/33_.webp',
+    ];
+
+    for (final assetPath in assetPaths) {
+      precacheImage(AssetImage(assetPath), context);
+    }
+  }
+
+  void _prewarmLanguageSelectorCache() {
+    final appState = FFAppState();
+    LangModel.prewarmSharedCache(
+      sourceLanguages: appState.languagesList,
+      sourceSignature: appState.languagesListRevision,
+      localeCode: FFLocalizations.of(context).languageCode,
+    );
+  }
+
+  Widget _buildBottomNavigation(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _currentPageIndexNotifier,
+      builder: (context, currentPageIndex, _) {
+        final previousPage = previousVisibleNativeSpeakerPage(
+          currentRawIndex: currentPageIndex,
+          visiblePages: _visiblePages,
+        );
+        final isAtFirstVisiblePage = isFirstVisibleNativeSpeakerPage(
+          currentRawIndex: currentPageIndex,
+          visiblePages: _visiblePages,
+        );
+        final canGoBack = previousPage != null ||
+            (_entrySource == NativeSpeakerOnboardingEntrySource.profile &&
+                isAtFirstVisiblePage);
+        final isLastPage = isNativeSpeakerLastVisiblePage(
+          currentRawIndex: currentPageIndex,
+          visiblePages: _visiblePages,
+        );
+        final displayedCurrentStep = nativeSpeakerDisplayedStep(
+          currentRawIndex: currentPageIndex,
+          visiblePages: _visiblePages,
+        );
+
+        return ValueListenableBuilder<bool>(
+          valueListenable: _isPageTransitionInProgressNotifier,
+          builder: (context, isInteractionLocked, _) {
+            VoidCallback? onBack;
+            if (previousPage != null) {
+              onBack = () {
+                _goToPreviousPage();
+              };
+            } else if (_entrySource ==
+                    NativeSpeakerOnboardingEntrySource.profile &&
+                isAtFirstVisiblePage) {
+              onBack = () {
+                Navigator.of(context).maybePop();
+              };
+            }
+
+            return StudentOnboardingBottomBar(
+              canGoBack: canGoBack,
+              currentStep: displayedCurrentStep,
+              isLastPage: isLastPage,
+              isSubmitting: _isSubmitting,
+              totalSteps: _displayedTotalSteps,
+              isInteractionLocked: isInteractionLocked,
+              onBack: onBack,
+              onNext: _handleAdvance,
+              onComplete: _handleAdvance,
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -292,1262 +1057,141 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     super.initState();
     _model = createModel(context, () => AcquaintanceNSModel());
 
-    // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
       await requestPermission(cameraPermission);
       await requestPermission(microphonePermission);
     });
 
-    _model.nameTextController ??=
-        TextEditingController(text: currentUserDisplayName);
+    _entrySource = resolveNativeSpeakerEntrySource(widget.entrySource);
+    _model.nameTextController ??= TextEditingController();
     _model.nameFocusNode ??= FocusNode();
-    _existingPhotoUrl = currentUserPhoto.trim();
-
     _model.aboutMeTextController ??= TextEditingController();
     _model.aboutMeFocusNode ??= FocusNode();
+    _existingPhotoUrl = currentUserPhoto.trim();
+
+    _hydrateNativeSpeakerStateFromProfile();
+    _visiblePages = buildVisibleNativeSpeakerPages(
+      showName: _shouldShowNameStep,
+      showPhoto: _shouldShowPhotoStep,
+    );
+    _effectiveInitialPage = resolveNativeSpeakerEntryInitialPage(
+      requestedRawIndex: valueOrDefault<int>(widget.index, 0),
+      visiblePages: _visiblePages,
+      entrySource: _entrySource,
+    );
+    _model.pageViewController ??=
+        PageController(initialPage: _effectiveInitialPage);
+    _currentPageIndex = _effectiveInitialPage;
+    _currentPageIndexNotifier.value = _currentPageIndex;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _hydrateAccreditationStateFromVerificationRequest();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_didPrecacheOnboardingAssets) {
+      _didPrecacheOnboardingAssets = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _precacheOnboardingAssets();
+        }
+      });
+    }
+    if (!_didPrewarmLanguageSelectorCache) {
+      _didPrewarmLanguageSelectorCache = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _prewarmLanguageSelectorCache();
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
+    _currentPageIndexNotifier.dispose();
+    _isPageTransitionInProgressNotifier.dispose();
+    _genderMaleNotifier.dispose();
+    _languageInstructionNotifier.dispose();
+    _nativeLanguageNotifier.dispose();
+    _countryNotifier.dispose();
+    _teachingExperienceNotifier.dispose();
+    _qualificationProofsNotifier.dispose();
+    _qualificationEvidenceFilesNotifier.dispose();
     _model.dispose();
-
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        FocusScope.of(context).unfocus();
-        FocusManager.instance.primaryFocus?.unfocus();
-      },
+    final scaffold = GestureDetector(
+      onTap: _closeKeyboard,
       child: Scaffold(
         key: scaffoldKey,
         backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
         body: Stack(
           children: [
             Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                0.0,
+                55.0,
+                0.0,
+                0.0,
+              ),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(4.0, 0.0, 4.0, 0.0),
-                    child: Container(
-                      width: double.infinity,
-                      height: 70.0,
-                      decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).primaryBackground,
-                        borderRadius: BorderRadius.circular(100.0),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(2.0),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.max,
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Container(
-                              width: 66.0,
-                              height: 66.0,
-                              decoration: BoxDecoration(
-                                color: Colors.black,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Stack(
-                                alignment: AlignmentDirectional(0.0, 0.0),
-                                children: [
-                                  Padding(
-                                    padding: EdgeInsets.all(2.0),
-                                    child: Container(
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                      child: custom_widgets.ProggresBar(
-                                        width: double.infinity,
-                                        height: double.infinity,
-                                        currentStep: _displayedCurrentStep,
-                                        totalSteps: _displayedTotalSteps,
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    '$_displayedCurrentStep/$_displayedTotalSteps',
-                                    textAlign: TextAlign.center,
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: Colors.white,
-                                          fontSize: 14.0,
-                                          letterSpacing: 0.0,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
                   Expanded(
-                    child: Container(
-                      width: double.infinity,
-                      height: double.infinity,
-                      child: PageView(
-                        physics: const NeverScrollableScrollPhysics(),
-                        controller: _model.pageViewController ??=
-                            PageController(initialPage: _effectiveInitialPage),
-                        onPageChanged: (_) => safeSetState(() {}),
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          _shouldShowNameStep
-                              ? Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      6.0, 0.0, 6.0, 0.0),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.start,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            10.0, 16.0, 0.0, 0.0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            '5sad5n6l' /* Как вас зовут? */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'Cool',
-                                                fontSize: 43.0,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.normal,
-                                              ),
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            10.0, 4.0, 0.0, 0.0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'qkjbiyki' /* Лучше написать настоящее имя */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                fontSize: 16.0,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.normal,
-                                              ),
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            0.0, 60.0, 0.0, 0.0),
-                                        child: Container(
-                                          width: double.infinity,
-                                          height: 60.0,
-                                          decoration: BoxDecoration(
-                                            color: FlutterFlowTheme.of(context)
-                                                .primaryBackground,
-                                            borderRadius:
-                                                BorderRadius.circular(100.0),
-                                          ),
-                                          child: Padding(
-                                            padding: EdgeInsets.all(2.0),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.max,
-                                              children: [
-                                                Container(
-                                                  width: 56.0,
-                                                  height: 56.0,
-                                                  decoration: BoxDecoration(
-                                                    color: FlutterFlowTheme.of(
-                                                            context)
-                                                        .secondaryBackground,
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                  child: Align(
-                                                    alignment:
-                                                        AlignmentDirectional(
-                                                            0.0, 0.0),
-                                                    child: Icon(
-                                                      FFIcons.kuser03,
-                                                      color:
-                                                          FlutterFlowTheme.of(
-                                                                  context)
-                                                              .primaryText,
-                                                      size: 20.0,
-                                                    ),
-                                                  ),
-                                                ),
-                                                Expanded(
-                                                  child: Padding(
-                                                    padding:
-                                                        EdgeInsetsDirectional
-                                                            .fromSTEB(8.0, 0.0,
-                                                                8.0, 0.0),
-                                                    child: AuthUserStreamWidget(
-                                                      builder: (context) =>
-                                                          Container(
-                                                        width: double.infinity,
-                                                        child: TextFormField(
-                                                          controller: _model
-                                                              .nameTextController,
-                                                          focusNode: _model
-                                                              .nameFocusNode,
-                                                          onFieldSubmitted:
-                                                              (_) async {
-                                                            if (_model
-                                                                    .nameTextController
-                                                                    .text !=
-                                                                '') {
-                                                              if (functions
-                                                                  .isValidName(_model
-                                                                      .nameTextController
-                                                                      .text)) {
-                                                                await _goToNextVisiblePage();
-                                                              } else {
-                                                                await actions
-                                                                    .showTopNotification(
-                                                                  context,
-                                                                  'Неверное имя',
-                                                                  '',
-                                                                  true,
-                                                                );
-                                                                return;
-                                                              }
-                                                            } else {
-                                                              await actions
-                                                                  .showTopNotification(
-                                                                context,
-                                                                'Пожалуйста, представьтесь',
-                                                                '',
-                                                                true,
-                                                              );
-                                                              return;
-                                                            }
-                                                          },
-                                                          autofocus: true,
-                                                          textCapitalization:
-                                                              TextCapitalization
-                                                                  .sentences,
-                                                          textInputAction:
-                                                              TextInputAction
-                                                                  .done,
-                                                          obscureText: false,
-                                                          decoration:
-                                                              InputDecoration(
-                                                            isDense: false,
-                                                            labelText:
-                                                                FFLocalizations.of(
-                                                                        context)
-                                                                    .getText(
-                                                              'ymvt7z18' /* Ваше имя */,
-                                                            ),
-                                                            labelStyle:
-                                                                FlutterFlowTheme.of(
-                                                                        context)
-                                                                    .bodyMedium
-                                                                    .override(
-                                                                      fontFamily:
-                                                                          'sf pro display',
-                                                                      color: FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .secondaryText,
-                                                                      fontSize:
-                                                                          16.0,
-                                                                      letterSpacing:
-                                                                          0.0,
-                                                                    ),
-                                                            enabledBorder:
-                                                                InputBorder
-                                                                    .none,
-                                                            focusedBorder:
-                                                                InputBorder
-                                                                    .none,
-                                                            errorBorder:
-                                                                InputBorder
-                                                                    .none,
-                                                            focusedErrorBorder:
-                                                                InputBorder
-                                                                    .none,
-                                                          ),
-                                                          style: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .bodyMedium
-                                                              .override(
-                                                                fontFamily:
-                                                                    'sf pro display',
-                                                                fontSize: 16.0,
-                                                                letterSpacing:
-                                                                    0.0,
-                                                              ),
-                                                          cursorColor:
-                                                              FlutterFlowTheme.of(
-                                                                      context)
-                                                                  .primaryText,
-                                                          enableInteractiveSelection:
-                                                              true,
-                                                          validator: _model
-                                                              .nameTextControllerValidator
-                                                              .asValidator(
-                                                                  context),
-                                                          inputFormatters: [
-                                                            if (!isAndroid &&
-                                                                !isiOS)
-                                                              TextInputFormatter
-                                                                  .withFunction(
-                                                                      (oldValue,
-                                                                          newValue) {
-                                                                return TextEditingValue(
-                                                                  selection:
-                                                                      newValue
-                                                                          .selection,
-                                                                  text: newValue
-                                                                      .text
-                                                                      .toCapitalization(
-                                                                          TextCapitalization
-                                                                              .sentences),
-                                                                );
-                                                              }),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                6.0, 0.0, 6.0, 0.0),
-                            child: SingleChildScrollView(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        10.0, 0.0, 10.0, 0.0),
-                                    child: AutoSizeText(
-                                      FFLocalizations.of(context).getText(
-                                        'uvh46vvg' /* Язык, которому будете обучать */,
-                                      ),
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'Cool',
-                                            color: Colors.black,
-                                            fontSize: 43.0,
-                                            letterSpacing: 0.0,
-                                            fontWeight: FontWeight.normal,
-                                            lineHeight: 1.1,
-                                          ),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        10.0, 4.0, 0.0, 0.0),
-                                    child: Text(
-                                      FFLocalizations.of(context).getText(
-                                        't67xey72' /* Можно выбрать несколько */,
-                                      ),
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'sf pro display',
-                                            color: FlutterFlowTheme.of(context)
-                                                .secondaryText,
-                                            fontSize: 16.0,
-                                            letterSpacing: 0.0,
-                                            fontWeight: FontWeight.normal,
-                                          ),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 60.0, 0.0, 0.0),
-                                    child: wrapWithModel(
-                                      model: _model.langModel1,
-                                      updateCallback: () => safeSetState(() {}),
-                                      child: LangWidget(
-                                        selected: _model.langLearn,
-                                        action: (lang) async {
-                                          _model.langLearn = lang;
-                                          safeSetState(() {});
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ]
-                                    .addToStart(SizedBox(height: 16.0))
-                                    .addToEnd(SizedBox(height: 120.0)),
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                6.0, 0.0, 6.0, 0.0),
-                            child: SingleChildScrollView(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        10.0, 16.0, 10.0, 0.0),
-                                    child: AutoSizeText(
-                                      FFLocalizations.of(context).getText(
-                                        'qneb3190' /* На каком языке вы говорите с д... */,
-                                      ),
-                                      maxLines: 2,
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'Cool',
-                                            color: Colors.black,
-                                            fontSize: 43.0,
-                                            letterSpacing: 0.0,
-                                            fontWeight: FontWeight.normal,
-                                            lineHeight: 1.1,
-                                          ),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 60.0, 0.0, 0.0),
-                                    child: wrapWithModel(
-                                      model: _model.langModel2,
-                                      updateCallback: () => safeSetState(() {}),
-                                      child: LangWidget(
-                                        selected: _model.nativeLang,
-                                        action: (lang) async {
-                                          _model.nativeLang = lang;
-                                          safeSetState(() {});
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ].addToEnd(SizedBox(height: 111.0)),
-                              ),
-                            ),
-                          ),
-                          Stack(
-                            children: [
-                              Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    0.0, 60.0, 0.0, 0.0),
-                                child: FlutterFlowSwipeableStack(
-                                  onSwipeFn: (index) async {
-                                    _model.genderISMALE = !_model.genderISMALE;
-                                    safeSetState(() {});
-                                  },
-                                  onLeftSwipe: (index) {},
-                                  onRightSwipe: (index) {},
-                                  onUpSwipe: (index) {},
-                                  onDownSwipe: (index) {},
-                                  itemBuilder: (context, index) {
-                                    return [
-                                      () => Align(
-                                            alignment:
-                                                AlignmentDirectional(0.0, 0.0),
-                                            child: Padding(
-                                              padding: EdgeInsetsDirectional
-                                                  .fromSTEB(
-                                                      12.0, 0.0, 0.0, 0.0),
-                                              child: Transform.rotate(
-                                                angle: 15.0 * (math.pi / 180),
-                                                child: ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          20.0),
-                                                  child: Image.asset(
-                                                    FFLocalizations.of(context)
-                                                                .languageCode ==
-                                                            'ru'
-                                                        ? 'assets/images/group_11712753102.webp'
-                                                        : 'assets/images/group_1171275311.webp',
-                                                    width: 280.0,
-                                                    fit: BoxFit.contain,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                      () => Align(
-                                            alignment:
-                                                AlignmentDirectional(0.0, 0.0),
-                                            child: Transform.rotate(
-                                              angle: 350.0 * (math.pi / 180),
-                                              child: ClipRRect(
-                                                borderRadius:
-                                                    BorderRadius.circular(20.0),
-                                                child: Image.asset(
-                                                  FFLocalizations.of(context)
-                                                              .languageCode ==
-                                                          'ru'
-                                                      ? 'assets/images/33_2.webp'
-                                                      : 'assets/images/33_.webp',
-                                                  width: 280.0,
-                                                  fit: BoxFit.contain,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                    ][index]();
-                                  },
-                                  itemCount: 2,
-                                  controller: _model.swipeableStackController,
-                                  loop: true,
-                                  cardDisplayCount: 2,
-                                  scale: 0.9,
-                                  backCardOffset: const Offset(100.0, 0.0),
-                                  allowedSwipeDirection:
-                                      AllowedSwipeDirection.symmetric(
-                                          horizontal: true),
-                                ),
-                              ),
-                              Column(
-                                mainAxisSize: MainAxisSize.max,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        16.0, 16.0, 16.0, 0.0),
-                                    child: AutoSizeText(
-                                      FFLocalizations.of(context).getText(
-                                        'tsnjs8zf' /* Как вы себя 
-идентифицируете? */
-                                        ,
-                                      ),
-                                      maxLines: 2,
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'Cool',
-                                            color: Colors.black,
-                                            fontSize: 43.0,
-                                            letterSpacing: 0.0,
-                                            fontWeight: FontWeight.normal,
-                                            lineHeight: 1.1,
-                                          ),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        16.0, 4.0, 16.0, 0.0),
-                                    child: Text(
-                                      FFLocalizations.of(context).getText(
-                                        'zc7cbn38' /* Это поможет ученикам найти под... */,
-                                      ),
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'sf pro display',
-                                            color: FlutterFlowTheme.of(context)
-                                                .secondaryText,
-                                            fontSize: 16.0,
-                                            letterSpacing: 0.0,
-                                            fontWeight: FontWeight.normal,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                6.0, 0.0, 6.0, 0.0),
-                            child: SingleChildScrollView(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        10.0, 0.0, 10.0, 0.0),
-                                    child: Text(
-                                      FFLocalizations.of(context).getText(
-                                        'iaxjidcm' /* Где вы сейчас находитесь? */,
-                                      ),
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'Cool',
-                                            fontSize: 43.0,
-                                            letterSpacing: 0.0,
-                                            fontWeight: FontWeight.normal,
-                                            lineHeight: 1.1,
-                                          ),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        10.0, 4.0, 10.0, 0.0),
-                                    child: Text(
-                                      FFLocalizations.of(context).getText(
-                                        'h6cyori3' /* Находите новых друзей в интере... */,
-                                      ),
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'sf pro display',
-                                            color: FlutterFlowTheme.of(context)
-                                                .secondaryText,
-                                            fontSize: 16.0,
-                                            letterSpacing: 0.0,
-                                            fontWeight: FontWeight.normal,
-                                          ),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 60.0, 0.0, 0.0),
-                                    child: wrapWithModel(
-                                      model: _model.countryModel,
-                                      updateCallback: () => safeSetState(() {}),
-                                      child: CountryWidget(
-                                        selected: _model.country,
-                                        action: (lang) async {
-                                          _model.country = lang;
-                                          safeSetState(() {});
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ]
-                                    .addToStart(SizedBox(height: 16.0))
-                                    .addToEnd(SizedBox(height: 120.0)),
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                6.0, 0.0, 6.0, 0.0),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.max,
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      10.0, 16.0, 10.0, 0.0),
-                                  child: AutoSizeText(
-                                    FFLocalizations.of(context).getText(
-                                      '24v6ef7s' /* Расскажите 
-о себе */
-                                      ,
-                                    ),
-                                    maxLines: 2,
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'Cool',
-                                          color: Colors.black,
-                                          fontSize: 43.0,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
-                                          lineHeight: 1.1,
-                                        ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      10.0, 4.0, 10.0, 0.0),
-                                  child: Text(
-                                    FFLocalizations.of(context).getText(
-                                      '9c52d7gr' /* Это поможет ученикам узнать ва... */,
-                                    ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: FlutterFlowTheme.of(context)
-                                              .secondaryText,
-                                          fontSize: 16.0,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
-                                        ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      0.0, 60.0, 0.0, 0.0),
-                                  child: Container(
-                                    width: double.infinity,
-                                    child: TextFormField(
-                                      controller: _model.aboutMeTextController,
-                                      focusNode: _model.aboutMeFocusNode,
-                                      onFieldSubmitted: (_) async {
-                                        if (_model.aboutMeTextController.text !=
-                                            '') {
-                                          await _goToNextVisiblePage();
-                                        } else {
-                                          await actions.showTopNotification(
-                                            context,
-                                            'Напишите хотя бы пару слов',
-                                            '',
-                                            true,
-                                          );
-                                          return;
-                                        }
-                                      },
-                                      autofocus: true,
-                                      textCapitalization:
-                                          TextCapitalization.sentences,
-                                      textInputAction: TextInputAction.done,
-                                      obscureText: false,
-                                      decoration: InputDecoration(
-                                        isDense: false,
-                                        hintText:
-                                            FFLocalizations.of(context).getText(
-                                          's8jfyxcp' /* Люблю готовить, изучаю испанск... */,
-                                        ),
-                                        hintStyle: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .secondaryText,
-                                              fontSize: 16.0,
-                                              letterSpacing: 0.0,
-                                            ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderSide: BorderSide(
-                                            color: Color(0x00000000),
-                                            width: 1.0,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(16.0),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderSide: BorderSide(
-                                            color: Color(0x00000000),
-                                            width: 1.0,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(16.0),
-                                        ),
-                                        errorBorder: OutlineInputBorder(
-                                          borderSide: BorderSide(
-                                            color: FlutterFlowTheme.of(context)
-                                                .error,
-                                            width: 1.0,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(16.0),
-                                        ),
-                                        focusedErrorBorder: OutlineInputBorder(
-                                          borderSide: BorderSide(
-                                            color: FlutterFlowTheme.of(context)
-                                                .error,
-                                            width: 1.0,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(16.0),
-                                        ),
-                                        filled: true,
-                                        fillColor: FlutterFlowTheme.of(context)
-                                            .primaryBackground,
-                                        contentPadding: EdgeInsets.all(16.0),
-                                        hoverColor: FlutterFlowTheme.of(context)
-                                            .primaryBackground,
-                                      ),
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'sf pro display',
-                                            fontSize: 16.0,
-                                            letterSpacing: 0.0,
-                                          ),
-                                      maxLines: 12,
-                                      minLines: 4,
-                                      cursorColor: FlutterFlowTheme.of(context)
-                                          .primaryText,
-                                      enableInteractiveSelection: true,
-                                      validator: _model
-                                          .aboutMeTextControllerValidator
-                                          .asValidator(context),
-                                      inputFormatters: [
-                                        if (!isAndroid && !isiOS)
-                                          TextInputFormatter.withFunction(
-                                              (oldValue, newValue) {
-                                            return TextEditingValue(
-                                              selection: newValue.selection,
-                                              text: newValue.text
-                                                  .toCapitalization(
-                                                      TextCapitalization
-                                                          .sentences),
-                                            );
-                                          }),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          _shouldShowPhotoStep
-                              ? Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      6.0, 0.0, 6.0, 0.0),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.start,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            10.0, 16.0, 10.0, 0.0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'gt8x9g31' /* Добавьте фото профиля */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'Cool',
-                                                fontSize: 43.0,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.normal,
-                                                lineHeight: 1.1,
-                                              ),
-                                        ),
-                                      ),
-                                      SizedBox(height: 60.0),
-                                      InkWell(
-                                        splashColor: Colors.transparent,
-                                        focusColor: Colors.transparent,
-                                        hoverColor: Colors.transparent,
-                                        highlightColor: Colors.transparent,
-                                        onTap: () async {
-                                          if (_isSubmitting) {
-                                            return;
-                                          }
-                                          final selectedMedia =
-                                              await selectMedia(
-                                            maxWidth: 500.00,
-                                            maxHeight: 500.00,
-                                            imageQuality: 95,
-                                            mediaSource:
-                                                MediaSource.photoGallery,
-                                            multiImage: false,
-                                          );
-                                          if (selectedMedia != null &&
-                                              selectedMedia.every((m) =>
-                                                  validateFileFormat(
-                                                      m.storagePath,
-                                                      context))) {
-                                            safeSetState(() => _model
-                                                    .isDataUploading_uploadDataIyo2 =
-                                                true);
-                                            var selectedUploadedFiles =
-                                                <FFUploadedFile>[];
-                                            try {
-                                              selectedUploadedFiles =
-                                                  selectedMedia
-                                                      .map(
-                                                          (m) => FFUploadedFile(
-                                                                name: m
-                                                                    .storagePath
-                                                                    .split('/')
-                                                                    .last,
-                                                                bytes: m.bytes,
-                                                                height: m
-                                                                    .dimensions
-                                                                    ?.height,
-                                                                width: m
-                                                                    .dimensions
-                                                                    ?.width,
-                                                                blurHash:
-                                                                    m.blurHash,
-                                                                originalFilename:
-                                                                    m.originalFilename,
-                                                              ))
-                                                      .toList();
-                                            } finally {
-                                              _model.isDataUploading_uploadDataIyo2 =
-                                                  false;
-                                            }
-                                            if (selectedUploadedFiles.length ==
-                                                selectedMedia.length) {
-                                              safeSetState(() {
-                                                _model.uploadedLocalFile_uploadDataIyo2 =
-                                                    selectedUploadedFiles.first;
-                                              });
-                                            } else {
-                                              safeSetState(() {});
-                                              return;
-                                            }
-                                          }
-                                          if ((_model
-                                                  .uploadedLocalFile_uploadDataIyo2
-                                                  .bytes
-                                                  ?.isNotEmpty ??
-                                              false)) {
-                                            _model.avatar = _model
-                                                .uploadedLocalFile_uploadDataIyo2;
-                                            safeSetState(() {});
-                                            safeSetState(() {
-                                              _model.isDataUploading_uploadDataIyo2 =
-                                                  false;
-                                              _model.uploadedLocalFile_uploadDataIyo2 =
-                                                  FFUploadedFile(
-                                                      bytes: Uint8List.fromList(
-                                                          []),
-                                                      originalFilename: '');
-                                            });
-                                          }
-                                        },
-                                        child: Container(
-                                          width: double.infinity,
-                                          height: 479.1,
-                                          decoration: BoxDecoration(
-                                            color: FlutterFlowTheme.of(context)
-                                                .primaryBackground,
-                                            borderRadius:
-                                                BorderRadius.circular(26.0),
-                                          ),
-                                          child: Builder(
-                                            builder: (context) {
-                                              if (_model.avatar != null &&
-                                                  (_model.avatar?.bytes
-                                                          ?.isNotEmpty ??
-                                                      false)) {
-                                                return ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          26.0),
-                                                  child: Image.memory(
-                                                    _model.avatar?.bytes ??
-                                                        Uint8List.fromList([]),
-                                                    width: double.infinity,
-                                                    height: double.infinity,
-                                                    fit: BoxFit.cover,
-                                                  ),
-                                                );
-                                              } else if (_existingPhotoUrl
-                                                  .isNotEmpty) {
-                                                return ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          26.0),
-                                                  child: Image.network(
-                                                    _existingPhotoUrl,
-                                                    width: double.infinity,
-                                                    height: double.infinity,
-                                                    fit: BoxFit.cover,
-                                                  ),
-                                                );
-                                              } else {
-                                                return Align(
-                                                  alignment:
-                                                      AlignmentDirectional(
-                                                          0.0, -1.0),
-                                                  child: Padding(
-                                                    padding:
-                                                        EdgeInsetsDirectional
-                                                            .fromSTEB(0.0, 0.0,
-                                                                0.0, 0.0),
-                                                    child: Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.max,
-                                                      mainAxisAlignment:
-                                                          MainAxisAlignment
-                                                              .center,
-                                                      children: [
-                                                        Container(
-                                                          width: 45.0,
-                                                          height: 45.0,
-                                                          decoration:
-                                                              BoxDecoration(
-                                                            color: FlutterFlowTheme
-                                                                    .of(context)
-                                                                .secondaryBackground,
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        20.0),
-                                                          ),
-                                                          child: Icon(
-                                                            FFIcons.kcameraPlus,
-                                                            color: FlutterFlowTheme
-                                                                    .of(context)
-                                                                .primaryText,
-                                                            size: 20.0,
-                                                          ),
-                                                        ),
-                                                        Padding(
-                                                          padding:
-                                                              EdgeInsetsDirectional
-                                                                  .fromSTEB(
-                                                                      12.0,
-                                                                      0.0,
-                                                                      0.0,
-                                                                      0.0),
-                                                          child: AutoSizeText(
-                                                            FFLocalizations.of(
-                                                                    context)
-                                                                .getText(
-                                                              'uijw0e1q' /* Загрузить фото */,
-                                                            ),
-                                                            style: FlutterFlowTheme
-                                                                    .of(context)
-                                                                .bodyMedium
-                                                                .override(
-                                                                  fontFamily:
-                                                                      'sf pro display',
-                                                                  color: FlutterFlowTheme.of(
-                                                                          context)
-                                                                      .secondaryText,
-                                                                  fontSize:
-                                                                      16.0,
-                                                                  letterSpacing:
-                                                                      0.0,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .normal,
-                                                                ),
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                );
-                                              }
-                                            },
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                        ],
-                      ),
+                    child: PageView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      controller: _model.pageViewController,
+                      onPageChanged: _setCurrentPageIndex,
+                      children: _buildStepPages(),
                     ),
                   ),
                 ],
               ),
             ),
             Align(
-              alignment: AlignmentDirectional(0.0, 1.0),
+              alignment: AlignmentDirectional.bottomCenter,
               child: Container(
                 width: double.infinity,
-                height: 104.0,
+                height: 100.0,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Color(0x00F2F2F7),
-                      FlutterFlowTheme.of(context).secondaryBackground
+                      const Color(0x00F2F2F7),
+                      FlutterFlowTheme.of(context).secondaryBackground,
                     ],
-                    stops: [0.0, 1.0],
-                    begin: AlignmentDirectional(0.0, -1.0),
-                    end: AlignmentDirectional(0, 1.0),
+                    stops: const [0.0, 1.0],
+                    begin: const AlignmentDirectional(0.0, -1.0),
+                    end: const AlignmentDirectional(0.0, 1.0),
                   ),
                 ),
                 child: Align(
-                  alignment: AlignmentDirectional(0.0, 0.0),
-                  child: Padding(
-                    padding:
-                        EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 35.0),
-                    child: Container(
-                      height: 60.0,
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(100.0),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(2.0),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            FlutterFlowIconButton(
-                              borderRadius: 60.0,
-                              buttonSize: 56.0,
-                              fillColor: Color(0xFF2E2E2E),
-                              icon: Icon(
-                                FFIcons.karrowLeft,
-                                color:
-                                    FlutterFlowTheme.of(context).secondaryText,
-                                size: 24.0,
-                              ),
-                              onPressed: (previousVisibleNativeSpeakerPage(
-                                        currentRawIndex:
-                                            _model.pageViewCurrentIndex,
-                                        visiblePages: _visiblePages,
-                                      ) ==
-                                      null)
-                                  ? null
-                                  : () async {
-                                      await _goToPreviousVisiblePage();
-                                    },
-                            ),
-                            Builder(
-                              builder: (context) {
-                                if (_isLastVisiblePage) {
-                                  return FlutterFlowIconButton(
-                                    borderRadius: 60.0,
-                                    buttonSize: 56.0,
-                                    fillColor:
-                                        FlutterFlowTheme.of(context).success,
-                                    icon: _isSubmitting
-                                        ? SizedBox(
-                                            width: 20.0,
-                                            height: 20.0,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2.2,
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(
-                                                Colors.black,
-                                              ),
-                                            ),
-                                          )
-                                        : Icon(
-                                            Icons.check,
-                                            color: Colors.black,
-                                            size: 24.0,
-                                          ),
-                                    onPressed: _isSubmitting
-                                        ? null
-                                        : () async {
-                                            await _finishNativeSpeakerOnboarding();
-                                          },
-                                  );
-                                } else {
-                                  return FlutterFlowIconButton(
-                                    borderRadius: 60.0,
-                                    buttonSize: 56.0,
-                                    fillColor: FlutterFlowTheme.of(context)
-                                        .primaryBackground,
-                                    icon: Icon(
-                                      FFIcons.karrowRight,
-                                      color: Colors.black,
-                                      size: 24.0,
-                                    ),
-                                    onPressed: () async {
-                                      unawaited(
-                                        () async {
-                                          await actions.closeKeyboard();
-                                        }(),
-                                      );
-                                      switch (_currentPage) {
-                                        case NativeSpeakerOnboardingPage.name:
-                                          if (_model.nameTextController.text !=
-                                              '') {
-                                            if (!functions.isValidName(_model
-                                                .nameTextController.text)) {
-                                              await actions.showTopNotification(
-                                                context,
-                                                'Неверное имя',
-                                                '',
-                                                true,
-                                              );
-                                              return;
-                                            }
-                                          } else {
-                                            await actions.showTopNotification(
-                                              context,
-                                              'Пожалуйста, представьтесь',
-                                              '',
-                                              true,
-                                            );
-                                            return;
-                                          }
-                                          break;
-                                        case NativeSpeakerOnboardingPage
-                                              .languageInstruction:
-                                          if (!(_model.langLearn != null)) {
-                                            await actions.showTopNotification(
-                                              context,
-                                              'Выберите язык из списка',
-                                              '',
-                                              true,
-                                            );
-                                            return;
-                                          }
-                                          break;
-                                        case NativeSpeakerOnboardingPage
-                                              .nativeLanguage:
-                                          if (!(_model.nativeLang != null)) {
-                                            await actions.showTopNotification(
-                                              context,
-                                              'Выберите язык из списка',
-                                              '',
-                                              true,
-                                            );
-                                            return;
-                                          }
-                                          break;
-                                        case NativeSpeakerOnboardingPage.gender:
-                                          break;
-                                        case NativeSpeakerOnboardingPage
-                                              .country:
-                                          if (!(_model.country != null)) {
-                                            await actions.showTopNotification(
-                                              context,
-                                              'Выберите страну из списка',
-                                              '',
-                                              true,
-                                            );
-                                            return;
-                                          }
-                                          break;
-                                        case NativeSpeakerOnboardingPage
-                                              .aboutMe:
-                                          if (!(_model
-                                                  .aboutMeTextController.text !=
-                                              '')) {
-                                            await actions.showTopNotification(
-                                              context,
-                                              'Напишите хотя бы пару слов',
-                                              '',
-                                              true,
-                                            );
-                                            return;
-                                          }
-                                          break;
-                                        case NativeSpeakerOnboardingPage.photo:
-                                          break;
-                                      }
-
-                                      await _goToNextVisiblePage();
-                                    },
-                                  );
-                                }
-                              },
-                            ),
-                          ].divide(SizedBox(width: 2.0)),
-                        ),
-                      ),
-                    ),
-                  ),
+                  alignment: AlignmentDirectional.bottomCenter,
+                  child: _buildBottomNavigation(context),
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+
+    return ValueListenableBuilder<int>(
+      valueListenable: _currentPageIndexNotifier,
+      child: scaffold,
+      builder: (context, _, child) => PopScope(
+        canPop: _canExitOnSystemBack,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) {
+            return;
+          }
+          _handleSystemBack();
+        },
+        child: child!,
       ),
     );
   }

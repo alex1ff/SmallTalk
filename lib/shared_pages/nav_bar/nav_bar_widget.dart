@@ -44,17 +44,23 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     super.dispose();
   }
 
-  bool get _isTeacher => canAccessTeacherSurfaces(currentUserDocument);
+  bool get _usesNativeSpeakerShell =>
+      canUseNativeSpeakerShell(currentUserDocument);
 
   bool get _hasActiveSelection => widget.indexCurrentPage != null;
 
   int get _selectedIndex {
-    final maxIndex = _isTeacher ? 1 : 2;
+    final maxIndex = _usesNativeSpeakerShell ? 2 : 3;
     return widget.indexCurrentPage!.clamp(0, maxIndex).toInt();
   }
 
+  int get _displayIndex => _hasActiveSelection ? _selectedIndex : 0;
+
+  bool _isCurrentTab(int index) =>
+      _hasActiveSelection && _selectedIndex == index;
+
   List<_NavBarDestination> _destinations(BuildContext context) {
-    if (_isTeacher) {
+    if (_usesNativeSpeakerShell) {
       return [
         _NavBarDestination(
           icon: FFIcons.khome01,
@@ -68,6 +74,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           label: FFLocalizations.of(context).getVariableText(
             ruText: 'Чаты',
             enText: 'Chats',
+          ),
+        ),
+        _NavBarDestination(
+          icon: FFIcons.kuser03,
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Профиль',
+            enText: 'Profile',
           ),
         ),
       ];
@@ -95,13 +108,20 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           enText: 'Chats',
         ),
       ),
+      _NavBarDestination(
+        icon: FFIcons.kuser03,
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Профиль',
+          enText: 'Profile',
+        ),
+      ),
     ];
   }
 
   List<AdaptiveNavigationDestination> _adaptiveDestinations(
     BuildContext context,
   ) {
-    if (_isTeacher) {
+    if (_usesNativeSpeakerShell) {
       return [
         AdaptiveNavigationDestination(
           icon: 'house.fill',
@@ -115,6 +135,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           label: FFLocalizations.of(context).getVariableText(
             ruText: 'Чаты',
             enText: 'Chats',
+          ),
+        ),
+        AdaptiveNavigationDestination(
+          icon: 'person.fill',
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Профиль',
+            enText: 'Profile',
           ),
         ),
       ];
@@ -142,12 +169,19 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           enText: 'Chats',
         ),
       ),
+      AdaptiveNavigationDestination(
+        icon: 'person.fill',
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Профиль',
+          enText: 'Profile',
+        ),
+      ),
     ];
   }
 
   void _onTap(int index) {
     if (!mounted) return;
-    if (_isTeacher) {
+    if (_usesNativeSpeakerShell) {
       _handleTeacherTap(index);
     } else {
       _handleStudentTap(index);
@@ -157,15 +191,21 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   void _handleTeacherTap(int index) {
     switch (index) {
       case 0:
-        if (_selectedIndex == 0) return;
+        if (_isCurrentTab(0)) return;
         context.goNamed(
           DashboardNSWidget.routeName,
         );
         return;
       case 1:
-        if (_selectedIndex == 1) return;
+        if (_isCurrentTab(1)) return;
         context.goNamed(
           FavoriteWidget.routeName,
+        );
+        return;
+      case 2:
+        if (_isCurrentTab(2)) return;
+        context.goNamed(
+          ProfileWidget.routeName,
         );
         return;
     }
@@ -174,7 +214,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   void _handleStudentTap(int index) {
     switch (index) {
       case 0:
-        if (_selectedIndex == 0) return;
+        if (_isCurrentTab(0)) return;
         context.goNamed(
           StudentsDashboardWidget.routeName,
           queryParameters: {
@@ -183,15 +223,21 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         );
         return;
       case 1:
-        if (_selectedIndex == 1) return;
+        if (_isCurrentTab(1)) return;
         context.goNamed(
           WordsWidget.routeName,
         );
         return;
       case 2:
-        if (_selectedIndex == 2) return;
+        if (_isCurrentTab(2)) return;
         context.goNamed(
           FavoriteWidget.routeName,
+        );
+        return;
+      case 3:
+        if (_isCurrentTab(3)) return;
+        context.goNamed(
+          ProfileWidget.routeName,
         );
         return;
     }
@@ -288,7 +334,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         padding: EdgeInsets.only(bottom: bottomPadding),
         child: IOS26NativeTabBar(
           destinations: destinations,
-          selectedIndex: _selectedIndex,
+          selectedIndex: _displayIndex,
           onTap: _onTap,
           tint: const Color(0xFF008BFF),
           backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
@@ -299,7 +345,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   }
 
   Widget _buildCupertinoTabBar(BuildContext context) {
-    final items = _isTeacher
+    final items = _usesNativeSpeakerShell
         ? [
             BottomNavigationBarItem(
               icon: Icon(FFIcons.khome01),
@@ -310,6 +356,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
               label: FFLocalizations.of(context).getVariableText(
                 ruText: 'Чаты',
                 enText: 'Chats',
+              ),
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(FFIcons.kuser03),
+              label: FFLocalizations.of(context).getVariableText(
+                ruText: 'Профиль',
+                enText: 'Profile',
               ),
             ),
           ]
@@ -329,10 +382,17 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                 enText: 'Chats',
               ),
             ),
+            BottomNavigationBarItem(
+              icon: Icon(FFIcons.kuser03),
+              label: FFLocalizations.of(context).getVariableText(
+                ruText: 'Профиль',
+                enText: 'Profile',
+              ),
+            ),
           ];
 
     return CupertinoTabBar(
-      currentIndex: _selectedIndex,
+      currentIndex: _displayIndex,
       onTap: _onTap,
       backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
       activeColor: const Color(0xFF008BFF),
@@ -341,7 +401,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   }
 
   Widget _buildMaterialNavBar(BuildContext context) {
-    final destinations = _isTeacher
+    final destinations = _usesNativeSpeakerShell
         ? [
             NavigationDestination(
               icon: Icon(FFIcons.khome01),
@@ -356,6 +416,15 @@ class _NavBarWidgetState extends State<NavBarWidget> {
               label: FFLocalizations.of(context).getVariableText(
                 ruText: 'Чаты',
                 enText: 'Chats',
+              ),
+            ),
+            NavigationDestination(
+              icon: Icon(FFIcons.kuser03),
+              selectedIcon:
+                  Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
+              label: FFLocalizations.of(context).getVariableText(
+                ruText: 'Профиль',
+                enText: 'Profile',
               ),
             ),
           ]
@@ -381,10 +450,19 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                 enText: 'Chats',
               ),
             ),
+            NavigationDestination(
+              icon: Icon(FFIcons.kuser03),
+              selectedIcon:
+                  Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
+              label: FFLocalizations.of(context).getVariableText(
+                ruText: 'Профиль',
+                enText: 'Profile',
+              ),
+            ),
           ];
 
     return NavigationBar(
-      selectedIndex: _selectedIndex,
+      selectedIndex: _displayIndex,
       onDestinationSelected: _onTap,
       animationDuration: Duration.zero,
       backgroundColor: FlutterFlowTheme.of(context).primaryBackground,

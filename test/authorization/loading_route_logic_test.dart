@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/student_onboarding_logic.dart';
 import 'package:small_talk/authorization/loading/loading_route_logic.dart';
 import 'package:small_talk/backend/schema/enums/enums.dart';
+import 'package:small_talk/backend/schema/structs/index.dart';
 
 void main() {
   group('hasResolvedLoadingRouteState', () {
@@ -85,7 +87,7 @@ void main() {
         acquaintance: true,
         isProfileComplete: true,
         hasInferredStudentProfileCompletion: false,
-        isTeacherAccreditationApproved: true,
+        canUseNativeSpeakerShell: true,
       );
 
       expect(
@@ -95,7 +97,7 @@ void main() {
     });
 
     test(
-        'routes unapproved native speaker with completed onboarding to student dashboard',
+        'routes native speaker without pending or approved shell access to student dashboard',
         () {
       final destination = resolveLoadingRouteDestination(
         role: UserRole.native_speaker,
@@ -181,11 +183,24 @@ void main() {
 
     test('routes legacy completed student without profile flag to dashboard',
         () {
+      final hasInferredStudentProfileCompletion =
+          hasCompletedStudentOnboardingContract(
+        acquaintance: true,
+        displayName: 'Alice',
+        gender: Gender.female,
+        level: Level.Intermediate,
+        learningLanguage: LanguageStruct(
+          code: 'ja',
+        ),
+        country: CountryStruct(code: 'JP'),
+      );
+
       final destination = resolveLoadingRouteDestination(
         role: UserRole.student,
         acquaintance: true,
         isProfileComplete: null,
-        hasInferredStudentProfileCompletion: true,
+        hasInferredStudentProfileCompletion:
+            hasInferredStudentProfileCompletion,
       );
 
       expect(
@@ -195,16 +210,59 @@ void main() {
     });
 
     test('routes legacy unfinished student without profile flag to resume', () {
+      final hasInferredStudentProfileCompletion =
+          hasCompletedStudentOnboardingContract(
+        acquaintance: true,
+        displayName: 'Alice',
+        gender: Gender.female,
+        level: null,
+        learningLanguage: LanguageStruct(
+          code: 'ja',
+        ),
+        country: null,
+      );
+
       final destination = resolveLoadingRouteDestination(
         role: UserRole.student,
         acquaintance: true,
         isProfileComplete: null,
-        hasInferredStudentProfileCompletion: false,
+        hasInferredStudentProfileCompletion:
+            hasInferredStudentProfileCompletion,
       );
 
       expect(
         destination,
         LoadingRouteDestination.acquaintanceStudentResume,
+      );
+    });
+
+    test('accepts legacy non-en-ru learning languages in fallback inference',
+        () {
+      final hasInferredStudentProfileCompletion =
+          hasCompletedStudentOnboardingContract(
+        acquaintance: true,
+        displayName: 'Alice',
+        gender: Gender.female,
+        level: Level.Fluent,
+        learningLanguage: LanguageStruct(
+          code: 'kk',
+          model: 'kaz-Latn',
+          alternateCodes: <String>['kaz'],
+        ),
+        country: CountryStruct(code: 'KZ'),
+      );
+
+      final destination = resolveLoadingRouteDestination(
+        role: UserRole.student,
+        acquaintance: true,
+        isProfileComplete: null,
+        hasInferredStudentProfileCompletion:
+            hasInferredStudentProfileCompletion,
+      );
+
+      expect(
+        destination,
+        LoadingRouteDestination.studentsDashboard,
       );
     });
   });

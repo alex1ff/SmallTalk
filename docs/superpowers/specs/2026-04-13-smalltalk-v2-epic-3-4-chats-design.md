@@ -11,7 +11,7 @@ This spec defines the MVP architecture for Epic 3 and Epic 4:
 1. Add persistent 1:1 conversation and message storage.
 2. Unlock messaging only after a completed connected call.
 3. Implement the `Чаты` hub with inbox, friends, and call history.
-4. Implement the 1:1 thread with plain-text messaging.
+4. Implement the 1:1 thread with plain-text messaging plus backend-authored call events.
 
 The approved direction is event-driven unlock, not client-side unlock and not direct unlock inside `endSession`.
 
@@ -27,7 +27,7 @@ This design intentionally supports only new completed calls after release. No re
   - unlocked conversations
   - friends
   - call history
-- Add a dedicated 1:1 thread screen with plain-text send.
+- Add a dedicated 1:1 thread screen with plain-text send and backend-authored post-call event rows.
 
 ## Non-Goals
 
@@ -265,10 +265,11 @@ The generated value is stored as `pairId` and used as the Firestore document ID 
 The app and backend must use the same helper algorithm. `pairId` is treated as an opaque identifier; code must not parse it back to recover participants because UIDs can contain separator-like characters. Participant identity always comes from `participantIds` and `participantRefs`.
 
 Unread interpretation rules:
-
-- If the conversation has no `lastMessageAt`, it has no unread state.
-- If the current user has no `lastReadAtByUserId[currentUserUid]` entry and `lastMessageSenderId != currentUserUid`, the conversation is unread.
-- If the current user has a read marker, unread is determined by comparing `lastReadAtByUserId[currentUserUid] < lastMessageAt`.
+- `lastUnreadMessageAt` and `lastUnreadMessageSenderId` are the unread anchor for participant-authored text messages.
+- If those fields are absent, clients fall back to legacy `lastMessageAt` and `lastMessageSenderId`.
+- Backend-authored `call_event` rows update `lastMessage*` for inbox ordering and preview, but do not advance `lastUnreadMessage*`.
+- If the current user has no `lastReadAtByUserId[currentUserUid]` entry and the unread sender is another user, the conversation is unread.
+- If the current user has a read marker, unread is determined by comparing `lastReadAtByUserId[currentUserUid] < lastUnreadMessageAt`.
 - A message authored by the current user does not create an unread badge for that same user.
 - While the 1:1 thread is foregrounded on the current device, the conversation is treated as locally read and the client must advance the read marker again whenever `lastMessageAt` changes. This is the MVP race-healing rule for concurrent summary and read-marker updates.
 
@@ -289,17 +290,23 @@ Fields:
 - `createdAt: Timestamp`
 - `updatedAt: Timestamp`
 - `lastMessageAt: Timestamp?`
+- `lastMessageType: "text" | "call_event" | null`
 - `lastMessageText: String?`
 - `lastMessageSenderId: String?`
 - `lastMessageId: String?`
+- `lastUnreadMessageAt: Timestamp?`
+- `lastUnreadMessageSenderId: String?`
 - `lastReadAtByUserId: Map<String, Timestamp?>`
 
 Conversation creation initializes:
 
 - `lastMessageAt = null`
+- `lastMessageType = null`
 - `lastMessageText = null`
 - `lastMessageSenderId = null`
 - `lastMessageId = null`
+- `lastUnreadMessageAt = null`
+- `lastUnreadMessageSenderId = null`
 - `lastReadAtByUserId = {}`
 
 ### Messages
@@ -310,11 +317,15 @@ Document path:
 
 Fields:
 
-- `senderId: string`
-- `senderRef: DocumentReference`
-- `type: "text"`
+- `senderId: string | null`
+- `senderRef: DocumentReference | null`
+- `type: "text" | "call_event"`
 - `text: string`
 - `createdAt: Timestamp`
+- `sessionRef: DocumentReference?`
+- `callKind: "video"?`
+- `callStartedAt: Timestamp?`
+- `callDurationSeconds: int?`
 
 `createdAt` is server-assigned. The Flutter client writes it with Firestore server timestamp semantics; rules reject arbitrary client-chosen timestamps.
 
@@ -322,14 +333,15 @@ Fields:
 
 - `pairId` is deterministic from sorted participant IDs.
 - `lastMessage*` lives on the conversation root to support inbox rendering without fetching the newest message document for every row.
-- `lastReadAtByUserId` supports MVP unread state without a separate unread counter service.
-- Message type is constrained to plain text for this release.
+- `lastReadAtByUserId` plus `lastUnreadMessage*` supports MVP unread state without a separate unread counter service.
+- The client can still send only plain-text messages. `call_event` is backend-authored only and is used for post-call timeline entries inside unlocked 1:1 threads.
+- `call_event` writes are validated against the referenced completed session pair before they can materialize conversation summary fields.
 
 ## Unit 4: Message Summary Updater
 
 ### Responsibility
 
-Keep conversation inbox summary fields synchronized after a participant sends a text message.
+Keep conversation inbox summary fields synchronized after a participant sends a text message or the backend writes a post-call `call_event`.
 
 ### Location
 
@@ -342,12 +354,14 @@ Firebase Cloud Function triggered from:
 When a valid message is created, the updater writes to the parent conversation:
 
 - `lastMessageAt`
+- `lastMessageType`
 - `lastMessageText`
 - `lastMessageSenderId`
 - `lastMessageId`
+- `lastUnreadMessageAt` and `lastUnreadMessageSenderId` for `text` messages only
 - `updatedAt`
 
-The updater must verify the parent conversation still exists, is unlocked, and contains the message sender as a participant.
+The updater must verify the parent conversation still exists and is unlocked. For text messages it verifies the sender is a participant; for `call_event` messages it verifies the referenced session belongs to the same participant pair as the conversation.
 
 ### Stale-Write Protection
 
@@ -511,19 +525,22 @@ Friends may still exist below, but the communication empty state is defined by t
 
 ### Responsibility
 
-Render one unlocked conversation and allow plain-text send.
+Render one unlocked conversation, allow plain-text send, and surface backend-authored post-call `call_event` rows.
 
 ### Layout
 
 - header with partner avatar and name
 - message list ordered by `(createdAt, messageId) asc`
 - bottom composer for text send
+- centered tappable `call_event` card that opens the existing call details page
 
 ### Behavior
 
 - Opening the thread updates the current user's read marker.
 - After the first thread snapshot is visible, and on every later change to `lastMessageAt` while the thread stays foregrounded, the client advances the read marker again to `request.time`.
 - Sending a message creates a message document and updates conversation summary fields.
+- After each new completed connected post-rollout call, trusted backend code adds one idempotent `call_event` message `call_{sessionId}` to the unlocked conversation.
+- `call_event` updates ordering and inbox preview but does not create unread state or mask older unread text.
 - Normal entry points never route into a locked or missing conversation.
 
 ### Out of Scope
@@ -620,5 +637,5 @@ Exact composite index definitions should be added only for the queries used by t
 
 - Unlock model: event-driven server-owned unlock
 - Historical sessions: no retroactive unlock
-- Message scope: plain-text 1:1 only
+- Message scope: plain-text client send plus backend-authored post-call `call_event` timeline rows
 - Chat placement: inside the existing `Чаты` destination

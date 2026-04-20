@@ -3,10 +3,11 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'language_card_model.dart';
 export 'language_card_model.dart';
 
-class LanguageCardWidget extends StatefulWidget {
+class LanguageCardWidget extends StatelessWidget {
+  static const double selectionIndicatorSize = 25.0;
+
   const LanguageCardWidget({
     super.key,
     required this.lang,
@@ -18,33 +19,7 @@ class LanguageCardWidget extends StatefulWidget {
   final LanguageStruct? currentSelected;
   final Future Function(LanguageStruct selectedLangData)? callbackAction;
 
-  @override
-  State<LanguageCardWidget> createState() => _LanguageCardWidgetState();
-}
-
-class _LanguageCardWidgetState extends State<LanguageCardWidget> {
-  late LanguageCardModel _model;
-
-  bool get _hasLanguageImage => (widget.lang?.ss ?? '').trim().isNotEmpty;
-
-  @override
-  void setState(VoidCallback callback) {
-    super.setState(callback);
-    _model.onUpdate();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _model = createModel(context, () => LanguageCardModel());
-  }
-
-  @override
-  void dispose() {
-    _model.maybeDispose();
-
-    super.dispose();
-  }
+  bool get _hasLanguageImage => (lang?.ss ?? '').trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -54,8 +29,8 @@ class _LanguageCardWidgetState extends State<LanguageCardWidget> {
       hoverColor: Colors.transparent,
       highlightColor: Colors.transparent,
       onTap: () async {
-        await widget.callbackAction?.call(
-          widget.lang!,
+        await callbackAction?.call(
+          lang!,
         );
       },
       child: Container(
@@ -81,7 +56,7 @@ class _LanguageCardWidgetState extends State<LanguageCardWidget> {
                   alignment: AlignmentDirectional(0.0, 0.0),
                   child: _hasLanguageImage
                       ? CachedNetworkImage(
-                          imageUrl: widget.lang!.ss,
+                          imageUrl: lang!.ss,
                           width: 25.0,
                           height: 25.0,
                           fit: BoxFit.contain,
@@ -100,8 +75,8 @@ class _LanguageCardWidgetState extends State<LanguageCardWidget> {
                   padding: EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 8.0, 0.0),
                   child: Text(
                     FFLocalizations.of(context).getVariableText(
-                      ruText: widget.lang?.nameRu,
-                      enText: widget.lang?.nameEn,
+                      ruText: lang?.nameRu,
+                      enText: lang?.nameEn,
                     ),
                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'sf pro display',
@@ -111,12 +86,14 @@ class _LanguageCardWidgetState extends State<LanguageCardWidget> {
                   ),
                 ),
               ),
-              if (widget.lang == widget.currentSelected)
+              if (lang == currentSelected)
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 8.0, 0.0),
                   child: Container(
-                    width: 25.0,
-                    height: 25.0,
+                    key: const ValueKey<String>(
+                        'language_card_selected_indicator'),
+                    width: selectionIndicatorSize,
+                    height: selectionIndicatorSize,
                     decoration: BoxDecoration(
                       color: FlutterFlowTheme.of(context).success,
                       shape: BoxShape.circle,

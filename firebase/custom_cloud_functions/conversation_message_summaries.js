@@ -2,11 +2,17 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {FieldPath, FieldValue} = require("firebase-admin/firestore");
 const {
+  CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
+  buildConversationSummaryUpdate,
+  canMessageUpdateConversationSummary,
+  conversationMatchesUnlockParticipants,
   getChatsRolloutTimestamp,
+  getUnlockEligibility,
   getMaintenanceCursorState,
   getMaintenanceJobRef,
   getMessageTuple,
   getRepairPageSize,
+  isSupportedConversationMessageType,
   isNewerMessageTuple,
   toMillis,
 } = require("./chats_shared");
@@ -18,7 +24,7 @@ exports.updateConversationMessageSummary = functions.firestore
   .onCreate(async (snap, context) => {
     const messageData = snap.data() || {};
     const serverCreatedAt = snap.createTime || snap.updateTime || null;
-    if (String(messageData.type || "") !== "text") {
+    if (!isSupportedConversationMessageType(messageData.type)) {
       return null;
     }
 
@@ -46,10 +52,14 @@ exports.updateConversationMessageSummary = functions.firestore
         return null;
       }
 
-      if (
-        !Array.isArray(conversationData.participantIds) ||
-        !conversationData.participantIds.includes(messageData.senderId)
-      ) {
+      const messageCanUpdateSummary =
+        await messageCanUpdateConversationSummary({
+          transaction,
+          messageData,
+          conversationData,
+          pairId: context.params.pairId,
+        });
+      if (!messageCanUpdateSummary) {
         return null;
       }
 
@@ -66,14 +76,14 @@ exports.updateConversationMessageSummary = functions.firestore
       transaction.update(snap.ref, {
         serverCreatedAt,
       });
-      transaction.update(conversationRef, {
-        lastMessageAt: messageData.createdAt,
-        lastMessageServerCreatedAt: serverCreatedAt,
-        lastMessageText: messageData.text,
-        lastMessageSenderId: messageData.senderId,
-        lastMessageId: context.params.messageId,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      transaction.update(
+        conversationRef,
+        buildConversationSummaryUpdate({
+          messageId: context.params.messageId,
+          messageData,
+          serverCreatedAt,
+        }),
+      );
 
       return null;
     });
@@ -171,6 +181,21 @@ async function repairConversationSummary(conversationRef) {
     const newestMessageData = newestMessageDoc.data() || {};
     const newestServerCreatedAt =
       newestMessageData.serverCreatedAt || newestMessageDoc.createTime || null;
+    if (
+      !isSupportedConversationMessageType(newestMessageData.type)
+    ) {
+      return null;
+    }
+    const messageCanUpdateSummary =
+      await messageCanUpdateConversationSummary({
+        transaction,
+        messageData: newestMessageData,
+        conversationData,
+        pairId: conversationRef.id,
+      });
+    if (!messageCanUpdateSummary) {
+      return null;
+    }
     const newestTuple = getMessageTuple(newestMessageDoc.id, {
       ...newestMessageData,
       serverCreatedAt: newestServerCreatedAt,
@@ -189,6 +214,7 @@ async function repairConversationSummary(conversationRef) {
       toMillis(conversationData.lastMessageAt) === toMillis(newestMessageData.createdAt) &&
       toMillis(conversationData.lastMessageServerCreatedAt) ===
         toMillis(newestServerCreatedAt) &&
+      conversationData.lastMessageType === newestMessageData.type &&
       conversationData.lastMessageId === newestMessageDoc.id &&
       conversationData.lastMessageText === newestMessageData.text &&
       conversationData.lastMessageSenderId === newestMessageData.senderId
@@ -201,15 +227,53 @@ async function repairConversationSummary(conversationRef) {
         serverCreatedAt: newestServerCreatedAt,
       });
     }
-    transaction.update(conversationRef, {
-      lastMessageAt: newestMessageData.createdAt,
-      lastMessageServerCreatedAt: newestServerCreatedAt,
-      lastMessageText: newestMessageData.text,
-      lastMessageSenderId: newestMessageData.senderId,
-      lastMessageId: newestMessageDoc.id,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    transaction.update(
+      conversationRef,
+      buildConversationSummaryUpdate({
+        messageId: newestMessageDoc.id,
+        messageData: newestMessageData,
+        serverCreatedAt: newestServerCreatedAt,
+      }),
+    );
 
     return null;
   });
+}
+
+async function messageCanUpdateConversationSummary({
+  transaction,
+  messageData = {},
+  conversationData = {},
+  pairId = "",
+}) {
+  if (!canMessageUpdateConversationSummary(messageData, conversationData)) {
+    return false;
+  }
+
+  if (messageData.type !== CONVERSATION_MESSAGE_TYPE_CALL_EVENT) {
+    return true;
+  }
+
+  const sessionRef = messageData.sessionRef || null;
+  if (!sessionRef || typeof sessionRef.path !== "string") {
+    return false;
+  }
+
+  const sessionSnap = await transaction.get(sessionRef);
+  if (!sessionSnap.exists) {
+    return false;
+  }
+
+  const eligibility = getUnlockEligibility(sessionSnap.data() || {});
+  if (!eligibility.eligible || eligibility.pairId !== pairId) {
+    return false;
+  }
+
+  return conversationMatchesUnlockParticipants(
+    {
+      ...conversationData,
+      pairId: conversationData.pairId || pairId,
+    },
+    eligibility,
+  );
 }

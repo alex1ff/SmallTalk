@@ -324,78 +324,6 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                               10.0, 40.0, 0.0, 0.0),
                           child: Text(
                             FFLocalizations.of(context).getText(
-                              'qdxe0ygf' /* Язык cобеседника */,
-                            ),
-                            textAlign: TextAlign.start,
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'Cool',
-                                  fontSize: 20.0,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.normal,
-                                ),
-                          ),
-                        ),
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 12.0, 0.0, 0.0),
-                          child: AuthUserStreamWidget(
-                            builder: (context) => wrapWithModel(
-                              model: _model.languageCardModel2,
-                              updateCallback: () => safeSetState(() {}),
-                              child: LanguageCardWidget(
-                                lang: _languageOrPlaceholder(
-                                  currentUserDocument
-                                      ?.preferences.preferredNativeLanguage,
-                                  ruText: 'Язык собеседника не выбран.',
-                                  enText:
-                                      'Interlocutor language is not selected.',
-                                ),
-                                callbackAction: (selectedLangData) async {
-                                  await showModalBottomSheet(
-                                    isScrollControlled: true,
-                                    backgroundColor: Colors.transparent,
-                                    context: context,
-                                    builder: (context) {
-                                      return WebViewAware(
-                                        child: Padding(
-                                          padding:
-                                              MediaQuery.viewInsetsOf(context),
-                                          child: EditLangWidget(
-                                            selected: currentUserDocument!
-                                                .preferences
-                                                .preferredNativeLanguage,
-                                            title: 'Язык cобеседника',
-                                            action: (lang) async {
-                                              await currentUserReference!
-                                                  .update(createUsersRecordData(
-                                                preferences:
-                                                    createPreferencesStruct(
-                                                  preferredNativeLanguage:
-                                                      updateLanguageStruct(
-                                                    lang,
-                                                    clearUnsetFields: false,
-                                                  ),
-                                                  clearUnsetFields: false,
-                                                ),
-                                              ));
-                                            },
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ).then((value) => safeSetState(() {}));
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              10.0, 40.0, 0.0, 0.0),
-                          child: Text(
-                            FFLocalizations.of(context).getText(
                               'dtstv5e7' /* Локация cобеседника */,
                             ),
                             textAlign: TextAlign.start,
@@ -438,6 +366,8 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                                             title: 'Локация cобеседника',
                                             selecte: currentUserDocument!
                                                 .preferences.preferredLocation,
+                                            persistSelectedCountryToUserCountry:
+                                                false,
                                             action: (lang) async {
                                               await currentUserReference!
                                                   .update(createUsersRecordData(

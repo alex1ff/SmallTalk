@@ -17,11 +17,13 @@ class EditCountryWidget extends StatefulWidget {
     required this.action,
     required this.title,
     required this.selecte,
+    this.persistSelectedCountryToUserCountry = true,
   });
 
   final Future Function(CountryStruct lang)? action;
   final String? title;
   final CountryStruct? selecte;
+  final bool persistSelectedCountryToUserCountry;
 
   @override
   State<EditCountryWidget> createState() => _EditCountryWidgetState();
@@ -160,20 +162,27 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
                           ),
                           busyStyle: ButtonBusyStyle.spinner,
                           action: () async {
-                            if (_model.selected !=
-                                currentUserDocument?.countryNS) {
-                              await currentUserReference!
-                                  .update(createUsersRecordData(
-                                countryNS: updateCountryStruct(
-                                  _model.selected,
-                                  clearUnsetFields: false,
-                                ),
-                              ));
-                              await widget.action?.call(
-                                _model.selected!,
-                              );
+                            if (_model.selected != widget.selecte) {
+                              if (widget.persistSelectedCountryToUserCountry &&
+                                  _model.selected !=
+                                      currentUserDocument?.countryNS) {
+                                await currentUserReference!
+                                    .update(createUsersRecordData(
+                                  countryNS: updateCountryStruct(
+                                    _model.selected,
+                                    clearUnsetFields: false,
+                                  ),
+                                ));
+                              }
+                              if (_model.selected != null) {
+                                await widget.action?.call(
+                                  _model.selected!,
+                                );
+                              }
                             }
-                            Navigator.pop(context);
+                            if (mounted) {
+                              Navigator.pop(context, _model.selected);
+                            }
                           },
                         ),
                       ),

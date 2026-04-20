@@ -3,8 +3,16 @@ const {FieldValue, Timestamp} = require("firebase-admin/firestore");
 
 const DEFAULT_CHATS_ROLLOUT_ISO = "2026-04-13T00:00:00Z";
 const DEFAULT_CHATS_ROLLOUT_MS = Date.parse(DEFAULT_CHATS_ROLLOUT_ISO);
+const DEFAULT_CHAT_CALL_EVENTS_ROLLOUT_ISO = "2026-04-19T00:00:00Z";
+const DEFAULT_CHAT_CALL_EVENTS_ROLLOUT_MS = Date.parse(
+  DEFAULT_CHAT_CALL_EVENTS_ROLLOUT_ISO,
+);
 const DEFAULT_REPAIR_PAGE_SIZE = 50;
 const STALE_UNLOCK_PROCESSING_MS = 5 * 60 * 1000;
+const CONVERSATION_MESSAGE_TYPE_TEXT = "text";
+const CONVERSATION_MESSAGE_TYPE_CALL_EVENT = "call_event";
+const CALL_EVENT_KIND_VIDEO = "video";
+const CALL_EVENT_MESSAGE_PREFIX = "call_";
 
 function toMillis(value) {
   if (!value) return 0;
@@ -26,6 +34,16 @@ function getChatsRolloutMillis() {
 
 function getChatsRolloutTimestamp() {
   return Timestamp.fromMillis(getChatsRolloutMillis());
+}
+
+function getChatCallEventsRolloutMillis() {
+  const rawValue =
+    process.env.CHAT_CALL_EVENTS_ROLLOUT_AT ||
+    DEFAULT_CHAT_CALL_EVENTS_ROLLOUT_ISO;
+  const parsedMillis = Date.parse(rawValue);
+  return Number.isFinite(parsedMillis) ?
+    parsedMillis :
+    DEFAULT_CHAT_CALL_EVENTS_ROLLOUT_MS;
 }
 
 function buildPairId(leftUid, rightUid) {
@@ -79,6 +97,38 @@ function getUnlockParticipants(sessionData = {}) {
   };
 }
 
+function getSessionEndedAtMillis(sessionData = {}) {
+  return (
+    toMillis(sessionData.endedAt) ||
+    toMillis(sessionData.sessionMetadata?.endedAtTimestamp) ||
+    0
+  );
+}
+
+function getCallEventStartedAtMillis(sessionData = {}) {
+  return (
+    getConnectedCallStartMillis(sessionData) ||
+    toMillis(sessionData.startedAt) ||
+    toMillis(sessionData.createdAt) ||
+    0
+  );
+}
+
+function resolveCallEventDurationSeconds(sessionData = {}) {
+  const storedDuration = Number(sessionData.duration || 0);
+  if (Number.isFinite(storedDuration) && storedDuration > 0) {
+    return Math.max(0, Math.floor(storedDuration));
+  }
+
+  const startedAtMillis = getCallEventStartedAtMillis(sessionData);
+  const endedAtMillis = getSessionEndedAtMillis(sessionData);
+  if (startedAtMillis <= 0 || endedAtMillis <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor((endedAtMillis - startedAtMillis) / 1000));
+}
+
 function isQualifyingUnlockSession(sessionData = {}) {
   return (
     String(sessionData.status || "").toLowerCase() === "ended" &&
@@ -111,6 +161,41 @@ function getUnlockEligibility(sessionData = {}) {
     reason: null,
     ...participants,
   };
+}
+
+function conversationMatchesUnlockParticipants(conversationData = {}, participants = {}) {
+  if (!participants?.pairId || conversationData.pairId !== participants.pairId) {
+    return false;
+  }
+
+  if (!Array.isArray(conversationData.participantIds)) {
+    return false;
+  }
+
+  const conversationParticipantIds = conversationData.participantIds
+    .map((uid) => String(uid || ""))
+    .filter(Boolean)
+    .sort();
+  const expectedParticipantIds = (participants.participantIds || [])
+    .map((uid) => String(uid || ""))
+    .filter(Boolean)
+    .sort();
+
+  return (
+    conversationParticipantIds.length === expectedParticipantIds.length &&
+    conversationParticipantIds.every(
+      (uid, index) => uid === expectedParticipantIds[index],
+    )
+  );
+}
+
+function isEligibleCallEventSession(sessionData = {}) {
+  const eligibility = getUnlockEligibility(sessionData);
+  if (!eligibility.eligible) {
+    return false;
+  }
+
+  return getSessionEndedAtMillis(sessionData) >= getChatCallEventsRolloutMillis();
 }
 
 function buildUnlockEventPayload({
@@ -149,10 +234,49 @@ function buildConversationSeed({
     createdAt: now,
     updatedAt: now,
     lastMessageAt: null,
+    lastMessageType: null,
     lastMessageText: null,
     lastMessageSenderId: null,
     lastMessageId: null,
+    lastUnreadMessageAt: null,
+    lastUnreadMessageSenderId: null,
     lastReadAtByUserId: {},
+  };
+}
+
+function buildCallEventMessageId(sessionId) {
+  return `${CALL_EVENT_MESSAGE_PREFIX}${sessionId}`;
+}
+
+function buildCallEventPreviewText(callKind = CALL_EVENT_KIND_VIDEO) {
+  if (String(callKind || "").toLowerCase() === CALL_EVENT_KIND_VIDEO) {
+    return "Video call";
+  }
+
+  return "Call";
+}
+
+function buildCallEventMessagePayload({
+  sessionId,
+  sessionRef,
+  sessionData = {},
+}) {
+  const callKind = CALL_EVENT_KIND_VIDEO;
+  const startedAtMillis = getCallEventStartedAtMillis(sessionData);
+  const endedAtMillis = getSessionEndedAtMillis(sessionData) || Date.now();
+
+  return {
+    senderId: null,
+    senderRef: null,
+    type: CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
+    text: buildCallEventPreviewText(callKind),
+    createdAt: Timestamp.fromMillis(endedAtMillis),
+    sessionRef,
+    callKind,
+    callStartedAt:
+      startedAtMillis > 0 ? Timestamp.fromMillis(startedAtMillis) : null,
+    callDurationSeconds: resolveCallEventDurationSeconds(sessionData),
+    sessionId,
   };
 }
 
@@ -211,6 +335,56 @@ function compareMessageTuples(left = {}, right = {}) {
 
 function isNewerMessageTuple(left = {}, right = {}) {
   return compareMessageTuples(left, right) > 0;
+}
+
+function isSupportedConversationMessageType(type) {
+  return [
+    CONVERSATION_MESSAGE_TYPE_TEXT,
+    CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
+  ].includes(String(type || ""));
+}
+
+function canMessageUpdateConversationSummary(messageData = {}, conversationData = {}) {
+  const messageType = String(messageData.type || "");
+  if (!isSupportedConversationMessageType(messageType)) {
+    return false;
+  }
+
+  if (messageType === CONVERSATION_MESSAGE_TYPE_CALL_EVENT) {
+    return !!messageData.sessionRef;
+  }
+
+  return (
+    Array.isArray(conversationData.participantIds) &&
+    conversationData.participantIds.includes(messageData.senderId)
+  );
+}
+
+function buildConversationSummaryUpdate({
+  messageId,
+  messageData = {},
+  serverCreatedAt = null,
+}) {
+  const messageType =
+    String(messageData.type || "") || CONVERSATION_MESSAGE_TYPE_TEXT;
+  const update = {
+    lastMessageAt: messageData.createdAt || null,
+    lastMessageServerCreatedAt: serverCreatedAt || null,
+    lastMessageType: messageType,
+    lastMessageText:
+      String(messageData.text || "") ||
+      buildCallEventPreviewText(messageData.callKind),
+    lastMessageSenderId: messageData.senderId || null,
+    lastMessageId: messageId,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  if (messageType === CONVERSATION_MESSAGE_TYPE_TEXT) {
+    update.lastUnreadMessageAt = messageData.createdAt || null;
+    update.lastUnreadMessageSenderId = messageData.senderId || null;
+  }
+
+  return update;
 }
 
 function getMaintenanceJobRef(jobName) {
@@ -272,11 +446,22 @@ function getMaintenanceCursorState(snapshot) {
 }
 
 module.exports = {
+  CALL_EVENT_KIND_VIDEO,
+  CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
+  CONVERSATION_MESSAGE_TYPE_TEXT,
   buildConversationSeed,
+  buildCallEventMessageId,
+  buildCallEventMessagePayload,
+  buildCallEventPreviewText,
+  buildConversationSummaryUpdate,
+  conversationMatchesUnlockParticipants,
   buildUnlockEventPayload,
   buildPairId,
+  canMessageUpdateConversationSummary,
   compareConversationSortTuples,
   compareMessageTuples,
+  getCallEventStartedAtMillis,
+  getChatCallEventsRolloutMillis,
   getChatsRolloutMillis,
   getChatsRolloutTimestamp,
   getConnectedCallStartMillis,
@@ -285,11 +470,15 @@ module.exports = {
   getMaintenanceJobRef,
   getMessageTuple,
   getRepairPageSize,
+  getSessionEndedAtMillis,
   getUnlockEligibility,
   getUnlockParticipants,
+  isEligibleCallEventSession,
   isNewerMessageTuple,
   isQualifyingUnlockSession,
+  isSupportedConversationMessageType,
   isStaleUnlockPending,
   isStaleUnlockProcessing,
+  resolveCallEventDurationSeconds,
   toMillis,
 };

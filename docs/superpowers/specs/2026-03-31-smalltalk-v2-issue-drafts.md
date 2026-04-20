@@ -248,10 +248,15 @@ Acceptance criteria:
 - User can open an unlocked conversation
 - User can send a plain text message
 - Messages stream in chronological order
+- Backend-authored post-call `call_event` rows render as tappable system cards
+- Tapping a `call_event` row opens the existing call details screen
+- `call_event` rows update conversation preview/order without creating unread state or masking older unread text
 
 Technical notes:
 
 - no media attachments in v1
+- keep client-authored sends text-only; `call_event` is server-owned
+- inbox conversation list queries must remain participant-scoped in Firestore rules
 
 ### Issue 4.3 - Add messaging entry points from post-call and friends surfaces
 
@@ -377,12 +382,17 @@ Update filters so users can choose preferred partner level while preserving lang
 Acceptance criteria:
 
 - Preferred partner level control is visible and persists
+- Home shows an inline default `My level` partner-level chip backed by the
+  user's effective profile level for general-queue matching
 - Existing language/location filters remain functional
 - UI does not show `соединять в первую очередь с друзьями`
 
 Technical notes:
 
-- extend preferences only for active filters
+- explicit partner-level choices persist; unset explicit preference means
+  `My level` for general-queue matching
+- preferred partner location applies only when a canonical country code is
+  available
 - do not add friend-priority fields
 
 ### Issue 6.2 - Send updated filter payload to createVideoSession
@@ -396,11 +406,15 @@ Update the waiting-screen payload builder to send the current matchmaking inputs
 
 Acceptance criteria:
 
-- Payload contains preferred partner level when relevant
+- Payload contains effective preferred partner level for general-queue requests
+  when the user has a profile level or an explicit partner-level preference
 - Old language/location fields still flow correctly
 - Payload does not contain `preferFriendsFirst`
 
 Technical notes:
+
+- Direct tutor calls continue to skip partner filters unless a future tranche
+  explicitly changes direct-call semantics.
 
 - update `WaitingForTeacherPageWidget`
 
@@ -441,21 +455,26 @@ Acceptance criteria:
 
 Technical notes:
 
-- align with existing verification document data where possible
+- align with the existing teacher verification request data where possible;
+  accreditation may include `teachingExperience`, ordered
+  `qualificationProofs[]`, and attached `qualificationProofFiles[]` entries
+  stored as `{name, storagePath}` rather than public download URLs
 
-### Issue 7.2 - Support Firebase/admin verification-document approval flow
+### Issue 7.2 - Support Firebase/admin teacher-verification request approval flow
 
 Type: Flutter + Firebase  
 Depends on: Issue 7.1
 
 Description:
 
-Support the flow where a user creates a verification document in Firebase and an admin approves or rejects it in the existing Firebase-connected admin process.
+Support the flow where a user creates a teacher verification request in Firebase and an admin approves or rejects it in the existing Firebase-connected admin process.
 
 Acceptance criteria:
 
 - Registration process remains shared for all users
 - User can create or surface a teacher verification request
+- Accreditation payload can preserve multi-select qualification proofs and
+  attached evidence files through the request contract
 - Admin approval/rejection is reflected in the app
 - No new standalone admin app is required in this repository
 
@@ -494,6 +513,8 @@ Preserve existing teacher functionality while ensuring teacher-only sections, pa
 Acceptance criteria:
 
 - Existing teacher finance flows are not removed
+- Pending native speakers can move into the native-speaker shell after submission, but online state and teacher-only capabilities remain blocked
+- Native-speaker home shows a pending-review card while accreditation is under review
 - Approved users can access teacher sections and finance surfaces
 - Non-approved users do not get teacher-only access
 - Existing teacher users can be handled through migration/compatibility rules
@@ -501,6 +522,7 @@ Acceptance criteria:
 Technical notes:
 
 - review teacher dashboard, payment, earnings, and withdrawal surfaces
+- pending shell depends on explicit pending-status helpers rather than the legacy fallback that treats missing status as pending
 
 ## Epic 8. Email Verification
 
@@ -852,7 +874,7 @@ Technical notes:
 
 Regression note (2026-04-15):
 
-- `test/regression/qa1_release_surface_contracts_test.dart` now locks the missing QA.1 UI/source contracts for the `Чаты` hub empty/unlocked states, locked/non-participant chat thread fail-closed behavior, soft email verification profile surface, and approved-teacher-only finance withdrawal access.
+- `test/regression/qa1_release_surface_contracts_test.dart` now locks the missing QA.1 UI/source contracts for the `Чаты` hub empty/unlocked states, locked/non-participant chat thread fail-closed behavior, soft email verification profile surface, approved-teacher-only finance withdrawal access, and the pending native-speaker shell/profile-restore/celebration review-state path.
 - Targeted Flutter analysis passed across the auth/onboarding, review, chat, call, learning, session-limit, teacher finance, and profile seams.
 - Targeted Flutter tests passed across auth/onboarding, route smoke, review helper, caption/dictionary word flow, flashcard logic/widgets, session-limit UI, teacher accreditation/preference helpers, and QA.1 release surface contracts.
 - Targeted Functions tests passed for review submission, end-session, request-extension, cleanup-expired-session, repeat-prevention, session-policy, and matchmaking contracts.

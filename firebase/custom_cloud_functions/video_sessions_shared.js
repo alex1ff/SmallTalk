@@ -430,18 +430,27 @@ function resolveLegacyConversationLanguages(userData = {}) {
       [
         readLanguageCode(userData.learningLanguage),
         readLanguageCode(userData.language_instruction_NS),
-        readLanguageCode(userData.native_language_NS),
       ].filter(Boolean),
     ),
   );
 }
 
+function resolveRoleConversationLanguages(userData = {}) {
+  const role = normalizeRole(userData.role);
+  const languageCode = role === "native_speaker" ?
+    readLanguageCode(userData.language_instruction_NS) :
+    readLanguageCode(userData.learningLanguage);
+
+  return languageCode ? [languageCode] : [];
+}
+
 function resolveConversationLanguages(userData = {}) {
   const storedMatchProfile = readStoredMatchProfile(userData);
+  const roleConversationLanguages = resolveRoleConversationLanguages(userData);
   return Array.from(
     new Set(
       [
-        ...resolveLegacyConversationLanguages(userData),
+        ...roleConversationLanguages,
         ...readStoredCodeList(storedMatchProfile.supportedLanguages),
         readLanguageCode(storedMatchProfile.activeLanguage),
       ].filter(Boolean),
@@ -468,10 +477,21 @@ function resolveActiveConversationLanguage(userData = {}, explicitLanguage) {
   const requestedLanguage = readLanguageCode(explicitLanguage);
   const storedMatchProfile = readStoredMatchProfile(userData);
   const storedActiveLanguage = readLanguageCode(storedMatchProfile.activeLanguage);
-  const legacySupportedLanguages = resolveLegacyConversationLanguages(userData);
+  const roleSupportedLanguages = resolveRoleConversationLanguages(userData);
   const supportedLanguages = resolveConversationLanguages(userData);
 
   if (requestedLanguage) {
+    if (
+      roleSupportedLanguages.length > 0 &&
+      !roleSupportedLanguages.includes(requestedLanguage)
+    ) {
+      return {
+        code: roleSupportedLanguages[0],
+        source: "profile_overrode_payload",
+        supportedLanguages,
+      };
+    }
+
     return {
       code: requestedLanguage,
       source: supportedLanguages.includes(requestedLanguage) ?
@@ -481,9 +501,9 @@ function resolveActiveConversationLanguage(userData = {}, explicitLanguage) {
     };
   }
 
-  if (legacySupportedLanguages.length > 0) {
+  if (roleSupportedLanguages.length > 0) {
     return {
-      code: legacySupportedLanguages[0],
+      code: roleSupportedLanguages[0],
       source: "profile",
       supportedLanguages,
     };
@@ -523,7 +543,7 @@ function supportsConversationLanguage(userData = {}, language) {
     return false;
   }
 
-  return resolveConversationLanguages(userData).includes(normalizedLanguage);
+  return resolveRoleConversationLanguages(userData).includes(normalizedLanguage);
 }
 
 function buildMatchProfile(userId, userData = {}, requestedLanguage) {
@@ -555,7 +575,7 @@ function buildStoredMatchProfile(
   {preserveStoredValues = false} = {},
 ) {
   const storedMatchProfile = readStoredMatchProfile(userData);
-  const supportedLanguages = resolveLegacyConversationLanguages(userData);
+  const supportedLanguages = resolveRoleConversationLanguages(userData);
   const activeLanguage = supportedLanguages.length > 0 ? supportedLanguages[0] : null;
   const explicitTeacherAccreditationStatus =
     readExplicitTeacherAccreditationStatus(userData);
@@ -721,5 +741,6 @@ module.exports = {
   readRatingCount,
   resolveActiveConversationLanguage,
   resolveConversationLanguages,
+  resolveRoleConversationLanguages,
   supportsConversationLanguage,
 };

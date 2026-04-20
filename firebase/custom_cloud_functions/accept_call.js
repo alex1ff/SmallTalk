@@ -12,6 +12,7 @@ const {
   buildAcceptedSessionPolicyState,
   buildSessionUserInfo,
   getRequesterId,
+  isApprovedTeacher,
   isSupportedSessionRole,
   normalizeRole,
 } = require("./video_sessions_shared");
@@ -247,6 +248,15 @@ exports.acceptCall = functions
         throw new functions.https.HttpsError(
           "permission-denied",
           "This user role cannot accept calls",
+        );
+      }
+
+      const tutorRole = normalizeRole(tutorData.role);
+      if (tutorRole === "native_speaker" && !isApprovedTeacher(tutorData)) {
+        console.log("❌ Teacher cannot accept calls before approval:", tutorId);
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "Teacher verification is pending",
         );
       }
 

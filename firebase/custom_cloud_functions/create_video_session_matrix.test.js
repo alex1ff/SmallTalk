@@ -7,12 +7,15 @@ const {
     compareCandidateDetails,
     getTeacherBoostScore,
     isTeacherBoostTargetLevel,
+    orderCandidatesWithTeacherPriority,
   },
 } = require("./create_video_session");
 const {
   buildMatchProfile,
   isSupportedSessionRole,
   normalizeRole,
+  resolveRoleConversationLanguages,
+  supportsConversationLanguage,
 } = require("./video_sessions_shared");
 
 test("supported session roles keep the all-to-all matrix open", () => {
@@ -44,7 +47,7 @@ test("buildMatchProfile preserves requester/candidate role variants and teacher 
     "teacher-b",
     {
       role: "teacher",
-      native_language_NS: { code: "en" },
+      language_instruction_NS: { code: "en" },
       Country_NS: "US",
       level: "Fluent",
       teacherAccreditationStatus: "approved",
@@ -59,6 +62,26 @@ test("buildMatchProfile preserves requester/candidate role variants and teacher 
   assert.equal(approvedNativeSpeakerProfile.role, "native_speaker");
   assert.equal(approvedNativeSpeakerProfile.approvedTeacher, true);
   assert.equal(approvedNativeSpeakerProfile.activeLanguage, "en");
+});
+
+test("role-based match language ignores teacher native language", () => {
+  const teacher = {
+    role: "native_speaker",
+    language_instruction_NS: {code: "es"},
+    native_language_NS: {code: "en"},
+  };
+  const student = {
+    role: "student",
+    learningLanguage: {code: "en"},
+    language_instruction_NS: {code: "es"},
+  };
+
+  assert.deepEqual(resolveRoleConversationLanguages(teacher), ["es"]);
+  assert.equal(supportsConversationLanguage(teacher, "es"), true);
+  assert.equal(supportsConversationLanguage(teacher, "en"), false);
+  assert.deepEqual(resolveRoleConversationLanguages(student), ["en"]);
+  assert.equal(supportsConversationLanguage(student, "en"), true);
+  assert.equal(supportsConversationLanguage(student, "es"), false);
 });
 
 test("teacher boost applies only for Fluent approved-teacher ranking", () => {
@@ -184,6 +207,27 @@ test("compareCandidateDetails prioritizes location, teacher boost, ratings, and 
   );
 });
 
+test("orderCandidatesWithTeacherPriority keeps roughly four teacher slots per five", () => {
+  const detailsById = {
+    teacher1: {approvedTeacher: true, locationMatch: true, ratingAverage: 5, ratingCount: 1, legacyPriorityScore: 0},
+    teacher2: {approvedTeacher: true, locationMatch: true, ratingAverage: 4, ratingCount: 1, legacyPriorityScore: 0},
+    teacher3: {approvedTeacher: true, locationMatch: true, ratingAverage: 3, ratingCount: 1, legacyPriorityScore: 0},
+    teacher4: {approvedTeacher: true, locationMatch: true, ratingAverage: 2, ratingCount: 1, legacyPriorityScore: 0},
+    teacher5: {approvedTeacher: true, locationMatch: true, ratingAverage: 1, ratingCount: 1, legacyPriorityScore: 0},
+    student1: {approvedTeacher: false, locationMatch: true, ratingAverage: 5, ratingCount: 1, legacyPriorityScore: 0},
+    student2: {approvedTeacher: false, locationMatch: true, ratingAverage: 4, ratingCount: 1, legacyPriorityScore: 0},
+  };
+
+  assert.deepEqual(
+    orderCandidatesWithTeacherPriority(
+      ["student1", "teacher5", "teacher4", "student2", "teacher3", "teacher2", "teacher1"],
+      detailsById,
+      true,
+    ).slice(0, 5),
+    ["teacher1", "teacher2", "teacher3", "teacher4", "student1"],
+  );
+});
+
 test(
   "createVideoSession source still references expected ranking and repeat/policy hooks",
   () => {
@@ -197,8 +241,9 @@ test(
   assert.match(source, /teacherBoostRankingApplied = isTeacherBoostTargetLevel/);
   assert.match(
     source,
-    /availableTutors\.sort\(\(a, b\) => compareCandidateDetails\(a, b, tutorDetails\)\)/,
+    /orderCandidatesWithTeacherPriority\(/,
   );
+  assert.doesNotMatch(source, /native_language_NS\.code/);
   assert.match(source, /loadSameDayRepeatCandidateIds\(\s*db,\s*requesterId,/);
   assert.match(source, /const sessionPolicyFields = buildCreateSessionPolicyFields\(\);/);
   },

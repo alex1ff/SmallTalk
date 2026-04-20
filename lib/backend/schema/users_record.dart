@@ -24,7 +24,7 @@ TeacherAccreditationStatus? _teacherAccreditationStatusFrom(Object? value) {
       : deserializeEnum<TeacherAccreditationStatus>(value);
 }
 
-TeacherAccreditationStatus resolveTeacherAccreditationStatusFromData(
+TeacherAccreditationStatus? resolveExplicitTeacherAccreditationStatusFromData(
   Map<String, dynamic> data,
 ) {
   final canonicalStatus =
@@ -39,10 +39,16 @@ TeacherAccreditationStatus resolveTeacherAccreditationStatusFromData(
     return teacherVerificationStatus;
   }
 
-  final verificationStatus =
-      _teacherAccreditationStatusFrom(data['verificationStatus']);
-  if (verificationStatus != null) {
-    return verificationStatus;
+  return _teacherAccreditationStatusFrom(data['verificationStatus']);
+}
+
+TeacherAccreditationStatus resolveTeacherAccreditationStatusFromData(
+  Map<String, dynamic> data,
+) {
+  final canonicalStatus =
+      resolveExplicitTeacherAccreditationStatusFromData(data);
+  if (canonicalStatus != null) {
+    return canonicalStatus;
   }
 
   if (data['verif_NS'] == true) {
@@ -65,6 +71,10 @@ TeacherAccreditationStatus resolveTeacherAccreditationStatusFromData(
 bool isTeacherAccreditationApprovedFromData(Map<String, dynamic> data) =>
     resolveTeacherAccreditationStatusFromData(data) ==
     TeacherAccreditationStatus.approved;
+
+bool hasPendingTeacherVerificationFromData(Map<String, dynamic> data) =>
+    resolveExplicitTeacherAccreditationStatusFromData(data) ==
+    TeacherAccreditationStatus.pending;
 
 class UsersRecord extends FirestoreRecord {
   UsersRecord._(
@@ -212,6 +222,8 @@ class UsersRecord extends FirestoreRecord {
   bool get isTeacherAccreditationApproved =>
       effectiveTeacherAccreditationStatus ==
       TeacherAccreditationStatus.approved;
+  bool get hasPendingTeacherVerification =>
+      hasPendingTeacherVerificationFromData(snapshotData);
 
   // "selectedAvatarDocRef" field.
   DocumentReference? _selectedAvatarDocRef;

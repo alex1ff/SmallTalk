@@ -95,28 +95,25 @@ class _TabShellPageState extends State<TabShellPage> {
     return path;
   }
 
-  bool get _isTeacher => canAccessTeacherSurfaces(currentUserDocument);
+  bool get _usesNativeSpeakerShell =>
+      canUseNativeSpeakerShell(currentUserDocument);
 
-  List<String> get _tabPathsOrdered => _isTeacher
+  List<String> get _tabPathsOrdered => _usesNativeSpeakerShell
       ? [
           DashboardNSWidget.routePath,
           FavoriteWidget.routePath,
+          ProfileWidget.routePath,
         ]
       : [
           StudentsDashboardWidget.routePath,
           WordsWidget.routePath,
           FavoriteWidget.routePath,
+          ProfileWidget.routePath,
         ];
 
-  List<String> get _pathsWithNavBar => [
-        ..._tabPathsOrdered,
-        ProfileWidget.routePath,
-      ];
+  List<String> get _pathsWithNavBar => _tabPathsOrdered;
 
   int? _indexCurrentPage(String currentPath) {
-    if (currentPath == ProfileWidget.routePath) {
-      return null;
-    }
     final index = _tabPathsOrdered.indexOf(currentPath);
     return index >= 0 ? index : 0;
   }
@@ -138,15 +135,18 @@ class _TabShellPageState extends State<TabShellPage> {
         final currentPath =
             _normalizePath(_provider?.value.uri.path ?? widget.state.uri.path);
         _lastRoutePath = currentPath;
-        final showNavBar = _pathsWithNavBar.contains(currentPath);
+        final isAwaitingUserDocument = loggedIn && currentUserDocument == null;
+        final showNavBar =
+            !isAwaitingUserDocument && _pathsWithNavBar.contains(currentPath);
         final indexCurrentPage = _indexCurrentPage(currentPath);
 
         if (kDebugMode) {
           debugPrint(
             '[TabShellPage] path=$currentPath '
             'showNavBar=$showNavBar '
+            'awaitingUserDoc=$isAwaitingUserDocument '
             'indexCurrentPage=${indexCurrentPage ?? 'none'} '
-            'role=${_isTeacher ? 'teacher' : 'student'} '
+            'role=${_usesNativeSpeakerShell ? 'teacher_shell' : 'student_shell'} '
             'platformBranch=${_platformBranch()}',
           );
         }

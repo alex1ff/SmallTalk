@@ -229,6 +229,10 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
                 'index',
                 ParamType.int,
               ),
+              entrySource: params.getParam(
+                'entrySource',
+                ParamType.String,
+              ),
             ),
           ),
           FFRoute(

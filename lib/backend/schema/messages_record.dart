@@ -35,6 +35,26 @@ class MessagesRecord extends FirestoreRecord {
   String get text => _text ?? '';
   bool hasText() => _text != null;
 
+  // "sessionRef" field.
+  DocumentReference? _sessionRef;
+  DocumentReference? get sessionRef => _sessionRef;
+  bool hasSessionRef() => _sessionRef != null;
+
+  // "callKind" field.
+  String? _callKind;
+  String get callKind => _callKind ?? '';
+  bool hasCallKind() => _callKind != null;
+
+  // "callStartedAt" field.
+  DateTime? _callStartedAt;
+  DateTime? get callStartedAt => _callStartedAt;
+  bool hasCallStartedAt() => _callStartedAt != null;
+
+  // "callDurationSeconds" field.
+  int? _callDurationSeconds;
+  int get callDurationSeconds => _callDurationSeconds ?? 0;
+  bool hasCallDurationSeconds() => _callDurationSeconds != null;
+
   // "createdAt" field.
   DateTime? _createdAt;
   DateTime? get createdAt => _createdAt;
@@ -47,6 +67,10 @@ class MessagesRecord extends FirestoreRecord {
     _senderRef = snapshotData['senderRef'] as DocumentReference?;
     _type = snapshotData['type'] as String?;
     _text = snapshotData['text'] as String?;
+    _sessionRef = snapshotData['sessionRef'] as DocumentReference?;
+    _callKind = snapshotData['callKind'] as String?;
+    _callStartedAt = snapshotData['callStartedAt'] as DateTime?;
+    _callDurationSeconds = castToType<int>(snapshotData['callDurationSeconds']);
     _createdAt = snapshotData['createdAt'] as DateTime?;
   }
 
@@ -94,6 +118,10 @@ Map<String, dynamic> createMessagesRecordData({
   DocumentReference? senderRef,
   String? type,
   String? text,
+  DocumentReference? sessionRef,
+  String? callKind,
+  DateTime? callStartedAt,
+  int? callDurationSeconds,
   DateTime? createdAt,
 }) {
   final firestoreData = mapToFirestore(
@@ -102,6 +130,10 @@ Map<String, dynamic> createMessagesRecordData({
       'senderRef': senderRef,
       'type': type,
       'text': text,
+      'sessionRef': sessionRef,
+      'callKind': callKind,
+      'callStartedAt': callStartedAt,
+      'callDurationSeconds': callDurationSeconds,
       'createdAt': createdAt,
     }.withoutNulls,
   );
@@ -118,12 +150,25 @@ class MessagesRecordDocumentEquality implements Equality<MessagesRecord> {
         e1?.senderRef == e2?.senderRef &&
         e1?.type == e2?.type &&
         e1?.text == e2?.text &&
+        e1?.sessionRef == e2?.sessionRef &&
+        e1?.callKind == e2?.callKind &&
+        e1?.callStartedAt == e2?.callStartedAt &&
+        e1?.callDurationSeconds == e2?.callDurationSeconds &&
         e1?.createdAt == e2?.createdAt;
   }
 
   @override
-  int hash(MessagesRecord? e) => const ListEquality()
-      .hash([e?.senderId, e?.senderRef, e?.type, e?.text, e?.createdAt]);
+  int hash(MessagesRecord? e) => const ListEquality().hash([
+        e?.senderId,
+        e?.senderRef,
+        e?.type,
+        e?.text,
+        e?.sessionRef,
+        e?.callKind,
+        e?.callStartedAt,
+        e?.callDurationSeconds,
+        e?.createdAt,
+      ]);
 
   @override
   bool isValidKey(Object? o) => o is MessagesRecord;

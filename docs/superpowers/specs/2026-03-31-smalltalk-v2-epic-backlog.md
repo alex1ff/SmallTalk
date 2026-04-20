@@ -130,6 +130,7 @@ In scope:
 - Inbox/list inside `Чаты`
 - 1:1 text thread
 - send plain text messages
+- backend-authored post-call `call_event` rows inside unlocked threads
 - basic read/open behavior
 - message CTA from eligible friend/post-call surfaces
 
@@ -148,6 +149,8 @@ Acceptance criteria:
 
 - `Чаты` shows unlocked conversations
 - Users can open a thread and send plain text
+- Each new completed connected post-release call adds one tappable `call_event` row in the unlocked thread
+- Post-call `call_event` rows update inbox ordering/preview without creating unread state or hiding older unread text
 - Locked pairs do not show active message CTA
 
 Impacted systems:
@@ -224,6 +227,7 @@ Dependencies:
 Acceptance criteria:
 
 - User can set preferred partner level
+- General-queue partner level defaults to the user's effective profile level
 - Language/location filters still work
 - Payload does not include `preferFriendsFirst`
 - Friends are not sent as a ranking preference
@@ -241,7 +245,9 @@ Objective: Add manual teacher accreditation while preserving existing teacher fu
 In scope:
 
 - teacher accreditation status on user/profile data
-- user-created verification document in Firebase
+- user-created teacher verification request in Firebase
+- multi-select qualification-proof metadata and owner-scoped evidence-file
+  `storagePath` refs for the existing request review flow
 - admin approve/reject through the existing Firebase-connected admin process
 - gate teacher sections by approved status where needed
 - preserve payments, earnings, and withdrawals
@@ -250,7 +256,8 @@ In scope:
 Out of scope:
 
 - new standalone admin app in this repository
-- document upload pipeline redesign
+- standalone document upload pipeline redesign outside the existing teacher
+  verification request flow
 
 Dependencies:
 
@@ -260,7 +267,9 @@ Dependencies:
 Acceptance criteria:
 
 - Registration remains one shared process
-- User can create a teacher verification document
+- User can create a teacher verification request
+- After request submission, a pending native speaker can enter the native-speaker shell but still cannot go online or accept calls
+- Pending native speakers see an under-review status card on the native-speaker home dashboard
 - Admin can approve/reject in the existing admin flow
 - Approved status opens teacher sections and teacher finance access
 - Only approved teachers receive teacher boost
@@ -481,7 +490,7 @@ Impacted systems:
 Execution note (2026-04-15):
 
 - `Issue QA.2` now has both focused backend/helper assertions and a fresh passing live emulator-backed `npm run backend:checks` run covering explicit `student-student`, `student-native_speaker`, and `native_speaker-native_speaker` pairwise scenarios, mixed candidate-pool scenarios for both `student` and `native_speaker` requesters, same-day repeat prevention, partner-level filtering, teacher boost ranking, and the 5-minute to mutual 10-minute session-policy path.
-- `Issue QA.1` now has a targeted release-regression bundle covering auth/onboarding, VoIP/session teardown, reviews, dictionary/flashcards, `Чаты` unlock/empty-state contracts, approved-teacher finance access, soft email verification, and teacher payment/earning/withdrawal flows.
+- `Issue QA.1` now has a targeted release-regression bundle covering auth/onboarding, VoIP/session teardown, reviews, dictionary/flashcards, `Чаты` unlock/empty-state contracts, approved-teacher finance access, soft email verification, the pending native-speaker shell/profile-restore/celebration review-state path, and teacher payment/earning/withdrawal flows.
 - `Issue QA.1` and `Issue QA.2` are complete; no SmallTalk V2 QA/release backlog gate remains open.
 
 Acceptance criteria:

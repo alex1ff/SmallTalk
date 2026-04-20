@@ -65,6 +65,11 @@ class ConversationsRecord extends FirestoreRecord {
   String? get lastMessageText => _lastMessageText;
   bool hasLastMessageText() => _lastMessageText != null;
 
+  // "lastMessageType" field.
+  String? _lastMessageType;
+  String? get lastMessageType => _lastMessageType;
+  bool hasLastMessageType() => _lastMessageType != null;
+
   // "lastMessageSenderId" field.
   String? _lastMessageSenderId;
   String? get lastMessageSenderId => _lastMessageSenderId;
@@ -74,6 +79,16 @@ class ConversationsRecord extends FirestoreRecord {
   String? _lastMessageId;
   String? get lastMessageId => _lastMessageId;
   bool hasLastMessageId() => _lastMessageId != null;
+
+  // "lastUnreadMessageAt" field.
+  DateTime? _lastUnreadMessageAt;
+  DateTime? get lastUnreadMessageAt => _lastUnreadMessageAt;
+  bool hasLastUnreadMessageAt() => _lastUnreadMessageAt != null;
+
+  // "lastUnreadMessageSenderId" field.
+  String? _lastUnreadMessageSenderId;
+  String? get lastUnreadMessageSenderId => _lastUnreadMessageSenderId;
+  bool hasLastUnreadMessageSenderId() => _lastUnreadMessageSenderId != null;
 
   // "lastReadAtByUserId" field.
   Map<String, DateTime?>? _lastReadAtByUserId;
@@ -93,8 +108,12 @@ class ConversationsRecord extends FirestoreRecord {
     _updatedAt = snapshotData['updatedAt'] as DateTime?;
     _lastMessageAt = snapshotData['lastMessageAt'] as DateTime?;
     _lastMessageText = snapshotData['lastMessageText'] as String?;
+    _lastMessageType = snapshotData['lastMessageType'] as String?;
     _lastMessageSenderId = snapshotData['lastMessageSenderId'] as String?;
     _lastMessageId = snapshotData['lastMessageId'] as String?;
+    _lastUnreadMessageAt = snapshotData['lastUnreadMessageAt'] as DateTime?;
+    _lastUnreadMessageSenderId =
+        snapshotData['lastUnreadMessageSenderId'] as String?;
     _lastReadAtByUserId =
         (snapshotData['lastReadAtByUserId'] as Map<String, dynamic>?)?.map(
       (key, value) => MapEntry(key, value as DateTime?),
@@ -146,8 +165,11 @@ Map<String, dynamic> createConversationsRecordData({
   DateTime? updatedAt,
   DateTime? lastMessageAt,
   String? lastMessageText,
+  String? lastMessageType,
   String? lastMessageSenderId,
   String? lastMessageId,
+  DateTime? lastUnreadMessageAt,
+  String? lastUnreadMessageSenderId,
   Map<String, DateTime?>? lastReadAtByUserId,
 }) {
   final firestoreData = mapToFirestore(
@@ -162,8 +184,11 @@ Map<String, dynamic> createConversationsRecordData({
       'updatedAt': updatedAt,
       'lastMessageAt': lastMessageAt,
       'lastMessageText': lastMessageText,
+      'lastMessageType': lastMessageType,
       'lastMessageSenderId': lastMessageSenderId,
       'lastMessageId': lastMessageId,
+      'lastUnreadMessageAt': lastUnreadMessageAt,
+      'lastUnreadMessageSenderId': lastUnreadMessageSenderId,
       'lastReadAtByUserId': lastReadAtByUserId ?? const <String, DateTime?>{},
     }.withoutNulls,
   );
@@ -189,8 +214,11 @@ class ConversationsRecordDocumentEquality
         e1?.updatedAt == e2?.updatedAt &&
         e1?.lastMessageAt == e2?.lastMessageAt &&
         e1?.lastMessageText == e2?.lastMessageText &&
+        e1?.lastMessageType == e2?.lastMessageType &&
         e1?.lastMessageSenderId == e2?.lastMessageSenderId &&
         e1?.lastMessageId == e2?.lastMessageId &&
+        e1?.lastUnreadMessageAt == e2?.lastUnreadMessageAt &&
+        e1?.lastUnreadMessageSenderId == e2?.lastUnreadMessageSenderId &&
         mapEquality.equals(e1?.lastReadAtByUserId, e2?.lastReadAtByUserId);
   }
 
@@ -206,8 +234,11 @@ class ConversationsRecordDocumentEquality
         e?.updatedAt,
         e?.lastMessageAt,
         e?.lastMessageText,
+        e?.lastMessageType,
         e?.lastMessageSenderId,
         e?.lastMessageId,
+        e?.lastUnreadMessageAt,
+        e?.lastUnreadMessageSenderId,
         e?.lastReadAtByUserId
       ]);
 

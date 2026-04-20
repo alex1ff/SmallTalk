@@ -111,7 +111,7 @@ service cloud.firestore {
     function isConversationParticipant(data) {
       return isSignedIn() &&
         data.participantIds is list &&
-        data.participantIds.hasAny([request.auth.uid]);
+        request.auth.uid in data.participantIds;
     }
 
     function canUpdateConversationReadMarker() {
@@ -229,9 +229,21 @@ service cloud.firestore {
         'languageInstruction',
         'nativeLanguage',
         'country',
+        'accreditation',
         'aboutMe',
         'createdAt',
-        'updatedAt'
+        'updatedAt',
+        'reviewedAt',
+        'reviewedBy',
+        'reviewComment'
+      ];
+    }
+
+    function teacherVerificationRequestReviewFields() {
+      return [
+        'reviewedAt',
+        'reviewedBy',
+        'reviewComment'
       ];
     }
 
@@ -239,7 +251,91 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(userId);
     }
 
-    function teacherVerificationRequestSnapshotFieldsAreValid() {
+    function teacherVerificationAccreditationFields() {
+      return [
+        'teachingExperience',
+        'qualificationProof',
+        'qualificationProofs',
+        'qualificationProofFiles'
+      ];
+    }
+
+    function isValidTeacherVerificationEvidenceFile(userId, file) {
+      return file is map &&
+        file.keys().hasOnly(['name', 'storagePath']) &&
+        file.keys().hasAll(['name', 'storagePath']) &&
+        file.name is string &&
+        file.storagePath is string &&
+        file.storagePath.matches(
+          '^users/' + userId + '/teacher_verification/qualification_proofs/[^/]+$'
+        );
+    }
+
+    function teacherVerificationEvidenceFileAtIsValid(userId, files, index) {
+      return files.size() <= index ||
+        isValidTeacherVerificationEvidenceFile(userId, files[index]);
+    }
+
+    function teacherVerificationEvidenceFilesAreValid(userId, accreditation) {
+      return !accreditation.keys().hasAny(['qualificationProofFiles']) ||
+        (
+          accreditation.qualificationProofFiles is list &&
+          accreditation.qualificationProofFiles.size() <= 5 &&
+          teacherVerificationEvidenceFileAtIsValid(
+            userId,
+            accreditation.qualificationProofFiles,
+            0
+          ) &&
+          teacherVerificationEvidenceFileAtIsValid(
+            userId,
+            accreditation.qualificationProofFiles,
+            1
+          ) &&
+          teacherVerificationEvidenceFileAtIsValid(
+            userId,
+            accreditation.qualificationProofFiles,
+            2
+          ) &&
+          teacherVerificationEvidenceFileAtIsValid(
+            userId,
+            accreditation.qualificationProofFiles,
+            3
+          ) &&
+          teacherVerificationEvidenceFileAtIsValid(
+            userId,
+            accreditation.qualificationProofFiles,
+            4
+          )
+        );
+    }
+
+    function teacherVerificationAccreditationIsValid(userId) {
+      return !request.resource.data.keys().hasAny(['accreditation']) ||
+        (
+          request.resource.data.accreditation is map &&
+          request.resource.data.accreditation.keys().hasOnly(
+            teacherVerificationAccreditationFields()
+          ) &&
+          (
+            !request.resource.data.accreditation.keys().hasAny(['teachingExperience']) ||
+            request.resource.data.accreditation.teachingExperience is string
+          ) &&
+          (
+            !request.resource.data.accreditation.keys().hasAny(['qualificationProof']) ||
+            request.resource.data.accreditation.qualificationProof is string
+          ) &&
+          (
+            !request.resource.data.accreditation.keys().hasAny(['qualificationProofs']) ||
+            request.resource.data.accreditation.qualificationProofs is list
+          ) &&
+          teacherVerificationEvidenceFilesAreValid(
+            userId,
+            request.resource.data.accreditation
+          )
+        );
+    }
+
+    function teacherVerificationRequestSnapshotFieldsAreValid(userId) {
       return (
         !request.resource.data.keys().hasAny(['displayName']) ||
         request.resource.data.displayName is string
@@ -263,7 +359,8 @@ service cloud.firestore {
       (
         !request.resource.data.keys().hasAny(['country']) ||
         request.resource.data.country is map
-      );
+      ) &&
+      teacherVerificationAccreditationIsValid(userId);
     }
 
     function canCreateOwnTeacherVerificationRequest(userId) {
@@ -272,21 +369,26 @@ service cloud.firestore {
         request.resource.data.userId == userId &&
         request.resource.data.userRef == teacherVerificationRequestUserRef(userId) &&
         request.resource.data.status == 'pending' &&
+        !request.resource.data.keys().hasAny(teacherVerificationRequestReviewFields()) &&
         request.resource.data.createdAt == request.time &&
         request.resource.data.updatedAt == request.time &&
-        teacherVerificationRequestSnapshotFieldsAreValid();
+        teacherVerificationRequestSnapshotFieldsAreValid(userId);
     }
 
     function canUpdateOwnTeacherVerificationRequest(userId) {
       return isSelf(userId) &&
-        resource.data.status == 'pending' &&
+        (
+          resource.data.status == 'pending' ||
+          resource.data.status == 'rejected'
+        ) &&
         request.resource.data.keys().hasOnly(teacherVerificationRequestFields()) &&
         request.resource.data.userId == userId &&
         request.resource.data.userRef == teacherVerificationRequestUserRef(userId) &&
         request.resource.data.status == 'pending' &&
+        !request.resource.data.keys().hasAny(teacherVerificationRequestReviewFields()) &&
         request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.updatedAt == request.time &&
-        teacherVerificationRequestSnapshotFieldsAreValid();
+        teacherVerificationRequestSnapshotFieldsAreValid(userId);
     }
 
     function canCreateOwnUser(userId) {
@@ -296,8 +398,35 @@ service cloud.firestore {
 
     function canUpdateOwnUser(userId) {
       return isSelf(userId) &&
-        !request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(protectedTeacherAccreditationFields());
+        (
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(protectedTeacherAccreditationFields()) ||
+          canSetOwnTeacherAccreditationPending()
+        );
+    }
+
+    function canSetOwnTeacherAccreditationPending() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'teacherAccreditationStatus',
+          'verif_NS'
+        ]) &&
+        (
+          !resource.data.keys().hasAny(['teacherAccreditationStatus']) ||
+          resource.data.teacherAccreditationStatus != 'approved'
+        ) &&
+        (
+          !resource.data.keys().hasAny(['verif_NS']) ||
+          resource.data.verif_NS != true
+        ) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'teacherVerificationStatus',
+          'verificationStatus',
+          'teacherVerificationRequestRef',
+          'teacherAccreditationUpdatedAt',
+          'matchProfile'
+        ]) &&
+        request.resource.data.teacherAccreditationStatus == 'pending' &&
+        request.resource.data.verif_NS == false;
     }
 
     match /users/{userId} {
@@ -341,7 +470,8 @@ service cloud.firestore {
     }
 
     match /conversations/{pairId} {
-      allow read: if isConversationParticipant(resource.data);
+      allow get: if isConversationParticipant(resource.data);
+      allow list: if isConversationParticipant(resource.data);
       allow create: if false;
       allow update: if isConversationParticipant(resource.data) &&
         canUpdateConversationReadMarker();

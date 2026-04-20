@@ -89,6 +89,13 @@ String formatSessionStartedAt(
   VideoSessionsRecord session,
 ) {
   final startedAt = resolveSessionStartedAt(session);
+  return formatSessionStartedAtFromDateTime(context, startedAt);
+}
+
+String formatSessionStartedAtFromDateTime(
+  BuildContext context,
+  DateTime? startedAt,
+) {
   if (startedAt == null) {
     return '-';
   }
