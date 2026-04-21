@@ -550,6 +550,12 @@ Hardening note (2026-04-14):
 - Profile now surfaces Firebase Auth email verification state and provides a resend action for unverified email users.
 - The surface is explicitly soft and does not block calls, chats, profile usage, or teacher verification requests.
 
+Hardening note (2026-04-21):
+
+- Email/password registration now sends verification through `sendCustomEmailVerification` when the Resend sender environment is configured.
+- Profile resend uses the same callable, and the verification card is hidden once Firebase Auth reports `emailVerified=true`.
+- Custom email production readiness depends on `RESEND_API_KEY`, `EMAIL_FROM`, optional `EMAIL_REPLY_TO`, and a verified Resend/DNS sender domain; Firebase Auth action links still require Firebase Console/custom-domain setup if `firebaseapp.com` links must be removed.
+
 ### Issue 8.2 - Refresh email verification state on app resume and return flows
 
 Type: Flutter  

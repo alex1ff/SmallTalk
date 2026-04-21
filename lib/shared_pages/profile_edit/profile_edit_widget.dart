@@ -149,6 +149,151 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     super.dispose();
   }
 
+  Widget _buildCountrySettingTile(BuildContext context) {
+    return InkWell(
+      splashColor: Colors.transparent,
+      focusColor: Colors.transparent,
+      hoverColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      onTap: () async {
+        await showModalBottomSheet(
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          context: context,
+          builder: (context) {
+            return WebViewAware(
+              child: GestureDetector(
+                onTap: () {
+                  FocusScope.of(context).unfocus();
+                  FocusManager.instance.primaryFocus?.unfocus();
+                },
+                child: Padding(
+                  padding: MediaQuery.viewInsetsOf(context),
+                  child: EditCountryWidget(
+                    title: FFLocalizations.of(context).getText(
+                      'potevt0c' /* Где вы сейчас находитесь? */,
+                    ),
+                    selecte: currentUserDocument?.countryNS,
+                    action: (lang) async {
+                      safeSetState(() {
+                        _model.countryNSTextController?.text =
+                            FFLocalizations.of(context).getVariableText(
+                          ruText: lang.nameRu,
+                          enText: lang.nameEn,
+                        );
+                      });
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+        ).then((value) => safeSetState(() {}));
+      },
+      child: Stack(
+        children: [
+          Container(
+            width: double.infinity,
+            height: 60.0,
+            decoration: BoxDecoration(
+              color: FlutterFlowTheme.of(context).primaryBackground,
+              borderRadius: BorderRadius.circular(100.0),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(2.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  Container(
+                    width: 56.0,
+                    height: 56.0,
+                    decoration: BoxDecoration(
+                      color: FlutterFlowTheme.of(context).secondaryBackground,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Align(
+                      alignment: AlignmentDirectional(0.0, 0.0),
+                      child: Icon(
+                        FFIcons.kglobe01,
+                        color: FlutterFlowTheme.of(context).primaryText,
+                        size: 20.0,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding:
+                          EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
+                      child: AuthUserStreamWidget(
+                        builder: (context) => Container(
+                          width: double.infinity,
+                          child: TextFormField(
+                            controller: _model.countryNSTextController,
+                            focusNode: _model.countryNSFocusNode,
+                            autofocus: false,
+                            textCapitalization: TextCapitalization.none,
+                            obscureText: false,
+                            decoration: InputDecoration(
+                              isDense: false,
+                              labelText: FFLocalizations.of(context).getText(
+                                'kem0gdl9' /* Страна */,
+                              ),
+                              labelStyle: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
+                                    fontFamily: 'sf pro display',
+                                    color: FlutterFlowTheme.of(context)
+                                        .secondaryText,
+                                    fontSize: 16.0,
+                                    letterSpacing: 0.0,
+                                  ),
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              errorBorder: InputBorder.none,
+                              focusedErrorBorder: InputBorder.none,
+                            ),
+                            style: FlutterFlowTheme.of(context)
+                                .bodyMedium
+                                .override(
+                                  fontFamily: 'sf pro display',
+                                  fontSize: 16.0,
+                                  letterSpacing: 0.0,
+                                ),
+                            cursorColor:
+                                FlutterFlowTheme.of(context).primaryText,
+                            enableInteractiveSelection: true,
+                            validator: _model.countryNSTextControllerValidator
+                                .asValidator(context),
+                            inputFormatters: [
+                              if (!isAndroid && !isiOS)
+                                TextInputFormatter.withFunction(
+                                    (oldValue, newValue) {
+                                  return TextEditingValue(
+                                    selection: newValue.selection,
+                                    text: newValue.text.toCapitalization(
+                                        TextCapitalization.none),
+                                  );
+                                }),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            height: 60.0,
+            decoration: BoxDecoration(),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -723,6 +868,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                     ],
                                   ),
                                 ),
+                                _buildCountrySettingTile(context),
                                 Row(
                                   mainAxisSize: MainAxisSize.max,
                                   children: [

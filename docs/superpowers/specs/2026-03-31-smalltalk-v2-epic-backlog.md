@@ -307,6 +307,12 @@ Execution note (2026-04-14):
 - App resume now refreshes the Firebase Auth user so users can return from their email client without logging out/in.
 - Email verification remains informational only; it does not gate calling, messaging, profile usage, or teacher verification request submission.
 
+Execution note (2026-04-21):
+
+- Email/password registration now attempts the custom verification callable immediately after account creation.
+- Profile resend uses the same custom callable; verified users no longer see the verification card.
+- Production sender setup requires `RESEND_API_KEY`, `EMAIL_FROM`, and a verified Resend sending domain.
+
 Acceptance criteria:
 
 - User can see unverified/verified state

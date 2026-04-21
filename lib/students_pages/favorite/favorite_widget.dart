@@ -1035,6 +1035,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
                   return StreamBuilder<_ConversationsLoadState>(
                     stream: _watchConversationsForUser(currentUserUid),
+                    initialData: const _ConversationsLoadState(),
                     builder: (context, conversationsSnapshot) {
                       if (conversationsSnapshot.hasError) {
                         debugPrint(

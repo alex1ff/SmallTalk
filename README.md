@@ -29,3 +29,12 @@ This uses the repo-local `firebase-tools@15.14.0`, so the emulator path does
 not depend on a globally installed Firebase CLI or on a runtime `npx` download.
 If you need to override the Firebase project, set `FIREBASE_PROJECT` in the
 environment.
+
+Custom email verification uses the `sendCustomEmailVerification` callable and
+requires a verified Resend sender before production use:
+
+```bash
+RESEND_API_KEY=re_...
+EMAIL_FROM=noreply@your-verified-domain.example
+EMAIL_REPLY_TO=support@your-verified-domain.example # optional
+```

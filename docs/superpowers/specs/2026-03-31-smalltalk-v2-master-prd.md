@@ -105,6 +105,8 @@ This PRD is grounded in the current codebase, where several requested features a
 
 - Firebase Auth `emailVerified` remains the source of truth.
 - Verification prompts are soft.
+- Email/password registration sends a verification email immediately when the
+  custom email sender is configured.
 - Users can resend verification email from the UI.
 - Unverified email does not block calling, messaging, profile usage, or teacher verification request submission in v1.
 

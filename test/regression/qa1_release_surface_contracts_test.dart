@@ -22,6 +22,7 @@ void main() {
       expect(source, contains('resolveFriendsForUser(currentUserDocument)'));
       expect(source, contains('kConversationMessageTypeCallEvent'));
       expect(source, contains('formatSessionStartedAtForCard'));
+      expect(source, contains('initialData: const _ConversationsLoadState()'));
       expect(source, contains('You do not have messages yet.'));
       expect(source, contains('You do not have friends yet.'));
     });
@@ -63,13 +64,21 @@ void main() {
 
     test('email verification remains a soft profile surface', () {
       final source = _source('lib/shared_pages/profile/profile_widget.dart');
+      final registration =
+          _source('lib/authorization/registration/registration_widget.dart');
+      final emailFunction =
+          _source('firebase/custom_cloud_functions/email_verification.js');
 
       expect(
           source, contains('FirebaseAuth.instance.currentUser?.emailVerified'));
-      expect(source, contains('authManager.sendEmailVerification()'));
+      expect(source, contains('sendCustomEmailVerification('));
       expect(source, contains('_refreshEmailVerificationStatus'));
       expect(source,
           contains('This does not limit calls, chats, or profile access.'));
+      expect(
+          registration, contains('unawaited(_sendInitialEmailVerification())'));
+      expect(emailFunction, contains('generateEmailVerificationLink'));
+      expect(emailFunction, contains('https://api.resend.com/emails'));
     });
 
     test('teacher finance surfaces remain gated by approved teacher access',

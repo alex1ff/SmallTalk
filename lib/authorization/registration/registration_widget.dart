@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/native_speaker_entry_toggle.dart';
 import '/authorization/shared/social_auth_entry_logic.dart';
@@ -10,6 +12,7 @@ import '/flutter_flow/flutter_flow_widgets.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
+import '/services/email_verification_service.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -54,6 +57,44 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
     super.dispose();
   }
 
+  Future<void> _sendInitialEmailVerification() async {
+    try {
+      final result = await sendCustomEmailVerification(
+        locale: FFLocalizations.of(context).languageCode,
+      );
+      if (!mounted || !result.sent) {
+        return;
+      }
+
+      await actions.showTopNotification(
+        context,
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Письмо для подтверждения отправлено',
+          enText: 'Verification email has been sent',
+        ),
+        '',
+        false,
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      await actions.showTopNotification(
+        context,
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Email можно подтвердить позже',
+          enText: 'You can verify email later',
+        ),
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Отправьте письмо вручную из профиля.',
+          enText: 'Send the email manually from your profile.',
+        ),
+        true,
+      );
+    }
+  }
+
   Future<void> _handleEmailRegistration() async {
     if (_isSubmittingEmailRegistration) {
       return;
@@ -85,6 +126,8 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
       if (user == null || !mounted) {
         return;
       }
+
+      unawaited(_sendInitialEmailVerification());
 
       if (_model.switchValue == true) {
         await UsersRecord.collection.doc(user.uid).update(createUsersRecordData(

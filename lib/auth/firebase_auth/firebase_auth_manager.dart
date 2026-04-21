@@ -7,6 +7,7 @@ import '../auth_manager.dart';
 import '../../flutter_flow/flutter_flow_util.dart';
 
 import '/backend/backend.dart';
+import '/custom_code/actions/index.dart' as actions;
 import 'anonymous_auth.dart';
 import 'apple_auth.dart';
 import 'email_auth.dart';
@@ -51,6 +52,22 @@ class FirebaseAuthManager extends AuthManager
         PhoneSignInManager {
   FirebasePhoneAuthManager phoneAuthManager = FirebasePhoneAuthManager();
 
+  Future<void> _showAuthNotification(
+    BuildContext context,
+    String message, {
+    bool isError = true,
+  }) async {
+    if (!context.mounted) {
+      return;
+    }
+    await actions.showTopNotification(
+      context,
+      message,
+      '',
+      isError,
+    );
+  }
+
   @override
   Future signOut() {
     return FirebaseAuth.instance.signOut();
@@ -66,12 +83,11 @@ class FirebaseAuthManager extends AuthManager
       await currentUser?.delete();
     } on FirebaseAuthException catch (e) {
       if (e.code == 'requires-recent-login') {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(FFLocalizations.of(context).getText(
+        await _showAuthNotification(
+          context,
+          FFLocalizations.of(context).getText(
             '85lj4aua' /* Прошло много времени с последн... */,
-          ))),
+          ),
         );
       }
     }
@@ -91,12 +107,11 @@ class FirebaseAuthManager extends AuthManager
       await updateUserDocument(email: email);
     } on FirebaseAuthException catch (e) {
       if (e.code == 'requires-recent-login') {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(FFLocalizations.of(context).getText(
+        await _showAuthNotification(
+          context,
+          FFLocalizations.of(context).getText(
             'k3mw5pe7' /* Прошло много времени с последн... */,
-          ))),
+          ),
         );
       }
     }
@@ -114,12 +129,11 @@ class FirebaseAuthManager extends AuthManager
       await currentUser?.updatePassword(newPassword);
     } on FirebaseAuthException catch (e) {
       if (e.code == 'requires-recent-login') {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(FFLocalizations.of(context).getText(
+        await _showAuthNotification(
+          context,
+          FFLocalizations.of(context).getText(
             '60fb8f43' /* Ошибка */,
-          ))),
+          ),
         );
       }
     }
@@ -133,20 +147,20 @@ class FirebaseAuthManager extends AuthManager
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
     } on FirebaseAuthException {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(FFLocalizations.of(context).getText(
+      await _showAuthNotification(
+        context,
+        FFLocalizations.of(context).getText(
           '60fb8f43' /* Ошибка */,
-        ))),
+        ),
       );
       return null;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text(FFLocalizations.of(context).getText(
+    await _showAuthNotification(
+      context,
+      FFLocalizations.of(context).getText(
         '7mczn45o' /* Ссылка на сборс пароля отправл... */,
-      ))),
+      ),
+      isError: false,
     );
   }
 
@@ -210,10 +224,11 @@ class FirebaseAuthManager extends AuthManager
         phoneAuthManager
             .update(() => phoneAuthManager.triggerOnCodeSent = false);
       } else if (phoneAuthManager.phoneAuthError != null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(FFLocalizations.of(context).getText(
+        unawaited(_showAuthNotification(
+          context,
+          FFLocalizations.of(context).getText(
             '60fb8f43' /* Ошибка */,
-          )),
+          ),
         ));
         phoneAuthManager.update(() => phoneAuthManager.phoneAuthError = null);
       }
@@ -351,10 +366,7 @@ class FirebaseAuthManager extends AuthManager
             '60fb8f43' /* Ошибка */,
           ),
       };
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMsg)),
-      );
+      await _showAuthNotification(context, errorMsg);
       return null;
     } catch (e) {
       debugPrint('Auth exception ($authProvider): $e');
@@ -402,10 +414,7 @@ class FirebaseAuthManager extends AuthManager
                 : 'Apple Sign-In failed. Please try again.');
       }
 
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMsg)),
-      );
+      await _showAuthNotification(context, errorMsg);
       return null;
     }
   }

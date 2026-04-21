@@ -42,3 +42,6 @@ exports.syncUserMatchProfile = userMatchProfileSync.syncUserMatchProfile;
 const teacherVerificationRequests = require("./teacher_verification_requests.js");
 exports.syncTeacherVerificationRequest =
   teacherVerificationRequests.syncTeacherVerificationRequest;
+const emailVerification = require("./email_verification.js");
+exports.sendCustomEmailVerification =
+  emailVerification.sendCustomEmailVerification;

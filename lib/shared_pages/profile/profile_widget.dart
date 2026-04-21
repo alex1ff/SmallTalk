@@ -13,6 +13,7 @@ import '/shared_pages/profile_components/report/report_widget.dart';
 import '/shared_pages/profile_components/stats/stats_widget.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
+import '/services/email_verification_service.dart';
 import '/services/teacher_verification_request_service.dart';
 import '/services/user_match_profile.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -83,12 +84,19 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   bool get _isCurrentEmailVerified =>
       FirebaseAuth.instance.currentUser?.emailVerified ?? false;
 
-  void _showProfileSnackBar(String message) {
+  Future<void> _showProfileNotification(
+    String message, {
+    bool isError = false,
+    String? text,
+  }) async {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+    await actions.showTopNotification(
+      context,
+      message,
+      text ?? '',
+      isError,
     );
   }
 
@@ -99,16 +107,22 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       return;
     }
 
-    _emailVerificationRefreshing = true;
-    if (mounted) {
+    final wasVerified = _isCurrentEmailVerified;
+    if (showResult) {
+      _emailVerificationRefreshing = true;
       safeSetState(() {});
     }
 
     try {
       await authManager.refreshUser();
+      final isVerified = _isCurrentEmailVerified;
+      if (!mounted) {
+        return;
+      }
+
       if (showResult) {
-        _showProfileSnackBar(
-          _isCurrentEmailVerified
+        await _showProfileNotification(
+          isVerified
               ? FFLocalizations.of(context).getVariableText(
                   ruText: 'Email подтверждён.',
                   enText: 'Email is verified.',
@@ -117,20 +131,26 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                   ruText: 'Email пока не подтверждён.',
                   enText: 'Email is not verified yet.',
                 ),
+          isError: !isVerified,
         );
+      } else if (wasVerified != isVerified) {
+        safeSetState(() {});
       }
     } catch (e) {
       if (showResult) {
-        _showProfileSnackBar(
+        await _showProfileNotification(
           FFLocalizations.of(context).getVariableText(
             ruText: 'Не удалось обновить статус email.',
             enText: 'Could not refresh email status.',
           ),
+          isError: true,
         );
       }
     } finally {
-      _emailVerificationRefreshing = false;
-      if (mounted) {
+      if (showResult) {
+        _emailVerificationRefreshing = false;
+      }
+      if (mounted && showResult) {
         safeSetState(() {});
       }
     }
@@ -147,19 +167,40 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     }
 
     try {
-      await authManager.sendEmailVerification();
-      _showProfileSnackBar(
+      final result = await sendCustomEmailVerification(
+        locale: FFLocalizations.of(context).languageCode,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      if (result.alreadyVerified) {
+        await authManager.refreshUser();
+        if (mounted) {
+          safeSetState(() {});
+        }
+        await _showProfileNotification(
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Email уже подтверждён.',
+            enText: 'Email is already verified.',
+          ),
+        );
+        return;
+      }
+
+      await _showProfileNotification(
         FFLocalizations.of(context).getVariableText(
           ruText: 'Письмо для подтверждения отправлено.',
           enText: 'Verification email has been sent.',
         ),
       );
     } catch (e) {
-      _showProfileSnackBar(
+      await _showProfileNotification(
         FFLocalizations.of(context).getVariableText(
           ruText: 'Не удалось отправить письмо. Попробуйте позже.',
           enText: 'Could not send the email. Please try again later.',
         ),
+        isError: true,
       );
     } finally {
       _emailVerificationBusy = false;
@@ -170,16 +211,13 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   }
 
   Widget _buildEmailVerificationStatus(BuildContext context) {
-    if (!_hasCurrentEmail) {
+    if (!_hasCurrentEmail || _isCurrentEmailVerified) {
       return const SizedBox.shrink();
     }
 
-    final verified = _isCurrentEmailVerified;
     final theme = FlutterFlowTheme.of(context);
     final actionBusy = _emailVerificationBusy || _emailVerificationRefreshing;
-    final statusIconBackground = verified
-        ? theme.secondary.withValues(alpha: 0.18)
-        : theme.primary.withValues(alpha: 0.18);
+    final statusIconBackground = theme.primary.withValues(alpha: 0.18);
 
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
@@ -205,9 +243,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      verified
-                          ? Icons.verified_rounded
-                          : Icons.mark_email_unread_rounded,
+                      Icons.mark_email_unread_rounded,
                       color: theme.primaryText,
                       size: 22,
                     ),
@@ -218,15 +254,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          verified
-                              ? FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Email подтверждён',
-                                  enText: 'Email verified',
-                                )
-                              : FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Подтвердите email',
-                                  enText: 'Verify your email',
-                                ),
+                          FFLocalizations.of(context).getVariableText(
+                            ruText: 'Подтвердите email',
+                            enText: 'Verify your email',
+                          ),
                           style: theme.bodyMedium.override(
                             fontFamily: 'sf pro display',
                             color: theme.primaryText,
@@ -237,19 +268,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         ),
                         SizedBox(height: 6),
                         Text(
-                          verified
-                              ? FFLocalizations.of(context).getVariableText(
-                                  ruText:
-                                      'Статус обновится автоматически после перехода по ссылке из письма.',
-                                  enText:
-                                      'The status updates automatically after you open the email link.',
-                                )
-                              : FFLocalizations.of(context).getVariableText(
-                                  ruText:
-                                      'Подтвердите адрес, чтобы сохранить доступ к важным письмам и восстановлению аккаунта.',
-                                  enText:
-                                      'Verify the address to keep access to important emails and account recovery.',
-                                ),
+                          FFLocalizations.of(context).getVariableText(
+                            ruText:
+                                'Подтвердите адрес, чтобы сохранить доступ к важным письмам и восстановлению аккаунта. Это не ограничивает звонки, чаты или профиль.',
+                            enText:
+                                'Verify the address to keep access to important emails and account recovery. This does not limit calls, chats, or profile access.',
+                          ),
                           style: theme.bodyMedium.override(
                             fontFamily: 'sf pro display',
                             color: theme.secondaryText,
@@ -297,47 +321,45 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                   ),
                 ),
               ),
-              if (!verified) ...[
-                SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _emailVerificationAction(
-                      context,
-                      icon: Icons.email_outlined,
-                      label: _emailVerificationBusy
-                          ? FFLocalizations.of(context).getVariableText(
-                              ruText: 'Отправляем...',
-                              enText: 'Sending...',
-                            )
-                          : FFLocalizations.of(context).getVariableText(
-                              ruText: 'Отправить письмо',
-                              enText: 'Send email',
-                            ),
-                      filled: true,
-                      enabled: !actionBusy,
-                      onTap: _sendEmailVerification,
-                    ),
-                    _emailVerificationAction(
-                      context,
-                      icon: Icons.refresh_rounded,
-                      label: _emailVerificationRefreshing
-                          ? FFLocalizations.of(context).getVariableText(
-                              ruText: 'Обновляем...',
-                              enText: 'Refreshing...',
-                            )
-                          : FFLocalizations.of(context).getVariableText(
-                              ruText: 'Обновить статус',
-                              enText: 'Refresh status',
-                            ),
-                      filled: false,
-                      enabled: !actionBusy,
-                      onTap: () => _refreshEmailVerificationStatus(),
-                    ),
-                  ],
-                ),
-              ],
+              SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _emailVerificationAction(
+                    context,
+                    icon: Icons.email_outlined,
+                    label: _emailVerificationBusy
+                        ? FFLocalizations.of(context).getVariableText(
+                            ruText: 'Отправляем...',
+                            enText: 'Sending...',
+                          )
+                        : FFLocalizations.of(context).getVariableText(
+                            ruText: 'Отправить письмо',
+                            enText: 'Send email',
+                          ),
+                    filled: true,
+                    enabled: !actionBusy,
+                    onTap: _sendEmailVerification,
+                  ),
+                  _emailVerificationAction(
+                    context,
+                    icon: Icons.refresh_rounded,
+                    label: _emailVerificationRefreshing
+                        ? FFLocalizations.of(context).getVariableText(
+                            ruText: 'Обновляем...',
+                            enText: 'Refreshing...',
+                          )
+                        : FFLocalizations.of(context).getVariableText(
+                            ruText: 'Обновить статус',
+                            enText: 'Refresh status',
+                          ),
+                    filled: false,
+                    enabled: !actionBusy,
+                    onTap: () => _refreshEmailVerificationStatus(),
+                  ),
+                ],
+              ),
             ],
           ),
         ),

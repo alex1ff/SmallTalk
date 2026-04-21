@@ -1678,21 +1678,23 @@ class _PartnerLocationBottomSheetState
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8.0),
-                      _DashboardSheetResetButton(
-                        label: FFLocalizations.of(context).getVariableText(
-                          ruText: 'Сброс',
-                          enText: 'Reset',
-                        ),
-                        onTap: () => Navigator.pop(
-                          context,
-                          const _LocationPickerResult(
-                            country: null,
-                            didInteract: true,
-                            resetFilter: true,
+                      if (_selectedCountry != null) ...[
+                        const SizedBox(width: 8.0),
+                        _DashboardSheetResetButton(
+                          label: FFLocalizations.of(context).getVariableText(
+                            ruText: 'Сброс',
+                            enText: 'Reset',
+                          ),
+                          onTap: () => Navigator.pop(
+                            context,
+                            const _LocationPickerResult(
+                              country: null,
+                              didInteract: true,
+                              resetFilter: true,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                       const SizedBox(width: 8.0),
                       _DashboardSheetCloseButton(
                         onTap: () => Navigator.pop(context),
@@ -1833,21 +1835,23 @@ class _PartnerLevelBottomSheetState extends State<_PartnerLevelBottomSheet> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8.0),
-                    _DashboardSheetResetButton(
-                      label: FFLocalizations.of(context).getVariableText(
-                        ruText: 'Сброс',
-                        enText: 'Reset',
-                      ),
-                      onTap: () => Navigator.pop(
-                        context,
-                        const _PartnerLevelResult(
-                          level: null,
-                          didInteract: true,
-                          resetFilter: true,
+                    if (_hasExplicitSelection) ...[
+                      const SizedBox(width: 8.0),
+                      _DashboardSheetResetButton(
+                        label: FFLocalizations.of(context).getVariableText(
+                          ruText: 'Сброс',
+                          enText: 'Reset',
+                        ),
+                        onTap: () => Navigator.pop(
+                          context,
+                          const _PartnerLevelResult(
+                            level: null,
+                            didInteract: true,
+                            resetFilter: true,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                     const SizedBox(width: 8.0),
                     _DashboardSheetCloseButton(
                       onTap: () => Navigator.pop(context),

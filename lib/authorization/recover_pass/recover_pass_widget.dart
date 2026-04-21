@@ -190,15 +190,13 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                                       _model.emailTextController.text)) {
                                     if (_model
                                         .emailTextController.text.isEmpty) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            FFLocalizations.of(context).getText(
-                                              'rizvdi40' /* Почта не заполнена */,
-                                            ),
-                                          ),
+                                      await actions.showTopNotification(
+                                        context,
+                                        FFLocalizations.of(context).getText(
+                                          'rizvdi40' /* Почта не заполнена */,
                                         ),
+                                        '',
+                                        true,
                                       );
                                       return;
                                     }
@@ -300,14 +298,13 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                       if (functions
                           .isValidEmail(_model.emailTextController.text)) {
                         if (_model.emailTextController.text.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                FFLocalizations.of(context).getText(
-                                  'rizvdi40' /* Почта не заполнена */,
-                                ),
-                              ),
+                          await actions.showTopNotification(
+                            context,
+                            FFLocalizations.of(context).getText(
+                              'rizvdi40' /* Почта не заполнена */,
                             ),
+                            '',
+                            true,
                           );
                           return;
                         }
