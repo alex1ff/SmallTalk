@@ -35,5 +35,37 @@ void main() {
       expect(result.sent, isFalse);
       expect(result.alreadyVerified, isTrue);
     });
+
+    test('falls back to Firebase default verification when callable fails',
+        () async {
+      var fallbackCalls = 0;
+
+      final result = await sendCustomEmailVerification(
+        locale: 'ru',
+        invoker: (_) async => throw Exception('callable unavailable'),
+        firebaseEmailFallback: () async {
+          fallbackCalls += 1;
+        },
+      );
+
+      expect(fallbackCalls, 1);
+      expect(result.sent, isTrue);
+      expect(result.alreadyVerified, isFalse);
+      expect(result.providerMessageId, 'firebase_default');
+    });
+
+    test('can disable Firebase default fallback', () async {
+      expect(
+        () => sendCustomEmailVerification(
+          locale: 'ru',
+          invoker: (_) async => throw Exception('callable unavailable'),
+          firebaseEmailFallback: () async {
+            fail('fallback should not run');
+          },
+          fallbackToFirebaseDefault: false,
+        ),
+        throwsA(isA<Exception>()),
+      );
+    });
   });
 }

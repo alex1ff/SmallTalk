@@ -6,13 +6,17 @@ import '/authorization/components/celebration_top_up/celebration_top_up_widget.d
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/custom_code/widgets/index.dart' as custom_widgets;
+import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/services/user_match_profile.dart';
 import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
 import '/students_pages/components/fav/fav_widget.dart';
+import '/teachers_pages/components/add_inter/add_inter_widget.dart';
 import '/index.dart';
+import 'dart:async';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -48,6 +52,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
+  bool get _effectiveAvailabilityEnabled =>
+      currentUserDocument?.availabilityToday.enabled ?? false;
+
+  bool get _effectiveSwitchValue =>
+      _model.switchValue ?? _effectiveAvailabilityEnabled;
+
   Widget _buildLoadingState(BuildContext context) {
     return Center(
       child: SizedBox(
@@ -76,6 +86,124 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       formatType: FormatType.custom,
       format: '#,##0.##',
       locale: FFLocalizations.of(context).languageCode,
+    );
+  }
+
+  Map<String, dynamic> _buildTimezoneMetadataUpdate() {
+    final now = DateTime.now();
+    return {
+      'timezoneOffsetMinutes': now.timeZoneOffset.inMinutes,
+      'timezoneName': now.timeZoneName,
+      'timezoneUpdatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  Future<void> _syncTimezoneMetadata() async {
+    final userRef = currentUserReference;
+    if (userRef == null) {
+      return;
+    }
+
+    try {
+      await userRef.update(_buildTimezoneMetadataUpdate());
+    } catch (error) {
+      debugPrint('StudentsDashboard: failed to sync timezone metadata: $error');
+    }
+  }
+
+  Future<bool> _openAddInterBottomSheet() async {
+    final intervalAdded = await showModalBottomSheet<bool>(
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      context: context,
+      builder: (context) {
+        return WebViewAware(
+          child: GestureDetector(
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
+            child: Padding(
+              padding: MediaQuery.viewInsetsOf(context),
+              child: AddInterWidget(),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (mounted) {
+      safeSetState(() {});
+    }
+    return intervalAdded ?? false;
+  }
+
+  Future<void> _handleAvailabilitySwitchChanged(bool newValue) async {
+    final userRef = currentUserReference;
+    if (userRef == null) {
+      return;
+    }
+
+    safeSetState(() => _model.switchValue = newValue);
+    if (newValue) {
+      if (currentUserDocument!.availabilityToday.intervals.isNotEmpty) {
+        final availabilityUpdate = createUsersRecordData(
+          availabilityToday: createAvailabilityTodayStruct(
+            enabled: true,
+            clearUnsetFields: false,
+          ),
+          isInCall: false,
+        );
+        availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
+        await userRef.update(availabilityUpdate);
+      } else {
+        safeSetState(() => _model.switchValue = false);
+        final intervalAdded = await _openAddInterBottomSheet();
+        if (!mounted) {
+          return;
+        }
+
+        if (intervalAdded) {
+          safeSetState(() => _model.switchValue = true);
+        } else {
+          final availabilityUpdate = createUsersRecordData(
+            availabilityToday: createAvailabilityTodayStruct(
+              enabled: false,
+              clearUnsetFields: false,
+            ),
+          );
+          availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
+          await userRef.update(availabilityUpdate);
+          if (mounted) {
+            safeSetState(() => _model.switchValue = false);
+          }
+        }
+      }
+      if (mounted) {
+        safeSetState(() {});
+      }
+    } else {
+      final availabilityUpdate = createUsersRecordData(
+        availabilityToday: createAvailabilityTodayStruct(
+          enabled: false,
+          clearUnsetFields: false,
+        ),
+      );
+      availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
+      await userRef.update(availabilityUpdate);
+      if (mounted) {
+        safeSetState(() {});
+      }
+    }
+  }
+
+  Widget _buildAvailabilitySwitch() {
+    return _StudentAvailabilitySwitchControl(
+      value: _effectiveSwitchValue,
+      onChanged: (newValue) async {
+        await _handleAvailabilitySwitchChanged(newValue);
+      },
     );
   }
 
@@ -316,6 +444,207 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     safeSetState(() {});
   }
 
+  Widget _buildAvailabilitySection(BuildContext context) {
+    return AuthUserStreamWidget(
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: double.infinity,
+            height: 60.0,
+            decoration: BoxDecoration(
+              color: FlutterFlowTheme.of(context).primaryBackground,
+              borderRadius: BorderRadius.circular(26.0),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    FFLocalizations.of(context).getText(
+                      'n1zbzn9y' /* Доступен сегодня */,
+                    ),
+                    style: FlutterFlowTheme.of(context).bodyMedium.override(
+                          fontFamily: 'sf pro display',
+                          color: FlutterFlowTheme.of(context).primaryText,
+                          fontSize: 16.0,
+                          letterSpacing: 0.0,
+                          fontWeight: FontWeight.normal,
+                        ),
+                  ),
+                  _buildAvailabilitySwitch(),
+                ],
+              ),
+            ),
+          ),
+          if (_effectiveAvailabilityEnabled) ...[
+            SizedBox(height: 6.0),
+            Builder(
+              builder: (context) {
+                final intervals =
+                    currentUserDocument?.availabilityToday.intervals.toList() ??
+                        [];
+
+                return ListView.separated(
+                  padding: EdgeInsets.zero,
+                  primary: false,
+                  shrinkWrap: true,
+                  scrollDirection: Axis.vertical,
+                  itemCount: intervals.length,
+                  separatorBuilder: (_, __) => SizedBox(height: 6.0),
+                  itemBuilder: (context, intervalsIndex) {
+                    final intervalsItem = intervals[intervalsIndex];
+                    return Container(
+                      width: double.infinity,
+                      height: 60.0,
+                      decoration: BoxDecoration(
+                        color: FlutterFlowTheme.of(context).primaryBackground,
+                        borderRadius: BorderRadius.circular(26.0),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(4.0),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.max,
+                          children: [
+                            Container(
+                              width: 52.0,
+                              height: 52.0,
+                              decoration: BoxDecoration(
+                                color: Color(0xFFF2F2F7),
+                                borderRadius: BorderRadius.circular(22.0),
+                              ),
+                              child: Align(
+                                alignment: AlignmentDirectional(0.0, 0.0),
+                                child: Icon(
+                                  FFIcons.kclock,
+                                  color:
+                                      FlutterFlowTheme.of(context).primaryText,
+                                  size: 20.0,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: EdgeInsetsDirectional.fromSTEB(
+                                    12.0, 0.0, 0.0, 0.0),
+                                child: Text(
+                                  '${intervalsItem.start} - ${intervalsItem.end}',
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        fontSize: 16.0,
+                                        letterSpacing: 0.0,
+                                      ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            FlutterFlowIconButton(
+                              borderRadius: 22.0,
+                              buttonSize: 52.0,
+                              icon: Icon(
+                                FFIcons.ktrash03,
+                                color: FlutterFlowTheme.of(context).error,
+                                size: 18.0,
+                              ),
+                              onPressed: () async {
+                                final userRef = currentUserReference;
+                                if (userRef == null) {
+                                  return;
+                                }
+
+                                await userRef.update(createUsersRecordData(
+                                  availabilityToday:
+                                      createAvailabilityTodayStruct(
+                                    fieldValues: {
+                                      'intervals': FieldValue.arrayRemove([
+                                        getIntervalsFirestoreData(
+                                          updateIntervalsStruct(
+                                            intervalsItem,
+                                            clearUnsetFields: false,
+                                          ),
+                                          true,
+                                        )
+                                      ]),
+                                    },
+                                    clearUnsetFields: false,
+                                  ),
+                                ));
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+            SizedBox(height: 6.0),
+            InkWell(
+              splashColor: Colors.transparent,
+              focusColor: Colors.transparent,
+              hoverColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              onTap: () async {
+                await _openAddInterBottomSheet();
+              },
+              child: Container(
+                width: double.infinity,
+                height: 60.0,
+                decoration: BoxDecoration(
+                  color: FlutterFlowTheme.of(context).primaryBackground,
+                  borderRadius: BorderRadius.circular(26.0),
+                  border: Border.all(
+                    color: FlutterFlowTheme.of(context).secondaryBackground,
+                  ),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(2.0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      FlutterFlowIconButton(
+                        borderRadius: 12.0,
+                        buttonSize: 35.0,
+                        fillColor:
+                            FlutterFlowTheme.of(context).secondaryBackground,
+                        icon: Icon(
+                          Icons.add_sharp,
+                          color: FlutterFlowTheme.of(context).primaryText,
+                          size: 18.0,
+                        ),
+                        onPressed: () async {
+                          await _openAddInterBottomSheet();
+                        },
+                      ),
+                      Text(
+                        FFLocalizations.of(context).getText(
+                          'ws9tu06c' /* Добавить интервал */,
+                        ),
+                        style: FlutterFlowTheme.of(context).bodyMedium.override(
+                              fontFamily: 'sf pro display',
+                              color: FlutterFlowTheme.of(context).primaryText,
+                              fontSize: 15.0,
+                              letterSpacing: 0.0,
+                              fontWeight: FontWeight.w500,
+                            ),
+                      ),
+                    ].divide(SizedBox(width: 8.0)),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -323,6 +652,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
+      unawaited(_syncTimezoneMetadata());
       if (widget.topUpSuccess) {
         await showModalBottomSheet(
           useRootNavigator: true,
@@ -833,6 +1163,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                             );
                           },
                         ),
+                      ),
+                      Padding(
+                        padding: EdgeInsetsDirectional.fromSTEB(6, 8, 6, 0),
+                        child: _buildAvailabilitySection(context),
                       ),
                       Padding(
                         padding: EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
@@ -1412,6 +1746,38 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
           },
         ),
       ),
+    );
+  }
+}
+
+class _StudentAvailabilitySwitchControl extends StatelessWidget {
+  const _StudentAvailabilitySwitchControl({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IgnorePointer(
+          child: AdaptiveSwitch(
+            value: value,
+            onChanged: null,
+            activeColor: FlutterFlowTheme.of(context).success,
+          ),
+        ),
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onChanged(!value),
+          ),
+        ),
+      ],
     );
   }
 }

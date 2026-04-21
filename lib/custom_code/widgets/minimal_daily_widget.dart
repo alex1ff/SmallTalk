@@ -3533,7 +3533,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     if (status == 'searching' && isStudent) {
-      return 'Ищем преподавателя...';
+      return 'Ищем собеседника...';
     }
 
     if (_state.connectionState != ConnectionState.connected) {
@@ -3541,7 +3541,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     return isStudent
-        ? 'Ожидаем подключение преподавателя...'
+        ? 'Ожидаем подключение собеседника...'
         : 'Ожидаем подключение студента...';
   }
 

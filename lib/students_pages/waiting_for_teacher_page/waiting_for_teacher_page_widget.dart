@@ -175,14 +175,14 @@ class _WaitingForTeacherPageWidgetState
       if (_isDirectTutorCall) {
         return _localizedText(
           ruText:
-              'Преподаватель сейчас недоступен или отклонил звонок. Попробуйте позже.',
+              'Собеседник сейчас недоступен или отклонил звонок. Попробуйте позже.',
           enText:
-              'This tutor is currently unavailable or declined the call. Please try again later.',
+              'This partner is currently unavailable or declined the call. Please try again later.',
         );
       }
       return _localizedText(
-        ruText: 'Сейчас нет свободных преподавателей. Попробуйте позже.',
-        enText: 'No tutors are available right now. Please try again later.',
+        ruText: 'Сейчас нет свободных собеседников. Попробуйте позже.',
+        enText: 'No partners are available right now. Please try again later.',
       );
     }
 
@@ -596,17 +596,17 @@ class _WaitingForTeacherPageWidgetState
           );
     } else if (isLoading || status == null) {
       title = _localizedText(
-        ruText: _isDirectTutorCall
-            ? 'Звоним преподавателю'
-            : 'Small Talk начинается',
-        enText: _isDirectTutorCall ? 'Calling your tutor' : 'Small Talk begins',
+        ruText:
+            _isDirectTutorCall ? 'Звоним собеседнику' : 'Small Talk начинается',
+        enText:
+            _isDirectTutorCall ? 'Calling your partner' : 'Small Talk begins',
       );
       subtitle = _localizedText(
         ruText: _isDirectTutorCall
-            ? 'Подготавливаем звонок выбранному преподавателю'
+            ? 'Подготавливаем звонок выбранному собеседнику'
             : 'Ищем идеального собеседника',
         enText: _isDirectTutorCall
-            ? 'Preparing a call with the selected tutor'
+            ? 'Preparing a call with the selected partner'
             : 'Looking for the perfect companion',
       );
     } else if (isDialingTutor) {
@@ -617,15 +617,15 @@ class _WaitingForTeacherPageWidgetState
       );
     } else if (status == 'searching') {
       title = _localizedText(
-        ruText: _isDirectTutorCall ? 'Звоним преподавателю' : 'Дозваниваемся',
-        enText: _isDirectTutorCall ? 'Calling your tutor' : 'Connecting…',
+        ruText: _isDirectTutorCall ? 'Звоним собеседнику' : 'Дозваниваемся',
+        enText: _isDirectTutorCall ? 'Calling your partner' : 'Connecting…',
       );
       subtitle = _localizedText(
         ruText: _isDirectTutorCall
-            ? 'Ждём, пока преподаватель примет звонок'
+            ? 'Ждём, пока собеседник примет звонок'
             : 'Ждём, пока собеседник примет звонок',
         enText: _isDirectTutorCall
-            ? 'Waiting for the tutor to accept the call.'
+            ? 'Waiting for the partner to accept the call.'
             : 'We are waiting for the interlocutor to accept the call.',
       );
     } else if (status == 'connecting') {
@@ -640,14 +640,14 @@ class _WaitingForTeacherPageWidgetState
     } else if (status == 'no_tutors_available') {
       if (_isDirectTutorCall) {
         title = FFLocalizations.of(context).getVariableText(
-          ruText: 'Преподаватель недоступен',
-          enText: 'Tutor unavailable',
+          ruText: 'Собеседник недоступен',
+          enText: 'Partner unavailable',
         );
         subtitle = FFLocalizations.of(context).getVariableText(
           ruText:
-              'Преподаватель сейчас недоступен или отклонил звонок. Попробуйте позже',
+              'Собеседник сейчас недоступен или отклонил звонок. Попробуйте позже',
           enText:
-              'This tutor is currently unavailable or declined the call. Please try again later',
+              'This partner is currently unavailable or declined the call. Please try again later',
         );
       } else {
         title = FFLocalizations.of(context).getVariableText(

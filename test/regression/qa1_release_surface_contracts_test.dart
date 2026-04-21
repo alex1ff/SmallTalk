@@ -68,6 +68,8 @@ void main() {
           _source('lib/authorization/registration/registration_widget.dart');
       final emailFunction =
           _source('firebase/custom_cloud_functions/email_verification.js');
+      final emailService =
+          _source('lib/services/email_verification_service.dart');
 
       expect(
           source, contains('FirebaseAuth.instance.currentUser?.emailVerified'));
@@ -79,6 +81,8 @@ void main() {
           registration, contains('unawaited(_sendInitialEmailVerification())'));
       expect(emailFunction, contains('generateEmailVerificationLink'));
       expect(emailFunction, contains('https://api.resend.com/emails'));
+      expect(emailService, contains('sendEmailVerification()'));
+      expect(emailService, contains("providerMessageId: 'firebase_default'"));
     });
 
     test('teacher finance surfaces remain gated by approved teacher access',
@@ -268,6 +272,24 @@ void main() {
           isNot(contains('context.pushNamed(ProfileWidget.routeName)')));
       expect(studentDashboard, isNot(contains('FFIcons.kuser03')));
       expect(teacherDashboard, isNot(contains('FFIcons.kuser03')));
+    });
+
+    test('student dashboard exposes availability controls for all-to-all calls',
+        () {
+      final studentDashboard = _source(
+          'lib/students_pages/students_dashboard/students_dashboard_widget.dart');
+      final waitingPage = _source(
+          'lib/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart');
+
+      expect(studentDashboard, contains('AddInterWidget()'));
+      expect(studentDashboard, contains('_StudentAvailabilitySwitchControl'));
+      expect(studentDashboard, contains('availabilityToday:'));
+      expect(studentDashboard, contains('isInCall: false'));
+      expect(studentDashboard, contains('FieldValue.arrayRemove'));
+      expect(studentDashboard,
+          isNot(contains('hasPendingTeacherVerification(latestUser)')));
+      expect(waitingPage, contains('свободных собеседников'));
+      expect(waitingPage, isNot(contains('свободных преподавателей')));
     });
   });
 }
