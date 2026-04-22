@@ -29,9 +29,12 @@ void main() {
             '_sessionCallKitIds[sessionId] ?? _callKitIdForSession(sessionId)'),
       );
       expect(source, contains("'callKitId': callKitId"));
+      expect(source, contains('_processAcceptClaimedAtBySession'));
+      expect(source, contains('Duplicate accept event (process gate)'));
 
       final claimIndex =
           source.indexOf('_recentAcceptBySession[sessionId] = now;');
+      final processClaimIndex = source.indexOf('_tryClaimProcessAccept');
       final handledIdIndex =
           source.indexOf('_handledCallKitAcceptIds.add(effectiveCallKitId);');
       final acceptInProgressIndex =
@@ -40,6 +43,7 @@ void main() {
           source.indexOf('Ignoring accept for stale callKitId');
 
       expect(claimIndex, greaterThanOrEqualTo(0));
+      expect(processClaimIndex, greaterThanOrEqualTo(0));
       expect(staleCallKitGuardIndex, greaterThanOrEqualTo(0));
       expect(handledIdIndex, greaterThan(claimIndex));
       expect(acceptInProgressIndex, greaterThan(handledIdIndex));
@@ -142,6 +146,27 @@ void main() {
         source,
         contains('_releaseProcessActiveCallClient(callClientToDispose);'),
       );
+    });
+
+    test('tutor accept waits for backend room credentials before navigating',
+        () {
+      final source = _source('lib/services/voip_service.dart');
+
+      expect(
+        source,
+        isNot(contains('Navigated to VideoCallPage (tutor, instant)')),
+      );
+      expect(
+        source,
+        contains('Navigated to VideoCallPage (tutor, after acceptCall)'),
+      );
+
+      final acceptCallIndex = source.indexOf("httpsCallable('acceptCall')");
+      final tutorNavigateIndex = source.indexOf(
+        "sessionId: sessionId,\n              isTutor: true,\n              roomUrl: _lastRoomUrl",
+      );
+      expect(acceptCallIndex, greaterThanOrEqualTo(0));
+      expect(tutorNavigateIndex, greaterThan(acceptCallIndex));
     });
 
     test('Daily token refresh keeps room URL and token paired', () {

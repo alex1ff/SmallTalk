@@ -21,6 +21,8 @@ class VoIPService {
   static final RegExp _uuidPattern = RegExp(
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
   );
+  static final Map<String, DateTime> _processAcceptClaimedAtBySession = {};
+  static const Duration _processAcceptDedupeWindow = Duration(minutes: 2);
   factory VoIPService() => _instance;
   VoIPService._internal();
 
@@ -145,6 +147,20 @@ class VoIPService {
         _hasProtectedLiveSessionState(sessionId);
   }
 
+  bool _tryClaimProcessAccept(String sessionId) {
+    final now = DateTime.now();
+    _processAcceptClaimedAtBySession.removeWhere(
+      (_, claimedAt) => now.difference(claimedAt) >= _processAcceptDedupeWindow,
+    );
+    final lastClaim = _processAcceptClaimedAtBySession[sessionId];
+    if (lastClaim != null &&
+        now.difference(lastClaim) < _processAcceptDedupeWindow) {
+      return false;
+    }
+    _processAcceptClaimedAtBySession[sessionId] = now;
+    return true;
+  }
+
   Future<bool> _shouldEndSessionViaFallbackLookup(String sessionId) async {
     try {
       final userId = _auth.currentUser?.uid;
@@ -266,6 +282,7 @@ class VoIPService {
     _recentAcceptBySession.clear();
     _sessionStateGenerations.clear();
     _sessionCallKitIds.clear();
+    _processAcceptClaimedAtBySession.clear();
 
     _lastAcceptedSessionId = null;
     _lastAcceptedIsTutor = false;
@@ -616,6 +633,10 @@ class VoIPService {
           'ℹ️ VoIPService: Ignoring accept for stale callKitId: $callKitId');
       return;
     }
+    if (!_tryClaimProcessAccept(sessionId)) {
+      debugPrint('⚠️ VoIPService: Duplicate accept event (process gate)');
+      return;
+    }
     _touchSessionState(sessionId);
 
     final now = DateTime.now();
@@ -697,16 +718,11 @@ class VoIPService {
       }
 
       // Navigate to VideoCallPage IMMEDIATELY — before acceptCall completes.
-      // VideoCallPage will show a loading state; its StreamBuilder will pick up
-      // the room URL once acceptCall writes it to Firestore.
+      // Do not navigate before acceptCall completes. CallKit/FCM can deliver
+      // duplicate accept events; navigating early creates multiple Daily clients
+      // before the backend lock can collapse them.
       _lastAcceptedIsTutor = true;
       _acceptedSessions.add(sessionId);
-
-      _tryNavigateToVideoCall(
-        sessionId: sessionId,
-        isTutor: true,
-      );
-      debugPrint('🎬 VoIPService: Navigated to VideoCallPage (tutor, instant)');
 
       // Call acceptCall in the background — creates the Daily room and writes
       // dailyRoomUrl to the session document. VideoCallPage's StreamBuilder
@@ -732,6 +748,15 @@ class VoIPService {
                 responseMeetingToken is String ? responseMeetingToken : null;
             _lastRoomName =
                 responseRoomName is String ? responseRoomName : null;
+            _tryNavigateToVideoCall(
+              sessionId: sessionId,
+              isTutor: true,
+              roomUrl: _lastRoomUrl,
+              meetingToken: _lastMeetingToken,
+              roomName: _lastRoomName,
+            );
+            debugPrint(
+                '🎬 VoIPService: Navigated to VideoCallPage (tutor, after acceptCall)');
           }
         } catch (e) {
           debugPrint('❌ VoIPService: acceptCall failed: $e');
