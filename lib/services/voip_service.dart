@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
@@ -16,6 +18,9 @@ import '/flutter_flow/nav/nav.dart';
 /// Использует CallKit (iOS) и ConnectionService (Android)
 class VoIPService {
   static final VoIPService _instance = VoIPService._internal();
+  static final RegExp _uuidPattern = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
   factory VoIPService() => _instance;
   VoIPService._internal();
 
@@ -35,6 +40,7 @@ class VoIPService {
   final Set<String> _acceptedSessions = {};
   final Set<String> _handledCallKitAcceptIds = {};
   final Map<String, DateTime> _recentAcceptBySession = {};
+  final Map<String, int> _sessionStateGenerations = {};
   String? _lastAcceptedSessionId;
   bool _lastAcceptedIsTutor = false;
   String? _lastNavigatedSessionId;
@@ -65,6 +71,108 @@ class VoIPService {
   /// Whether a VoIP call is pending navigation (accepted but not yet navigated).
   bool hasPendingNavigation() =>
       _pendingSessionId != null || _lastAcceptedSessionId != null;
+
+  String _callKitIdForSession(String sessionId) {
+    final trimmedSessionId = sessionId.trim();
+    if (trimmedSessionId.isEmpty) {
+      return const Uuid().v4();
+    }
+    if (_uuidPattern.hasMatch(trimmedSessionId)) {
+      return trimmedSessionId.toLowerCase();
+    }
+
+    final digestBytes = md5
+        .convert(utf8.encode('smalltalk-call:$trimmedSessionId'))
+        .bytes
+        .toList();
+    digestBytes[6] = (digestBytes[6] & 0x0F) | 0x30;
+    digestBytes[8] = (digestBytes[8] & 0x3F) | 0x80;
+    final hex = digestBytes
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+
+    return '${hex.substring(0, 8)}-'
+        '${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-'
+        '${hex.substring(16, 20)}-'
+        '${hex.substring(20, 32)}';
+  }
+
+  String? _normalizeCallKitId(String? callKitId) {
+    final trimmed = callKitId?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed.toLowerCase();
+  }
+
+  bool _hasMismatchedTrackedCallKitId(String sessionId, String? callKitId) {
+    if (callKitId == null) {
+      return false;
+    }
+    final expectedCallKitId =
+        _sessionCallKitIds[sessionId] ?? _callKitIdForSession(sessionId);
+    return callKitId != expectedCallKitId;
+  }
+
+  bool _hasTrustedCallKitIdentity(String sessionId, String? callKitId) {
+    return callKitId != null &&
+        !_hasMismatchedTrackedCallKitId(sessionId, callKitId);
+  }
+
+  bool _hasProtectedLiveSessionState(String sessionId) {
+    return sessionId == _lastAcceptedSessionId ||
+        sessionId == _lastNavigatedSessionId ||
+        sessionId == _pendingSessionId ||
+        _acceptedSessions.contains(sessionId) ||
+        _acceptInProgress.contains(sessionId);
+  }
+
+  bool _canEndSessionFromInMemoryState(String sessionId) {
+    final hasResolvedRoomUrl = sessionId == _lastAcceptedSessionId &&
+            _lastRoomUrl != null &&
+            _lastRoomUrl!.isNotEmpty ||
+        sessionId == _prefetchedSessionId &&
+            _prefetchedRoomUrl != null &&
+            _prefetchedRoomUrl!.isNotEmpty;
+    return hasResolvedRoomUrl;
+  }
+
+  bool _hasTrackedSessionState(String sessionId) {
+    return _sessionStateTouchedAt.containsKey(sessionId) ||
+        _sessionCallKitIds.containsKey(sessionId) ||
+        _recentAcceptBySession.containsKey(sessionId) ||
+        _hasProtectedLiveSessionState(sessionId);
+  }
+
+  Future<bool> _shouldEndSessionViaFallbackLookup(String sessionId) async {
+    try {
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) {
+        return false;
+      }
+      final sessionDoc =
+          await _firestore.collection('videoSessions').doc(sessionId).get();
+      if (!sessionDoc.exists) {
+        return false;
+      }
+      final data = sessionDoc.data();
+      if (data == null) {
+        return false;
+      }
+
+      final status = data['status'] as String?;
+      final tutorId = data['tutorId'] as String?;
+      final studentId = data['studentId'] as String?;
+      final isParticipant = tutorId == userId || studentId == userId;
+      final isEndableStatus =
+          status == 'active' || status == 'connecting' || status == 'connected';
+      return isParticipant && isEndableStatus;
+    } catch (e) {
+      debugPrint('⚠️ VoIPService: endSession fallback lookup failed: $e');
+      return false;
+    }
+  }
 
   /// Инициализация VoIP сервиса
   /// Вызывается один раз при запуске приложения
@@ -156,6 +264,7 @@ class VoIPService {
     _acceptedSessions.clear();
     _handledCallKitAcceptIds.clear();
     _recentAcceptBySession.clear();
+    _sessionStateGenerations.clear();
     _sessionCallKitIds.clear();
 
     _lastAcceptedSessionId = null;
@@ -191,6 +300,8 @@ class VoIPService {
   void _touchSessionState(String sessionId) {
     if (sessionId.isEmpty) return;
     _sessionStateTouchedAt[sessionId] = DateTime.now();
+    _sessionStateGenerations[sessionId] =
+        (_sessionStateGenerations[sessionId] ?? 0) + 1;
   }
 
   void _pruneStaleSessionState() {
@@ -360,7 +471,9 @@ class VoIPService {
     try {
       debugPrint('📞 VoIPService: Showing incoming call from $callerName');
 
-      final callKitId = const Uuid().v4();
+      final callKitId = sessionId.isNotEmpty
+          ? (_sessionCallKitIds[sessionId] ?? _callKitIdForSession(sessionId))
+          : const Uuid().v4();
       if (sessionId.isNotEmpty) {
         _sessionCallKitIds[sessionId] = callKitId;
         _touchSessionState(sessionId);
@@ -487,31 +600,41 @@ class VoIPService {
     final rawSessionId =
         extra['sessionId'] as String? ?? data['sessionId'] as String?;
     final sessionId = rawSessionId?.trim();
-    final callKitId = data['id'] as String? ?? extra['callKitId'] as String?;
-    if (callKitId != null) {
-      _lastCallKitId = callKitId;
-    }
-    if (sessionId != null && callKitId != null) {
-      _sessionCallKitIds[sessionId] = callKitId;
-    }
+    final callKitId = _normalizeCallKitId(
+      data['id'] as String? ?? extra['callKitId'] as String?,
+    );
     if (sessionId == null || sessionId.isEmpty) {
       debugPrint('❌ VoIPService: No sessionId in accept event');
       return;
     }
-    _touchSessionState(sessionId);
 
-    if (callKitId != null && _handledCallKitAcceptIds.contains(callKitId)) {
+    final trackedCallKitId = _sessionCallKitIds[sessionId];
+    final effectiveCallKitId =
+        trackedCallKitId ?? _callKitIdForSession(sessionId);
+    if (callKitId != null && callKitId != effectiveCallKitId) {
       debugPrint(
-          '⚠️ VoIPService: Duplicate accept event (callKitId): $callKitId');
+          'ℹ️ VoIPService: Ignoring accept for stale callKitId: $callKitId');
       return;
     }
+    _touchSessionState(sessionId);
 
+    final now = DateTime.now();
     final lastAccept = _recentAcceptBySession[sessionId];
     if (lastAccept != null &&
-        DateTime.now().difference(lastAccept) < const Duration(seconds: 30)) {
+        now.difference(lastAccept) < const Duration(seconds: 30)) {
       debugPrint('⚠️ VoIPService: Duplicate accept event (time window)');
       return;
     }
+    _recentAcceptBySession[sessionId] = now;
+
+    if (_handledCallKitAcceptIds.contains(effectiveCallKitId)) {
+      debugPrint(
+          '⚠️ VoIPService: Duplicate accept event (callKitId): $effectiveCallKitId');
+      return;
+    }
+    _handledCallKitAcceptIds.add(effectiveCallKitId);
+    _lastCallKitId = effectiveCallKitId;
+    _sessionCallKitIds[sessionId] = effectiveCallKitId;
 
     if (_acceptedSessions.contains(sessionId)) {
       debugPrint('⚠️ VoIPService: Call already accepted: $sessionId');
@@ -521,10 +644,6 @@ class VoIPService {
       debugPrint('⚠️ VoIPService: Accept already in progress for $sessionId');
       return;
     }
-    if (callKitId != null) {
-      _handledCallKitAcceptIds.add(callKitId);
-    }
-    _recentAcceptBySession[sessionId] = DateTime.now();
     _acceptInProgress.add(sessionId);
     final isSameSession = _lastAcceptedSessionId == sessionId;
     _lastAcceptedSessionId = sessionId;
@@ -839,6 +958,25 @@ class VoIPService {
       debugPrint('❌ VoIPService: No sessionId in decline event');
       return;
     }
+    final callKitId = _normalizeCallKitId(
+      data['id'] as String? ?? extra['callKitId'] as String?,
+    );
+    if (_hasMismatchedTrackedCallKitId(sessionId, callKitId)) {
+      debugPrint(
+          'ℹ️ VoIPService: Ignoring decline for stale callKitId: $callKitId');
+      return;
+    }
+    if (_hasProtectedLiveSessionState(sessionId)) {
+      debugPrint(
+          'ℹ️ VoIPService: Ignoring decline for active session: $sessionId');
+      return;
+    }
+    if (!_hasTrackedSessionState(sessionId) &&
+        !_hasTrustedCallKitIdentity(sessionId, callKitId)) {
+      debugPrint(
+          'ℹ️ VoIPService: Ignoring decline for unknown session: $sessionId');
+      return;
+    }
 
     _clearSessionState(sessionId);
     debugPrint('❌ VoIPService: Call declined: $sessionId');
@@ -866,6 +1004,33 @@ class VoIPService {
         extra['sessionId'] as String? ?? data['sessionId'] as String?;
     if (sessionId == null) {
       debugPrint('❌ VoIPService: No sessionId in ended event');
+      return;
+    }
+    final callKitId = _normalizeCallKitId(
+      data['id'] as String? ?? extra['callKitId'] as String?,
+    );
+    if (_hasMismatchedTrackedCallKitId(sessionId, callKitId)) {
+      debugPrint(
+          'ℹ️ VoIPService: Ignoring endSession for stale callKitId: $callKitId');
+      return;
+    }
+
+    final canEndSessionFromMemory = _canEndSessionFromInMemoryState(sessionId);
+    final fallbackStartGeneration = _sessionStateGenerations[sessionId];
+    final shouldEndViaFallback = !canEndSessionFromMemory
+        ? await _shouldEndSessionViaFallbackLookup(sessionId)
+        : false;
+    if (!canEndSessionFromMemory &&
+        shouldEndViaFallback &&
+        fallbackStartGeneration != _sessionStateGenerations[sessionId]) {
+      debugPrint(
+          'ℹ️ VoIPService: Ignoring endSession because session state changed during fallback: $sessionId');
+      return;
+    }
+
+    if (!canEndSessionFromMemory && !shouldEndViaFallback) {
+      debugPrint(
+          'ℹ️ VoIPService: Ignoring endSession for unknown session: $sessionId');
       return;
     }
 
@@ -898,6 +1063,25 @@ class VoIPService {
       debugPrint('❌ VoIPService: No sessionId in timeout event');
       return;
     }
+    final callKitId = _normalizeCallKitId(
+      data['id'] as String? ?? extra['callKitId'] as String?,
+    );
+    if (_hasMismatchedTrackedCallKitId(sessionId, callKitId)) {
+      debugPrint(
+          'ℹ️ VoIPService: Ignoring timeout for stale callKitId: $callKitId');
+      return;
+    }
+    if (_hasProtectedLiveSessionState(sessionId)) {
+      debugPrint(
+          'ℹ️ VoIPService: Ignoring timeout for active session: $sessionId');
+      return;
+    }
+    if (!_hasTrackedSessionState(sessionId) &&
+        !_hasTrustedCallKitIdentity(sessionId, callKitId)) {
+      debugPrint(
+          'ℹ️ VoIPService: Ignoring timeout for unknown session: $sessionId');
+      return;
+    }
 
     _clearSessionState(sessionId);
     debugPrint('⏰ VoIPService: Call timeout: $sessionId');
@@ -907,6 +1091,7 @@ class VoIPService {
 
   void _clearSessionState(String sessionId) {
     _sessionStateTouchedAt.remove(sessionId);
+    _sessionStateGenerations.remove(sessionId);
     _acceptInProgress.remove(sessionId);
     _acceptedSessions.remove(sessionId);
     _recentAcceptBySession.remove(sessionId);

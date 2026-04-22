@@ -361,6 +361,11 @@ class MinimalDailyWidget extends StatefulWidget {
 
 class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     with WidgetsBindingObserver, TickerProviderStateMixin {
+  static CallClient? _processActiveCallClient;
+  static Object? _processActiveCallClientLeaseToken;
+  static Completer<void>? _processActiveCallClientReleaseCompleter;
+  final Object _processCallClientLeaseToken = Object();
+
   // Core resources - properly managed
   CallClient? _callClient;
   VideoViewController? _localVideoController;
@@ -649,6 +654,69 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return _isValidRoomUrl(widget.roomUrl) && _effectiveMeetingToken() != null;
   }
 
+  bool _hasProcessActiveCallClientConflict() {
+    final leaseToken = _processActiveCallClientLeaseToken;
+    if (leaseToken == null) {
+      return false;
+    }
+    return !identical(leaseToken, _processCallClientLeaseToken);
+  }
+
+  void _claimProcessActiveCallClientLease() {
+    _processActiveCallClientLeaseToken = _processCallClientLeaseToken;
+    _processActiveCallClientReleaseCompleter = Completer<void>();
+  }
+
+  void _claimProcessActiveCallClient(CallClient callClient) {
+    _processActiveCallClient = callClient;
+    _processActiveCallClientLeaseToken = _processCallClientLeaseToken;
+    _processActiveCallClientReleaseCompleter ??= Completer<void>();
+  }
+
+  void _releaseProcessActiveCallClientLease() {
+    if (!identical(
+        _processActiveCallClientLeaseToken, _processCallClientLeaseToken)) {
+      return;
+    }
+    _processActiveCallClientLeaseToken = null;
+    final releaseCompleter = _processActiveCallClientReleaseCompleter;
+    if (releaseCompleter != null && !releaseCompleter.isCompleted) {
+      releaseCompleter.complete();
+    }
+    _processActiveCallClientReleaseCompleter = null;
+  }
+
+  void _releaseProcessActiveCallClient([CallClient? callClient]) {
+    final targetClient = callClient ?? _callClient;
+    if (targetClient != null &&
+        identical(_processActiveCallClient, targetClient)) {
+      _processActiveCallClient = null;
+    }
+    if (_processActiveCallClient == null) {
+      _releaseProcessActiveCallClientLease();
+    }
+  }
+
+  Future<bool> _waitForProcessActiveCallClientRelease() async {
+    final releaseCompleter = _processActiveCallClientReleaseCompleter;
+    if (releaseCompleter == null || releaseCompleter.isCompleted) {
+      return !_hasProcessActiveCallClientConflict();
+    }
+    try {
+      await releaseCompleter.future.timeout(const Duration(seconds: 2));
+    } catch (_) {}
+    return !_hasProcessActiveCallClientConflict();
+  }
+
+  void _scheduleProcessActiveCallClientRetry() {
+    _createTrackedTimer(const Duration(milliseconds: 250), () {
+      if (!mounted || _disposed) {
+        return;
+      }
+      unawaited(_initializeCall());
+    });
+  }
+
   /// Simplified initialization
   Future<void> _initializeCall() async {
     if (!mounted || _disposed) return;
@@ -656,6 +724,36 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _state.connectionState == ConnectionState.connected) {
       return;
     }
+    if (_hasProcessActiveCallClientConflict()) {
+      final released = await _waitForProcessActiveCallClientRelease();
+      if (!mounted || _disposed) {
+        return;
+      }
+      if (released) {
+        if (_hasProcessActiveCallClientConflict()) {
+          if (kDebugMode) {
+            print(
+                'MinimalDailyWidget: duplicate CallClient still active after release wait');
+          }
+          return;
+        }
+      } else {
+        if (kDebugMode) {
+          print(
+              'MinimalDailyWidget: duplicate CallClient blocked for room/session');
+        }
+        _scheduleProcessActiveCallClientRetry();
+        return;
+      }
+    }
+    if (_hasProcessActiveCallClientConflict()) {
+      if (kDebugMode) {
+        print(
+            'MinimalDailyWidget: duplicate CallClient blocked for room/session');
+      }
+      return;
+    }
+    _claimProcessActiveCallClientLease();
     _isInitializing = true;
     _systemCallMarkedConnected = false;
     _userRequestedEnd = false;
@@ -672,8 +770,31 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     try {
       // Create CallClient with timeout
-      _callClient = await _createCallClientWithTimeout();
-      if (!mounted || _callClient == null) return;
+      final createdCallClient = await _createCallClientWithTimeout();
+      if (!mounted || createdCallClient == null) {
+        try {
+          await createdCallClient?.dispose();
+        } catch (_) {}
+        _releaseProcessActiveCallClientLease();
+        return;
+      }
+      if (_hasProcessActiveCallClientConflict()) {
+        if (kDebugMode) {
+          print(
+              'MinimalDailyWidget: disposing duplicate CallClient for room/session');
+        }
+        try {
+          await createdCallClient.dispose();
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error disposing duplicate call client: $e');
+          }
+        }
+        _releaseProcessActiveCallClientLease();
+        return;
+      }
+      _callClient = createdCallClient;
+      _claimProcessActiveCallClient(createdCallClient);
 
       // Initialize video controller
       _localVideoController = VideoViewController();
@@ -686,6 +807,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       // Quality monitoring removed - Daily Adaptive Bitrate handles this
     } catch (e) {
+      _releaseProcessActiveCallClient();
       await _handleConnectionError(e);
     } finally {
       _isInitializing = false;
@@ -1659,6 +1781,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     if (isTokenError && _tokenRefreshAttempts >= _maxTokenRefreshAttempts) {
+      await _cleanup(
+        leaveCall: false,
+        preserveMeetingToken: true,
+        preserveTokenRefreshAttempts: true,
+        preserveChatState: true,
+      );
       _updateState(_state.copyWith(
         connectionState: ConnectionState.failed,
         error: 'Ошибка токена, перезапустите звонок',
@@ -1673,7 +1801,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     if (_state.retryCount < _maxRetryAttempts) {
       _scheduleReconnection();
+      return;
     }
+
+    await _cleanup(
+      leaveCall: false,
+      preserveMeetingToken: true,
+      preserveTokenRefreshAttempts: true,
+      preserveChatState: true,
+    );
   }
 
   Future<bool> _tryRefreshTokenOnError(dynamic error) async {
@@ -4948,12 +5084,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _resetCallCheckpointNotice();
 
       // 8. Dispose call client last
+      final callClientToDispose = _callClient;
       try {
-        await _callClient?.dispose();
+        await callClientToDispose?.dispose();
         _callClient = null;
       } catch (e) {
         if (kDebugMode) print('Error disposing call client: $e');
       }
+      _releaseProcessActiveCallClient(callClientToDispose);
 
       // Close all stream controllers
       for (final controller

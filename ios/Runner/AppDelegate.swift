@@ -1,7 +1,26 @@
 import UIKit
 import Flutter
 import PushKit
+import CryptoKit
 import flutter_callkit_incoming
+
+private func deterministicCallKitId(for rawValue: String?) -> String {
+  let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  if trimmed.isEmpty {
+    return UUID().uuidString.lowercased()
+  }
+  if let existingUuid = UUID(uuidString: trimmed) {
+    return existingUuid.uuidString.lowercased()
+  }
+
+  let digest = Insecure.MD5.hash(data: Data("smalltalk-call:\(trimmed)".utf8))
+  var bytes = Array(digest)
+  bytes[6] = (bytes[6] & 0x0f) | 0x30
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  let hex = bytes.map { String(format: "%02x", $0) }.joined()
+
+  return "\(hex.prefix(8))-\(hex.dropFirst(8).prefix(4))-\(hex.dropFirst(12).prefix(4))-\(hex.dropFirst(16).prefix(4))-\(hex.dropFirst(20).prefix(12))"
+}
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, PKPushRegistryDelegate {
@@ -69,11 +88,9 @@ import flutter_callkit_incoming
 
     let rawCallKitId =
       (payloadDict["callKitId"] as? String) ??
-      sessionId ??
-      UUID().uuidString
-    let callKitId = UUID(uuidString: rawCallKitId) != nil
-      ? rawCallKitId
-      : UUID().uuidString
+      sessionId
+    let callKitId = deterministicCallKitId(for: rawCallKitId)
+    payloadDict["callKitId"] = callKitId
     let nameCaller = (payloadDict["callerName"] as? String) ??
       (payloadDict["nameCaller"] as? String) ??
       "Incoming call"
