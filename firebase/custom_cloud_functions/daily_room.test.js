@@ -27,6 +27,7 @@ test("Daily rooms keep retry headroom while staying private", () => {
   );
   assert.equal(config.properties.enforce_unique_user_ids, true);
   assert.equal(config.properties.enable_knocking, false);
+  assert.equal(config.properties.geo, "eu-central-1");
 });
 
 test("Daily room compatibility rejects legacy two-seat rooms", () => {

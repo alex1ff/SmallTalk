@@ -6,9 +6,7 @@ String _source(String path) => File(path).readAsStringSync();
 
 void main() {
   group('QA.1 release surface contracts', () {
-    test(
-        'chat hub keeps unlocked conversations, friends, calls, and empty state',
-        () {
+    test('chat hub keeps unlocked conversations, friends, and empty state', () {
       final source =
           _source('lib/students_pages/favorite/favorite_widget.dart');
 
@@ -21,10 +19,11 @@ void main() {
           contains("query.where('participantIds', arrayContains: currentUid)"));
       expect(source, contains('resolveFriendsForUser(currentUserDocument)'));
       expect(source, contains('kConversationMessageTypeCallEvent'));
-      expect(source, contains('formatSessionStartedAtForCard'));
       expect(source, contains('initialData: const _ConversationsLoadState()'));
       expect(source, contains('You do not have messages yet.'));
       expect(source, contains('You do not have friends yet.'));
+      expect(source, isNot(contains('fetchRecentHubCallSessions')));
+      expect(source, isNot(contains("ruText: 'Звонки'")));
     });
 
     test(
@@ -34,7 +33,7 @@ void main() {
 
       expect(
         rules,
-        contains('allow list: if isConversationParticipant(resource.data);'),
+        contains('data.participantIds.hasAny([request.auth.uid]);'),
       );
       expect(
         rules,
@@ -60,6 +59,24 @@ void main() {
       expect(source, contains('messageIsCallEvent(message)'));
       expect(source, contains("CallDetailsWidget.routeName"));
       expect(callEventCard, contains('Icons.videocam_rounded'));
+    });
+
+    test('minimal call surface persists own in-call chat after session end',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final functionIndex = _source('firebase/custom_cloud_functions/index.js');
+      final persistFunction =
+          _source('firebase/custom_cloud_functions/persist_call_chat.js');
+
+      expect(source, contains("httpsCallable('persistCallChat')"));
+      expect(source, contains('_ownSentChatMessages.add(message)'));
+      expect(source, contains('_endSessionAndPersistCallChat'));
+      expect(source, contains('ValueListenableBuilder<int>'));
+      expect(source, contains("ValueKey(showRemoteVideo"));
+      expect(functionIndex, contains('exports.persistCallChat'));
+      expect(persistFunction, contains('inCallSessionRef'));
+      expect(persistFunction, contains('incall'));
     });
 
     test('email verification remains a soft profile surface', () {

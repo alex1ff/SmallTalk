@@ -1,6 +1,5 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
-import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'dart:async';
@@ -410,29 +409,6 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                   ).then((value) => safeSetState(() {}));
                 },
                 endCallCallback: (endReason) async {
-                  unawaited(
-                    () async {
-                      try {
-                        await FirebaseFunctions.instance
-                            .httpsCallable('endSession')
-                            .call({
-                          "sessionId": widget.videoDocRef!.id,
-                          if (endReason != null && endReason.isNotEmpty)
-                            "endReason": endReason,
-                        });
-                        _model.cloudFunctiona1y =
-                            EndSessionCloudFunctionCallResponse(
-                          succeeded: true,
-                        );
-                      } on FirebaseFunctionsException catch (error) {
-                        _model.cloudFunctiona1y =
-                            EndSessionCloudFunctionCallResponse(
-                          errorCode: error.code,
-                          succeeded: false,
-                        );
-                      }
-                    }(),
-                  );
                   await _navigateToSummary(videoCallPageVideoSessionsRecord);
                   safeSetState(() {});
                 },

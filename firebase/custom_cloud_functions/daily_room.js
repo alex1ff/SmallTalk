@@ -112,7 +112,7 @@ function buildRoomConfig({ name, language, expSeconds }) {
       enable_dialout: false,
       enable_terse_logging: false,
       signaling_impl: "ws",
-      geo: "auto",
+      geo: "eu-central-1",
       sfu_switchover: 0.5,
       enable_adaptive_simulcast: true,
       enable_multiparty_adaptive_simulcast: false,

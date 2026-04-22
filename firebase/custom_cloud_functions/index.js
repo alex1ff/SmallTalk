@@ -45,3 +45,5 @@ exports.syncTeacherVerificationRequest =
 const emailVerification = require("./email_verification.js");
 exports.sendCustomEmailVerification =
   emailVerification.sendCustomEmailVerification;
+const persistCallChat = require("./persist_call_chat.js");
+exports.persistCallChat = persistCallChat.persistCallChat;

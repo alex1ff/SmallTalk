@@ -9,8 +9,6 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
-import '/services/user_match_profile.dart';
-import '/shared_pages/call_history/call_history_utils.dart';
 
 import 'favorite_model.dart';
 export 'favorite_model.dart';
@@ -29,23 +27,12 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   late FavoriteModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final _userFutureCache = <String, Future<UsersRecord>>{};
-  final _recentCallsFutureCache = <String, Future<List<VideoSessionsRecord>>>{};
   int _selectedChatTabIndex = 0;
 
   Future<UsersRecord> _getUserFuture(DocumentReference ref) {
     return _userFutureCache.putIfAbsent(
       ref.path,
       () => UsersRecord.getDocumentOnce(ref),
-    );
-  }
-
-  Future<List<VideoSessionsRecord>> _getRecentCallsFuture(String currentUid) {
-    return _recentCallsFutureCache.putIfAbsent(
-      '$currentUid:5',
-      () => fetchRecentHubCallSessions(
-        currentUid,
-        limit: 5,
-      ),
     );
   }
 
@@ -62,9 +49,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       (conversations) => _ConversationsLoadState(conversations: conversations),
     );
   }
-
-  bool _isTeacher(BuildContext context) =>
-      canAccessTeacherSurfaces(currentUserDocument);
 
   DocumentReference? _otherParticipantRef(ConversationsRecord conversation) {
     final currentRef = currentUserReference;
@@ -197,40 +181,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _sectionHeader(
-    BuildContext context, {
-    required String title,
-    String? subtitle,
-  }) {
-    return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(10.0, 18.0, 10.0, 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            title,
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'Cool',
-                  fontSize: 24.0,
-                  letterSpacing: 0.0,
-                  fontWeight: FontWeight.normal,
-                ),
-          ),
-          if (subtitle != null)
-            Text(
-              subtitle,
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'sf pro display',
-                    color: FlutterFlowTheme.of(context).secondaryText,
-                    fontSize: 13.0,
-                    letterSpacing: 0.0,
-                  ),
-            ),
-        ],
       ),
     );
   }
@@ -631,119 +581,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
-  Widget _callCard(
-    BuildContext context, {
-    required VideoSessionsRecord session,
-  }) {
-    final teacher = _isTeacher(context);
-    final peerName =
-        (teacher ? session.studentInfo.name : session.tutorInfo.name).trim();
-    final peerPhoto =
-        (teacher ? session.studentInfo.photo : session.tutorInfo.photo).trim();
-
-    return InkWell(
-      splashColor: Colors.transparent,
-      focusColor: Colors.transparent,
-      hoverColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      onTap: () async {
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (context) =>
-                CallDetailsWidget(videoDocRef: session.reference),
-          ),
-        );
-      },
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 6.0),
-        decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
-          borderRadius: BorderRadius.circular(26.0),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(10.0),
-          child: Row(
-            children: [
-              Container(
-                width: 54.0,
-                height: 54.0,
-                decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
-                  borderRadius: BorderRadius.circular(20.0),
-                  image: peerPhoto.isNotEmpty
-                      ? DecorationImage(
-                          fit: BoxFit.cover,
-                          image: CachedNetworkImageProvider(
-                            peerPhoto,
-                            maxWidth: 108,
-                            maxHeight: 108,
-                          ),
-                        )
-                      : null,
-                ),
-                child: peerPhoto.isEmpty
-                    ? Icon(
-                        Icons.call_rounded,
-                        color: FlutterFlowTheme.of(context).secondaryText,
-                      )
-                    : null,
-              ),
-              Expanded(
-                child: Padding(
-                  padding:
-                      const EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 0.0, 0.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        peerName.isNotEmpty
-                            ? peerName
-                            : FFLocalizations.of(context).getVariableText(
-                                ruText: 'Собеседник',
-                                enText: 'Partner',
-                              ),
-                        overflow: TextOverflow.ellipsis,
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'sf pro display',
-                              fontSize: 16.0,
-                              letterSpacing: 0.0,
-                            ),
-                      ),
-                      const SizedBox(height: 4.0),
-                      Text(
-                        formatSessionStartedAtForCard(context, session),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'sf pro display',
-                              color: FlutterFlowTheme.of(context).secondaryText,
-                              fontSize: 14.0,
-                              letterSpacing: 0.0,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Text(
-                formatDurationLabel(
-                    context, resolveSessionDurationSeconds(session)),
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'sf pro display',
-                      color: FlutterFlowTheme.of(context).secondaryText,
-                      fontSize: 12.0,
-                      letterSpacing: 0.0,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildEmptyListState(
     BuildContext context, {
     required String text,
@@ -1073,70 +910,38 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                         for (final conversation in conversations)
                           conversation.pairId: conversation,
                       };
-                      return FutureBuilder<List<VideoSessionsRecord>>(
-                        future: _getRecentCallsFuture(currentUserUid),
-                        builder: (context, callsSnapshot) {
-                          if (callsSnapshot.hasError) {
-                            debugPrint(
-                              'FavoriteWidget: recent calls future error: ${callsSnapshot.error}',
-                            );
-                          }
+                      final showFriendsTab = _selectedChatTabIndex == 1;
 
-                          final calls =
-                              callsSnapshot.data ?? <VideoSessionsRecord>[];
-                          final showCalls = calls.isNotEmpty;
-                          final showFriendsTab = _selectedChatTabIndex == 1;
-
-                          return Stack(
-                            children: [
-                              SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const SizedBox(height: 115.0),
-                                    _buildChatsTabBar(context),
-                                    if (showFriendsTab)
-                                      _buildFriendsTabContent(
-                                        context,
-                                        friends: friends,
-                                        unlockedByPairId: unlockedByPairId,
-                                      )
-                                    else
-                                      _buildMessagesTabContent(
-                                        context,
-                                        conversationsLoading:
-                                            conversationsLoading,
-                                        conversationsLoadFailed:
-                                            conversationsLoadFailed,
-                                        conversationsAccessDenied:
-                                            conversationsAccessDenied,
-                                        conversations: conversations,
-                                      ),
-                                    if (showCalls) ...[
-                                      _sectionHeader(
-                                        context,
-                                        title: FFLocalizations.of(context)
-                                            .getVariableText(
-                                          ruText: 'Звонки',
-                                          enText: 'Calls',
-                                        ),
-                                        subtitle: calls.length.toString(),
-                                      ),
-                                      ...calls.map(
-                                        (session) => _callCard(
-                                          context,
-                                          session: session,
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 120.0),
-                                  ],
-                                ),
-                              ),
-                              _buildHeader(context),
-                            ],
-                          );
-                        },
+                      return Stack(
+                        children: [
+                          SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 115.0),
+                                _buildChatsTabBar(context),
+                                if (showFriendsTab)
+                                  _buildFriendsTabContent(
+                                    context,
+                                    friends: friends,
+                                    unlockedByPairId: unlockedByPairId,
+                                  )
+                                else
+                                  _buildMessagesTabContent(
+                                    context,
+                                    conversationsLoading: conversationsLoading,
+                                    conversationsLoadFailed:
+                                        conversationsLoadFailed,
+                                    conversationsAccessDenied:
+                                        conversationsAccessDenied,
+                                    conversations: conversations,
+                                  ),
+                                const SizedBox(height: 120.0),
+                              ],
+                            ),
+                          ),
+                          _buildHeader(context),
+                        ],
                       );
                     },
                   );

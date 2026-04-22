@@ -431,6 +431,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   final TextEditingController _chatTextController = TextEditingController();
   final FocusNode _chatFocusNode = FocusNode();
   final ScrollController _chatScrollController = ScrollController();
+  final List<_ChatMessage> _ownSentChatMessages = <_ChatMessage>[];
+  bool _persistCallChatInFlight = false;
+  bool _persistCallChatCompleted = false;
+  int _persistCallChatAttemptCount = 0;
   Timer? _localCaptionUiThrottleTimer;
   Timer? _remoteCaptionSendThrottleTimer;
   Timer? _localUtteranceEndTimer;
@@ -1045,6 +1049,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       if (_state.remoteControllers.isNotEmpty) return;
       _remoteLeftNotified = true;
       unawaited(_endSystemCallUi());
+      unawaited(_endSessionAndPersistCallChat('peer_left'));
       widget.participantLeftCallback?.call();
     });
     _remoteLeftTimer = timer;
@@ -1363,9 +1368,82 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         'text': text,
       });
       await _callClient!.sendAppMessage(payload, null);
+      _ownSentChatMessages.add(message);
     } catch (e) {
       if (kDebugMode) print('Failed to send chat message: $e');
     }
+  }
+
+  bool _isTerminalSessionStatus(String? status) {
+    final normalized = status?.trim().toLowerCase();
+    return normalized == 'ended' || normalized == 'cancelled';
+  }
+
+  Future<void> _persistOwnCallChatMessages() async {
+    if (_persistCallChatCompleted || _persistCallChatInFlight) {
+      return;
+    }
+
+    final sessionId = widget.sessionId?.trim();
+    if (sessionId == null ||
+        sessionId.isEmpty ||
+        _ownSentChatMessages.isEmpty) {
+      _persistCallChatCompleted = true;
+      return;
+    }
+
+    if (_persistCallChatAttemptCount >= 3) {
+      return;
+    }
+
+    _persistCallChatInFlight = true;
+    _persistCallChatAttemptCount += 1;
+    final messages = List<_ChatMessage>.unmodifiable(_ownSentChatMessages);
+
+    try {
+      await FirebaseFunctions.instance.httpsCallable('persistCallChat').call({
+        'sessionId': sessionId,
+        'messages': messages
+            .map((message) => {
+                  'clientId': message.id,
+                  'text': message.text,
+                  'sentAtMs': message.sentAt.millisecondsSinceEpoch,
+                })
+            .toList(growable: false),
+      }).timeout(const Duration(seconds: 8));
+      _persistCallChatCompleted = true;
+    } on FirebaseFunctionsException catch (error) {
+      if (kDebugMode) {
+        print('Failed to persist call chat: ${error.code}');
+      }
+    } catch (error) {
+      if (kDebugMode) print('Failed to persist call chat: $error');
+    } finally {
+      _persistCallChatInFlight = false;
+    }
+  }
+
+  Future<void> _endSessionAndPersistCallChat(String? endReason) async {
+    final sessionId = widget.sessionId?.trim();
+    if (sessionId == null || sessionId.isEmpty) {
+      await _persistOwnCallChatMessages();
+      return;
+    }
+
+    try {
+      await FirebaseFunctions.instance.httpsCallable('endSession').call({
+        'sessionId': sessionId,
+        if (endReason != null && endReason.isNotEmpty) 'endReason': endReason,
+      }).timeout(const Duration(seconds: 8));
+    } on FirebaseFunctionsException catch (error) {
+      if (kDebugMode) {
+        print('endSession before chat persist failed: ${error.code}');
+      }
+    } catch (error) {
+      if (kDebugMode) print('endSession before chat persist failed: $error');
+    }
+
+    await _persistOwnCallChatMessages();
   }
 
   String _formatChatTimestamp(DateTime sentAt) {
@@ -3015,6 +3093,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _sessionStartedMarked = false;
       _dynamicMeetingToken = null;
       _dynamicRoomUrl = null;
+      _ownSentChatMessages.clear();
+      _persistCallChatInFlight = false;
+      _persistCallChatCompleted = false;
+      _persistCallChatAttemptCount = 0;
       _sessionLimitWarningShownFor = null;
       _sessionLimitAutoEndedFor = null;
       _sessionExtensionRequestInFlight = false;
@@ -3031,6 +3113,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       if (_state.connectionState == ConnectionState.connected) {
         _setCallDurationValue(_callDurationNotifier.value);
       }
+    }
+
+    if (!_isTerminalSessionStatus(oldWidget.sessionStatus) &&
+        _isTerminalSessionStatus(widget.sessionStatus)) {
+      unawaited(_persistOwnCallChatMessages());
     }
 
     final oldUrl = oldWidget.roomUrl;
@@ -3252,6 +3339,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         // during the extension race window.
         return;
       }
+      await _persistOwnCallChatMessages();
     } catch (error) {
       _clearSessionLimitAutoEndMarker(targetExpiresAt);
       if (kDebugMode) {
@@ -3550,14 +3638,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               ? constraints.maxWidth
               : MediaQuery.sizeOf(context).width;
           final isWideChat = viewportWidth >= _chatWideBreakpoint;
-          final showRemoteSurface = _state.remoteControllers.isNotEmpty;
           final showRemoteVideo = _hasRemoteVideoReady();
           final showPip = showRemoteVideo &&
               _localVideoController != null &&
               _state.cameraEnabled &&
               !(_state.isChatOpen && isWideChat);
           final primaryVideoModeKey =
-              ValueKey(showRemoteSurface ? 'remote-surface' : 'local-surface');
+              ValueKey(showRemoteVideo ? 'remote-surface' : 'local-surface');
 
           return Stack(
             children: [
@@ -3571,7 +3658,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                     child: KeyedSubtree(
                       key: primaryVideoModeKey,
                       child: _buildPrimaryVideo(
-                        showRemoteParticipant: showRemoteSurface,
+                        showRemoteParticipant: showRemoteVideo,
                       ),
                     ),
                   ),
@@ -3600,13 +3687,21 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 ),
 
               if (_state.connectionState == ConnectionState.connected &&
-                  _shouldShowSessionExtensionSurface)
+                  _hasSessionLimitCountdown)
                 Positioned(
                   top: 112,
                   left: 16,
-                  right: 16,
-                  child: _buildSessionExtensionOverlay(
-                    viewportWidth: viewportWidth,
+                  right: showPip ? 130 : 16,
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _callDurationNotifier,
+                    builder: (context, _, __) {
+                      if (!_shouldShowSessionExtensionSurface) {
+                        return const SizedBox.shrink();
+                      }
+                      return _buildSessionExtensionOverlay(
+                        viewportWidth: viewportWidth,
+                      );
+                    },
                   ),
                 ),
 
@@ -4994,10 +5089,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _userRequestedEnd = true;
       unawaited(_endSystemCallUi());
 
+      final finalizeSession =
+          _endSessionAndPersistCallChat(endReason ?? 'user_ended');
+
       // 1. Leave the Daily room first (clean disconnect)
       await _cleanup(leaveCall: true);
 
-      // 2. Then invoke the callback which navigates away
+      // 2. Finish the server-owned session state and persist local chat.
+      await finalizeSession;
+
+      // 3. Then invoke the callback which navigates away.
       await widget.endCallCallback?.call(endReason);
     } catch (e) {
       if (kDebugMode) print('End call callback failed: $e');
@@ -5183,6 +5284,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     // This covers cases where the widget is disposed before participantLeft
     // fires (e.g. Firestore status-driven navigation).
     unawaited(_endSystemCallUi());
+    unawaited(_persistOwnCallChatMessages());
 
     // Synchronous cleanup of timers
     for (final timer in List<Timer>.from(_activeTimers)) {

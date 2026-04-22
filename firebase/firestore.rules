@@ -111,7 +111,7 @@ service cloud.firestore {
     function isConversationParticipant(data) {
       return isSignedIn() &&
         data.participantIds is list &&
-        request.auth.uid in data.participantIds;
+        data.participantIds.hasAny([request.auth.uid]);
     }
 
     function canUpdateConversationReadMarker() {
