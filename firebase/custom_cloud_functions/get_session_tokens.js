@@ -3,8 +3,10 @@ const admin = require("firebase-admin");
 const {
   createDailyRoom,
   createMeetingToken,
+  DAILY_ROOM_CONFIG_VERSION,
   getDailyRoom,
   getRoomNameFromUrl,
+  isDailyRoomConfigCompatible,
 } = require("./daily_room");
 const { getRequesterId, isSessionParticipant } = require("./video_sessions_shared");
 
@@ -84,12 +86,22 @@ exports.getSessionTokens = functions
 
   const roomCreatedAtMs = Number(sessionData.sessionMetadata?.roomCreatedAt || 0);
   const roomAgeMs = roomCreatedAtMs > 0 ? Date.now() - roomCreatedAtMs : Infinity;
+  const hasCurrentRoomConfig =
+    sessionData.sessionMetadata?.dailyRoomConfigVersion ===
+    DAILY_ROOM_CONFIG_VERSION;
   let shouldCreateRoom = false;
-  if (roomAgeMs > PRECREATED_ROOM_VALIDATION_WINDOW_MS) {
+  if (!hasCurrentRoomConfig || roomAgeMs > PRECREATED_ROOM_VALIDATION_WINDOW_MS) {
     const existingRoom = await getDailyRoom(roomName);
-    shouldCreateRoom = !existingRoom;
+    shouldCreateRoom = !existingRoom || !isDailyRoomConfigCompatible(existingRoom);
+    if (shouldCreateRoom && existingRoom) {
+      console.warn("⚠️ Daily room uses legacy config, recreating room");
+    }
   } else {
-    console.log("⚡ Skipping room validation - room is fresh (" + roomAgeMs + "ms old)");
+    console.log(
+      "⚡ Skipping room validation - room is fresh/current (" +
+        roomAgeMs +
+        "ms old)",
+    );
   }
   if (shouldCreateRoom) {
     const dailyRoom = await createDailyRoom({
@@ -108,6 +120,7 @@ exports.getSessionTokens = functions
         dailyRoomUrl: roomUrl,
         dailyRoomName: roomName,
         "sessionMetadata.roomCreatedAt": recoveredRoomCreatedAt,
+        "sessionMetadata.dailyRoomConfigVersion": DAILY_ROOM_CONFIG_VERSION,
       });
     } catch (e) {
       console.error("⚠️ Failed to update recovered room info:", e.message);

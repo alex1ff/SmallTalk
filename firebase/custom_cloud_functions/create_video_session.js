@@ -3,6 +3,7 @@ const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
 const {
   createDailyRoom,
+  DAILY_ROOM_CONFIG_VERSION,
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
 const {
@@ -898,6 +899,7 @@ exports.createVideoSession = functions
       if (precreatedRoomCreatedAt) {
         sessionData.sessionMetadata = {
           roomCreatedAt: precreatedRoomCreatedAt,
+          dailyRoomConfigVersion: DAILY_ROOM_CONFIG_VERSION,
         };
       }
 

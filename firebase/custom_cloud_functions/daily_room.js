@@ -1,5 +1,9 @@
 const axios = require("axios");
 
+const DAILY_ROOM_CONFIG_VERSION = 2;
+const DAILY_ROOM_MAX_PARTICIPANTS = 4;
+const DAILY_ROOM_ENFORCE_UNIQUE_USER_IDS = true;
+
 function getDailyEnv() {
   const apiKey = process.env.DAILY_API_KEY
     ? String(process.env.DAILY_API_KEY).trim()
@@ -67,13 +71,30 @@ function decodeTokenClaims(token) {
   }
 }
 
+function getDailyRoomConfig(room) {
+  if (!room || typeof room !== "object") return {};
+  const config = room.config || room.properties || {};
+  return config && typeof config === "object" ? config : {};
+}
+
+function isDailyRoomConfigCompatible(room) {
+  const config = getDailyRoomConfig(room);
+  return Number(config.max_participants || 0) >= DAILY_ROOM_MAX_PARTICIPANTS &&
+    config.enforce_unique_user_ids === DAILY_ROOM_ENFORCE_UNIQUE_USER_IDS;
+}
+
 function buildRoomConfig({ name, language, expSeconds }) {
   const exp = Math.floor(Date.now() / 1000) + expSeconds;
   return {
     name,
     privacy: "private",
     properties: {
-      max_participants: 2,
+      // Keep 1:1 authorization in server-issued meeting tokens, but leave
+      // headroom for Daily's own reconnect/ghost-participant cleanup window.
+      max_participants: DAILY_ROOM_MAX_PARTICIPANTS,
+      // Daily ejects stale reconnects with the same token user_id instead of
+      // counting ghost participants against the room limit.
+      enforce_unique_user_ids: DAILY_ROOM_ENFORCE_UNIQUE_USER_IDS,
       enable_chat: false,
       enable_screenshare: true,
       enable_recording: false,
@@ -149,6 +170,7 @@ async function createDailyRoom({
     name: room.name,
     url: room.url,
     config: room.config,
+    configVersion: DAILY_ROOM_CONFIG_VERSION,
     created_at: room.created_at,
   };
 }
@@ -243,4 +265,13 @@ module.exports = {
   deleteDailyRoom,
   getDailyRoom,
   getRoomNameFromUrl,
+  isDailyRoomConfigCompatible,
+  DAILY_ROOM_CONFIG_VERSION,
+  __private__: {
+    DAILY_ROOM_CONFIG_VERSION,
+    DAILY_ROOM_ENFORCE_UNIQUE_USER_IDS,
+    DAILY_ROOM_MAX_PARTICIPANTS,
+    buildRoomConfig,
+    isDailyRoomConfigCompatible,
+  },
 };

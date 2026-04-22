@@ -4,8 +4,10 @@ const { sendApnsVoip } = require("./apns_voip");
 const {
   createDailyRoom,
   createMeetingToken,
+  DAILY_ROOM_CONFIG_VERSION,
   getDailyRoom,
   getRoomNameFromUrl,
+  isDailyRoomConfigCompatible,
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
 const {
@@ -318,20 +320,29 @@ exports.acceptCall = functions
           roomName = getRoomNameFromUrl(roomUrl);
         }
         if (roomName) {
-          // Skip Daily API validation if room was created recently (< 60s)
           const roomAgeMs = roomCreatedAt ? Date.now() - roomCreatedAt : Infinity;
-          if (roomAgeMs > PRECREATED_ROOM_VALIDATION_WINDOW_MS) {
+          const hasCurrentRoomConfig =
+            sessionData.sessionMetadata?.dailyRoomConfigVersion ===
+            DAILY_ROOM_CONFIG_VERSION;
+          if (!hasCurrentRoomConfig ||
+              roomAgeMs > PRECREATED_ROOM_VALIDATION_WINDOW_MS) {
             const existingRoom = await getDailyRoom(roomName);
-            if (!existingRoom) {
+            if (!existingRoom || !isDailyRoomConfigCompatible(existingRoom)) {
               console.warn(
-                "⚠️ Precreated room not found in Daily, recreating room",
+                existingRoom
+                  ? "⚠️ Precreated Daily room uses legacy config, recreating room"
+                  : "⚠️ Precreated room not found in Daily, recreating room",
               );
               roomUrl = null;
               roomName = null;
               roomCreatedAt = null;
             }
           } else {
-            console.log("⚡ Skipping room validation - room is fresh (" + roomAgeMs + "ms old)");
+            console.log(
+              "⚡ Skipping room validation - room is fresh/current (" +
+                roomAgeMs +
+                "ms old)",
+            );
           }
         } else {
           roomUrl = null;
@@ -495,6 +506,7 @@ exports.acceptCall = functions
             tutorNavigationTriggered: false,
             studentNavigationTriggered: false,
             "sessionMetadata.roomCreatedAt": roomCreatedAt || Date.now(),
+            "sessionMetadata.dailyRoomConfigVersion": DAILY_ROOM_CONFIG_VERSION,
             "matchContext.acceptedResponderId": tutorId,
             "matchContext.acceptedResponderRole": normalizeRole(tutorData.role),
             "matchContext.acceptedResponderInfo": buildSessionUserInfo(
