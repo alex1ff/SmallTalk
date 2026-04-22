@@ -143,5 +143,33 @@ void main() {
         contains('_releaseProcessActiveCallClient(callClientToDispose);'),
       );
     });
+
+    test('Daily token refresh keeps room URL and token paired', () {
+      final videoCallSource = _source(
+          'lib/shared_pages/video_call_page/video_call_page_widget.dart');
+      final waitingSource = _source(
+          'lib/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart');
+      final dailyWidgetSource =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+
+      expect(videoCallSource, contains('String? _freshRoomName;'));
+      expect(videoCallSource, contains('joinCredentialsRefreshCallback'));
+      expect(videoCallSource, contains("'roomUrl': _freshRoomUrl"));
+      expect(videoCallSource, contains("'meetingToken': _freshMeetingToken"));
+
+      expect(waitingSource, contains('final refreshedRoomUrl'));
+      expect(waitingSource, contains('roomUrl: refreshedRoomUrl ?? roomUrl'));
+      expect(
+        waitingSource,
+        contains('roomName: refreshedRoomName ?? roomName'),
+      );
+
+      expect(dailyWidgetSource, contains('String? _dynamicRoomUrl;'));
+      expect(dailyWidgetSource, contains('_effectiveRoomUrl()'));
+      expect(
+        dailyWidgetSource,
+        contains('await WidgetsBinding.instance.endOfFrame;'),
+      );
+    });
   });
 }

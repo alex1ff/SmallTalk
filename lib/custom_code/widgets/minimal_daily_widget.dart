@@ -315,6 +315,7 @@ class MinimalDailyWidget extends StatefulWidget {
     required this.roomUrl,
     this.meetingToken,
     this.tokenRefreshCallback,
+    this.joinCredentialsRefreshCallback,
     this.sessionStatus,
     this.sessionExpiresAt,
     this.sessionPolicy,
@@ -339,6 +340,8 @@ class MinimalDailyWidget extends StatefulWidget {
   final String roomUrl;
   final String? meetingToken;
   final Future<String?> Function()? tokenRefreshCallback;
+  final Future<Map<String, String?>?> Function()?
+      joinCredentialsRefreshCallback;
   final String? sessionStatus;
   final DateTime? sessionExpiresAt;
   final Map<String, dynamic>? sessionPolicy;
@@ -397,6 +400,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _systemCallMarkedConnected = false;
   bool _sessionStartedMarked = false;
   String? _dynamicMeetingToken;
+  String? _dynamicRoomUrl;
   bool _tokenRefreshInProgress = false;
   int _tokenRefreshAttempts = 0;
   static const int _maxTokenRefreshAttempts = 2;
@@ -567,6 +571,17 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return _sanitizeMeetingToken(_dynamicMeetingToken ?? widget.meetingToken);
   }
 
+  String? _sanitizeRoomUrl(String? url) {
+    if (url == null) return null;
+    final trimmed = url.trim();
+    return _isValidRoomUrl(trimmed) ? trimmed : null;
+  }
+
+  String? _effectiveRoomUrl() {
+    return _sanitizeRoomUrl(_dynamicRoomUrl) ??
+        _sanitizeRoomUrl(widget.roomUrl);
+  }
+
   String? _configuredDeepgramCredentialFor(
     MinimalDailyWidget widgetInstance,
   ) {
@@ -651,7 +666,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   bool _hasValidJoinData() {
-    return _isValidRoomUrl(widget.roomUrl) && _effectiveMeetingToken() != null;
+    return _effectiveRoomUrl() != null && _effectiveMeetingToken() != null;
   }
 
   bool _hasProcessActiveCallClientConflict() {
@@ -846,7 +861,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Join room with default settings to avoid SDK parsing errors
   Future<void> _joinRoomWithEnhancedSettings() async {
-    final roomUri = Uri.parse(widget.roomUrl);
+    final roomUrl = _effectiveRoomUrl();
+    if (roomUrl == null) {
+      throw StateError('Daily room URL is not ready');
+    }
+    final roomUri = Uri.parse(roomUrl);
     final token = _effectiveMeetingToken();
 
     await _callClient!.join(
@@ -1815,7 +1834,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Future<bool> _tryRefreshTokenOnError(dynamic error) async {
     if (_tokenRefreshInProgress) return false;
     if (_tokenRefreshAttempts >= _maxTokenRefreshAttempts) return false;
-    if (widget.tokenRefreshCallback == null) return false;
+    if (widget.tokenRefreshCallback == null &&
+        widget.joinCredentialsRefreshCallback == null) {
+      return false;
+    }
 
     final message = error.toString().toLowerCase();
     final looksLikeTokenError =
@@ -1825,18 +1847,36 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _tokenRefreshInProgress = true;
     _tokenRefreshAttempts += 1;
     try {
-      final newToken = await widget.tokenRefreshCallback!.call();
+      String? newToken;
+      String? newRoomUrl;
+      if (widget.joinCredentialsRefreshCallback != null) {
+        final credentials = await widget.joinCredentialsRefreshCallback!.call();
+        newToken = credentials?['meetingToken'];
+        newRoomUrl = credentials?['roomUrl'];
+      } else {
+        newToken = await widget.tokenRefreshCallback!.call();
+      }
       final sanitized = _sanitizeMeetingToken(newToken);
       if (sanitized == null) {
         return false;
       }
       _dynamicMeetingToken = sanitized;
+      final sanitizedRoomUrl = _sanitizeRoomUrl(newRoomUrl);
+      if (sanitizedRoomUrl != null) {
+        _dynamicRoomUrl = sanitizedRoomUrl;
+      }
       await _cleanup(
         leaveCall: true,
         preserveMeetingToken: true,
         preserveTokenRefreshAttempts: true,
         preserveChatState: true,
       );
+      // Parent widgets update roomUrl via setState after refreshing credentials.
+      // Wait one frame so a recreated Daily room and its token are used as a pair.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || _disposed) {
+        return true;
+      }
       await _initializeCall();
       return true;
     } catch (e) {
@@ -2973,6 +3013,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
     if (oldWidget.sessionId != widget.sessionId) {
       _sessionStartedMarked = false;
+      _dynamicMeetingToken = null;
+      _dynamicRoomUrl = null;
       _sessionLimitWarningShownFor = null;
       _sessionLimitAutoEndedFor = null;
       _sessionExtensionRequestInFlight = false;
@@ -2994,13 +3036,21 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     final oldUrl = oldWidget.roomUrl;
     final newUrl = widget.roomUrl;
     final newValid = _isValidRoomUrl(newUrl);
+    final dynamicRoomUrl = _sanitizeRoomUrl(_dynamicRoomUrl);
+    final parentCaughtUpToDynamicRoom =
+        dynamicRoomUrl != null && dynamicRoomUrl == _sanitizeRoomUrl(newUrl);
+    if (parentCaughtUpToDynamicRoom) {
+      _dynamicRoomUrl = null;
+    } else if (oldUrl != newUrl && newValid) {
+      _dynamicRoomUrl = null;
+    }
 
     // If we're already connected, connecting, or initializing — only
     // reconnect when the room URL actually changes (different room).
     // Token changes are harmless: the existing token is still valid for
     // the duration of the Daily session.
     if (_callClient != null || _isInitializing) {
-      if (oldUrl != newUrl && newValid) {
+      if (oldUrl != newUrl && newValid && !parentCaughtUpToDynamicRoom) {
         unawaited(_cleanup(leaveCall: true).then((_) => _initializeCall()));
       }
       return;
@@ -5076,6 +5126,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _invalidateLocalCaptionClear();
       if (!preserveMeetingToken) {
         _dynamicMeetingToken = null;
+        _dynamicRoomUrl = null;
       }
       if (!preserveTokenRefreshAttempts) {
         _tokenRefreshAttempts = 0;

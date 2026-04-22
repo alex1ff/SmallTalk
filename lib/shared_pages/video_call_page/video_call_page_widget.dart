@@ -44,6 +44,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
   String? _freshRoomUrl;
+  String? _freshRoomName;
   String? _freshMeetingToken;
   bool _tokenLoading = false;
   String? _lastTokenSessionId;
@@ -79,6 +80,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.videoDocRef?.id != widget.videoDocRef?.id) {
       _freshRoomUrl = null;
+      _freshRoomName = null;
       _freshMeetingToken = null;
       _lastTokenSessionId = null;
       _didNavigateToSummary = false;
@@ -115,8 +117,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         'sessionId': sessionId,
       });
       final data = result.data as Map<String, dynamic>? ?? {};
-      _freshRoomUrl = data['roomUrl'] as String?;
-      _freshMeetingToken = data['meetingToken'] as String?;
+      _freshRoomUrl = _nonEmptyValue(data['roomUrl']?.toString());
+      _freshRoomName = _nonEmptyValue(data['roomName']?.toString());
+      _freshMeetingToken = _nonEmptyValue(data['meetingToken']?.toString());
       _lastTokenSessionId = sessionId;
       return _freshMeetingToken;
     } catch (e) {
@@ -275,9 +278,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             '';
         final resolvedMeetingToken = _nonEmpty(_freshMeetingToken) ??
             _nonEmpty(widget.initialMeetingToken);
-        final resolvedRoomName =
+        final resolvedRoomName = _nonEmpty(_freshRoomName) ??
             _nonEmpty(videoCallPageVideoSessionsRecord?.dailyRoomName) ??
-                _nonEmpty(widget.initialRoomName);
+            _nonEmpty(widget.initialRoomName);
         final resolvedLanguage = _nonEmpty(
               videoCallPageVideoSessionsRecord?.language,
             ) ??
@@ -360,6 +363,14 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                 meetingToken: resolvedMeetingToken,
                 tokenRefreshCallback: () async {
                   return await _fetchSessionTokens(force: true);
+                },
+                joinCredentialsRefreshCallback: () async {
+                  await _fetchSessionTokens(force: true);
+                  return {
+                    'roomUrl': _freshRoomUrl,
+                    'roomName': _freshRoomName,
+                    'meetingToken': _freshMeetingToken,
+                  };
                 },
                 sessionExpiresAt: videoCallPageVideoSessionsRecord?.expiresAt,
                 sessionPolicy: sessionPolicy,

@@ -510,14 +510,16 @@ class _WaitingForTeacherPageWidgetState
           .call({'sessionId': sessionId});
       final data = _asMap(result.data);
       final token = _nonEmpty(data['meetingToken']?.toString());
+      final refreshedRoomUrl = _nonEmpty(data['roomUrl']?.toString());
+      final refreshedRoomName = _nonEmpty(data['roomName']?.toString());
       if (token != null &&
           mounted &&
           !_navigationHandled &&
           !_cancelRequested) {
         _navigateToVideoCall(
-          roomUrl: roomUrl,
+          roomUrl: refreshedRoomUrl ?? roomUrl,
           meetingToken: token,
-          roomName: roomName,
+          roomName: refreshedRoomName ?? roomName,
         );
       }
     } catch (e) {
