@@ -4167,17 +4167,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         return _buildLocalFullScreen();
       }
 
-      final controller = _state.remoteControllers.values.firstOrNull;
-      final participantId = _state.remoteControllers.keys.firstOrNull;
+      final participantId = _state.remoteControllers.keys.firstWhere(
+        (id) => _remoteTrackReady[id] == true,
+        orElse: () => _state.remoteControllers.keys.first,
+      );
+      final controller = _state.remoteControllers[participantId];
 
-      if (controller == null || participantId == null) {
-        return _buildLocalFullScreen();
+      if (controller == null) {
+        return _buildPlaceholder('Подключаем видео собеседника...');
       }
 
       final participant = _callClient?.participants.remote[participantId];
 
       if (participant == null) {
-        return _buildLocalFullScreen();
+        return _buildPlaceholder('Подключаем видео собеседника...');
       }
 
       final hasVideo = participant.media?.camera.state != MediaState.off ||
@@ -4198,11 +4201,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       if (!hasVideo) {
         return withinGrace
-            ? _buildLocalFullScreen()
+            ? _buildPlaceholder('Подключаем видео собеседника...')
             : _buildPlaceholder('Камера участника выключена');
       }
 
-      return _buildLocalFullScreen();
+      return _buildPlaceholder('Подключаем видео собеседника...');
     } catch (e) {
       if (kDebugMode) print('Error building remote video: $e');
       return _buildPlaceholder('Видео недоступно');
