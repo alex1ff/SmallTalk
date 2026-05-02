@@ -607,8 +607,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           StreamBuilder<List<ConversationsRecord>>(
                             stream: queryConversationsRecord(
                               queryBuilder: (query) => query.where(
-                                'participantIds',
-                                arrayContains: currentUserUid,
+                                FieldPath(['participantMap', currentUserUid]),
+                                isEqualTo: true,
                               ),
                             ),
                             builder: (context, snapshot) {

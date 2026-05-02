@@ -11,6 +11,7 @@ const {
   CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
   buildCallEventMessageId,
   buildCallEventMessagePayload,
+  buildConversationParticipantMap,
   buildConversationSummaryUpdate,
   ensureConversationCallEventForSession,
 } = require("./chats_shared");
@@ -113,6 +114,16 @@ test("buildCallEventMessagePayload materializes video call metadata", () => {
   assert.equal(payload.callStartedAt.toMillis(), startedAtMillis);
   assert.equal(payload.callEndedAt.toMillis(), endedAtMillis);
   assert.equal(payload.createdAt.toMillis(), endedAtMillis);
+});
+
+test("buildConversationParticipantMap materializes query-friendly participants", () => {
+  assert.deepEqual(
+    buildConversationParticipantMap([" student ", "", "teacher", null]),
+    {
+      student: true,
+      teacher: true,
+    },
+  );
 });
 
 test("ensureConversationCallEventForSession creates missed event for assigned unanswered call", async () => {
@@ -230,6 +241,13 @@ test("ensureCallEventMessageForProcessedConversation creates one deterministic c
   assert.equal(firstResult.status, "created");
   assert.equal(secondResult.status, "already_exists");
   assert.ok(store.has(messagePath));
+  assert.deepEqual(
+    store.get("conversations/student_teacher").participantMap,
+    {
+      student: true,
+      teacher: true,
+    },
+  );
   assert.equal(store.get(messagePath).type, CONVERSATION_MESSAGE_TYPE_CALL_EVENT);
   assert.equal(
     store.get("conversations/student_teacher").lastMessageType,

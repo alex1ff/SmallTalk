@@ -15,8 +15,7 @@ void main() {
           source,
           contains(
               'ChatThreadWidget(conversationRef: conversation.reference)'));
-      expect(source,
-          contains("query.where('participantIds', arrayContains: currentUid)"));
+      expect(source, contains("FieldPath(['participantMap', currentUid])"));
       expect(source, contains('resolveFriendsForUser(currentUserDocument)'));
       expect(source, contains('kConversationMessageTypeCallEvent'));
       expect(source, contains('conversationPartnerIsFriend'));
@@ -34,7 +33,17 @@ void main() {
 
       expect(
         rules,
-        contains('data.participantIds.hasAny([request.auth.uid]);'),
+        contains('data.participantMap[request.auth.uid] == true;'),
+      );
+      expect(
+        rules,
+        contains(
+            'allow list: if isConversationParticipantByMap(resource.data);'),
+      );
+      expect(
+        _source(
+            'firebase/custom_cloud_functions/conversation_message_summaries.js'),
+        contains('buildParticipantMapRepair'),
       );
       expect(
         rules,

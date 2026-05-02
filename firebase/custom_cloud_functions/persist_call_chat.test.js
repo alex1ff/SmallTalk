@@ -182,6 +182,13 @@ test("persistCallChatForUser upserts conversation and is idempotent", async () =
   assert.equal(second.callEventStatus, "already_exists");
   assert.equal(second.skipped, 1);
   assert.equal(store.get("conversations/student_teacher").isUnlocked, true);
+  assert.deepEqual(
+    store.get("conversations/student_teacher").participantMap,
+    {
+      student: true,
+      teacher: true,
+    },
+  );
   assert.equal(
     store.get("conversations/student_teacher").lastMessageType,
     "call_event",

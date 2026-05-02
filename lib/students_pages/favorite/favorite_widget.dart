@@ -42,8 +42,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     }
 
     return queryConversationsRecord(
-      queryBuilder: (query) =>
-          query.where('participantIds', arrayContains: currentUid),
+      queryBuilder: (query) => query.where(
+        FieldPath(['participantMap', currentUid]),
+        isEqualTo: true,
+      ),
     ).map(
       (conversations) => _ConversationsLoadState(conversations: conversations),
     );

@@ -35,6 +35,58 @@ void main() {
     });
   });
 
+  group('shouldUseSessionLimitCountdown', () {
+    test('ignores searching session expiry before accept becomes active', () {
+      final now = DateTime.utc(2026, 4, 14, 12, 0, 0);
+
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'searching',
+          expiresAt: now.add(const Duration(seconds: 30)),
+          sessionPolicy: sessionPolicy,
+        ),
+        isFalse,
+      );
+    });
+
+    test('uses countdown only for active or connecting calls with policy', () {
+      final now = DateTime.utc(2026, 4, 14, 12, 0, 0);
+
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'active',
+          expiresAt: now.add(const Duration(minutes: 5)),
+          sessionPolicy: sessionPolicy,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'connecting',
+          expiresAt: now.add(const Duration(minutes: 5)),
+          sessionPolicy: sessionPolicy,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'ended',
+          expiresAt: now.add(const Duration(minutes: 5)),
+          sessionPolicy: sessionPolicy,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'active',
+          expiresAt: now.add(const Duration(minutes: 5)),
+          sessionPolicy: const <String, dynamic>{},
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('shouldShowSessionLimitWarning', () {
     test('returns true only inside the warning window', () {
       final now = DateTime.utc(2026, 4, 14, 12, 0, 0);

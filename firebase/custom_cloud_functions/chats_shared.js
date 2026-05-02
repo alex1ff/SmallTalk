@@ -341,6 +341,16 @@ function buildUnlockEventPayload({
   };
 }
 
+function buildConversationParticipantMap(participantIds = []) {
+  return participantIds.reduce((participantMap, uid) => {
+    const normalizedUid = String(uid || "").trim();
+    if (normalizedUid) {
+      participantMap[normalizedUid] = true;
+    }
+    return participantMap;
+  }, {});
+}
+
 function buildConversationSeed({
   participants,
   sessionRef,
@@ -350,6 +360,7 @@ function buildConversationSeed({
     pairId: participants.pairId,
     participantIds: participants.participantIds,
     participantRefs: participants.participantRefs,
+    participantMap: buildConversationParticipantMap(participants.participantIds),
     isUnlocked: true,
     unlockedAt: now,
     unlockedBySessionRef: sessionRef,
@@ -514,6 +525,16 @@ async function ensureConversationCallEventForSession({
         { merge: true },
       );
     }
+
+    transaction.set(
+      conversationRef,
+      {
+        participantMap: buildConversationParticipantMap(
+          eligibility.participantIds,
+        ),
+      },
+      { merge: true },
+    );
 
     const messageSnap = await transaction.get(messageRef);
     if (!messageSnap.exists) {
@@ -745,6 +766,7 @@ module.exports = {
   buildCallEventMessageId,
   buildCallEventMessagePayload,
   buildCallEventPreviewText,
+  buildConversationParticipantMap,
   buildConversationSummaryUpdate,
   conversationMatchesUnlockParticipants,
   buildUnlockEventPayload,

@@ -4,6 +4,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
+import '/custom_code/widgets/session_limit_ui.dart' as session_limit_ui;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
 import '/shared_pages/learning/caption_word_flow.dart';
@@ -291,6 +292,12 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             : null;
         final sessionStatus =
             _nonEmpty(videoCallPageVideoSessionsRecord?.status);
+        final useSessionLimitCountdown =
+            session_limit_ui.shouldUseSessionLimitCountdown(
+          sessionStatus: sessionStatus,
+          expiresAt: videoCallPageVideoSessionsRecord?.expiresAt,
+          sessionPolicy: sessionPolicy,
+        );
         final isStudent = currentUserUid ==
             _nonEmpty(videoCallPageVideoSessionsRecord?.studentId);
 
@@ -371,8 +378,10 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                     'meetingToken': _freshMeetingToken,
                   };
                 },
-                sessionExpiresAt: videoCallPageVideoSessionsRecord?.expiresAt,
-                sessionPolicy: sessionPolicy,
+                sessionExpiresAt: useSessionLimitCountdown
+                    ? videoCallPageVideoSessionsRecord?.expiresAt
+                    : null,
+                sessionPolicy: useSessionLimitCountdown ? sessionPolicy : null,
                 deepgramTokenRefreshCallback: () async {
                   return await _fetchDeepgramToken(force: true);
                 },

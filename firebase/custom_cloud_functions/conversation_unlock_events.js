@@ -2,6 +2,7 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {FieldPath, FieldValue} = require("firebase-admin/firestore");
 const {
+  buildConversationParticipantMap,
   buildConversationSeed,
   buildUnlockEventPayload,
   ensureConversationCallEventForSession,
@@ -196,6 +197,9 @@ async function processPendingUnlockEvent(eventRef, sessionId) {
       } else {
         const updates = {
           isUnlocked: true,
+          participantMap: buildConversationParticipantMap(
+            participants.participantIds,
+          ),
           updatedAt: FieldValue.serverTimestamp(),
         };
 

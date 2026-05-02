@@ -3,6 +3,7 @@ const admin = require("firebase-admin");
 const {FieldPath, FieldValue} = require("firebase-admin/firestore");
 const {
   CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
+  buildConversationParticipantMap,
   buildConversationSummaryUpdate,
   canMessageUpdateConversationSummary,
   conversationMatchesUnlockParticipants,
@@ -18,6 +19,29 @@ const {
 } = require("./chats_shared");
 
 const SUMMARY_REPAIR_JOB_NAME = "repairConversationMessageSummaries";
+
+function mapsEqual(left = {}, right = {}) {
+  const leftKeys = Object.keys(left || {}).sort();
+  const rightKeys = Object.keys(right || {}).sort();
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((key, index) =>
+    key === rightKeys[index] && left[key] === right[key]);
+}
+
+function buildParticipantMapRepair(conversationData = {}) {
+  if (!Array.isArray(conversationData.participantIds) ||
+      conversationData.participantIds.length === 0) {
+    return null;
+  }
+  const participantMap =
+    buildConversationParticipantMap(conversationData.participantIds);
+  if (mapsEqual(conversationData.participantMap, participantMap)) {
+    return null;
+  }
+  return participantMap;
+}
 
 exports.updateConversationMessageSummary = functions.firestore
   .document("conversations/{pairId}/messages/{messageId}")
@@ -50,6 +74,15 @@ exports.updateConversationMessageSummary = functions.firestore
       const conversationData = conversationSnap.data() || {};
       if (!conversationData.isUnlocked) {
         return null;
+      }
+      const repairedParticipantMap =
+        buildParticipantMapRepair(conversationData);
+      if (repairedParticipantMap) {
+        transaction.set(
+          conversationRef,
+          {participantMap: repairedParticipantMap},
+          {merge: true},
+        );
       }
 
       const messageCanUpdateSummary =
@@ -154,6 +187,15 @@ async function repairConversationSummary(conversationRef) {
     const conversationData = conversationSnap.data() || {};
     if (!conversationData.isUnlocked) {
       return null;
+    }
+    const repairedParticipantMap =
+      buildParticipantMapRepair(conversationData);
+    if (repairedParticipantMap) {
+      transaction.set(
+        conversationRef,
+        {participantMap: repairedParticipantMap},
+        {merge: true},
+      );
     }
 
     let newestMessageSnap = await transaction.get(

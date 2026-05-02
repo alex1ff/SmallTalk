@@ -10,6 +10,18 @@ int resolveSessionLimitRemainingSeconds(
   return remaining < 0 ? 0 : remaining;
 }
 
+bool shouldUseSessionLimitCountdown({
+  required String? sessionStatus,
+  required DateTime? expiresAt,
+  required Map<String, dynamic>? sessionPolicy,
+}) {
+  final normalizedStatus = (sessionStatus ?? '').trim().toLowerCase();
+  if (normalizedStatus != 'active' && normalizedStatus != 'connecting') {
+    return false;
+  }
+  return expiresAt != null && sessionPolicy != null && sessionPolicy.isNotEmpty;
+}
+
 int _readPositiveInt(
   dynamic value,
   int fallback,

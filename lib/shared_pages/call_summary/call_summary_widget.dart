@@ -237,8 +237,10 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
     return StreamBuilder<List<ConversationsRecord>>(
       stream: queryConversationsRecord(
-        queryBuilder: (query) =>
-            query.where('participantIds', arrayContains: currentUserUid),
+        queryBuilder: (query) => query.where(
+          FieldPath(['participantMap', currentUserUid]),
+          isEqualTo: true,
+        ),
       ),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
