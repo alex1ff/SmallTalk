@@ -5,10 +5,9 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/index.dart';
+import '/shared_pages/chat_thread/chat_thread_widget.dart';
 
 import 'favorite_model.dart';
 export 'favorite_model.dart';
@@ -103,9 +102,23 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   String _conversationSubtitle(
       BuildContext context, ConversationsRecord conversation) {
     if (conversation.lastMessageType == kConversationMessageTypeCallEvent) {
+      final currentUserWasCaller =
+          conversation.lastCallCallerId == currentUserUid;
+      if (conversation.lastCallOutcome == kConversationCallOutcomeCancelled) {
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Отменённый звонок',
+          enText: 'Cancelled call',
+        );
+      }
+      if (conversation.lastCallOutcome == kConversationCallOutcomeMissed) {
+        return FFLocalizations.of(context).getVariableText(
+          ruText: currentUserWasCaller ? 'Без ответа' : 'Пропущенный звонок',
+          enText: currentUserWasCaller ? 'No answer' : 'Missed call',
+        );
+      }
       return FFLocalizations.of(context).getVariableText(
-        ruText: 'Видео-звонок',
-        enText: 'Video call',
+        ruText: currentUserWasCaller ? 'Исходящий звонок' : 'Входящий звонок',
+        enText: currentUserWasCaller ? 'Outgoing call' : 'Incoming call',
       );
     }
 
@@ -261,8 +274,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                 context,
                 index: 0,
                 label: FFLocalizations.of(context).getVariableText(
-                  ruText: 'Сообщения',
-                  enText: 'Messages',
+                  ruText: 'Все',
+                  enText: 'All',
                 ),
               ),
               _chatTabButton(
@@ -283,6 +296,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   Widget _conversationCard(
     BuildContext context, {
     required ConversationsRecord conversation,
+    required bool isFriend,
   }) {
     final partnerRef = _otherParticipantRef(conversation);
     if (partnerRef == null) {
@@ -366,19 +380,35 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                           Row(
                             children: [
                               Expanded(
-                                child: Text(
-                                  partner.displayName,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        fontSize: 16.0,
-                                        fontWeight: unread
-                                            ? FontWeight.w600
-                                            : FontWeight.w500,
-                                        letterSpacing: 0.0,
+                                child: Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        partner.displayName,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: FlutterFlowTheme.of(context)
+                                            .bodyMedium
+                                            .override(
+                                              fontFamily: 'sf pro display',
+                                              fontSize: 16.0,
+                                              fontWeight: unread
+                                                  ? FontWeight.w600
+                                                  : FontWeight.w500,
+                                              letterSpacing: 0.0,
+                                            ),
                                       ),
+                                    ),
+                                    if (isFriend)
+                                      const Padding(
+                                        padding: EdgeInsetsDirectional.only(
+                                            start: 5),
+                                        child: Icon(
+                                          Icons.star_rounded,
+                                          color: Color(0xFFFFC107),
+                                          size: 18.0,
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
                               if (unread)
@@ -450,137 +480,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
-  Widget _friendCard(
-    BuildContext context, {
-    required UsersRecord friend,
-    required ConversationsRecord? conversation,
-  }) {
-    final hasOpenChat = conversation != null && conversation.isUnlocked;
-
-    return InkWell(
-      splashColor: Colors.transparent,
-      focusColor: Colors.transparent,
-      hoverColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      onTap: () async {
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (context) => NativeSpeakerPageWidget(
-              nsUserDocRef: friend.reference,
-              hideDirectCallAction: true,
-            ),
-          ),
-        );
-      },
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 6.0),
-        decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
-          borderRadius: BorderRadius.circular(26.0),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(10.0),
-          child: Row(
-            children: [
-              Container(
-                width: 54.0,
-                height: 54.0,
-                decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
-                  borderRadius: BorderRadius.circular(20.0),
-                  image: friend.photoUrl.isNotEmpty
-                      ? DecorationImage(
-                          fit: BoxFit.cover,
-                          image: CachedNetworkImageProvider(
-                            friend.photoUrl,
-                            maxWidth: 108,
-                            maxHeight: 108,
-                          ),
-                        )
-                      : null,
-                ),
-                child: friend.photoUrl.isEmpty
-                    ? Icon(
-                        Icons.person_rounded,
-                        color: FlutterFlowTheme.of(context).secondaryText,
-                      )
-                    : null,
-              ),
-              Expanded(
-                child: Padding(
-                  padding:
-                      const EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 0.0, 0.0),
-                  child: Text(
-                    friend.displayName,
-                    overflow: TextOverflow.ellipsis,
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          fontSize: 16.0,
-                          letterSpacing: 0.0,
-                        ),
-                  ),
-                ),
-              ),
-              if (hasOpenChat)
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(start: 10.0),
-                  child: OutlinedButton(
-                    onPressed: () => _openConversation(conversation),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(
-                        color: FlutterFlowTheme.of(context).primary,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18.0),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12.0,
-                        vertical: 10.0,
-                      ),
-                    ),
-                    child: Text(
-                      FFLocalizations.of(context).getVariableText(
-                        ruText: 'Открыть чат',
-                        enText: 'Open chat',
-                      ),
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'sf pro display',
-                            color: FlutterFlowTheme.of(context).primary,
-                            fontSize: 13.0,
-                            letterSpacing: 0.0,
-                          ),
-                    ),
-                  ),
-                ),
-              const SizedBox(width: 6.0),
-              FlutterFlowIconButton(
-                borderRadius: 14.0,
-                buttonSize: 42.0,
-                fillColor: FlutterFlowTheme.of(context).secondaryBackground,
-                icon: Icon(
-                  FFIcons.kchevronRight,
-                  color: FlutterFlowTheme.of(context).secondaryText,
-                  size: 18.0,
-                ),
-                onPressed: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (context) => NativeSpeakerPageWidget(
-                        nsUserDocRef: friend.reference,
-                        hideDirectCallAction: true,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildEmptyListState(
     BuildContext context, {
     required String text,
@@ -601,6 +500,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     required bool conversationsLoadFailed,
     required bool conversationsAccessDenied,
     required List<ConversationsRecord> conversations,
+    required List<DocumentReference> friends,
   }) {
     if (conversationsLoading) {
       return _buildMessagesLoadingList(context);
@@ -638,6 +538,11 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
             (conversation) => _conversationCard(
               context,
               conversation: conversation,
+              isFriend: conversationPartnerIsFriend(
+                conversation,
+                friends,
+                currentUserUid,
+              ),
             ),
           )
           .toList(),
@@ -727,54 +632,39 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   Widget _buildFriendsTabContent(
     BuildContext context, {
     required List<DocumentReference> friends,
-    required Map<String, ConversationsRecord> unlockedByPairId,
+    required List<ConversationsRecord> conversations,
   }) {
-    if (friends.isEmpty) {
+    final friendConversations = conversations
+        .where(
+          (conversation) => conversationPartnerIsFriend(
+            conversation,
+            friends,
+            currentUserUid,
+          ),
+        )
+        .toList();
+
+    if (friendConversations.isEmpty) {
       return _buildEmptyListState(
         context,
         text: FFLocalizations.of(context).getVariableText(
-          ruText: 'У вас пока нет друзей.',
-          enText: 'You do not have friends yet.',
+          ruText: 'У вас пока нет чатов с друзьями.',
+          enText: 'You do not have chats with friends yet.',
         ),
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: friends.map((friendRef) {
-        final pairId = canonicalConversationPairId(
-          currentUserUid,
-          friendRef.id,
-        );
-        final conversation = unlockedByPairId[pairId];
-        return FutureBuilder<UsersRecord>(
-          future: _getUserFuture(friendRef),
-          builder: (context, friendSnapshot) {
-            if (friendSnapshot.hasError) {
-              debugPrint(
-                'FavoriteWidget: failed to load friend ${friendRef.path}: ${friendSnapshot.error}',
-              );
-              return _buildInlineNotice(
-                context,
-                text: FFLocalizations.of(context).getVariableText(
-                  ruText: 'Не удалось загрузить друга.',
-                  enText: 'Could not load this friend.',
-                ),
-              );
-            }
-
-            if (!friendSnapshot.hasData) {
-              return _friendLoadingCard(context);
-            }
-
-            return _friendCard(
+      children: friendConversations
+          .map(
+            (conversation) => _conversationCard(
               context,
-              friend: friendSnapshot.data!,
               conversation: conversation,
-            );
-          },
-        );
-      }).toList(),
+              isFriend: true,
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -801,36 +691,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
               fontSize: 14.0,
               letterSpacing: 0.0,
             ),
-      ),
-    );
-  }
-
-  Widget _friendLoadingCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 74.0,
-      margin: const EdgeInsets.only(bottom: 6.0),
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
-      ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'Загружаем друга...',
-              enText: 'Loading friend...',
-            ),
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'sf pro display',
-                  color: FlutterFlowTheme.of(context).secondaryText,
-                  fontSize: 14.0,
-                  letterSpacing: 0.0,
-                ),
-          ),
-        ),
       ),
     );
   }
@@ -906,10 +766,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                             })()
                           : <ConversationsRecord>[];
 
-                      final unlockedByPairId = {
-                        for (final conversation in conversations)
-                          conversation.pairId: conversation,
-                      };
                       final showFriendsTab = _selectedChatTabIndex == 1;
 
                       return Stack(
@@ -924,7 +780,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                   _buildFriendsTabContent(
                                     context,
                                     friends: friends,
-                                    unlockedByPairId: unlockedByPairId,
+                                    conversations: conversations,
                                   )
                                 else
                                   _buildMessagesTabContent(
@@ -935,6 +791,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                     conversationsAccessDenied:
                                         conversationsAccessDenied,
                                     conversations: conversations,
+                                    friends: friends,
                                   ),
                                 const SizedBox(height: 120.0),
                               ],

@@ -7,11 +7,15 @@ class ChatCallEventCard extends StatelessWidget {
     super.key,
     required this.title,
     required this.details,
+    this.icon = Icons.phone_rounded,
+    this.iconColor,
     this.onTap,
   });
 
   final String title;
   final String details;
+  final IconData icon;
+  final Color? iconColor;
   final VoidCallback? onTap;
 
   @override
@@ -39,8 +43,8 @@ class ChatCallEventCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.videocam_rounded,
-                      color: FlutterFlowTheme.of(context).primary,
+                      icon,
+                      color: iconColor ?? FlutterFlowTheme.of(context).primary,
                       size: 18.0,
                     ),
                     const SizedBox(width: 10.0),

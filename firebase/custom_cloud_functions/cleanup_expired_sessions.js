@@ -2,6 +2,9 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { deleteDailyRoom } = require("./daily_room");
 const {
+  ensureConversationCallEventForSession,
+} = require("./chats_shared");
+const {
   buildCompletedPairHistoryWrite,
 } = require("./match_repeat_prevention");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -130,22 +133,22 @@ exports.cleanupExpiredSessions = functions
         const cleanupResult = await db.runTransaction(async (transaction) => {
           const freshSnap = await transaction.get(doc.ref);
           if (!freshSnap.exists) {
-            return { cleaned: false, dailyRoomName: null };
+            return { cleaned: false, dailyRoomName: null, sessionData: null };
           }
 
           const freshData = freshSnap.data() || {};
           if (!["active", "connecting"].includes(freshData.status)) {
-            return { cleaned: false, dailyRoomName: null };
+            return { cleaned: false, dailyRoomName: null, sessionData: null };
           }
 
           const expiresAtMillis =
             freshData.expiresAt?.toMillis?.() || 0;
           if (expiresAtMillis > now.toMillis()) {
-            return { cleaned: false, dailyRoomName: null };
+            return { cleaned: false, dailyRoomName: null, sessionData: null };
           }
 
           console.log(`🔚 Auto-ending expired session: ${doc.id}`);
-          queueExpiredSessionCleanup({
+          const cleanupPayload = queueExpiredSessionCleanup({
             writer: transaction,
             db,
             doc: {
@@ -159,6 +162,11 @@ exports.cleanupExpiredSessions = functions
           return {
             cleaned: true,
             dailyRoomName: freshData.dailyRoomName || null,
+            sessionData: {
+              ...freshData,
+              ...cleanupPayload.sessionUpdate,
+            },
+            endedAtMillis: expiresAtMillis || now.toMillis(),
           };
         });
 
@@ -167,6 +175,17 @@ exports.cleanupExpiredSessions = functions
         }
 
         cleanedCount += 1;
+        try {
+          await ensureConversationCallEventForSession({
+            db,
+            sessionId: doc.id,
+            sessionRef: doc.ref,
+            sessionData: cleanupResult.sessionData || {},
+            eventMillis: cleanupResult.endedAtMillis || now.toMillis(),
+          });
+        } catch (error) {
+          console.error("⚠️ Failed to create expired call event:", error);
+        }
         if (cleanupResult.dailyRoomName) {
           deleteDailyRoom(cleanupResult.dailyRoomName);
         }

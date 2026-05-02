@@ -1,6 +1,10 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { deleteDailyRoom } = require("./daily_room");
+const {
+  CALL_EVENT_OUTCOME_CANCELLED,
+  ensureConversationCallEventForSession,
+} = require("./chats_shared");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 exports.cancelCall = functions
   .runWith({ secrets: dailySecrets })
@@ -66,11 +70,11 @@ exports.cancelCall = functions
     const dailyRoomName = sessionData.dailyRoomName;
 
     // Обновляем статус сессии на отменен
-    await admin
+    const sessionRef = admin
       .firestore()
       .collection("videoSessions")
-      .doc(sessionId)
-      .update({
+      .doc(sessionId);
+    await sessionRef.update({
         status: "cancelled",
         endedAt: admin.firestore.FieldValue.serverTimestamp(),
         cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -82,6 +86,23 @@ exports.cancelCall = functions
         tutorNavigationTriggered: false,
         studentNavigationTriggered: false,
       });
+
+    try {
+      await ensureConversationCallEventForSession({
+        db: admin.firestore(),
+        sessionId,
+        sessionRef,
+        sessionData: {
+          ...sessionData,
+          status: "cancelled",
+        },
+        callOutcome: CALL_EVENT_OUTCOME_CANCELLED,
+        eventMillis: Date.now(),
+        partnerId: sessionData.currentTutorId,
+      });
+    } catch (error) {
+      console.error("⚠️ Failed to create cancelled call event:", error);
+    }
 
     if (dailyRoomName) {
       await deleteDailyRoom(dailyRoomName);

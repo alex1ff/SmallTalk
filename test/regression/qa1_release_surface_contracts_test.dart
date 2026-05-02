@@ -19,9 +19,10 @@ void main() {
           contains("query.where('participantIds', arrayContains: currentUid)"));
       expect(source, contains('resolveFriendsForUser(currentUserDocument)'));
       expect(source, contains('kConversationMessageTypeCallEvent'));
+      expect(source, contains('conversationPartnerIsFriend'));
       expect(source, contains('initialData: const _ConversationsLoadState()'));
       expect(source, contains('You do not have messages yet.'));
-      expect(source, contains('You do not have friends yet.'));
+      expect(source, contains('You do not have chats with friends yet.'));
       expect(source, isNot(contains('fetchRecentHubCallSessions')));
       expect(source, isNot(contains("ruText: 'Звонки'")));
     });
@@ -57,8 +58,10 @@ void main() {
       expect(
           source, contains('MessagesRecord.createDoc(conversation.reference)'));
       expect(source, contains('messageIsCallEvent(message)'));
+      expect(source, contains('buildAddFriendUpdateData'));
+      expect(source, contains('buildRemoveFriendUpdateData'));
       expect(source, contains("CallDetailsWidget.routeName"));
-      expect(callEventCard, contains('Icons.videocam_rounded'));
+      expect(callEventCard, contains('Icons.phone_rounded'));
     });
 
     test('minimal call surface persists own in-call chat after session end',
@@ -77,6 +80,7 @@ void main() {
       expect(functionIndex, contains('exports.persistCallChat'));
       expect(persistFunction, contains('inCallSessionRef'));
       expect(persistFunction, contains('incall'));
+      expect(persistFunction, contains('call_event_persisted'));
     });
 
     test('email verification remains a soft profile surface', () {

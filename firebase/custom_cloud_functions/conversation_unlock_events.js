@@ -2,11 +2,9 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {FieldPath, FieldValue} = require("firebase-admin/firestore");
 const {
-  buildCallEventMessageId,
-  buildCallEventMessagePayload,
   buildConversationSeed,
   buildUnlockEventPayload,
-  conversationMatchesUnlockParticipants,
+  ensureConversationCallEventForSession,
   getChatsRolloutTimestamp,
   getMaintenanceCursorState,
   getMaintenanceJobRef,
@@ -377,68 +375,47 @@ async function ensureCallEventMessageForProcessedConversation({
     return { status: "skipped_ineligible_session", reason: eligibility.reason };
   }
 
-  const messageRef = conversationRef
-    .collection("messages")
-    .doc(buildCallEventMessageId(sessionId));
-  const messagePayload = buildCallEventMessagePayload({
+  const writerResult = await ensureConversationCallEventForSession({
+    db,
     sessionId,
     sessionRef,
     sessionData,
+    conversationRef,
   });
 
-  return db.runTransaction(async (transaction) => {
-    const conversationSnap = await transaction.get(conversationRef);
-    if (!conversationSnap.exists || conversationSnap.data()?.isUnlocked !== true) {
-      return { status: "skipped_missing_conversation" };
-    }
-
-    const conversationData = conversationSnap.data() || {};
-    const conversationMatchesSession =
-      conversationRef.id === eligibility.pairId &&
-      conversationMatchesUnlockParticipants(
-        {
-          ...conversationData,
-          pairId: conversationData.pairId || conversationRef.id,
-        },
-        eligibility,
-      );
-    if (!conversationMatchesSession) {
-      transaction.set(
-        eventRef,
-        {
-          callEventSkipReason: "conversation_pair_mismatch",
-          callEventErrorCode: FieldValue.delete(),
-          callEventErrorMessage: FieldValue.delete(),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-      return { status: "skipped_conversation_pair_mismatch" };
-    }
-
-    const messageSnap = await transaction.get(messageRef);
-    if (!messageSnap.exists) {
-      transaction.set(messageRef, messagePayload);
-    }
-
-    transaction.set(
-      eventRef,
+  if (writerResult.status === "skipped_conversation_pair_mismatch") {
+    await eventRef.set(
       {
-        callEventMessageRef: messageRef,
-        callEventWrittenAt: FieldValue.serverTimestamp(),
-        callEventSkipReason: FieldValue.delete(),
+        callEventSkipReason: "conversation_pair_mismatch",
         callEventErrorCode: FieldValue.delete(),
         callEventErrorMessage: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
+    return { status: "skipped_conversation_pair_mismatch" };
+  }
 
-    return {
-      status: messageSnap.exists ? "already_exists" : "created",
-      messageRef,
-    };
-  });
+  if (writerResult.status === "skipped") {
+    return writerResult;
+  }
+
+  await eventRef.set(
+    {
+      callEventMessageRef: writerResult.messageRef,
+      callEventWrittenAt: FieldValue.serverTimestamp(),
+      callEventSkipReason: FieldValue.delete(),
+      callEventErrorCode: FieldValue.delete(),
+      callEventErrorMessage: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  return {
+    status: writerResult.status === "created" ? "created" : "already_exists",
+    messageRef: writerResult.messageRef,
+  };
 }
 
 async function maybeWriteCallEventForProcessedOutcome({

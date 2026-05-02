@@ -1,6 +1,10 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
+const {
+  CALL_EVENT_OUTCOME_MISSED,
+  ensureConversationCallEventForSession,
+} = require("./chats_shared");
 const { isSupportedSessionRole } = require("./video_sessions_shared");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
@@ -132,6 +136,25 @@ exports.declineCall = functions
         });
         await batch.commit();
         console.log("✅ Notification marked as declined");
+      }
+
+      try {
+        await ensureConversationCallEventForSession({
+          db: admin.firestore(),
+          sessionId,
+          sessionRef: admin.firestore()
+            .collection("videoSessions")
+            .doc(sessionId),
+          sessionData: {
+            ...sessionData,
+            currentTutorId: tutorId,
+          },
+          callOutcome: CALL_EVENT_OUTCOME_MISSED,
+          eventMillis: Date.now(),
+          partnerId: tutorId,
+        });
+      } catch (error) {
+        console.error("⚠️ Failed to create declined call event:", error);
       }
 
       // Отправляем уведомление следующему преподавателю

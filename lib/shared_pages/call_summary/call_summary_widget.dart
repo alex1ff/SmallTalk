@@ -572,6 +572,89 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     );
   }
 
+  Widget _buildSummaryActionButton(
+    BuildContext context, {
+    required bool isActive,
+    required IconData icon,
+    required String text,
+    required VoidCallback onTap,
+    required Color activeBackgroundColor,
+    required Color activeIconColor,
+  }) {
+    return InkWell(
+      splashColor: Colors.transparent,
+      focusColor: Colors.transparent,
+      hoverColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      onTap: onTap,
+      child: Container(
+        height: 60,
+        decoration: BoxDecoration(
+          color: valueOrDefault<Color>(
+            isActive
+                ? activeBackgroundColor
+                : FlutterFlowTheme.of(context).primaryBackground,
+            FlutterFlowTheme.of(context).primaryBackground,
+          ),
+          borderRadius: BorderRadius.circular(55),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: Row(
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: valueOrDefault<Color>(
+                    isActive
+                        ? FlutterFlowTheme.of(context).primaryBackground
+                        : FlutterFlowTheme.of(context).secondaryBackground,
+                    FlutterFlowTheme.of(context).secondaryBackground,
+                  ),
+                  borderRadius: BorderRadius.circular(55),
+                ),
+                child: Icon(
+                  icon,
+                  color: valueOrDefault<Color>(
+                    isActive
+                        ? activeIconColor
+                        : FlutterFlowTheme.of(context).secondaryText,
+                    FlutterFlowTheme.of(context).secondaryText,
+                  ),
+                  size: 20,
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(12, 0, 16, 0),
+                  child: Text(
+                    text,
+                    maxLines: 1,
+                    overflow: TextOverflow.fade,
+                    softWrap: false,
+                    style: FlutterFlowTheme.of(context).bodyMedium.override(
+                          fontFamily: 'sf pro display',
+                          color: valueOrDefault<Color>(
+                            isActive
+                                ? FlutterFlowTheme.of(context).primaryBackground
+                                : FlutterFlowTheme.of(context).primaryText,
+                            FlutterFlowTheme.of(context).primaryText,
+                          ),
+                          fontSize: 15,
+                          letterSpacing: 0.0,
+                        ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isKeyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
@@ -695,253 +778,90 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                             Padding(
                               padding:
                                   EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.max,
-                                children: [
-                                  if ((currentUserDocument?.role ==
-                                          UserRole.student) &&
-                                      !effectiveBlack)
-                                    Expanded(
-                                      child: Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            0, 0, 6, 0),
-                                        child: InkWell(
-                                          splashColor: Colors.transparent,
-                                          focusColor: Colors.transparent,
-                                          hoverColor: Colors.transparent,
-                                          highlightColor: Colors.transparent,
-                                          onTap: () async {
-                                            _model.favTouched = true;
-                                            _model.fav = !effectiveFav;
-                                            safeSetState(() {});
-                                          },
-                                          child: Container(
-                                            width: 222,
-                                            height: 60,
-                                            decoration: BoxDecoration(
-                                              color: valueOrDefault<Color>(
-                                                effectiveFav
-                                                    ? FlutterFlowTheme.of(
-                                                            context)
-                                                        .primary
-                                                    : FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryBackground,
-                                                FlutterFlowTheme.of(context)
-                                                    .primaryBackground,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(55),
-                                            ),
-                                            child: Padding(
-                                              padding: EdgeInsets.all(2),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.max,
-                                                children: [
-                                                  Container(
-                                                    width: 56,
-                                                    height: 56,
-                                                    decoration: BoxDecoration(
-                                                      color:
-                                                          valueOrDefault<Color>(
-                                                        effectiveFav
-                                                            ? FlutterFlowTheme
-                                                                    .of(context)
-                                                                .primaryBackground
-                                                            : FlutterFlowTheme
-                                                                    .of(context)
-                                                                .secondaryBackground,
-                                                        FlutterFlowTheme.of(
-                                                                context)
-                                                            .secondaryBackground,
-                                                      ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              55),
-                                                    ),
-                                                    child: Icon(
-                                                      FFIcons.kheart,
-                                                      color:
-                                                          valueOrDefault<Color>(
-                                                        effectiveFav
-                                                            ? FlutterFlowTheme
-                                                                    .of(context)
-                                                                .error
-                                                            : FlutterFlowTheme
-                                                                    .of(context)
-                                                                .secondaryText,
-                                                        FlutterFlowTheme.of(
-                                                                context)
-                                                            .secondaryText,
-                                                      ),
-                                                      size: 20,
-                                                    ),
-                                                  ),
-                                                  Expanded(
-                                                    child: Padding(
-                                                      padding:
-                                                          EdgeInsetsDirectional
-                                                              .fromSTEB(
-                                                                  12, 0, 0, 0),
-                                                      child: Text(
-                                                        FFLocalizations.of(
-                                                                context)
-                                                            .getVariableText(
-                                                          ruText: effectiveFav
-                                                              ? 'Убрать из друзей'
-                                                              : 'Добавить в друзья',
-                                                          enText: effectiveFav
-                                                              ? 'Remove from friends'
-                                                              : 'Add to friends',
-                                                        ),
-                                                        style:
-                                                            FlutterFlowTheme.of(
-                                                                    context)
-                                                                .bodyMedium
-                                                                .override(
-                                                                  fontFamily:
-                                                                      'sf pro display',
-                                                                  color:
-                                                                      valueOrDefault<
-                                                                          Color>(
-                                                                    effectiveFav
-                                                                        ? FlutterFlowTheme.of(context)
-                                                                            .primaryBackground
-                                                                        : FlutterFlowTheme.of(context)
-                                                                            .primaryText,
-                                                                    FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .primaryText,
-                                                                  ),
-                                                                  fontSize: 15,
-                                                                  letterSpacing:
-                                                                      0.0,
-                                                                ),
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final showsFriendAction =
+                                      (currentUserDocument?.role ==
+                                              UserRole.student) &&
+                                          !effectiveBlack;
+                                  final useVerticalActions =
+                                      showsFriendAction &&
+                                          constraints.maxWidth < 430.0;
+                                  final friendAction =
+                                      _buildSummaryActionButton(
+                                    context,
+                                    isActive: effectiveFav,
+                                    icon: FFIcons.kheart,
+                                    text: FFLocalizations.of(context)
+                                        .getVariableText(
+                                      ruText: effectiveFav
+                                          ? 'Убрать из друзей'
+                                          : 'Добавить в друзья',
+                                      enText: effectiveFav
+                                          ? 'Remove from friends'
+                                          : 'Add to friends',
                                     ),
-                                  Expanded(
-                                    child: InkWell(
-                                      splashColor: Colors.transparent,
-                                      focusColor: Colors.transparent,
-                                      hoverColor: Colors.transparent,
-                                      highlightColor: Colors.transparent,
-                                      onTap: () async {
-                                        _model.blackTouched = true;
-                                        _model.black = !effectiveBlack;
-                                        if (_model.black) {
-                                          _model.favTouched = true;
-                                          _model.fav = false;
-                                        }
-                                        safeSetState(() {});
-                                      },
-                                      child: Container(
-                                        width: 222,
-                                        height: 60,
-                                        decoration: BoxDecoration(
-                                          color: valueOrDefault<Color>(
-                                            effectiveBlack
-                                                ? FlutterFlowTheme.of(context)
-                                                    .error
-                                                : FlutterFlowTheme.of(context)
-                                                    .primaryBackground,
-                                            FlutterFlowTheme.of(context)
-                                                .primaryBackground,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(55),
-                                        ),
-                                        child: Padding(
-                                          padding: EdgeInsets.all(2),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.max,
-                                            children: [
-                                              Container(
-                                                width: 56,
-                                                height: 56,
-                                                decoration: BoxDecoration(
-                                                  color: valueOrDefault<Color>(
-                                                    effectiveBlack
-                                                        ? FlutterFlowTheme.of(
-                                                                context)
-                                                            .primaryBackground
-                                                        : FlutterFlowTheme.of(
-                                                                context)
-                                                            .secondaryBackground,
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryBackground,
-                                                  ),
-                                                  borderRadius:
-                                                      BorderRadius.circular(55),
-                                                ),
-                                                child: Icon(
-                                                  FFIcons.kthumbsDown,
-                                                  color: valueOrDefault<Color>(
-                                                    effectiveBlack
-                                                        ? FlutterFlowTheme.of(
-                                                                context)
-                                                            .error
-                                                        : FlutterFlowTheme.of(
-                                                                context)
-                                                            .secondaryText,
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                  ),
-                                                  size: 20,
-                                                ),
-                                              ),
-                                              Expanded(
-                                                child: Padding(
-                                                  padding: EdgeInsetsDirectional
-                                                      .fromSTEB(12, 0, 0, 0),
-                                                  child: Text(
-                                                    FFLocalizations.of(context)
-                                                        .getText(
-                                                      'kth7l1fn' /* Не соединять */,
-                                                    ),
-                                                    style: FlutterFlowTheme.of(
-                                                            context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily:
-                                                              'sf pro display',
-                                                          color: valueOrDefault<
-                                                              Color>(
-                                                            effectiveBlack
-                                                                ? FlutterFlowTheme.of(
-                                                                        context)
-                                                                    .primaryBackground
-                                                                : FlutterFlowTheme.of(
-                                                                        context)
-                                                                    .primaryText,
-                                                            FlutterFlowTheme.of(
-                                                                    context)
-                                                                .primaryText,
-                                                          ),
-                                                          fontSize: 15,
-                                                          letterSpacing: 0.0,
-                                                        ),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
+                                    activeBackgroundColor:
+                                        FlutterFlowTheme.of(context).primary,
+                                    activeIconColor:
+                                        FlutterFlowTheme.of(context).error,
+                                    onTap: () {
+                                      _model.favTouched = true;
+                                      _model.fav = !effectiveFav;
+                                      safeSetState(() {});
+                                    },
+                                  );
+                                  final blockAction = _buildSummaryActionButton(
+                                    context,
+                                    isActive: effectiveBlack,
+                                    icon: FFIcons.kthumbsDown,
+                                    text: FFLocalizations.of(context).getText(
+                                      'kth7l1fn' /* Не соединять */,
                                     ),
-                                  ),
-                                ],
+                                    activeBackgroundColor:
+                                        FlutterFlowTheme.of(context).error,
+                                    activeIconColor:
+                                        FlutterFlowTheme.of(context).error,
+                                    onTap: () {
+                                      _model.blackTouched = true;
+                                      _model.black = !effectiveBlack;
+                                      if (_model.black) {
+                                        _model.favTouched = true;
+                                        _model.fav = false;
+                                      }
+                                      safeSetState(() {});
+                                    },
+                                  );
+
+                                  if (useVerticalActions) {
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (showsFriendAction) friendAction,
+                                        if (showsFriendAction)
+                                          const SizedBox(height: 12.0),
+                                        blockAction,
+                                      ],
+                                    );
+                                  }
+
+                                  return Row(
+                                    mainAxisSize: MainAxisSize.max,
+                                    children: [
+                                      if (showsFriendAction)
+                                        Expanded(
+                                          child: Padding(
+                                            padding: const EdgeInsetsDirectional
+                                                .only(end: 6.0),
+                                            child: friendAction,
+                                          ),
+                                        ),
+                                      if (showsFriendAction)
+                                        const SizedBox(width: 6.0),
+                                      Expanded(child: blockAction),
+                                    ],
+                                  );
+                                },
                               ),
                             ),
                           ].addToStart(SizedBox(height: 115)).addToEnd(
@@ -978,106 +898,115 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                 child: wrapWithModel(
                                   model: _model.buttonModel,
                                   updateCallback: () => safeSetState(() {}),
-                                  child: ButtonWidget(
-                                    text: FFLocalizations.of(context).getText(
-                                      'duynuhus' /* Готово */,
-                                    ),
-                                    loadingText: FFLocalizations.of(context)
-                                        .getVariableText(
-                                      ruText: 'Сохраняем...',
-                                      enText: 'Saving...',
-                                    ),
-                                    busyStyle: ButtonBusyStyle.spinner,
-                                    keyboardAwarePadding: false,
-                                    padding:
-                                        const EdgeInsetsDirectional.fromSTEB(
-                                            6.0, 0.0, 6.0, 35.0),
-                                    action: () async {
-                                      if (_model.rait != 0) {
-                                        final sessionRef = widget.sessionID;
-                                        final toUserRef = widget.userRef;
-                                        if (sessionRef == null ||
-                                            toUserRef == null) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                FFLocalizations.of(context)
-                                                    .getVariableText(
-                                                  ruText:
-                                                      'Не удалось отправить отзыв: отсутствуют данные сессии.',
-                                                  enText:
-                                                      'Unable to submit review: missing session data.',
+                                  child: Center(
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 360.0,
+                                      ),
+                                      child: ButtonWidget(
+                                        text:
+                                            FFLocalizations.of(context).getText(
+                                          'duynuhus' /* Готово */,
+                                        ),
+                                        loadingText: FFLocalizations.of(context)
+                                            .getVariableText(
+                                          ruText: 'Сохраняем...',
+                                          enText: 'Saving...',
+                                        ),
+                                        busyStyle: ButtonBusyStyle.spinner,
+                                        keyboardAwarePadding: false,
+                                        padding: const EdgeInsetsDirectional
+                                            .fromSTEB(6.0, 0.0, 6.0, 35.0),
+                                        action: () async {
+                                          if (_model.rait != 0) {
+                                            final sessionRef = widget.sessionID;
+                                            final toUserRef = widget.userRef;
+                                            if (sessionRef == null ||
+                                                toUserRef == null) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    FFLocalizations.of(context)
+                                                        .getVariableText(
+                                                      ruText:
+                                                          'Не удалось отправить отзыв: отсутствуют данные сессии.',
+                                                      enText:
+                                                          'Unable to submit review: missing session data.',
+                                                    ),
+                                                  ),
                                                 ),
-                                              ),
-                                            ),
-                                          );
-                                          return;
-                                        }
+                                              );
+                                              return;
+                                            }
 
-                                        try {
-                                          final result =
-                                              await submitSessionReview(
-                                            sessionRef: sessionRef,
-                                            toUserRef: toUserRef,
-                                            rating: _model.rait,
-                                            isTeacher:
-                                                currentUserDocument?.role ==
-                                                    UserRole.native_speaker,
-                                            comment: _model
-                                                .aboutMeTextController.text,
-                                          );
-                                          _model.reviewRefOverride =
-                                              result.reviewRef;
-                                          _model.rait = 0;
-                                          _model.aboutMeTextController?.clear();
-                                          FocusScope.of(context).unfocus();
-                                          safeSetState(() {});
-                                        } on FirebaseFunctionsException catch (e) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                reviewErrorMessage(context, e),
+                                            try {
+                                              final result =
+                                                  await submitSessionReview(
+                                                sessionRef: sessionRef,
+                                                toUserRef: toUserRef,
+                                                rating: _model.rait,
+                                                isTeacher:
+                                                    currentUserDocument?.role ==
+                                                        UserRole.native_speaker,
+                                                comment: _model
+                                                    .aboutMeTextController.text,
+                                              );
+                                              _model.reviewRefOverride =
+                                                  result.reviewRef;
+                                              _model.rait = 0;
+                                              _model.aboutMeTextController
+                                                  ?.clear();
+                                              FocusScope.of(context).unfocus();
+                                              safeSetState(() {});
+                                            } on FirebaseFunctionsException catch (e) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    reviewErrorMessage(
+                                                        context, e),
+                                                  ),
+                                                ),
+                                              );
+                                              return;
+                                            } catch (_) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    unexpectedReviewErrorMessage(
+                                                        context),
+                                                  ),
+                                                ),
+                                              );
+                                              return;
+                                            }
+                                          }
+                                          if (effectiveBlack) {
+                                            await currentUserReference!.update({
+                                              ...buildBlockAndRemoveFriendUpdateData(
+                                                widget.userRef!,
                                               ),
-                                            ),
-                                          );
-                                          return;
-                                        } catch (_) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                unexpectedReviewErrorMessage(
-                                                    context),
+                                            });
+                                          } else if (effectiveFav) {
+                                            await currentUserReference!.update({
+                                              ...buildAddFriendUpdateData(
+                                                widget.userRef!,
                                               ),
-                                            ),
-                                          );
-                                          return;
-                                        }
-                                      }
-                                      if (effectiveBlack) {
-                                        await currentUserReference!.update({
-                                          ...buildBlockAndRemoveFriendUpdateData(
-                                            widget.userRef!,
-                                          ),
-                                        });
-                                      } else if (effectiveFav) {
-                                        await currentUserReference!.update({
-                                          ...buildAddFriendUpdateData(
-                                            widget.userRef!,
-                                          ),
-                                        });
-                                      } else if (initiallyFavorite) {
-                                        await currentUserReference!.update({
-                                          ...buildRemoveFriendUpdateData(
-                                            widget.userRef!,
-                                          ),
-                                        });
-                                      }
+                                            });
+                                          } else if (initiallyFavorite) {
+                                            await currentUserReference!.update({
+                                              ...buildRemoveFriendUpdateData(
+                                                widget.userRef!,
+                                              ),
+                                            });
+                                          }
 
-                                      _navigateToHome();
-                                    },
+                                          _navigateToHome();
+                                        },
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),

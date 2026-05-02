@@ -55,7 +55,7 @@ void main() {
 
     expect(find.text('Видео-звонок'), findsOneWidget);
     expect(find.text('Сегодня, 18:30 • 12 мин'), findsOneWidget);
-    expect(find.byIcon(Icons.videocam_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.phone_rounded), findsOneWidget);
 
     await tester.tap(find.byType(ChatCallEventCard));
     await tester.pump();

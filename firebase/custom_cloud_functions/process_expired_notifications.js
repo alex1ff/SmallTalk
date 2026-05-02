@@ -1,6 +1,10 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
+const {
+  CALL_EVENT_OUTCOME_MISSED,
+  ensureConversationCallEventForSession,
+} = require("./chats_shared");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 
@@ -148,6 +152,22 @@ async function processExpiredSession(sessionId) {
     console.log(
       `👨‍🏫 Current tutor ${transition.timedOutTutorId} did not respond - searching next`,
     );
+    try {
+      await ensureConversationCallEventForSession({
+        db: admin.firestore(),
+        sessionId,
+        sessionRef,
+        sessionData: {
+          ...(transition.sessionData || {}),
+          currentTutorId: transition.timedOutTutorId,
+        },
+        callOutcome: CALL_EVENT_OUTCOME_MISSED,
+        eventMillis: Date.now(),
+        partnerId: transition.timedOutTutorId,
+      });
+    } catch (error) {
+      console.error("⚠️ Failed to create missed call event:", error);
+    }
     await sendNotificationToNextTutor(sessionId, transition.sessionData || {});
     console.log(`✅ Session ${sessionId} processed successfully`);
   } catch (error) {

@@ -1385,9 +1385,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     final sessionId = widget.sessionId?.trim();
-    if (sessionId == null ||
-        sessionId.isEmpty ||
-        _ownSentChatMessages.isEmpty) {
+    if (sessionId == null || sessionId.isEmpty) {
       _persistCallChatCompleted = true;
       return;
     }

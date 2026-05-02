@@ -2,6 +2,7 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
   buildUnlockEventPayload,
+  ensureConversationCallEventForSession,
   getUnlockEligibility,
 } = require("./chats_shared");
 const {
@@ -415,6 +416,20 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     };
 
     await attemptConversationUnlockEventWrite(db, sessionId);
+    try {
+      const endedSessionRef = db.collection("videoSessions").doc(sessionId);
+      const endedSessionSnap = await endedSessionRef.get();
+      if (endedSessionSnap.exists) {
+        await ensureConversationCallEventForSession({
+          db,
+          sessionId,
+          sessionRef: endedSessionRef,
+          sessionData: endedSessionSnap.data() || {},
+        });
+      }
+    } catch (error) {
+      console.error("⚠️ Failed to create conversation call event:", error);
+    }
 
     // ─── BACKGROUND OPERATIONS (non-blocking for UX) ──────────────────────
     console.log("📊 Running background billing, stats & notifications...");

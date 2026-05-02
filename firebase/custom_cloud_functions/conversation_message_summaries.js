@@ -217,7 +217,10 @@ async function repairConversationSummary(conversationRef) {
       conversationData.lastMessageType === newestMessageData.type &&
       conversationData.lastMessageId === newestMessageDoc.id &&
       conversationData.lastMessageText === newestMessageData.text &&
-      conversationData.lastMessageSenderId === newestMessageData.senderId
+      conversationData.lastMessageSenderId === newestMessageData.senderId &&
+      conversationData.lastCallOutcome === newestMessageData.callOutcome &&
+      conversationData.lastCallCallerId === newestMessageData.callerId &&
+      conversationData.lastCallRecipientId === newestMessageData.recipientId
     ) {
       return null;
     }

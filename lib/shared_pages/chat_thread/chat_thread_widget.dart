@@ -152,6 +152,38 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     }
   }
 
+  Future<void> _toggleFriend(
+      DocumentReference partnerRef, bool isFriend) async {
+    final currentRef = currentUserReference;
+    if (currentRef == null) {
+      return;
+    }
+
+    try {
+      await currentRef.update(
+        isFriend
+            ? buildRemoveFriendUpdateData(partnerRef)
+            : buildAddFriendUpdateData(partnerRef),
+      );
+    } catch (error) {
+      debugPrint(
+          'Failed to update friend state for ${partnerRef.path}: $error');
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Не удалось обновить список друзей.',
+              enText: 'Unable to update friends.',
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
   String _formatMessageTimestamp(DateTime? timestamp) {
     if (timestamp == null) {
       return '';
@@ -296,26 +328,68 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   }
 
   String _formatCallEventDetails(MessagesRecord message) {
+    final eventAt = message.callEndedAt ?? message.createdAt;
     final startedAtLabel = formatSessionStartedAtFromDateTime(
       context,
-      message.callStartedAt,
+      eventAt ?? message.callStartedAt,
     );
-    final durationLabel =
-        formatDurationLabel(context, message.callDurationSeconds);
+    final isMissed = message.callOutcome == kConversationCallOutcomeMissed;
+    final isCancelled =
+        message.callOutcome == kConversationCallOutcomeCancelled;
+    final durationLabel = isMissed
+        ? '—'
+        : isCancelled && message.callDurationSeconds <= 0
+            ? FFLocalizations.of(context).getVariableText(
+                ruText: '0 сек.',
+                enText: '0 sec.',
+              )
+            : formatDurationLabel(context, message.callDurationSeconds);
 
-    if (message.hasCallStartedAt() && message.hasCallDurationSeconds()) {
-      return '$startedAtLabel • $durationLabel';
+    return '$startedAtLabel • $durationLabel';
+  }
+
+  String _callEventTitle(MessagesRecord message) {
+    final outcome = message.callOutcome;
+    if (outcome == kConversationCallOutcomeCancelled) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Отменённый звонок',
+        enText: 'Cancelled call',
+      );
     }
 
-    if (message.hasCallStartedAt()) {
-      return startedAtLabel;
+    if (outcome == kConversationCallOutcomeMissed) {
+      final currentUserWasCaller = message.callerId == currentUserUid;
+      return FFLocalizations.of(context).getVariableText(
+        ruText: currentUserWasCaller ? 'Без ответа' : 'Пропущенный звонок',
+        enText: currentUserWasCaller ? 'No answer' : 'Missed call',
+      );
     }
 
-    if (message.hasCallDurationSeconds()) {
-      return durationLabel;
-    }
+    final currentUserWasCaller = message.callerId == currentUserUid;
+    return FFLocalizations.of(context).getVariableText(
+      ruText: currentUserWasCaller ? 'Исходящий звонок' : 'Входящий звонок',
+      enText: currentUserWasCaller ? 'Outgoing call' : 'Incoming call',
+    );
+  }
 
-    return _formatMessageTimestamp(message.createdAt);
+  IconData _callEventIcon(MessagesRecord message) {
+    if (message.callOutcome == kConversationCallOutcomeCancelled) {
+      return Icons.phone_callback_rounded;
+    }
+    if (message.callOutcome == kConversationCallOutcomeMissed) {
+      return Icons.phone_missed_rounded;
+    }
+    return message.callerId == currentUserUid
+        ? Icons.call_made_rounded
+        : Icons.call_received_rounded;
+  }
+
+  Color _callEventIconColor(MessagesRecord message) {
+    if (message.callOutcome == kConversationCallOutcomeCancelled ||
+        message.callOutcome == kConversationCallOutcomeMissed) {
+      return FlutterFlowTheme.of(context).error;
+    }
+    return FlutterFlowTheme.of(context).primary;
   }
 
   Widget _buildCallEventMessageCard(
@@ -323,11 +397,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required MessagesRecord message,
   }) {
     return ChatCallEventCard(
-      title: FFLocalizations.of(context).getVariableText(
-        ruText: 'Видео-звонок',
-        enText: 'Video call',
-      ),
+      title: _callEventTitle(message),
       details: _formatCallEventDetails(message),
+      icon: _callEventIcon(message),
+      iconColor: _callEventIconColor(message),
       onTap: () => _openCallEvent(message),
     );
   }
@@ -392,6 +465,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   Widget _buildHeader(
     BuildContext context, {
     required UsersRecord partner,
+    required bool isFriend,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -452,16 +526,70 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
             Expanded(
               child: Padding(
                 padding: const EdgeInsetsDirectional.only(start: 12.0),
-                child: Text(
-                  partner.displayName,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        partner.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: FlutterFlowTheme.of(context).bodyMedium.override(
+                              fontFamily: 'Cool',
+                              fontSize: 18.0,
+                              letterSpacing: 0.0,
+                              fontWeight: FontWeight.normal,
+                            ),
+                      ),
+                    ),
+                    if (isFriend)
+                      const Padding(
+                        padding: EdgeInsetsDirectional.only(start: 5.0),
+                        child: Icon(
+                          Icons.star_rounded,
+                          color: Color(0xFFFFC107),
+                          size: 20.0,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 174.0),
+              child: OutlinedButton.icon(
+                onPressed: () => _toggleFriend(partner.reference, isFriend),
+                icon: Icon(
+                  isFriend
+                      ? Icons.person_remove_alt_1_rounded
+                      : Icons.person_add_alt_1_rounded,
+                  size: 18.0,
+                ),
+                label: Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: isFriend ? 'Убрать из друзей' : 'Добавить в друзья',
+                    enText: isFriend ? 'Remove friend' : 'Add friend',
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'Cool',
-                        fontSize: 18.0,
-                        letterSpacing: 0.0,
-                        fontWeight: FontWeight.normal,
-                      ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: FlutterFlowTheme.of(context).secondaryText,
+                  side: BorderSide(
+                    color: FlutterFlowTheme.of(context).primaryBackground,
+                  ),
+                  backgroundColor: FlutterFlowTheme.of(context)
+                      .secondaryBackground
+                      .withValues(alpha: 0.45),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18.0),
+                  ),
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                    10.0,
+                    8.0,
+                    12.0,
+                    8.0,
+                  ),
                 ),
               ),
             ),
@@ -548,6 +676,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
               }
 
               final partner = partnerSnapshot.data!;
+              final isFriend = userHasFriend(
+                currentUserDocument,
+                partner.reference,
+              );
 
               return Scaffold(
                 key: scaffoldKey,
@@ -560,7 +692,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                           6.0, 0.0, 6.0, 0.0),
                       child: Column(
                         children: [
-                          _buildHeader(context, partner: partner),
+                          _buildHeader(
+                            context,
+                            partner: partner,
+                            isFriend: isFriend,
+                          ),
                           Expanded(
                             child: StreamBuilder<List<MessagesRecord>>(
                               stream: queryMessagesRecord(

@@ -4,6 +4,11 @@ const admin = require("firebase-admin");
 const {Timestamp} = require("firebase-admin/firestore");
 
 const {
+  CALL_EVENT_OUTCOME_COMPLETED,
+  buildCallEventMessageId,
+} = require("./chats_shared");
+
+const {
   __private__: {
     assertPersistEligibility,
     buildPersistCallChatMessages,
@@ -172,11 +177,56 @@ test("persistCallChatForUser upserts conversation and is idempotent", async () =
 
   assert.equal(first.status, "persisted");
   assert.equal(first.written, 1);
+  assert.equal(first.callEventStatus, "created");
   assert.equal(second.status, "already_persisted");
+  assert.equal(second.callEventStatus, "already_exists");
   assert.equal(second.skipped, 1);
   assert.equal(store.get("conversations/student_teacher").isUnlocked, true);
   assert.equal(
+    store.get("conversations/student_teacher").lastMessageType,
+    "call_event",
+  );
+  assert.equal(
+    store.get("conversations/student_teacher").lastCallOutcome,
+    CALL_EVENT_OUTCOME_COMPLETED,
+  );
+  assert.equal(
+    store.get(
+      "conversations/student_teacher/messages/" +
+        buildCallEventMessageId("session-1", CALL_EVENT_OUTCOME_COMPLETED),
+    ).callOutcome,
+    CALL_EVENT_OUTCOME_COMPLETED,
+  );
+  assert.equal(
     store.get("conversations/student_teacher/messages/incall_session-1_student_m1").text,
     "hello",
+  );
+});
+
+test("persistCallChatForUser creates call event even without in-call text", async () => {
+  const {db, store} = createFakeFirestore({
+    "videoSessions/session-1": qualifyingSessionData(),
+  });
+
+  const result = await persistCallChatForUser({
+    db,
+    userId: "student",
+    sessionId: "session-1",
+    messages: [],
+    nowMillis: Date.parse("2026-04-19T09:05:10Z"),
+  });
+
+  assert.equal(result.status, "call_event_persisted");
+  assert.equal(result.written, 0);
+  assert.equal(
+    store.get("conversations/student_teacher").lastMessageType,
+    "call_event",
+  );
+  assert.equal(
+    store.has(
+      "conversations/student_teacher/messages/" +
+        buildCallEventMessageId("session-1", CALL_EVENT_OUTCOME_COMPLETED),
+    ),
+    true,
   );
 });
