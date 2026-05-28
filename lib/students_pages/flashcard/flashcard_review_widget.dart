@@ -299,14 +299,9 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
     final primaryTextColor = ExpatlioDesign.text;
     final secondaryTextColor = ExpatlioDesign.muted;
     final accentColor = ExpatlioDesign.primary;
-    final sourceWordVisible = flashcardIsSourceWordVisible(
-      direction: entry.direction,
-      isAnswerVisible: _isAnswerVisible,
-    );
-    final selectedExampleText =
-        entry.selectedExampleText ?? entry.exampleSource ?? '';
-    final selectedExampleTranslation =
-        entry.selectedExampleTranslation ?? entry.exampleTranslation ?? '';
+    final hasSourceMetadata =
+        (entry.sourceTranscription?.trim().isNotEmpty ?? false) ||
+            entry.sourceSynonyms.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -396,123 +391,53 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                               fontWeight: FontWeight.w700,
                             ),
                       ),
-                      if (entry.direction == FlashcardPromptDirection.enToRu &&
-                          sourceWordVisible) ...[
+                      if (hasSourceMetadata) ...[
                         const SizedBox(height: 10.0),
                         _buildSourceMetadata(context, entry),
                       ],
-                      const SizedBox(height: 18.0),
-                      Text(
-                        _isAnswerVisible
-                            ? FFLocalizations.of(context).getVariableText(
-                                ruText: 'Правильный ответ',
-                                enText: 'Correct answer',
-                              )
-                            : FFLocalizations.of(context).getVariableText(
-                                ruText:
-                                    'Ответ можно открыть по иконке глаза, но это не обязательно.',
-                                enText:
-                                    'You can open the answer with the eye icon, but it is optional.',
-                              ),
-                        textAlign: TextAlign.center,
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'sf pro display',
-                              color: secondaryTextColor,
-                              fontSize: 15.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FontWeight.normal,
-                            ),
-                      ),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOut,
+                      const SizedBox(height: 28.0),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 160),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
                         child: _isAnswerVisible
-                            ? Column(
-                                children: [
-                                  const SizedBox(height: 24.0),
-                                  Container(
-                                    width: 48.0,
-                                    height: 1.0,
-                                    color: secondaryTextColor.withValues(
-                                      alpha: 0.2,
+                            ? Text(
+                                key: const Key('flashcardAnswerText'),
+                                entry.answerText,
+                                textAlign: TextAlign.center,
+                                style: FlutterFlowTheme.of(context)
+                                    .bodyMedium
+                                    .override(
+                                      fontFamily: 'sf pro display',
+                                      color: accentColor,
+                                      fontSize: 20.0,
+                                      letterSpacing: 0.0,
+                                      fontWeight: FontWeight.w700,
                                     ),
-                                  ),
-                                  const SizedBox(height: 24.0),
-                                  Text(
-                                    key: const Key('flashcardAnswerText'),
-                                    entry.answerText,
-                                    textAlign: TextAlign.center,
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: primaryTextColor,
-                                          fontSize: 30.0,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                  ),
-                                  if (entry.direction ==
-                                          FlashcardPromptDirection.ruToEn &&
-                                      sourceWordVisible) ...[
-                                    const SizedBox(height: 10.0),
-                                    _buildSourceMetadata(context, entry),
-                                  ],
-                                  if (selectedExampleText.isNotEmpty) ...[
-                                    const SizedBox(height: 24.0),
-                                    Container(
-                                      key: const Key('flashcardExampleBlock'),
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.all(16.0),
-                                      decoration: BoxDecoration(
-                                        color: ExpatlioDesign.background,
-                                        borderRadius:
-                                            BorderRadius.circular(18.0),
-                                      ),
-                                      child: Column(
-                                        children: [
-                                          Text(
-                                            selectedExampleText,
-                                            textAlign: TextAlign.center,
-                                            style: FlutterFlowTheme.of(context)
-                                                .bodyMedium
-                                                .override(
-                                                  fontFamily: 'sf pro display',
-                                                  color: primaryTextColor,
-                                                  fontSize: 16.0,
-                                                  letterSpacing: 0.0,
-                                                  fontWeight: FontWeight.w500,
-                                                  fontStyle: FontStyle.italic,
-                                                ),
-                                          ),
-                                          if (selectedExampleTranslation
-                                              .isNotEmpty) ...[
-                                            const SizedBox(height: 8.0),
-                                            Text(
-                                              selectedExampleTranslation,
-                                              textAlign: TextAlign.center,
-                                              style:
-                                                  FlutterFlowTheme.of(context)
-                                                      .bodyMedium
-                                                      .override(
-                                                        fontFamily:
-                                                            'sf pro display',
-                                                        color:
-                                                            secondaryTextColor,
-                                                        fontSize: 15.0,
-                                                        letterSpacing: 0.0,
-                                                        fontWeight:
-                                                            FontWeight.normal,
-                                                      ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ],
                               )
-                            : const SizedBox.shrink(),
+                            : ConstrainedBox(
+                                key: const Key('flashcardAnswerHint'),
+                                constraints:
+                                    const BoxConstraints(maxWidth: 320.0),
+                                child: Text(
+                                  FFLocalizations.of(context).getVariableText(
+                                    ruText:
+                                        'Ответ можно открыть по иконке глаза, но это не обязательно.',
+                                    enText:
+                                        'You can open the answer with the eye icon, but it is optional.',
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        color: secondaryTextColor,
+                                        fontSize: 15.0,
+                                        letterSpacing: 0.0,
+                                        fontWeight: FontWeight.normal,
+                                      ),
+                                ),
+                              ),
                       ),
                     ],
                   ),
