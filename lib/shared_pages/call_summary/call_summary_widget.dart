@@ -6,6 +6,7 @@ import '/components/review_card/review_card_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/index.dart';
 import '/services/user_match_profile.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -51,11 +52,19 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => CallSummaryModel());
-    _model.userFuture = UsersRecord.getDocumentOnce(widget.userRef!);
+    _model.userFuture = _createUserFuture();
 
     _model.aboutMeTextController ??= TextEditingController();
     _model.aboutMeFocusNode ??= FocusNode();
     _model.aboutMeFocusNode!.addListener(() => safeSetState(() {}));
+  }
+
+  @override
+  void didUpdateWidget(covariant CallSummaryWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userRef?.path != widget.userRef?.path) {
+      _model.userFuture = _createUserFuture();
+    }
   }
 
   @override
@@ -110,6 +119,35 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
         ? language.nameEn
         : valueOrDefault<String>(widget.lang, '-');
   }
+
+  Future<UserPublicProfilesRecord?> _createUserFuture() {
+    final userRef = widget.userRef;
+    if (userRef == null) {
+      return Future.value(null);
+    }
+
+    return UserPublicProfilesRecord.maybeGetDocumentOnce(
+      UserPublicProfilesRecord.collection.doc(userRef.id),
+    );
+  }
+
+  String _summaryUserDisplayName(
+    BuildContext context,
+    UserPublicProfilesRecord? user,
+  ) {
+    final displayName = user?.displayName.trim();
+    if (displayName != null && displayName.isNotEmpty) {
+      return displayName;
+    }
+
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Пользователь',
+      enText: 'User',
+    );
+  }
+
+  String _summaryUserPhotoUrl(UserPublicProfilesRecord? user) =>
+      user?.photoUrl.trim() ?? '';
 
   bool _referenceListContains(
     Iterable<DocumentReference>? references,
@@ -174,8 +212,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
+        color: ExpatlioDesign.card,
+        borderRadius: BorderRadius.circular(16.0),
       ),
       alignment: Alignment.center,
       child: const Padding(
@@ -294,8 +332,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            color: FlutterFlowTheme.of(context).primaryBackground,
-            borderRadius: BorderRadius.circular(26.0),
+            color: ExpatlioDesign.card,
+            borderRadius: BorderRadius.circular(16.0),
           ),
           alignment: const AlignmentDirectional(0.0, 0.0),
           child: Padding(
@@ -469,8 +507,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
               textCapitalization: TextCapitalization.sentences,
               textInputAction: TextInputAction.done,
               obscureText: false,
-              decoration: InputDecoration(
-                isDense: false,
+              decoration: ExpatlioDesign.formFieldDecoration(
+                context,
                 hintText: valueOrDefault<String>(
                   reviewCommentHintText(
                     context,
@@ -478,53 +516,12 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                   ),
                   reviewCommentHintText(context, 0),
                 ),
-                hintStyle: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'sf pro display',
-                      color: FlutterFlowTheme.of(context).secondaryText,
-                      fontSize: 16,
-                      letterSpacing: 0.0,
-                    ),
-                enabledBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(
-                    color: Color(0x00000000),
-                    width: 1,
-                  ),
-                  borderRadius: BorderRadius.circular(26),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(
-                    color: Color(0x00000000),
-                    width: 1,
-                  ),
-                  borderRadius: BorderRadius.circular(26),
-                ),
-                errorBorder: OutlineInputBorder(
-                  borderSide: BorderSide(
-                    color: FlutterFlowTheme.of(context).error,
-                    width: 1,
-                  ),
-                  borderRadius: BorderRadius.circular(26),
-                ),
-                focusedErrorBorder: OutlineInputBorder(
-                  borderSide: BorderSide(
-                    color: FlutterFlowTheme.of(context).error,
-                    width: 1,
-                  ),
-                  borderRadius: BorderRadius.circular(26),
-                ),
-                filled: true,
-                fillColor: FlutterFlowTheme.of(context).primaryBackground,
-                contentPadding: const EdgeInsets.all(16),
-                hoverColor: FlutterFlowTheme.of(context).primaryBackground,
+                maxLines: 12,
               ),
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'sf pro display',
-                    fontSize: 16,
-                    letterSpacing: 0.0,
-                  ),
+              style: ExpatlioDesign.formTextStyle(context),
               maxLines: 12,
               minLines: 2,
-              cursorColor: FlutterFlowTheme.of(context).primaryText,
+              cursorColor: ExpatlioDesign.primary,
               enableInteractiveSelection: true,
               validator:
                   _model.aboutMeTextControllerValidator.asValidator(context),
@@ -620,10 +617,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                 child: Icon(
                   icon,
                   color: valueOrDefault<Color>(
-                    isActive
-                        ? activeIconColor
-                        : FlutterFlowTheme.of(context).secondaryText,
-                    FlutterFlowTheme.of(context).secondaryText,
+                    isActive ? activeIconColor : ExpatlioDesign.muted,
+                    ExpatlioDesign.muted,
                   ),
                   size: 20,
                 ),
@@ -641,8 +636,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                           color: valueOrDefault<Color>(
                             isActive
                                 ? FlutterFlowTheme.of(context).primaryBackground
-                                : FlutterFlowTheme.of(context).primaryText,
-                            FlutterFlowTheme.of(context).primaryText,
+                                : ExpatlioDesign.text,
+                            ExpatlioDesign.text,
                           ),
                           fontSize: 15,
                           letterSpacing: 0.0,
@@ -670,23 +665,27 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: FutureBuilder<UsersRecord>(
+        backgroundColor: ExpatlioDesign.background,
+        body: FutureBuilder<UserPublicProfilesRecord?>(
           future: _model.userFuture,
           builder: (context, snapshot) {
-            if (!snapshot.hasData) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
               return const SizedBox.shrink();
             }
 
-            final stackUsersRecord = snapshot.data!;
+            final stackUserPublicProfile = snapshot.data;
+            final stackUserPhotoUrl =
+                _summaryUserPhotoUrl(stackUserPublicProfile);
 
             return AuthUserStreamWidget(
               builder: (context) {
+                final targetUserRef = widget.userRef;
+                final signedInUserRef = currentUserReference;
                 final initiallyFavorite =
-                    userHasFriend(currentUserDocument, widget.userRef);
+                    userHasFriend(currentUserDocument, targetUserRef);
                 final initiallyBlocked = _referenceListContains(
                   currentUserDocument?.blockedUsers,
-                  widget.userRef,
+                  targetUserRef,
                 );
                 final effectiveBlack =
                     _model.blackTouched ? _model.black : initiallyBlocked;
@@ -777,95 +776,99 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                               child: _buildReviewSection(context),
                             ),
                             _buildOpenChatCta(context),
-                            Padding(
-                              padding:
-                                  EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final showsFriendAction =
-                                      (currentUserDocument?.role ==
-                                              UserRole.student) &&
-                                          !effectiveBlack;
-                                  final useVerticalActions =
-                                      showsFriendAction &&
-                                          constraints.maxWidth < 430.0;
-                                  final friendAction =
-                                      _buildSummaryActionButton(
-                                    context,
-                                    isActive: effectiveFav,
-                                    icon: FFIcons.kheart,
-                                    text: FFLocalizations.of(context)
-                                        .getVariableText(
-                                      ruText: effectiveFav
-                                          ? 'Убрать из друзей'
-                                          : 'Добавить в друзья',
-                                      enText: effectiveFav
-                                          ? 'Remove from friends'
-                                          : 'Add to friends',
-                                    ),
-                                    activeBackgroundColor:
-                                        FlutterFlowTheme.of(context).primary,
-                                    activeIconColor:
-                                        FlutterFlowTheme.of(context).error,
-                                    onTap: () {
-                                      _model.favTouched = true;
-                                      _model.fav = !effectiveFav;
-                                      safeSetState(() {});
-                                    },
-                                  );
-                                  final blockAction = _buildSummaryActionButton(
-                                    context,
-                                    isActive: effectiveBlack,
-                                    icon: FFIcons.kthumbsDown,
-                                    text: FFLocalizations.of(context).getText(
-                                      'kth7l1fn' /* Не соединять */,
-                                    ),
-                                    activeBackgroundColor:
-                                        FlutterFlowTheme.of(context).error,
-                                    activeIconColor:
-                                        FlutterFlowTheme.of(context).error,
-                                    onTap: () {
-                                      _model.blackTouched = true;
-                                      _model.black = !effectiveBlack;
-                                      if (_model.black) {
+                            if (targetUserRef != null &&
+                                signedInUserRef != null)
+                              Padding(
+                                padding:
+                                    EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
+                                child: LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final showsFriendAction =
+                                        (currentUserDocument?.role ==
+                                                UserRole.student) &&
+                                            !effectiveBlack;
+                                    final useVerticalActions =
+                                        showsFriendAction &&
+                                            constraints.maxWidth < 430.0;
+                                    final friendAction =
+                                        _buildSummaryActionButton(
+                                      context,
+                                      isActive: effectiveFav,
+                                      icon: FFIcons.kheart,
+                                      text: FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText: effectiveFav
+                                            ? 'Убрать из друзей'
+                                            : 'Добавить в друзья',
+                                        enText: effectiveFav
+                                            ? 'Remove from friends'
+                                            : 'Add to friends',
+                                      ),
+                                      activeBackgroundColor:
+                                          FlutterFlowTheme.of(context).primary,
+                                      activeIconColor:
+                                          FlutterFlowTheme.of(context).error,
+                                      onTap: () {
                                         _model.favTouched = true;
-                                        _model.fav = false;
-                                      }
-                                      safeSetState(() {});
-                                    },
-                                  );
+                                        _model.fav = !effectiveFav;
+                                        safeSetState(() {});
+                                      },
+                                    );
+                                    final blockAction =
+                                        _buildSummaryActionButton(
+                                      context,
+                                      isActive: effectiveBlack,
+                                      icon: FFIcons.kthumbsDown,
+                                      text: FFLocalizations.of(context).getText(
+                                        'kth7l1fn' /* Не соединять */,
+                                      ),
+                                      activeBackgroundColor:
+                                          FlutterFlowTheme.of(context).error,
+                                      activeIconColor:
+                                          FlutterFlowTheme.of(context).error,
+                                      onTap: () {
+                                        _model.blackTouched = true;
+                                        _model.black = !effectiveBlack;
+                                        if (_model.black) {
+                                          _model.favTouched = true;
+                                          _model.fav = false;
+                                        }
+                                        safeSetState(() {});
+                                      },
+                                    );
 
-                                  if (useVerticalActions) {
-                                    return Column(
-                                      mainAxisSize: MainAxisSize.min,
+                                    if (useVerticalActions) {
+                                      return Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (showsFriendAction) friendAction,
+                                          if (showsFriendAction)
+                                            const SizedBox(height: 12.0),
+                                          blockAction,
+                                        ],
+                                      );
+                                    }
+
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.max,
                                       children: [
-                                        if (showsFriendAction) friendAction,
                                         if (showsFriendAction)
-                                          const SizedBox(height: 12.0),
-                                        blockAction,
+                                          Expanded(
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsetsDirectional
+                                                      .only(end: 6.0),
+                                              child: friendAction,
+                                            ),
+                                          ),
+                                        if (showsFriendAction)
+                                          const SizedBox(width: 6.0),
+                                        Expanded(child: blockAction),
                                       ],
                                     );
-                                  }
-
-                                  return Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    children: [
-                                      if (showsFriendAction)
-                                        Expanded(
-                                          child: Padding(
-                                            padding: const EdgeInsetsDirectional
-                                                .only(end: 6.0),
-                                            child: friendAction,
-                                          ),
-                                        ),
-                                      if (showsFriendAction)
-                                        const SizedBox(width: 6.0),
-                                      Expanded(child: blockAction),
-                                    ],
-                                  );
-                                },
+                                  },
+                                ),
                               ),
-                            ),
                           ].addToStart(SizedBox(height: 115)).addToEnd(
                                 const SizedBox(height: 120),
                               ),
@@ -985,24 +988,27 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                               return;
                                             }
                                           }
-                                          if (effectiveBlack) {
-                                            await currentUserReference!.update({
-                                              ...buildBlockAndRemoveFriendUpdateData(
-                                                widget.userRef!,
-                                              ),
-                                            });
-                                          } else if (effectiveFav) {
-                                            await currentUserReference!.update({
-                                              ...buildAddFriendUpdateData(
-                                                widget.userRef!,
-                                              ),
-                                            });
-                                          } else if (initiallyFavorite) {
-                                            await currentUserReference!.update({
-                                              ...buildRemoveFriendUpdateData(
-                                                widget.userRef!,
-                                              ),
-                                            });
+                                          if (targetUserRef != null &&
+                                              signedInUserRef != null) {
+                                            if (effectiveBlack) {
+                                              await signedInUserRef.update({
+                                                ...buildBlockAndRemoveFriendUpdateData(
+                                                  targetUserRef,
+                                                ),
+                                              });
+                                            } else if (effectiveFav) {
+                                              await signedInUserRef.update({
+                                                ...buildAddFriendUpdateData(
+                                                  targetUserRef,
+                                                ),
+                                              });
+                                            } else if (initiallyFavorite) {
+                                              await signedInUserRef.update({
+                                                ...buildRemoveFriendUpdateData(
+                                                  targetUserRef,
+                                                ),
+                                              });
+                                            }
                                           }
 
                                           _navigateToHome();
@@ -1054,14 +1060,16 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .secondaryBackground,
-                                    image: DecorationImage(
-                                      fit: BoxFit.cover,
-                                      image: CachedNetworkImageProvider(
-                                        stackUsersRecord.photoUrl,
-                                        maxWidth: 200,
-                                        maxHeight: 200,
-                                      ),
-                                    ),
+                                    image: stackUserPhotoUrl.isNotEmpty
+                                        ? DecorationImage(
+                                            fit: BoxFit.cover,
+                                            image: CachedNetworkImageProvider(
+                                              stackUserPhotoUrl,
+                                              maxWidth: 200,
+                                              maxHeight: 200,
+                                            ),
+                                          )
+                                        : null,
                                     shape: BoxShape.circle,
                                   ),
                                 ),
@@ -1070,7 +1078,10 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                     padding: EdgeInsetsDirectional.fromSTEB(
                                         12, 0, 0, 0),
                                     child: Text(
-                                      stackUsersRecord.displayName,
+                                      _summaryUserDisplayName(
+                                        context,
+                                        stackUserPublicProfile,
+                                      ),
                                       maxLines: 2,
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium

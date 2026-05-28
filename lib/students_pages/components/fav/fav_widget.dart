@@ -1,6 +1,7 @@
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/index.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -24,7 +25,33 @@ class FavWidget extends StatefulWidget {
 
 class _FavWidgetState extends State<FavWidget> {
   late FavModel _model;
-  late Future<UsersRecord> _userFuture;
+  late Future<UserPublicProfilesRecord?> _userFuture;
+
+  Future<UserPublicProfilesRecord?> _createUserFuture() {
+    final userRef = widget.nsUser;
+    if (userRef == null) {
+      return Future.value(null);
+    }
+
+    return UserPublicProfilesRecord.maybeGetDocumentOnce(
+      UserPublicProfilesRecord.collection.doc(userRef.id),
+    );
+  }
+
+  String _displayName(BuildContext context, UserPublicProfilesRecord? user) {
+    final displayName = user?.displayName.trim();
+    if (displayName != null && displayName.isNotEmpty) {
+      return displayName;
+    }
+
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Пользователь',
+      enText: 'User',
+    );
+  }
+
+  String _photoUrl(UserPublicProfilesRecord? user) =>
+      user?.photoUrl.trim() ?? '';
 
   @override
   void setState(VoidCallback callback) {
@@ -36,7 +63,15 @@ class _FavWidgetState extends State<FavWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => FavModel());
-    _userFuture = UsersRecord.getDocumentOnce(widget.nsUser!);
+    _userFuture = _createUserFuture();
+  }
+
+  @override
+  void didUpdateWidget(covariant FavWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.nsUser?.path != widget.nsUser?.path) {
+      _userFuture = _createUserFuture();
+    }
   }
 
   @override
@@ -48,11 +83,11 @@ class _FavWidgetState extends State<FavWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<UsersRecord>(
+    return FutureBuilder<UserPublicProfilesRecord?>(
       future: _userFuture,
       builder: (context, snapshot) {
         // Customize what your widget looks like when it's loading.
-        if (!snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return Center(
             child: SizedBox(
               width: 50.0,
@@ -65,8 +100,11 @@ class _FavWidgetState extends State<FavWidget> {
           );
         }
 
-        final containerUsersRecord = snapshot.data!;
-        final hasReviews = containerUsersRecord.rating.totalReviews > 0;
+        final containerUserPublicProfile = snapshot.data;
+        final profilePhotoUrl = _photoUrl(containerUserPublicProfile);
+        final profileDisplayName =
+            _displayName(context, containerUserPublicProfile);
+        final hasReviews = (containerUserPublicProfile?.ratingCount ?? 0) > 0;
 
         return InkWell(
           splashColor: Colors.transparent,
@@ -75,10 +113,14 @@ class _FavWidgetState extends State<FavWidget> {
           highlightColor: Colors.transparent,
           onTap: widget.enableNavigation
               ? () async {
+                  final userRef = widget.nsUser;
+                  if (userRef == null) {
+                    return;
+                  }
                   await Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (context) => NativeSpeakerPageWidget(
-                        nsUserDocRef: containerUsersRecord.reference,
+                        nsUserDocRef: userRef,
                         hideDirectCallAction: true,
                       ),
                     ),
@@ -88,8 +130,8 @@ class _FavWidgetState extends State<FavWidget> {
           child: Container(
             width: 140.0,
             decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryBackground,
-              borderRadius: BorderRadius.circular(26.0),
+              color: ExpatlioDesign.card,
+              borderRadius: BorderRadius.circular(16.0),
             ),
             child: Padding(
               padding: EdgeInsets.all(12.0),
@@ -103,16 +145,17 @@ class _FavWidgetState extends State<FavWidget> {
                         width: 125.0,
                         height: 125.0,
                         decoration: BoxDecoration(
-                          color:
-                              FlutterFlowTheme.of(context).secondaryBackground,
-                          image: DecorationImage(
-                            fit: BoxFit.cover,
-                            image: CachedNetworkImageProvider(
-                              containerUsersRecord.photoUrl,
-                              maxWidth: 250,
-                              maxHeight: 250,
-                            ),
-                          ),
+                          color: ExpatlioDesign.background,
+                          image: profilePhotoUrl.isNotEmpty
+                              ? DecorationImage(
+                                  fit: BoxFit.cover,
+                                  image: CachedNetworkImageProvider(
+                                    profilePhotoUrl,
+                                    maxWidth: 250,
+                                    maxHeight: 250,
+                                  ),
+                                )
+                              : null,
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: FlutterFlowTheme.of(context)
@@ -120,6 +163,20 @@ class _FavWidgetState extends State<FavWidget> {
                             width: 3.0,
                           ),
                         ),
+                        child: profilePhotoUrl.isEmpty
+                            ? Center(
+                                child: Text(
+                                  profileDisplayName.characters.first
+                                      .toUpperCase(),
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: ExpatlioDesign.muted,
+                                    size: 24.0,
+                                    weight: FontWeight.w700,
+                                  ),
+                                ),
+                              )
+                            : null,
                       ),
                       if (hasReviews)
                         Container(
@@ -127,7 +184,7 @@ class _FavWidgetState extends State<FavWidget> {
                           height: 25.0,
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(24.0),
+                            borderRadius: BorderRadius.circular(16.0),
                           ),
                           child: Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
@@ -143,7 +200,7 @@ class _FavWidgetState extends State<FavWidget> {
                                 ),
                                 Text(
                                   formatNumber(
-                                    containerUsersRecord.rating.average,
+                                    containerUserPublicProfile!.ratingAverage,
                                     formatType: FormatType.custom,
                                     format: '0.0',
                                     locale: '',
@@ -165,7 +222,7 @@ class _FavWidgetState extends State<FavWidget> {
                     padding:
                         EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
                     child: Text(
-                      containerUsersRecord.displayName,
+                      profileDisplayName,
                       maxLines: 1,
                       style: FlutterFlowTheme.of(context).bodyMedium.override(
                             fontFamily: 'sf pro display',

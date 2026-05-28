@@ -42,7 +42,7 @@ bool isValidName(String name) {
 }
 
 List<CountryStruct> countriesList() {
-  return [
+  final countries = [
     // Popular English-speaking countries (index 1-6)
     CountryStruct(
       code: 'US',
@@ -487,6 +487,23 @@ List<CountryStruct> countriesList() {
       isPopular: false,
       index: 54,
     ),
+  ];
+
+  const referenceCountryCodes = [
+    'DE',
+    'ES',
+    'FR',
+    'IT',
+    'PT',
+    'NL',
+  ];
+
+  return [
+    for (var i = 0; i < referenceCountryCodes.length; i++)
+      countries
+          .firstWhere((country) => country.code == referenceCountryCodes[i])
+        ..index = i + 1
+        ..isPopular = true,
   ];
 }
 

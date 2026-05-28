@@ -2,6 +2,7 @@ import '/backend/schema/enums/enums.dart';
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 
@@ -53,7 +54,7 @@ class StudentOnboardingLevelStep extends StatelessWidget {
                     ),
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'Cool',
-                      color: Colors.black,
+                      color: ExpatlioDesign.text,
                       fontSize: 43.0,
                       letterSpacing: 0.0,
                       fontWeight: FontWeight.normal,
@@ -206,9 +207,7 @@ class _LevelLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isSelected = selectedLevel == level;
-    final titleColor = isSelected
-        ? FlutterFlowTheme.of(context).primaryText
-        : FlutterFlowTheme.of(context).secondaryText;
+    final titleColor = isSelected ? ExpatlioDesign.text : ExpatlioDesign.muted;
 
     return InkWell(
       splashColor: Colors.transparent,
@@ -319,7 +318,7 @@ class _LevelTick extends StatelessWidget {
                   width: 2.0,
                   height: 2.0,
                   decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primaryText,
+                    color: ExpatlioDesign.text,
                     shape: BoxShape.circle,
                   ),
                 ),

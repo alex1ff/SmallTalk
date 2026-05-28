@@ -1,13 +1,12 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
-import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/teachers_pages/components/delete_card/delete_card_widget.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:flutter/material.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'edit_card_model.dart';
 export 'edit_card_model.dart';
 
@@ -51,34 +50,21 @@ class _EditCardWidgetState extends State<EditCardWidget> {
       children: [
         Container(
           width: double.infinity,
-          height: 16.0,
-          child: custom_widgets.NotchedClipper(
-            width: double.infinity,
-            height: 16.0,
-          ),
-        ),
-        Container(
-          width: double.infinity,
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.9,
           ),
           decoration: BoxDecoration(
-            color: FlutterFlowTheme.of(context).secondaryBackground,
+            color: ExpatlioDesign.background,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                FFLocalizations.of(context).getText(
+              BottomSheetHeader(
+                title: FFLocalizations.of(context).getText(
                   'o063iu8b' /* Изменение способов вывода */,
                 ),
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'Cool',
-                      fontSize: 22.0,
-                      letterSpacing: 0.0,
-                      fontWeight: FontWeight.normal,
-                    ),
+                onConfirm: () => Navigator.pop(context),
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(6.0, 6.0, 6.0, 6.0),
@@ -104,7 +90,7 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                           decoration: BoxDecoration(
                             color:
                                 FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(26.0),
+                            borderRadius: BorderRadius.circular(16.0),
                           ),
                           child: Padding(
                             padding: EdgeInsets.all(4.0),
@@ -159,13 +145,11 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                       backgroundColor: Colors.transparent,
                                       context: context,
                                       builder: (context) {
-                                        return WebViewAware(
-                                          child: Padding(
-                                            padding: MediaQuery.viewInsetsOf(
-                                                context),
-                                            child: DeleteCardWidget(
-                                              doc: listViewCardsRecord,
-                                            ),
+                                        return Padding(
+                                          padding:
+                                              MediaQuery.viewInsetsOf(context),
+                                          child: DeleteCardWidget(
+                                            doc: listViewCardsRecord,
                                           ),
                                         );
                                       },
@@ -181,19 +165,8 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                   },
                 ),
               ),
-              wrapWithModel(
-                model: _model.buttonModel,
-                updateCallback: () => safeSetState(() {}),
-                child: ButtonWidget(
-                  text: FFLocalizations.of(context).getText(
-                    'fj7u70af' /* Готово */,
-                  ),
-                  action: () async {
-                    Navigator.pop(context);
-                  },
-                ),
-              ),
-            ].divide(SizedBox(height: 16.0)).addToStart(SizedBox(height: 16.0)),
+              const SizedBox(height: 35.0),
+            ].divide(SizedBox(height: 16.0)),
           ),
         ),
       ],

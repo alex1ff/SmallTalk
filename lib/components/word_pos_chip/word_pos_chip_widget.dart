@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'word_pos_chip_model.dart';
 export 'word_pos_chip_model.dart';
@@ -62,10 +63,10 @@ class _WordPosChipWidgetState extends State<WordPosChipWidget> {
           color: valueOrDefault<Color>(
             widget.pos == widget.selectedPos
                 ? FlutterFlowTheme.of(context).primary
-                : FlutterFlowTheme.of(context).primaryBackground,
+                : ExpatlioDesign.card,
             FlutterFlowTheme.of(context).primary,
           ),
-          borderRadius: BorderRadius.circular(24.0),
+          borderRadius: BorderRadius.circular(16.0),
           shape: BoxShape.rectangle,
         ),
         child: Align(
@@ -78,9 +79,9 @@ class _WordPosChipWidgetState extends State<WordPosChipWidget> {
                     fontFamily: 'sf pro display',
                     color: valueOrDefault<Color>(
                       widget.pos == widget.selectedPos
-                          ? FlutterFlowTheme.of(context).primaryBackground
-                          : FlutterFlowTheme.of(context).primaryText,
-                      FlutterFlowTheme.of(context).primaryBackground,
+                          ? ExpatlioDesign.card
+                          : ExpatlioDesign.text,
+                      ExpatlioDesign.card,
                     ),
                     fontSize: 16.0,
                     letterSpacing: 0.0,

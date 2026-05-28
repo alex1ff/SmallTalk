@@ -1,15 +1,26 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
+const { getUserVoipTokens } = require("./voip_tokens");
 const {
   CALL_EVENT_OUTCOME_MISSED,
   ensureConversationCallEventForSession,
 } = require("./chats_shared");
+const {
+  resolveDailyRoomName,
+} = require("./daily_room");
+const {
+  deleteDailyRoomForSession,
+} = require("./daily_room_cleanup");
+const {
+  createIncomingCallNotificationInTransaction,
+} = require("./call_notifications");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
+const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 
 exports.processExpiredNotifications = functions
-  .runWith({ secrets: apnsSecrets })
+  .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .pubsub.schedule("every 1 minutes")
   .onRun(async () => {
     console.log("⏰ Processing expired notifications (updated version)...");
@@ -32,42 +43,12 @@ exports.processExpiredNotifications = functions
 
       console.log(`⏰ Found ${expiredQuery.size} expired notifications`);
 
-      // Обрабатываем каждое истекшее уведомление
-      const batch = admin.firestore().batch();
-      const sessionsToProcess = new Set();
-
-      expiredQuery.docs.forEach((doc) => {
-        const notificationData = doc.data();
-
-        console.log(
-          `📝 Marking notification ${doc.id} as expired for tutor: ${notificationData.recipientId}`,
-        );
-
-        // Отмечаем уведомление как истекшее
-        batch.update(doc.ref, {
-          status: "expired",
-          expiredAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        // Добавляем sessionId для дальнейшей обработки
-        if (notificationData.sessionId) {
-          sessionsToProcess.add(notificationData.sessionId);
-        }
-      });
-
-      // Применяем изменения к уведомлениям
-      await batch.commit();
-      console.log("✅ All expired notifications marked");
-
-      // Обрабатываем каждую уникальную сессию
-      console.log(`🔄 Processing ${sessionsToProcess.size} video sessions...`);
-
-      for (const sessionId of sessionsToProcess) {
+      for (const doc of expiredQuery.docs) {
         try {
-          await processExpiredSession(sessionId);
+          await processExpiredNotification(doc);
         } catch (error) {
           console.error(
-            `❌ Error processing session ${sessionId}:`,
+            `❌ Error processing notification ${doc.id}:`,
             error.message,
           );
         }
@@ -81,19 +62,55 @@ exports.processExpiredNotifications = functions
     }
   });
 
-// ОБРАБОТКА ИСТЕКШЕЙ СЕССИИ
-async function processExpiredSession(sessionId) {
+// ОБРАБОТКА ИСТЕКШЕГО УВЕДОМЛЕНИЯ
+async function processExpiredNotification(notificationDoc) {
+  const notificationId = notificationDoc.id;
+  const initialNotificationData = notificationDoc.data() || {};
+  const sessionId = initialNotificationData.sessionId;
   try {
-    console.log(`📺 Processing expired session: ${sessionId}`);
-    const sessionRef = admin
-      .firestore()
-      .collection("videoSessions")
-      .doc(sessionId);
+    console.log(`📺 Processing expired notification: ${notificationId}`);
+    const db = admin.firestore();
+    const sessionRef = sessionId
+      ? db.collection("videoSessions").doc(sessionId)
+      : null;
 
-    const transition = await admin.firestore().runTransaction(
+    const transition = await db.runTransaction(
       async (transaction) => {
+        const freshNotificationSnap = await transaction.get(notificationDoc.ref);
+        if (!freshNotificationSnap.exists) {
+          return {
+            shouldNotify: false,
+            skipReason: "notification_not_found",
+          };
+        }
+
+        const freshNotificationData = freshNotificationSnap.data() || {};
+        if (
+          freshNotificationData.type !== "incoming_call" ||
+          freshNotificationData.status !== "sent"
+        ) {
+          return {
+            shouldNotify: false,
+            skipReason: `notification_status_${freshNotificationData.status || "unknown"}`,
+          };
+        }
+
+        const expireNotificationUpdate = {
+          status: "expired",
+          expiredAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (!sessionRef) {
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
+          return {
+            shouldNotify: false,
+            skipReason: "missing_session_id",
+          };
+        }
+
         const freshSessionSnap = await transaction.get(sessionRef);
         if (!freshSessionSnap.exists) {
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
           return {
             shouldNotify: false,
             skipReason: "session_not_found",
@@ -103,6 +120,7 @@ async function processExpiredSession(sessionId) {
         const freshSessionData = freshSessionSnap.data() || {};
         const status = freshSessionData.status || "unknown";
         if (status !== "searching") {
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
           return {
             shouldNotify: false,
             skipReason: `status_${status}`,
@@ -110,68 +128,179 @@ async function processExpiredSession(sessionId) {
         }
 
         const currentTutorId = freshSessionData.currentTutorId;
-        if (!currentTutorId) {
+        const expiredTutorId = freshNotificationData.recipientId;
+        if (
+          currentTutorId &&
+          expiredTutorId &&
+          currentTutorId !== expiredTutorId
+        ) {
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
           return {
             shouldNotify: false,
-            skipReason: "missing_current_tutor",
+            skipReason: `current_tutor_changed_${currentTutorId}`,
+          };
+        }
+
+        const timedOutTutorId = currentTutorId || expiredTutorId;
+        if (!timedOutTutorId) {
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
+          return {
+            shouldNotify: false,
+            skipReason: "missing_timed_out_tutor",
           };
         }
 
         const triedTutors = [...(freshSessionData.triedTutors || [])];
-        if (!triedTutors.includes(currentTutorId)) {
-          triedTutors.push(currentTutorId);
+        if (!triedTutors.includes(timedOutTutorId)) {
+          triedTutors.push(timedOutTutorId);
         }
 
+        const availableTutors = freshSessionData.availableTutors || [];
+        const nextTutor = availableTutors.find(
+          (tutorId) => !triedTutors.includes(tutorId),
+        );
+
+        transaction.update(notificationDoc.ref, expireNotificationUpdate);
+
+        if (!nextTutor) {
+          transaction.update(sessionRef, {
+            triedTutors,
+            currentTutorId: admin.firestore.FieldValue.delete(),
+            status: "no_tutors_available",
+          });
+          return {
+            shouldNotify: false,
+            shouldRecordMissed: true,
+            skipReason: "no_available_tutors",
+            timedOutTutorId,
+            dailyRoomName: resolveDailyRoomName(freshSessionData),
+            sessionData: {
+              ...freshSessionData,
+              triedTutors,
+              currentTutorId: null,
+              status: "no_tutors_available",
+            },
+          };
+        }
+
+        const nextSessionData = {
+          ...freshSessionData,
+          triedTutors,
+          currentTutorId: nextTutor,
+        };
+        const notification = createIncomingCallNotificationInTransaction({
+          db,
+          transaction,
+          sessionId,
+          recipientId: nextTutor,
+          sessionData: nextSessionData,
+          studentNameFallback: "Student",
+        });
+
         transaction.update(sessionRef, {
-          triedTutors: triedTutors,
-          currentTutorId: admin.firestore.FieldValue.delete(),
+          triedTutors,
+          currentTutorId: nextTutor,
         });
 
         return {
           shouldNotify: true,
-          timedOutTutorId: currentTutorId,
-          sessionData: {
-            ...freshSessionData,
-            triedTutors: triedTutors,
-            currentTutorId: null,
-          },
+          shouldRecordMissed: true,
+          timedOutTutorId,
+          nextTutor,
+          sessionData: nextSessionData,
+          notificationId: notification.notificationId,
+          pushPayload: notification.pushPayload,
         };
       },
     );
 
-    if (!transition || !transition.shouldNotify) {
+    if (!transition || (!transition.shouldNotify && !transition.shouldRecordMissed)) {
       console.log(
-        "⏭️ Skipping expired session processing for",
-        sessionId,
+        "⏭️ Skipping expired notification processing for",
+        notificationId,
         "reason:",
         transition?.skipReason || "unknown",
       );
       return;
     }
 
-    console.log(
-      `👨‍🏫 Current tutor ${transition.timedOutTutorId} did not respond - searching next`,
-    );
-    try {
-      await ensureConversationCallEventForSession({
-        db: admin.firestore(),
-        sessionId,
-        sessionRef,
-        sessionData: {
-          ...(transition.sessionData || {}),
-          currentTutorId: transition.timedOutTutorId,
-        },
-        callOutcome: CALL_EVENT_OUTCOME_MISSED,
-        eventMillis: Date.now(),
-        partnerId: transition.timedOutTutorId,
-      });
-    } catch (error) {
-      console.error("⚠️ Failed to create missed call event:", error);
+    if (transition.shouldRecordMissed) {
+      console.log(
+        `👨‍🏫 Current tutor ${transition.timedOutTutorId} did not respond - searching next`,
+      );
+      try {
+        await ensureConversationCallEventForSession({
+          db: admin.firestore(),
+          sessionId,
+          sessionRef,
+          sessionData: {
+            ...(transition.sessionData || {}),
+            currentTutorId: transition.timedOutTutorId,
+          },
+          callOutcome: CALL_EVENT_OUTCOME_MISSED,
+          eventMillis: Date.now(),
+          partnerId: transition.timedOutTutorId,
+        });
+      } catch (error) {
+        console.error("⚠️ Failed to create missed call event:", error);
+      }
     }
-    await sendNotificationToNextTutor(sessionId, transition.sessionData || {});
-    console.log(`✅ Session ${sessionId} processed successfully`);
+
+    if (transition.dailyRoomName) {
+      await deleteDailyRoomForSession({
+        sessionId,
+        roomName: transition.dailyRoomName,
+        source: "processExpiredNotifications",
+      });
+    }
+
+    if (transition.shouldNotify) {
+      const pushPayload = transition.pushPayload || {};
+      console.log("📨 Sending notification to next tutor:", transition.nextTutor);
+      console.log(
+        "✅ Firestore notification created for tutor:",
+        transition.nextTutor,
+      );
+
+      const freshValidationSnap = await sessionRef.get();
+      if (!freshValidationSnap.exists) {
+        console.log(
+          "⏭️ Skipping push because session disappeared after assignment",
+        );
+        return;
+      }
+
+      const freshValidationData = freshValidationSnap.data() || {};
+      if (
+        freshValidationData.status !== "searching" ||
+        freshValidationData.currentTutorId !== transition.nextTutor
+      ) {
+        console.log(
+          "⏭️ Skipping push because tutor assignment changed after transaction",
+        );
+        return;
+      }
+
+      try {
+        await sendVoipPushToTutor(transition.nextTutor, {
+          sessionId,
+          studentName: pushPayload.studentName || "Student",
+          studentId: pushPayload.studentId || "",
+          studentPhoto: pushPayload.studentPhoto,
+          language: pushPayload.language || "",
+        });
+        console.log("✅ VoIP push sent to next tutor");
+      } catch (pushError) {
+        console.error(
+          "⚠️ Failed to send VoIP push (non-critical):",
+          pushError.message,
+        );
+      }
+    }
+
+    console.log(`✅ Notification ${notificationId} processed successfully`);
   } catch (error) {
-    console.error(`❌ Error processing session ${sessionId}:`, error);
+    console.error(`❌ Error processing notification ${notificationId}:`, error);
     throw error;
   }
 }
@@ -197,8 +326,8 @@ async function sendVoipPushToTutor(tutorId, callData) {
     const voipTopic =
       process.env.IOS_VOIP_TOPIC ||
       (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
-    const voipPushToken = tutorData.voipPushToken;
-    const fcmToken = tutorData.voipToken;
+    const { voipPushToken, voipToken: fcmToken } =
+      await getUserVoipTokens(tutorId, tutorData);
 
     if (!voipPushToken && !fcmToken) {
       console.log("⚠️ Tutor has no push tokens saved");
@@ -234,7 +363,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
       return;
     }
 
-    console.log("📱 FCM token found:", fcmToken.substring(0, 20) + "...");
+    console.log("📱 FCM token found");
     console.log("📦 Using apns-topic for FCM fallback:", bundleId);
 
     const message = {
@@ -276,154 +405,5 @@ async function sendVoipPushToTutor(tutorId, callData) {
   } catch (error) {
     console.error("❌ Error sending VoIP push to tutor:", error);
     return null;
-  }
-}
-
-// ОТПРАВКА УВЕДОМЛЕНИЯ СЛЕДУЮЩЕМУ ПРЕПОДАВАТЕЛЮ
-async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) {
-  try {
-    const sessionRef = admin
-      .firestore()
-      .collection("videoSessions")
-      .doc(sessionId);
-
-    const assignment = await admin.firestore().runTransaction(
-      async (transaction) => {
-        const freshSessionSnap = await transaction.get(sessionRef);
-        if (!freshSessionSnap.exists) {
-          return {
-            shouldNotify: false,
-            skipReason: "session_not_found",
-          };
-        }
-
-        const freshSessionData = freshSessionSnap.data() || {};
-        const status = freshSessionData.status || "unknown";
-        if (status !== "searching") {
-          return {
-            shouldNotify: false,
-            skipReason: `status_${status}`,
-          };
-        }
-
-        if (freshSessionData.currentTutorId) {
-          return {
-            shouldNotify: false,
-            skipReason: `tutor_already_assigned_${freshSessionData.currentTutorId}`,
-          };
-        }
-
-        const availableTutors = freshSessionData.availableTutors || [];
-        const triedTutors = freshSessionData.triedTutors || [];
-
-        console.log("🎯 Available tutors:", availableTutors);
-        console.log("❌ Tried tutors:", triedTutors);
-
-        const nextTutor = availableTutors.find(
-          (tutorId) => !triedTutors.includes(tutorId),
-        );
-
-        if (!nextTutor) {
-          transaction.update(sessionRef, {
-            status: "no_tutors_available",
-          });
-          return {
-            shouldNotify: false,
-            skipReason: "no_available_tutors",
-          };
-        }
-
-        transaction.update(sessionRef, {
-          currentTutorId: nextTutor,
-        });
-
-        return {
-          shouldNotify: true,
-          nextTutor,
-          sessionData: freshSessionData,
-        };
-      },
-    );
-
-    if (!assignment || !assignment.shouldNotify) {
-      console.log(
-        "⏭️ Skipping next tutor notification for session",
-        sessionId,
-        "reason:",
-        assignment?.skipReason || "unknown",
-      );
-      return;
-    }
-
-    const nextTutor = assignment.nextTutor;
-    const sessionData = assignment.sessionData || fallbackSessionData || {};
-    const studentInfo = sessionData.studentInfo || fallbackSessionData.studentInfo || {};
-    const studentName = studentInfo.name || "Student";
-    const studentPhoto = studentInfo.photo || null;
-    const studentId = sessionData.studentId || fallbackSessionData.studentId || "";
-    const language = sessionData.language || fallbackSessionData.language || "";
-
-    const freshValidationSnap = await sessionRef.get();
-    if (!freshValidationSnap.exists) {
-      console.log(
-        "⏭️ Skipping next tutor notification. Session disappeared:",
-        sessionId,
-      );
-      return;
-    }
-
-    const freshValidation = freshValidationSnap.data() || {};
-    if (
-      freshValidation.status !== "searching" ||
-      freshValidation.currentTutorId !== nextTutor
-    ) {
-      console.log(
-        "⏭️ Skipping next tutor notification after validation. reason:",
-        `status_${freshValidation.status || "unknown"}`,
-        `currentTutor_${freshValidation.currentTutorId || "none"}`,
-      );
-      return;
-    }
-
-    console.log("📨 Sending notification to next tutor:", nextTutor);
-
-    // Создаем уведомление в Firestore
-    const expiresAt = new Date();
-    expiresAt.setSeconds(expiresAt.getSeconds() + 45);
-
-    const notificationData = {
-      recipientId: nextTutor,
-      sessionId: sessionId,
-      type: "incoming_call",
-      status: "sent",
-      title: "Входящий звонок",
-      message: `${studentName} хочет попрактиковать ${language}`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-      studentInfo: studentInfo,
-    };
-
-    await admin.firestore().collection("notifications").add(notificationData);
-    console.log("✅ Firestore notification created for tutor:", nextTutor);
-
-    // 🔔 Отправляем VoIP push преподавателю
-    console.log("📲 Sending VoIP push to next tutor...");
-    try {
-      await sendVoipPushToTutor(nextTutor, {
-        sessionId: sessionId,
-        studentName: studentName,
-        studentId: studentId,
-        studentPhoto: studentPhoto,
-        language: language,
-      });
-      console.log("✅ VoIP push sent to next tutor");
-    } catch (pushError) {
-      console.error(
-        "⚠️ Failed to send VoIP push (non-critical):",
-        pushError.message,
-      );
-    }
-  } catch (error) {
-    console.error("❌ Error sending notification to next tutor:", error);
   }
 }

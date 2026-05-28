@@ -2,9 +2,10 @@ import '/backend/backend.dart';
 import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import 'dart:async';
-import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:flutter/material.dart';
 import 'delete_card_model.dart';
 export 'delete_card_model.dart';
@@ -56,40 +57,27 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
             children: [
               Container(
                 width: double.infinity,
-                height: 16.0,
-                child: custom_widgets.NotchedClipper(
-                  width: double.infinity,
-                  height: 16.0,
-                ),
-              ),
-              Container(
-                width: double.infinity,
                 decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
+                  color: ExpatlioDesign.background,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      FFLocalizations.of(context).getText(
+                    BottomSheetHeader(
+                      title: FFLocalizations.of(context).getText(
                         '8iw8rarz' /* Удалить сохраненную карту? */,
                       ),
-                      textAlign: TextAlign.start,
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'Cool',
-                            fontSize: 22.0,
-                            letterSpacing: 0.0,
-                          ),
+                      showConfirm: false,
                     ),
                     Padding(
                       padding:
-                          EdgeInsetsDirectional.fromSTEB(6.0, 24.0, 6.0, 0.0),
+                          EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
                       child: Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          color: FlutterFlowTheme.of(context).primaryBackground,
-                          borderRadius: BorderRadius.circular(38.0),
+                          color: ExpatlioDesign.card,
+                          borderRadius: BorderRadius.circular(20.0),
                         ),
                         child: Container(
                           width: double.infinity,
@@ -97,7 +85,7 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                           decoration: BoxDecoration(
                             color:
                                 FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(26.0),
+                            borderRadius: BorderRadius.circular(16.0),
                           ),
                           child: Padding(
                             padding: EdgeInsets.all(4.0),
@@ -169,7 +157,7 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                           size: 15.0,
                         ),
                         options: FFButtonOptions(
-                          height: 40.0,
+                          height: ExpatlioDesign.buttonHeight,
                           padding: EdgeInsetsDirectional.fromSTEB(
                               16.0, 0.0, 16.0, 0.0),
                           iconAlignment: IconAlignment.end,
@@ -206,9 +194,7 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                         ),
                       ),
                     ),
-                  ]
-                      .divide(SizedBox(height: 2.0))
-                      .addToStart(SizedBox(height: 16.0)),
+                  ].divide(SizedBox(height: 2.0)),
                 ),
               ),
             ],

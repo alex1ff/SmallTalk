@@ -1,12 +1,9 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
-import '/components/button/button_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import 'dart:async';
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/custom_code/actions/index.dart' as actions;
-import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'edit_about_model.dart';
@@ -49,243 +46,112 @@ class _EditAboutWidgetState extends State<EditAboutWidget> {
     super.dispose();
   }
 
+  Future<void> _saveAbout() async {
+    if (_model.aboutMeTextController.text == '') {
+      await actions.showTopNotification(
+        context,
+        'Напишите хотя бы пару слов',
+        '',
+        true,
+      );
+      return;
+    }
+    if (_model.aboutMeTextController.text !=
+        valueOrDefault(currentUserDocument?.aboutMe, '')) {
+      await currentUserReference!.update(createUsersRecordData(
+        aboutMe: _model.aboutMeTextController.text,
+      ));
+      await widget.action?.call(
+        _model.aboutMeTextController.text,
+      );
+    }
+    if (mounted) {
+      Navigator.pop(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.start,
       children: [
         Container(
           width: double.infinity,
-          height: 16.0,
-          child: custom_widgets.NotchedClipper(
-            width: double.infinity,
-            height: 16.0,
-          ),
-        ),
-        Container(
-          width: double.infinity,
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.9,
           ),
           decoration: BoxDecoration(
-            color: FlutterFlowTheme.of(context).secondaryBackground,
+            color: ExpatlioDesign.card,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                FFLocalizations.of(context).getText(
+              BottomSheetHeader(
+                title: FFLocalizations.of(context).getText(
                   'v997ihxn' /* Расскажите о себе */,
                 ),
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'Cool',
-                      fontSize: 26.0,
-                      letterSpacing: 0.0,
-                      fontWeight: FontWeight.normal,
-                    ),
+                onConfirm: _saveAbout,
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
                 child: AuthUserStreamWidget(
                   builder: (context) => Container(
                     width: double.infinity,
-                    child: TextFormField(
-                      controller: _model.aboutMeTextController,
-                      focusNode: _model.aboutMeFocusNode,
-                      onFieldSubmitted: (_) async {
-                        if (_model.aboutMeTextController.text != '') {
-                          if (_model.aboutMeTextController.text !=
-                              valueOrDefault(
-                                  currentUserDocument?.aboutMe, '')) {
-                            unawaited(
-                              () async {
-                                await currentUserReference!
-                                    .update(createUsersRecordData(
-                                  aboutMe: _model.aboutMeTextController.text,
-                                ));
-                              }(),
-                            );
-                            await widget.action?.call(
-                              _model.aboutMeTextController.text,
-                            );
-                          }
-                          Navigator.pop(context);
-                        } else {
-                          await actions.showTopNotification(
+                    decoration: ExpatlioDesign.formGroupDecoration(),
+                    padding: ExpatlioDesign.formGroupPadding,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          FFLocalizations.of(context).getText(
+                            'v997ihxn' /* Расскажите о себе */,
+                          ),
+                          style: ExpatlioDesign.formLabelStyle(context),
+                        ),
+                        const SizedBox(height: 6.0),
+                        TextFormField(
+                          controller: _model.aboutMeTextController,
+                          focusNode: _model.aboutMeFocusNode,
+                          onFieldSubmitted: (_) => _saveAbout(),
+                          autofocus: false,
+                          textCapitalization: TextCapitalization.sentences,
+                          textInputAction: TextInputAction.done,
+                          obscureText: false,
+                          decoration: ExpatlioDesign.formFieldDecoration(
                             context,
-                            'Напишите хотя бы пару слов',
-                            '',
-                            true,
-                          );
-                          return;
-                        }
-                      },
-                      autofocus: false,
-                      textCapitalization: TextCapitalization.sentences,
-                      textInputAction: TextInputAction.done,
-                      obscureText: false,
-                      decoration: InputDecoration(
-                        isDense: false,
-                        hintText: FFLocalizations.of(context).getText(
-                          'tjmgsp1u' /* Люблю готовить, изучаю испанск... */,
-                        ),
-                        hintStyle: FlutterFlowTheme.of(context)
-                            .bodyMedium
-                            .override(
-                              fontFamily: 'sf pro display',
-                              color: FlutterFlowTheme.of(context).secondaryText,
-                              fontSize: 16.0,
-                              letterSpacing: 0.0,
+                            hintText: FFLocalizations.of(context).getText(
+                              'tjmgsp1u' /* Люблю готовить, изучаю испанск... */,
                             ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: Color(0x00000000),
-                            width: 1.0,
+                            maxLines: 4,
                           ),
-                          borderRadius: BorderRadius.circular(26.0),
+                          style: ExpatlioDesign.formTextStyle(context),
+                          maxLines: 12,
+                          minLines: 4,
+                          cursorColor: ExpatlioDesign.primary,
+                          enableInteractiveSelection: true,
+                          validator: _model.aboutMeTextControllerValidator
+                              .asValidator(context),
+                          inputFormatters: [
+                            if (!isAndroid && !isiOS)
+                              TextInputFormatter.withFunction(
+                                  (oldValue, newValue) {
+                                return TextEditingValue(
+                                  selection: newValue.selection,
+                                  text: newValue.text.toCapitalization(
+                                      TextCapitalization.sentences),
+                                );
+                              }),
+                          ],
                         ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: Color(0x00000000),
-                            width: 1.0,
-                          ),
-                          borderRadius: BorderRadius.circular(26.0),
-                        ),
-                        errorBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: FlutterFlowTheme.of(context).error,
-                            width: 1.0,
-                          ),
-                          borderRadius: BorderRadius.circular(26.0),
-                        ),
-                        focusedErrorBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: FlutterFlowTheme.of(context).error,
-                            width: 1.0,
-                          ),
-                          borderRadius: BorderRadius.circular(26.0),
-                        ),
-                        filled: true,
-                        fillColor:
-                            FlutterFlowTheme.of(context).primaryBackground,
-                        contentPadding: EdgeInsets.all(16.0),
-                        hoverColor:
-                            FlutterFlowTheme.of(context).primaryBackground,
-                      ),
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'sf pro display',
-                            fontSize: 16.0,
-                            letterSpacing: 0.0,
-                          ),
-                      maxLines: 12,
-                      minLines: 4,
-                      cursorColor: FlutterFlowTheme.of(context).primaryText,
-                      enableInteractiveSelection: true,
-                      validator: _model.aboutMeTextControllerValidator
-                          .asValidator(context),
-                      inputFormatters: [
-                        if (!isAndroid && !isiOS)
-                          TextInputFormatter.withFunction((oldValue, newValue) {
-                            return TextEditingValue(
-                              selection: newValue.selection,
-                              text: newValue.text.toCapitalization(
-                                  TextCapitalization.sentences),
-                            );
-                          }),
                       ],
                     ),
                   ),
                 ),
               ),
-              AnimatedPadding(
-                duration: const Duration(milliseconds: 160),
-                curve: Curves.easeOutCubic,
-                padding: EdgeInsetsDirectional.fromSTEB(
-                    0.0, 0.0, 6.0, keyboardVisible ? 6.0 : 35.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    Expanded(
-                      child: wrapWithModel(
-                        model: _model.buttonModel,
-                        updateCallback: () => safeSetState(() {}),
-                        child: ButtonWidget(
-                          text: FFLocalizations.of(context).getText(
-                            'bcopjm5n' /* Сохранить */,
-                          ),
-                          keyboardAwarePadding: false,
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              6.0, 0.0, 6.0, 0.0),
-                          loadingText:
-                              FFLocalizations.of(context).getVariableText(
-                            ruText: 'Сохраняем...',
-                            enText: 'Saving...',
-                          ),
-                          busyStyle: ButtonBusyStyle.spinner,
-                          action: () async {
-                            if (_model.aboutMeTextController.text != '') {
-                              if (_model.aboutMeTextController.text !=
-                                  valueOrDefault(
-                                      currentUserDocument?.aboutMe, '')) {
-                                await currentUserReference!
-                                    .update(createUsersRecordData(
-                                  aboutMe: _model.aboutMeTextController.text,
-                                ));
-                                await widget.action?.call(
-                                  _model.aboutMeTextController.text,
-                                );
-                              }
-                              Navigator.pop(context);
-                            } else {
-                              await actions.showTopNotification(
-                                context,
-                                'Напишите хотя бы пару слов',
-                                '',
-                                true,
-                              );
-                              return;
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                    Container(
-                      decoration: BoxDecoration(
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: 7.0,
-                            color: Color(0x0D2C2C2C),
-                            offset: Offset(
-                              0.0,
-                              2.0,
-                            ),
-                          )
-                        ],
-                        shape: BoxShape.circle,
-                      ),
-                      child: FlutterFlowIconButton(
-                        borderRadius: 50.0,
-                        buttonSize: 60.0,
-                        fillColor:
-                            FlutterFlowTheme.of(context).primaryBackground,
-                        icon: Icon(
-                          Icons.close_sharp,
-                          color: FlutterFlowTheme.of(context).error,
-                          size: 20.0,
-                        ),
-                        onPressed: () async {
-                          Navigator.pop(context);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ].divide(SizedBox(height: 16.0)).addToStart(SizedBox(height: 16.0)),
+              const SizedBox(height: 35.0),
+            ].divide(SizedBox(height: 16.0)),
           ),
         ),
       ],

@@ -14,6 +14,9 @@ const {
   buildConversationParticipantMap,
   buildConversationSummaryUpdate,
   ensureConversationCallEventForSession,
+  getConnectedCallStartMillis,
+  getConversationCallEventEligibility,
+  getUnlockEligibility,
 } = require("./chats_shared");
 const {
   __private__: {
@@ -116,12 +119,53 @@ test("buildCallEventMessagePayload materializes video call metadata", () => {
   assert.equal(payload.createdAt.toMillis(), endedAtMillis);
 });
 
+test("startedAt alone is not a connected-call proof", () => {
+  const startedAtMillis = Date.parse("2026-04-19T09:00:30Z");
+  const sessionData = {
+    status: "ended",
+    studentId: "student",
+    tutorId: "teacher",
+    createdAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:00Z")),
+    acceptedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:01Z")),
+    startedAt: Timestamp.fromMillis(startedAtMillis),
+  };
+
+  assert.equal(getConnectedCallStartMillis(sessionData), 0);
+  assert.deepEqual(getUnlockEligibility(sessionData), {
+    eligible: false,
+    reason: "ignored_not_connected",
+  });
+});
+
 test("buildConversationParticipantMap materializes query-friendly participants", () => {
   assert.deepEqual(
     buildConversationParticipantMap([" student ", "", "teacher", null]),
     {
       student: true,
       teacher: true,
+    },
+  );
+});
+
+test("startedAt-only sessions are not treated as verified connected calls", () => {
+  const sessionData = {
+    status: "ended",
+    createdAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:00Z")),
+    startedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:10Z")),
+    endedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:05:00Z")),
+    acceptedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:00Z")),
+    studentId: "student",
+    tutorId: "teacher",
+  };
+
+  assert.equal(getConnectedCallStartMillis(sessionData), 0);
+  assert.deepEqual(
+    getConversationCallEventEligibility(sessionData, {
+      callOutcome: CALL_EVENT_OUTCOME_COMPLETED,
+    }),
+    {
+      eligible: false,
+      reason: "ignored_not_connected",
     },
   );
 });

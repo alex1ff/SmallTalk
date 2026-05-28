@@ -15,6 +15,7 @@ class LangModel extends FlutterFlowModel<LangWidget> {
 
   _LanguageSelectorCache? _cache;
   String? _cachedSearchQuery;
+  String? _cachedSearchSelectedSignature;
   List<LanguageStruct>? _cachedSearchResults;
   static final Map<_LanguageSelectorCacheKey, _LanguageSelectorCache>
       _sharedCaches = <_LanguageSelectorCacheKey, _LanguageSelectorCache>{};
@@ -93,7 +94,12 @@ class LangModel extends FlutterFlowModel<LangWidget> {
       allowedCodes: allowedCodes,
       localeCode: localeCode,
     );
-    if (_cachedSearchQuery == normalizedQuery && _cachedSearchResults != null) {
+    final selectedSignature = _hasMeaningfulLanguageData(selected)
+        ? _languageSelectionSignature(selected!)
+        : '';
+    if (_cachedSearchQuery == normalizedQuery &&
+        _cachedSearchSelectedSignature == selectedSignature &&
+        _cachedSearchResults != null) {
       return _cachedSearchResults!;
     }
 
@@ -101,8 +107,15 @@ class LangModel extends FlutterFlowModel<LangWidget> {
         .search(normalizedQuery)
         .map((result) => result.object)
         .take(10)
-        .toList(growable: false);
+        .toList(growable: true);
+    if (_hasMeaningfulLanguageData(selected) &&
+        !results
+            .any((language) => _isSameLanguageSelection(language, selected)) &&
+        _matchesSearchQuery(selected!, localeCode, normalizedQuery)) {
+      results.insert(0, selected);
+    }
     _cachedSearchQuery = normalizedQuery;
+    _cachedSearchSelectedSignature = selectedSignature;
     _cachedSearchResults = results;
     return results;
   }
@@ -152,6 +165,7 @@ class LangModel extends FlutterFlowModel<LangWidget> {
     if (sharedCache != null) {
       _cache = sharedCache;
       _cachedSearchQuery = null;
+      _cachedSearchSelectedSignature = null;
       _cachedSearchResults = null;
       return sharedCache;
     }
@@ -181,6 +195,7 @@ class LangModel extends FlutterFlowModel<LangWidget> {
     _sharedCaches[cacheKey] = updatedCache;
     _cache = updatedCache;
     _cachedSearchQuery = null;
+    _cachedSearchSelectedSignature = null;
     _cachedSearchResults = null;
     return updatedCache;
   }
@@ -262,6 +277,17 @@ class LangModel extends FlutterFlowModel<LangWidget> {
 
   String _normalizeLanguageCode(String code) => code.trim().toLowerCase();
 
+  String _languageSelectionSignature(LanguageStruct language) {
+    return <String>[
+      _normalizeLanguageCode(language.code),
+      _normalizeText(language.nameEn),
+      _normalizeText(language.nameRu),
+      _normalizeText(language.model),
+      _normalizeText(language.ss),
+      ...language.alternateCodes.map(_normalizeLanguageCode),
+    ].join('\u001f');
+  }
+
   bool _isSameLanguageSelection(
     LanguageStruct? left,
     LanguageStruct? right,
@@ -290,6 +316,21 @@ class LangModel extends FlutterFlowModel<LangWidget> {
   }
 
   String _normalizeText(String value) => value.trim().toLowerCase();
+
+  bool _matchesSearchQuery(
+    LanguageStruct language,
+    String localeCode,
+    String query,
+  ) {
+    final normalizedQuery = _normalizeText(query);
+    if (normalizedQuery.isEmpty) {
+      return false;
+    }
+
+    return _searchTerms(language, localeCode).any(
+      (term) => _normalizeText(term).contains(normalizedQuery),
+    );
+  }
 
   List<String> _searchTerms(LanguageStruct language, String localeCode) {
     final localizedName =

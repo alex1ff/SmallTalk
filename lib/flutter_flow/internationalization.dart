@@ -635,8 +635,8 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Blacklist',
     },
     '7benyvw2': {
-      'ru': 'Сообщить о проблеме',
-      'en': 'Report a problem',
+      'ru': 'Служба поддержки',
+      'en': 'Support service',
     },
     'ss5m5bt2': {
       'ru': 'Выйти',

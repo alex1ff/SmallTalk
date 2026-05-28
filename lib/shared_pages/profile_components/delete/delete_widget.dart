@@ -2,8 +2,8 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/services/voip_service.dart';
 import '/index.dart';
 import 'package:flutter/material.dart';
@@ -52,16 +52,8 @@ class _DeleteWidgetState extends State<DeleteWidget> {
             children: [
               Container(
                 width: double.infinity,
-                height: 16.0,
-                child: custom_widgets.NotchedClipper(
-                  width: double.infinity,
-                  height: 16.0,
-                ),
-              ),
-              Container(
-                width: double.infinity,
                 decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
+                  color: ExpatlioDesign.card,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -69,28 +61,12 @@ class _DeleteWidgetState extends State<DeleteWidget> {
                   children: [
                     Padding(
                       padding:
-                          EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
-                      child: Text(
-                        FFLocalizations.of(context).getText(
-                          '7vr6l6ry' /* Удаление аккаунта */,
-                        ),
-                        textAlign: TextAlign.start,
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'Cool',
-                              fontSize: 26.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FontWeight.normal,
-                            ),
-                      ),
-                    ),
-                    Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(6.0, 24.0, 6.0, 0.0),
+                          EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
                       child: Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          color: FlutterFlowTheme.of(context).primaryBackground,
-                          borderRadius: BorderRadius.circular(38.0),
+                          color: ExpatlioDesign.card,
+                          borderRadius: BorderRadius.circular(20.0),
                         ),
                         child: Padding(
                           padding: EdgeInsets.all(24.0),
@@ -183,7 +159,7 @@ class _DeleteWidgetState extends State<DeleteWidget> {
                           size: 15.0,
                         ),
                         options: FFButtonOptions(
-                          height: 40.0,
+                          height: ExpatlioDesign.buttonHeight,
                           padding: EdgeInsetsDirectional.fromSTEB(
                               16.0, 0.0, 16.0, 0.0),
                           iconAlignment: IconAlignment.end,
@@ -220,9 +196,7 @@ class _DeleteWidgetState extends State<DeleteWidget> {
                         ),
                       ),
                     ),
-                  ]
-                      .divide(SizedBox(height: 2.0))
-                      .addToStart(SizedBox(height: 16.0)),
+                  ].divide(SizedBox(height: 2.0)),
                 ),
               ),
             ],

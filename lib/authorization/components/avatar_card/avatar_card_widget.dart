@@ -1,6 +1,7 @@
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'avatar_card_model.dart';
@@ -64,7 +65,7 @@ class _AvatarCardWidgetState extends State<AvatarCardWidget> {
         width: 100.0,
         height: 110.0,
         decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
+          color: ExpatlioDesign.card,
           borderRadius: BorderRadius.circular(14.0),
         ),
         child: Stack(
@@ -117,7 +118,7 @@ class _AvatarCardWidgetState extends State<AvatarCardWidget> {
                         alignment: AlignmentDirectional(0.0, 0.0),
                         child: Icon(
                           FFIcons.kcheck,
-                          color: FlutterFlowTheme.of(context).primaryBackground,
+                          color: ExpatlioDesign.card,
                           size: 14.0,
                         ),
                       ),

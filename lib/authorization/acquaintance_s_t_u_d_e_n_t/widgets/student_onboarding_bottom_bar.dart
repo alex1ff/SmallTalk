@@ -1,6 +1,7 @@
 import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 
 class StudentOnboardingBottomBar extends StatelessWidget {
@@ -44,10 +45,10 @@ class StudentOnboardingBottomBar extends StatelessWidget {
       ),
       child: Container(
         key: const ValueKey<String>('student_onboarding_bottom_bar'),
-        height: 60.0,
+        height: ExpatlioDesign.buttonHeight + 4.0,
         decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(100.0),
+          color: ExpatlioDesign.text,
+          borderRadius: BorderRadius.circular(18.0),
         ),
         child: Padding(
           padding: const EdgeInsets.all(2.0),
@@ -59,16 +60,16 @@ class StudentOnboardingBottomBar extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _StudentOnboardingCircleButton(
+                    _StudentOnboardingActionButton(
                       key: const ValueKey<String>(
                           'student_onboarding_back_button'),
                       fillColor: const Color(0xFF2E2E2E),
-                      onTap: backButtonEnabled ? onBack : null,
-                      child: const Icon(
-                        FFIcons.karrowLeft,
-                        color: Colors.white,
-                        size: 24.0,
+                      text: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Назад',
+                        enText: 'Back',
                       ),
+                      textColor: Colors.white,
+                      onTap: backButtonEnabled ? onBack : null,
                     ),
                     const SizedBox(width: 2.0),
                   ],
@@ -87,33 +88,30 @@ class StudentOnboardingBottomBar extends StatelessWidget {
                   ],
                 ),
               ),
-              _StudentOnboardingCircleButton(
+              _StudentOnboardingActionButton(
                 key: ValueKey<String>(isLastPage
                     ? 'student_onboarding_finish_button'
                     : 'student_onboarding_next_button'),
                 fillColor: isLastPage
                     ? FlutterFlowTheme.of(context).success
                     : FlutterFlowTheme.of(context).primaryBackground,
+                text: isLastPage
+                    ? FFLocalizations.of(context).getVariableText(
+                        ruText: 'Готово',
+                        enText: 'Done',
+                      )
+                    : FFLocalizations.of(context).getVariableText(
+                        ruText: 'Далее',
+                        enText: 'Next',
+                      ),
+                textColor: isLastPage ? Colors.white : ExpatlioDesign.text,
+                isLoading: isSubmitting,
+                spinnerColor: isLastPage ? Colors.white : ExpatlioDesign.text,
                 onTap: isSubmitting || isInteractionLocked
                     ? null
                     : isLastPage
                         ? onComplete
                         : onNext,
-                child: isSubmitting
-                    ? const SizedBox(
-                        width: 20.0,
-                        height: 20.0,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.black),
-                        ),
-                      )
-                    : Icon(
-                        isLastPage ? Icons.check : FFIcons.karrowRight,
-                        color: Colors.black,
-                        size: 24.0,
-                      ),
               ),
             ],
           ),
@@ -164,10 +162,10 @@ class _StudentOnboardingProgressBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: const ValueKey<String>('student_onboarding_progress_badge'),
-      width: 56.0,
-      height: 56.0,
+      width: ExpatlioDesign.buttonHeight,
+      height: ExpatlioDesign.buttonHeight,
       decoration: const BoxDecoration(
-        color: Colors.black,
+        color: ExpatlioDesign.text,
         shape: BoxShape.circle,
       ),
       child: Stack(
@@ -203,34 +201,69 @@ class _StudentOnboardingProgressBadge extends StatelessWidget {
   }
 }
 
-class _StudentOnboardingCircleButton extends StatelessWidget {
-  const _StudentOnboardingCircleButton({
+class _StudentOnboardingActionButton extends StatelessWidget {
+  const _StudentOnboardingActionButton({
     super.key,
     required this.fillColor,
-    required this.child,
+    required this.text,
+    required this.textColor,
+    this.isLoading = false,
+    this.spinnerColor = ExpatlioDesign.text,
     this.onTap,
   });
 
   final Color fillColor;
-  final Widget child;
+  final String text;
+  final Color textColor;
+  final bool isLoading;
+  final Color spinnerColor;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: fillColor,
-      shape: const CircleBorder(),
+      borderRadius: BorderRadius.circular(16.0),
       child: InkWell(
-        customBorder: const CircleBorder(),
+        borderRadius: BorderRadius.circular(16.0),
         splashColor: Colors.transparent,
         focusColor: Colors.transparent,
         hoverColor: Colors.transparent,
         highlightColor: Colors.transparent,
         onTap: onTap,
-        child: SizedBox(
-          width: 56.0,
-          height: 56.0,
-          child: Center(child: child),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minWidth: 94.0,
+            minHeight: ExpatlioDesign.buttonHeight,
+          ),
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(18.0, 0.0, 18.0, 0.0),
+            child: Center(
+              child: isLoading
+                  ? SizedBox(
+                      width: 20.0,
+                      height: 20.0,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          spinnerColor,
+                        ),
+                      ),
+                    )
+                  : Text(
+                      text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: FlutterFlowTheme.of(context).bodyMedium.override(
+                            fontFamily: 'sf pro display',
+                            color: textColor,
+                            fontSize: 15.0,
+                            letterSpacing: 0.0,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+            ),
+          ),
         ),
       ),
     );

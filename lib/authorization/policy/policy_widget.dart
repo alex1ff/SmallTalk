@@ -1,5 +1,7 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'policy_model.dart';
@@ -42,7 +44,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: Stack(
           children: [
             Padding(
@@ -561,87 +563,12 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                 ),
               ),
             ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    FlutterFlowTheme.of(context).secondaryBackground,
-                    Color(0xEFF2F2F7),
-                    Color(0x00F2F2F7)
-                  ],
-                  stops: [0.0, 0.8, 1.0],
-                  begin: AlignmentDirectional(0.0, -1.0),
-                  end: AlignmentDirectional(0, 1.0),
-                ),
-              ),
-              child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 55.0, 6.0, 0.0),
-                child: Container(
-                  width: double.infinity,
-                  height: 70.0,
-                  decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(100.0),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(2.0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        InkWell(
-                          splashColor: Colors.transparent,
-                          focusColor: Colors.transparent,
-                          hoverColor: Colors.transparent,
-                          highlightColor: Colors.transparent,
-                          onTap: () async {
-                            context.safePop();
-                          },
-                          child: Container(
-                            width: 66.0,
-                            height: 66.0,
-                            decoration: BoxDecoration(
-                              color: FlutterFlowTheme.of(context)
-                                  .secondaryBackground,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Align(
-                              alignment: AlignmentDirectional(0.0, 0.0),
-                              child: Icon(
-                                FFIcons.kchevronLeft,
-                                color: FlutterFlowTheme.of(context).primaryText,
-                                size: 20.0,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Container(
-                          width: 66.0,
-                          height: 66.0,
-                          decoration: BoxDecoration(
-                            color: Color(0xFFE88CD4),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Align(
-                            alignment: AlignmentDirectional(0.0, 0.0),
-                            child: Padding(
-                              padding: EdgeInsetsDirectional.fromSTEB(
-                                  10.0, 8.0, 10.0, 2.0),
-                              child: Image.asset(
-                                'assets/images/logo.png',
-                                width: double.infinity,
-                                height: double.infinity,
-                                fit: BoxFit.contain,
-                                alignment: Alignment(0.0, -0.2),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+            BasicPageHeader(
+              title: FFLocalizations.of(context)
+                  .getText(
+                    'xfsjdmlr' /* Политика конфиденциальности */,
+                  )
+                  .replaceAll('\n', ' '),
             ),
           ],
         ),

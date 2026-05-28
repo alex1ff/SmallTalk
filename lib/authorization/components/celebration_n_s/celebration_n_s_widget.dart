@@ -1,8 +1,8 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'celebration_n_s_model.dart';
@@ -50,32 +50,18 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
             children: [
               Container(
                 width: double.infinity,
-                height: 16.0,
-                child: custom_widgets.NotchedClipper(
-                  width: double.infinity,
-                  height: 16.0,
-                ),
-              ),
-              Container(
-                width: double.infinity,
                 decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
+                  color: ExpatlioDesign.background,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      FFLocalizations.of(context).getText(
+                    BottomSheetHeader(
+                      title: FFLocalizations.of(context).getText(
                         'r89oxs81' /* Юх-ху! */,
                       ),
-                      textAlign: TextAlign.start,
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'Cool',
-                            fontSize: 26.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.normal,
-                          ),
+                      onConfirm: () => Navigator.pop(context),
                     ),
                     Stack(
                       alignment: AlignmentDirectional(1.15, -1.2),
@@ -384,26 +370,8 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                         ),
                       ],
                     ),
-                    Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 35.0),
-                      child: FlutterFlowIconButton(
-                        borderRadius: 60.0,
-                        buttonSize: 56.0,
-                        fillColor: FlutterFlowTheme.of(context).success,
-                        icon: Icon(
-                          Icons.check,
-                          color: Colors.black,
-                          size: 24.0,
-                        ),
-                        onPressed: () async {
-                          Navigator.pop(context);
-                        },
-                      ),
-                    ),
-                  ]
-                      .divide(SizedBox(height: 24.0))
-                      .addToStart(SizedBox(height: 16.0)),
+                    const SizedBox(height: 35.0),
+                  ].divide(SizedBox(height: 24.0)),
                 ),
               ),
             ],
@@ -411,13 +379,15 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
         ),
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 100.0),
-          child: Lottie.asset(
-            'assets/jsons/Confetti_Animation.json',
-            width: MediaQuery.sizeOf(context).width * 1.0,
-            height: MediaQuery.sizeOf(context).height * 1.0,
-            fit: BoxFit.contain,
-            repeat: false,
-            animate: true,
+          child: IgnorePointer(
+            child: Lottie.asset(
+              'assets/jsons/Confetti_Animation.json',
+              width: MediaQuery.sizeOf(context).width * 1.0,
+              height: MediaQuery.sizeOf(context).height * 1.0,
+              fit: BoxFit.contain,
+              repeat: false,
+              animate: true,
+            ),
           ),
         ),
       ],

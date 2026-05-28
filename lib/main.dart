@@ -12,10 +12,14 @@ import 'backend/firebase/firebase_config.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import 'flutter_flow/flutter_flow_util.dart';
 import 'flutter_flow/internationalization.dart';
+import 'shared_pages/design/expatlio_design.dart';
 
 // 🔔 VoIP imports
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/voip_service.dart';
+
+// 💳 Subscription (RevenueCat) imports
+import 'services/subscription_service.dart';
 
 // 🔔 Background VoIP handler
 @pragma('vm:entry-point')
@@ -23,7 +27,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await initFirebase();
 
   debugPrint('🔔 Background message received: ${message.messageId}');
-  debugPrint('🔔 Message data: ${message.data}');
+  debugPrint(
+    '🔔 Background message type: ${message.data['type']}, '
+    'hasSessionId: ${message.data['sessionId'] != null}',
+  );
 
   if (message.data['type'] == 'incoming_call') {
     debugPrint('📞 Incoming VoIP call detected in background');
@@ -56,6 +63,13 @@ void main() async {
   debugPrint('🔔 VoIP background handler registered');
 
   await initFirebase();
+
+  // 💳 Configure RevenueCat as soon as Firebase is up. Safe to ignore
+  // failure: the service degrades gracefully and the auth stream
+  // (firebase_user_provider.dart) will retry logInUser on next signal.
+  unawaited(SubscriptionService.instance.configure().catchError((Object e) {
+    debugPrint('⚠️ main: SubscriptionService.configure failed: $e');
+  }));
 
   final appState = FFAppState();
   await Future.wait([
@@ -227,10 +241,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         Locale('ru'),
         Locale('en'),
       ],
-      theme: ThemeData(
-        brightness: Brightness.light,
-        useMaterial3: false,
-      ),
+      theme: ExpatlioDesign.lightTheme(),
       themeMode: _themeMode,
       routerConfig: _router,
       builder: (_, child) => MediaQuery(

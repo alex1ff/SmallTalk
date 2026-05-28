@@ -1,13 +1,11 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
-import '/components/button/button_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'add_inter_model.dart';
 export 'add_inter_model.dart';
 
@@ -28,7 +26,6 @@ class AddInterWidget extends StatefulWidget {
 class _AddInterWidgetState extends State<AddInterWidget> {
   static const int _minuteStep = 5;
   static const int _defaultDurationMinutes = 60;
-  static const int _durationAdjustmentStepMinutes = 15;
   static const int _lastMinuteOfDay = (24 * 60) - _minuteStep;
   static const int _latestStartMinute = _lastMinuteOfDay - _minuteStep;
 
@@ -171,34 +168,6 @@ class _AddInterWidgetState extends State<AddInterWidget> {
 
   int get _durationMinutes => _selectedEndMinutes - _selectedStartMinutes;
 
-  int get _maxAvailableDurationMinutes =>
-      _lastMinuteOfDay - _selectedStartMinutes;
-
-  List<int> _availableSlotsFor(_IntervalField field) {
-    if (field == _IntervalField.start) {
-      return [
-        for (int minutes = 0;
-            minutes <= _latestStartMinute;
-            minutes += _minuteStep)
-          minutes,
-      ];
-    }
-
-    final firstEnd = _selectedStartMinutes + _minuteStep;
-    return [
-      for (int minutes = firstEnd;
-          minutes <= _lastMinuteOfDay;
-          minutes += _minuteStep)
-        minutes,
-    ];
-  }
-
-  int _selectedMinutesFor(_IntervalField field) {
-    return field == _IntervalField.start
-        ? _selectedStartMinutes
-        : _selectedEndMinutes;
-  }
-
   void _updateActiveField(_IntervalField field) {
     if (_activeField == field) {
       return;
@@ -208,20 +177,26 @@ class _AddInterWidgetState extends State<AddInterWidget> {
     });
   }
 
-  void _updateSelectedMinutes(int newMinutes) {
+  void _updateSelectedTime(DateTime value) {
+    final newMinutes = _roundUpToStep(_minutesOfDay(value));
     final startMinutes = _selectedStartMinutes;
     final endMinutes = _selectedEndMinutes;
 
     if (_activeField == _IntervalField.start) {
       final preservedDuration = endMinutes - startMinutes;
+      final validStartMinutes = _clampMinutes(
+        newMinutes,
+        min: 0,
+        max: _latestStartMinute,
+      );
       final nextEndMinutes = _clampMinutes(
-        newMinutes + preservedDuration,
-        min: newMinutes + _minuteStep,
+        validStartMinutes + preservedDuration,
+        min: validStartMinutes + _minuteStep,
         max: _lastMinuteOfDay,
       );
       setState(() {
         _setInterval(
-          start: _minutesToDateTime(newMinutes),
+          start: _minutesToDateTime(validStartMinutes),
           end: _minutesToDateTime(nextEndMinutes),
         );
       });
@@ -242,26 +217,6 @@ class _AddInterWidgetState extends State<AddInterWidget> {
     });
   }
 
-  void _updateDuration(int nextDurationMinutes) {
-    final validDuration = _clampMinutes(
-      nextDurationMinutes,
-      min: _minuteStep,
-      max: _maxAvailableDurationMinutes,
-    );
-    final startMinutes = _selectedStartMinutes;
-
-    setState(() {
-      _setInterval(
-        start: _minutesToDateTime(startMinutes),
-        end: _minutesToDateTime(startMinutes + validDuration),
-      );
-    });
-  }
-
-  void _changeDurationBy(int deltaMinutes) {
-    _updateDuration(_durationMinutes + deltaMinutes);
-  }
-
   String _formatDuration(int totalMinutes) {
     final hours = totalMinutes ~/ 60;
     final minutes = totalMinutes % 60;
@@ -273,43 +228,6 @@ class _AddInterWidgetState extends State<AddInterWidget> {
       return '$hours ч';
     }
     return '$minutes мин';
-  }
-
-  Widget _buildDurationAdjustButton({
-    required IconData icon,
-    required VoidCallback? onTap,
-  }) {
-    final isEnabled = onTap != null;
-
-    return InkWell(
-      splashColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18.0),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        width: 42.0,
-        height: 42.0,
-        decoration: BoxDecoration(
-          color: isEnabled
-              ? FlutterFlowTheme.of(context).primaryBackground
-              : const Color(0xFFF5F5F8),
-          borderRadius: BorderRadius.circular(18.0),
-          border: Border.all(
-            color:
-                isEnabled ? const Color(0xFFE6E6EB) : const Color(0xFFEDEEF2),
-          ),
-        ),
-        child: Icon(
-          icon,
-          color: isEnabled
-              ? FlutterFlowTheme.of(context).primaryText
-              : FlutterFlowTheme.of(context).secondaryText,
-          size: 18.0,
-        ),
-      ),
-    );
   }
 
   Future<void> _saveInterval() async {
@@ -407,11 +325,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
     final previewText = '${_model.timeStart} - ${_model.timeEnd}';
-    final pickerOptions = _availableSlotsFor(_activeField);
-    final canDecreaseDuration = _durationMinutes > _minuteStep;
-    final canIncreaseDuration = _durationMinutes < _maxAvailableDurationMinutes;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -419,46 +333,31 @@ class _AddInterWidgetState extends State<AddInterWidget> {
       children: [
         Container(
           width: double.infinity,
-          height: 16.0,
-          child: custom_widgets.NotchedClipper(
-            width: double.infinity,
-            height: 16.0,
-          ),
-        ),
-        Container(
-          width: double.infinity,
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.9,
           ),
           decoration: BoxDecoration(
-            color: FlutterFlowTheme.of(context).secondaryBackground,
+            color: ExpatlioDesign.background,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Align(
-                alignment: AlignmentDirectional(0.0, -1.0),
-                child: Text(
-                  FFLocalizations.of(context).getText(
-                    'doo4eaqe' /* Добавить интервал */,
-                  ),
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'Cool',
-                        fontSize: 22.0,
-                        letterSpacing: 0.0,
-                        fontWeight: FontWeight.normal,
-                      ),
+              BottomSheetHeader(
+                title: FFLocalizations.of(context).getText(
+                  'doo4eaqe' /* Добавить интервал */,
                 ),
+                onClose: () => Navigator.pop(context, false),
+                onConfirm: _saveInterval,
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 24.0, 6.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
                 child: Container(
                   width: double.infinity,
                   padding: EdgeInsets.all(4.0),
                   decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(26.0),
+                    color: ExpatlioDesign.card,
+                    borderRadius: BorderRadius.circular(16.0),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.max,
@@ -467,7 +366,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                         width: 52.0,
                         height: 52.0,
                         decoration: BoxDecoration(
-                          color: Color(0xFFF2F2F7),
+                          color: ExpatlioDesign.mutedSurface,
                           borderRadius: BorderRadius.circular(22.0),
                         ),
                         child: Align(
@@ -554,84 +453,13 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                 ),
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(16.0, 18.0, 16.0, 0.0),
-                child: Row(
-                  children: [
-                    Text(
-                      'Длительность',
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'sf pro display',
-                            fontSize: 16.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    const Spacer(),
-                    _buildDurationAdjustButton(
-                      icon: Icons.remove_rounded,
-                      onTap: canDecreaseDuration
-                          ? () => _changeDurationBy(
-                                -_durationAdjustmentStepMinutes,
-                              )
-                          : null,
-                    ),
-                    const SizedBox(width: 10.0),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14.0,
-                        vertical: 10.0,
-                      ),
-                      decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).primaryBackground,
-                        borderRadius: BorderRadius.circular(18.0),
-                        border: Border.all(
-                          color: const Color(0xFFE6E6EB),
-                        ),
-                      ),
-                      child: Text(
-                        _formatDuration(_durationMinutes),
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'sf pro display',
-                              fontSize: 15.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ),
-                    const SizedBox(width: 10.0),
-                    _buildDurationAdjustButton(
-                      icon: Icons.add_rounded,
-                      onTap: canIncreaseDuration
-                          ? () => _changeDurationBy(
-                                _durationAdjustmentStepMinutes,
-                              )
-                          : null,
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(16.0, 18.0, 16.0, 0.0),
-                child: Text(
-                  _activeField == _IntervalField.start
-                      ? 'Сдвиг начала сохраняет текущую длительность. Ниже её можно быстро менять.'
-                      : 'Конец можно выбрать вручную или скорректировать длительность кнопками выше.',
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'sf pro display',
-                        color: FlutterFlowTheme.of(context).secondaryText,
-                        fontSize: 13.0,
-                        letterSpacing: 0.0,
-                      ),
-                ),
-              ),
-              Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(6.0, 18.0, 6.0, 0.0),
                 child: Container(
                   width: double.infinity,
-                  height: 220.0,
+                  height: 188.0,
                   decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(26.0),
+                    color: ExpatlioDesign.card,
+                    borderRadius: BorderRadius.circular(16.0),
                   ),
                   child: Stack(
                     alignment: AlignmentDirectional(0.0, 0.0),
@@ -671,169 +499,27 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                         ),
                       ),
                       Positioned.fill(
-                        top: 22.0,
-                        child: _TimeSlotsPicker(
-                          options: pickerOptions,
-                          selectedMinutes: _selectedMinutesFor(_activeField),
-                          onSelected: _updateSelectedMinutes,
+                        top: 8.0,
+                        child: CupertinoDatePicker(
+                          key: ValueKey(_activeField),
+                          mode: CupertinoDatePickerMode.time,
+                          use24hFormat: true,
+                          minuteInterval: _minuteStep,
+                          initialDateTime: _activeField == _IntervalField.start
+                              ? _selectedStartTime
+                              : _selectedEndTime,
+                          onDateTimeChanged: _updateSelectedTime,
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-              AnimatedPadding(
-                duration: const Duration(milliseconds: 160),
-                curve: Curves.easeOutCubic,
-                padding: EdgeInsetsDirectional.fromSTEB(
-                    0.0, 40.0, 6.0, keyboardVisible ? 6.0 : 35.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.max,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: wrapWithModel(
-                        model: _model.buttonModel,
-                        updateCallback: () => safeSetState(() {}),
-                        child: ButtonWidget(
-                          text: FFLocalizations.of(context).getText(
-                            'bzho8r5y' /* Добавить интервал */,
-                          ),
-                          keyboardAwarePadding: false,
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              6.0, 0.0, 6.0, 0.0),
-                          loadingText:
-                              FFLocalizations.of(context).getVariableText(
-                            ruText: 'Сохраняем...',
-                            enText: 'Saving...',
-                          ),
-                          busyStyle: ButtonBusyStyle.spinner,
-                          action: _saveInterval,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      decoration: BoxDecoration(
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: 7.0,
-                            color: Color(0x0D2C2C2C),
-                            offset: Offset(
-                              0.0,
-                              2.0,
-                            ),
-                          )
-                        ],
-                        shape: BoxShape.circle,
-                      ),
-                      child: FlutterFlowIconButton(
-                        borderRadius: 50.0,
-                        buttonSize: 60.0,
-                        fillColor:
-                            FlutterFlowTheme.of(context).primaryBackground,
-                        icon: Icon(
-                          Icons.close_sharp,
-                          color: FlutterFlowTheme.of(context).error,
-                          size: 20.0,
-                        ),
-                        onPressed: () async {
-                          Navigator.pop(context, false);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ].addToStart(SizedBox(height: 16.0)),
+              const SizedBox(height: 35.0),
+            ],
           ),
         ),
       ],
-    );
-  }
-}
-
-class _TimeSlotsPicker extends StatefulWidget {
-  const _TimeSlotsPicker({
-    required this.options,
-    required this.selectedMinutes,
-    required this.onSelected,
-  });
-
-  final List<int> options;
-  final int selectedMinutes;
-  final ValueChanged<int> onSelected;
-
-  @override
-  State<_TimeSlotsPicker> createState() => _TimeSlotsPickerState();
-}
-
-class _TimeSlotsPickerState extends State<_TimeSlotsPicker> {
-  late final FixedExtentScrollController _controller;
-
-  int get _selectedIndex {
-    final index = widget.options.indexOf(widget.selectedMinutes);
-    return index >= 0 ? index : 0;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = FixedExtentScrollController(initialItem: _selectedIndex);
-  }
-
-  @override
-  void didUpdateWidget(covariant _TimeSlotsPicker oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_controller.hasClients) {
-        return;
-      }
-      if (_controller.selectedItem != _selectedIndex) {
-        _controller.jumpToItem(_selectedIndex);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  String _formatMinutes(int totalMinutes) {
-    final hours = (totalMinutes ~/ 60).toString().padLeft(2, '0');
-    final minutes = (totalMinutes % 60).toString().padLeft(2, '0');
-    return '$hours:$minutes';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoPicker.builder(
-      scrollController: _controller,
-      itemExtent: 48.0,
-      useMagnifier: true,
-      magnification: 1.08,
-      diameterRatio: 1.25,
-      squeeze: 1.1,
-      selectionOverlay: const SizedBox.shrink(),
-      onSelectedItemChanged: (index) {
-        HapticFeedback.selectionClick();
-        widget.onSelected(widget.options[index]);
-      },
-      childCount: widget.options.length,
-      itemBuilder: (context, index) {
-        return Center(
-          child: Text(
-            _formatMinutes(widget.options[index]),
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'sf pro display',
-                  fontSize: 26.0,
-                  letterSpacing: 0.0,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-        );
-      },
     );
   }
 }

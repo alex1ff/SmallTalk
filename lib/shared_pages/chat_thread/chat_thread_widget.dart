@@ -1,15 +1,15 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/call_details/call_details_widget.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
+import '/shared_pages/design/basic_page_header.dart';
 
 import 'chat_call_event_card.dart';
 import 'chat_thread_model.dart';
@@ -34,15 +34,19 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   late ChatThreadModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _messagesScrollController = ScrollController();
-  final _userFutureCache = <String, Future<UsersRecord>>{};
+  final _publicProfileFutureCache =
+      <String, Future<UserPublicProfilesRecord?>>{};
   DateTime? _lastReadMarkerTarget;
   int _lastRenderedMessageCount = -1;
   bool _isSending = false;
 
-  Future<UsersRecord> _getUserFuture(DocumentReference ref) {
-    return _userFutureCache.putIfAbsent(
+  Future<UserPublicProfilesRecord?> _getPublicProfileFuture(
+      DocumentReference ref) {
+    return _publicProfileFutureCache.putIfAbsent(
       ref.path,
-      () => UsersRecord.getDocumentOnce(ref),
+      () => UserPublicProfilesRecord.maybeGetDocumentOnce(
+        UserPublicProfilesRecord.collection.doc(ref.id),
+      ),
     );
   }
 
@@ -195,7 +199,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   Widget _buildLoadingState(BuildContext context) {
     return Scaffold(
       key: scaffoldKey,
-      backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+      backgroundColor: ExpatlioDesign.background,
       body: Center(
         child: SizedBox(
           width: 50.0,
@@ -212,7 +216,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   Widget _buildEmptyState(BuildContext context) {
     return Scaffold(
       key: scaffoldKey,
-      backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+      backgroundColor: ExpatlioDesign.background,
       body: Center(
         child: SizedBox(
           height: 500.0,
@@ -236,7 +240,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   }) {
     return Scaffold(
       key: scaffoldKey,
-      backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+      backgroundColor: ExpatlioDesign.background,
       body: Center(
         child: SizedBox(
           height: 500.0,
@@ -410,12 +414,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required MessagesRecord message,
     required bool isCurrentUser,
   }) {
-    final bubbleColor = isCurrentUser
-        ? FlutterFlowTheme.of(context).primary
-        : FlutterFlowTheme.of(context).primaryBackground;
-    final textColor = isCurrentUser
-        ? FlutterFlowTheme.of(context).primaryBackground
-        : FlutterFlowTheme.of(context).primaryText;
+    final bubbleColor =
+        isCurrentUser ? ExpatlioDesign.primary : ExpatlioDesign.card;
+    final textColor = isCurrentUser ? Colors.white : ExpatlioDesign.text;
 
     return Align(
       alignment: isCurrentUser
@@ -426,7 +427,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         margin: const EdgeInsetsDirectional.only(bottom: 8.0),
         decoration: BoxDecoration(
           color: bubbleColor,
-          borderRadius: BorderRadius.circular(22.0),
+          borderRadius: BorderRadius.circular(18.0),
+          border:
+              isCurrentUser ? null : Border.all(color: ExpatlioDesign.border),
         ),
         padding: const EdgeInsetsDirectional.fromSTEB(14.0, 10.0, 14.0, 10.0),
         child: Column(
@@ -464,136 +467,26 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
   Widget _buildHeader(
     BuildContext context, {
-    required UsersRecord partner,
+    required UserPublicProfilesRecord? partnerProfile,
+    required DocumentReference partnerRef,
     required bool isFriend,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            FlutterFlowTheme.of(context).secondaryBackground,
-            const Color(0xEFF2F2F7),
-            const Color(0x00F2F2F7),
-          ],
-          stops: const [0.0, 0.8, 1.0],
-          begin: const AlignmentDirectional(0.0, -1.0),
-          end: const AlignmentDirectional(0.0, 1.0),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(12.0, 55.0, 12.0, 12.0),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          children: [
-            FlutterFlowIconButton(
-              borderRadius: 70.0,
-              buttonSize: 45.0,
-              fillColor: Colors.white,
-              icon: Icon(
-                FFIcons.kchevronLeft,
-                color: FlutterFlowTheme.of(context).primaryText,
-                size: 20.0,
-              ),
-              onPressed: () => context.safePop(),
+    final partnerName = partnerProfile?.displayName.trim() ?? '';
+    return BasicPageHeader(
+      title: partnerName.isNotEmpty
+          ? partnerName
+          : FFLocalizations.of(context).getVariableText(
+              ruText: 'Собеседник',
+              enText: 'Conversation partner',
             ),
-            Padding(
-              padding: const EdgeInsetsDirectional.only(start: 12.0),
-              child: Container(
-                width: 46.0,
-                height: 46.0,
-                decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
-                  borderRadius: BorderRadius.circular(18.0),
-                  image: partner.photoUrl.isNotEmpty
-                      ? DecorationImage(
-                          fit: BoxFit.cover,
-                          image: CachedNetworkImageProvider(
-                            partner.photoUrl,
-                            maxWidth: 92,
-                            maxHeight: 92,
-                          ),
-                        )
-                      : null,
-                ),
-                child: partner.photoUrl.isEmpty
-                    ? Icon(
-                        Icons.person_rounded,
-                        color: FlutterFlowTheme.of(context).secondaryText,
-                      )
-                    : null,
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsetsDirectional.only(start: 12.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        partner.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'Cool',
-                              fontSize: 18.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FontWeight.normal,
-                            ),
-                      ),
-                    ),
-                    if (isFriend)
-                      const Padding(
-                        padding: EdgeInsetsDirectional.only(start: 5.0),
-                        child: Icon(
-                          Icons.star_rounded,
-                          color: Color(0xFFFFC107),
-                          size: 20.0,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 174.0),
-              child: OutlinedButton.icon(
-                onPressed: () => _toggleFriend(partner.reference, isFriend),
-                icon: Icon(
-                  isFriend
-                      ? Icons.person_remove_alt_1_rounded
-                      : Icons.person_add_alt_1_rounded,
-                  size: 18.0,
-                ),
-                label: Text(
-                  FFLocalizations.of(context).getVariableText(
-                    ruText: isFriend ? 'Убрать из друзей' : 'Добавить в друзья',
-                    enText: isFriend ? 'Remove friend' : 'Add friend',
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: FlutterFlowTheme.of(context).secondaryText,
-                  side: BorderSide(
-                    color: FlutterFlowTheme.of(context).primaryBackground,
-                  ),
-                  backgroundColor: FlutterFlowTheme.of(context)
-                      .secondaryBackground
-                      .withValues(alpha: 0.45),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18.0),
-                  ),
-                  padding: const EdgeInsetsDirectional.fromSTEB(
-                    10.0,
-                    8.0,
-                    12.0,
-                    8.0,
-                  ),
-                ),
-              ),
-            ),
-          ],
+      trailing: IconButton(
+        onPressed: () => _toggleFriend(partnerRef, isFriend),
+        icon: Icon(
+          isFriend
+              ? Icons.person_remove_alt_1_rounded
+              : Icons.person_add_alt_1_rounded,
+          color: ExpatlioDesign.text,
+          size: 22.0,
         ),
       ),
     );
@@ -658,12 +551,12 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
           _markConversationRead(conversation);
 
-          return FutureBuilder<UsersRecord>(
-            future: _getUserFuture(partnerRef),
+          return FutureBuilder<UserPublicProfilesRecord?>(
+            future: _getPublicProfileFuture(partnerRef),
             builder: (context, partnerSnapshot) {
               if (partnerSnapshot.hasError) {
                 debugPrint(
-                  'ChatThreadWidget: partner load failed for ${partnerRef.path}: ${partnerSnapshot.error}',
+                  'ChatThreadWidget: partner public profile load failed for ${partnerRef.path}: ${partnerSnapshot.error}',
                 );
                 return _buildChatUnavailableState(
                   context,
@@ -671,20 +564,18 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                 );
               }
 
-              if (!partnerSnapshot.hasData) {
+              if (partnerSnapshot.connectionState == ConnectionState.waiting) {
                 return _buildLoadingState(context);
               }
 
-              final partner = partnerSnapshot.data!;
               final isFriend = userHasFriend(
                 currentUserDocument,
-                partner.reference,
+                partnerRef,
               );
 
               return Scaffold(
                 key: scaffoldKey,
-                backgroundColor:
-                    FlutterFlowTheme.of(context).secondaryBackground,
+                backgroundColor: ExpatlioDesign.background,
                 body: Stack(
                   children: [
                     Padding(
@@ -694,7 +585,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                         children: [
                           _buildHeader(
                             context,
-                            partner: partner,
+                            partnerProfile: partnerSnapshot.data,
+                            partnerRef: partnerRef,
                             isFriend: isFriend,
                           ),
                           Expanded(
@@ -804,9 +696,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              const Color(0x00F2F2F7),
-                              const Color(0xACF2F2F7),
-                              FlutterFlowTheme.of(context).secondaryBackground,
+                              ExpatlioDesign.background.withValues(alpha: 0.0),
+                              ExpatlioDesign.background.withValues(alpha: 0.84),
+                              ExpatlioDesign.background,
                             ],
                             stops: const [0.0, 0.2, 1.0],
                             begin: const AlignmentDirectional(0.0, -1.0),
@@ -830,49 +722,32 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                   textCapitalization:
                                       TextCapitalization.sentences,
                                   textInputAction: TextInputAction.send,
+                                  textAlignVertical: TextAlignVertical.center,
                                   maxLines: 4,
                                   minLines: 1,
-                                  decoration: InputDecoration(
+                                  decoration:
+                                      ExpatlioDesign.formFieldDecoration(
+                                    context,
                                     hintText: FFLocalizations.of(context)
                                         .getVariableText(
                                       ruText: 'Написать сообщение',
                                       enText: 'Write a message',
                                     ),
-                                    filled: true,
-                                    fillColor: FlutterFlowTheme.of(context)
-                                        .primaryBackground,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(24.0),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    contentPadding:
-                                        const EdgeInsetsDirectional.fromSTEB(
-                                      16.0,
-                                      14.0,
-                                      16.0,
-                                      14.0,
-                                    ),
                                   ),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        fontSize: 15.0,
-                                        letterSpacing: 0.0,
-                                      ),
+                                  style: ExpatlioDesign.formTextStyle(context),
                                   onFieldSubmitted: (_) =>
                                       _sendMessage(conversation),
                                 ),
                               ),
                               const SizedBox(width: 8.0),
                               SizedBox(
-                                width: 52.0,
-                                height: 52.0,
+                                width: ExpatlioDesign.buttonHeight,
+                                height: ExpatlioDesign.buttonHeight,
                                 child: Material(
-                                  color: FlutterFlowTheme.of(context).primary,
-                                  borderRadius: BorderRadius.circular(18.0),
+                                  color: ExpatlioDesign.primary,
+                                  borderRadius: BorderRadius.circular(14.0),
                                   child: InkWell(
-                                    borderRadius: BorderRadius.circular(18.0),
+                                    borderRadius: BorderRadius.circular(14.0),
                                     onTap: _isSending
                                         ? null
                                         : () => _sendMessage(conversation),

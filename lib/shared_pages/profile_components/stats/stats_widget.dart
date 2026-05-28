@@ -1,10 +1,10 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
-import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'stats_model.dart';
 export 'stats_model.dart';
@@ -58,32 +58,18 @@ class _StatsWidgetState extends State<StatsWidget> {
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
           Container(
-            width: double.infinity,
-            height: 16.0,
-            child: custom_widgets.NotchedClipper(
-              width: double.infinity,
-              height: 16.0,
-            ),
-          ),
-          Container(
             decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).secondaryBackground,
+              color: ExpatlioDesign.card,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  FFLocalizations.of(context).getText(
+                BottomSheetHeader(
+                  title: FFLocalizations.of(context).getText(
                     'h312ck10' /* Статистика */,
                   ),
-                  textAlign: TextAlign.start,
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'Cool',
-                        fontSize: 26.0,
-                        letterSpacing: 0.0,
-                        fontWeight: FontWeight.normal,
-                      ),
+                  onConfirm: () => Navigator.pop(context),
                 ),
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(6.0, 16.0, 6.0, 0.0),
@@ -100,7 +86,7 @@ class _StatsWidgetState extends State<StatsWidget> {
                       return Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          color: FlutterFlowTheme.of(context).primaryBackground,
+                          color: ExpatlioDesign.card,
                           borderRadius: BorderRadius.circular(20.0),
                         ),
                         child: Padding(
@@ -359,22 +345,8 @@ class _StatsWidgetState extends State<StatsWidget> {
                     },
                   ),
                 ),
-                Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(0.0, 40.0, 0.0, 0.0),
-                  child: wrapWithModel(
-                    model: _model.buttonModel,
-                    updateCallback: () => safeSetState(() {}),
-                    child: ButtonWidget(
-                      text: FFLocalizations.of(context).getText(
-                        'wzrvlh74' /* Готово */,
-                      ),
-                      action: () async {
-                        Navigator.pop(context);
-                      },
-                    ),
-                  ),
-                ),
-              ].addToStart(SizedBox(height: 16.0)),
+                const SizedBox(height: 35.0),
+              ],
             ),
           ),
         ],

@@ -3,6 +3,7 @@ import '/authorization/shared/pending_social_auth_context.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
 enum SocialAuthEntryDestination {
@@ -262,33 +263,21 @@ Future<UsersRecord?> persistCanonicalUserRole({
     ),
   };
 
-  if (shouldGrantStudentBonus) {
-    updateData.addAll(
-      createUsersRecordData(
-        balanceST: updateBalanceStruct(
-          BalanceStruct(
-            smallTalks: 1,
-            minutes: 10,
-          ),
-          clearUnsetFields: false,
-          create: true,
-        ),
-      ),
-    );
-  }
-
   await userRef.set(updateData, SetOptions(merge: true));
 
   if (shouldGrantStudentBonus) {
-    await TransactionsRecord.collection.doc().set(
-          createTransactionsRecordData(
-            userId: userRef,
-            createdAt: getCurrentTimestamp,
-            type: TypeTransactions.bonus,
-            status: StatusTransactions.completed,
-            amountST: 1.0,
-          ),
-        );
+    try {
+      await FirebaseFunctions.instance
+          .httpsCallable('claimRegistrationGift')
+          .call();
+    } on FirebaseFunctionsException catch (error) {
+      onDebugLog?.call(
+        'registrationGiftClaimFailed code=${error.code} '
+        'message=${error.message ?? 'none'}',
+      );
+    } catch (error) {
+      onDebugLog?.call('registrationGiftClaimFailed error=$error');
+    }
   }
 
   final updatedUser = await ensureCanonicalCurrentUserDocument(

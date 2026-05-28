@@ -252,19 +252,10 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             builder: (context, params) => PayCopyWidget(),
           ),
           FFRoute(
-            name: PayWebWiewWidget.routeName,
-            path: PayWebWiewWidget.routePath,
+            name: 'PayWebWiew',
+            path: '/payWebWiew',
             requireAuth: true,
-            builder: (context, params) => PayWebWiewWidget(
-              paymentUrl: params.getParam(
-                'paymentUrl',
-                ParamType.String,
-              ),
-              transactionRefPath: params.getParam(
-                'transactionRefPath',
-                ParamType.String,
-              ),
-            ),
+            builder: (context, params) => PayWidget(),
           ),
           FFRoute(
             name: BlackListWidget.routeName,

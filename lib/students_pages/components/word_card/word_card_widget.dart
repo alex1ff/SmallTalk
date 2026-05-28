@@ -2,11 +2,11 @@ import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/students_pages/components/woed/woed_widget.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'word_card_model.dart';
 export 'word_card_model.dart';
 
@@ -32,12 +32,10 @@ class _WordCardWidgetState extends State<WordCardWidget> {
       backgroundColor: Colors.transparent,
       context: context,
       builder: (context) {
-        return WebViewAware(
-          child: Padding(
-            padding: MediaQuery.viewInsetsOf(context),
-            child: WoedWidget(
-              word: widget.wordDoc!,
-            ),
+        return Padding(
+          padding: MediaQuery.viewInsetsOf(context),
+          child: WoedWidget(
+            word: widget.wordDoc!,
           ),
         );
       },
@@ -68,14 +66,14 @@ class _WordCardWidgetState extends State<WordCardWidget> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(26.0),
+        borderRadius: BorderRadius.circular(16.0),
         onTap: _openWordSheet,
         child: Container(
           width: double.infinity,
           height: 169.0,
           decoration: BoxDecoration(
-            color: FlutterFlowTheme.of(context).primaryBackground,
-            borderRadius: BorderRadius.circular(26.0),
+            color: ExpatlioDesign.card,
+            borderRadius: BorderRadius.circular(16.0),
           ),
           child: Padding(
             padding: EdgeInsets.all(16.0),
@@ -95,7 +93,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                         ),
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
                               fontFamily: 'Cool',
-                              color: FlutterFlowTheme.of(context).primaryText,
+                              color: ExpatlioDesign.text,
                               fontSize: 21.0,
                               letterSpacing: 0.0,
                               fontWeight: FontWeight.normal,
@@ -106,12 +104,12 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                       width: 40.0,
                       height: 40.0,
                       decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).secondaryBackground,
+                        color: ExpatlioDesign.background,
                         borderRadius: BorderRadius.circular(32.0),
                       ),
                       child: Icon(
                         FFIcons.kexpand01,
-                        color: FlutterFlowTheme.of(context).primaryText,
+                        color: ExpatlioDesign.text,
                         size: 14.0,
                       ),
                     ),
@@ -123,7 +121,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                     width: 1.0,
                     height: 12.0,
                     decoration: BoxDecoration(
-                      color: FlutterFlowTheme.of(context).secondaryText,
+                      color: ExpatlioDesign.muted,
                     ),
                   ),
                 ),
@@ -134,7 +132,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                   ),
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'Cool',
-                        color: FlutterFlowTheme.of(context).primaryText,
+                        color: ExpatlioDesign.text,
                         fontSize: 21.0,
                         letterSpacing: 0.0,
                         fontWeight: FontWeight.normal,
@@ -150,8 +148,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                       FlutterFlowIconButton(
                         borderRadius: 40.0,
                         buttonSize: 40.0,
-                        fillColor:
-                            FlutterFlowTheme.of(context).secondaryBackground,
+                        fillColor: ExpatlioDesign.background,
                         icon: Icon(
                           FFIcons.kstar012,
                           color: FlutterFlowTheme.of(context).primary,
@@ -160,7 +157,8 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                         onPressed: () async {
                           unawaited(
                             () async {
-                              await FlashcardReviewRepository.deleteReviewForWord(
+                              await FlashcardReviewRepository
+                                  .deleteReviewForWord(
                                 widget.wordDoc!.reference,
                               );
                               await widget.wordDoc!.reference.delete();
@@ -173,7 +171,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8.0),
                           border: Border.all(
-                            color: FlutterFlowTheme.of(context).secondaryText,
+                            color: ExpatlioDesign.muted,
                             width: 1.0,
                           ),
                         ),

@@ -1,478 +1,204 @@
-import '/auth/firebase_auth/auth_util.dart';
-import '/backend/backend.dart';
-import '/backend/schema/enums/enums.dart';
-import '/components/button/button_widget.dart';
-import '/components/empty/empty_widget.dart';
-import '/components/trans/trans_widget.dart';
-import '/flutter_flow/flutter_flow_animations.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/students_pages/components/tarif_loader/tarif_loader_widget.dart';
-import '/custom_code/actions/index.dart' as actions;
-import '/index.dart';
-import 'package:collection/collection.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-import 'package:easy_debounce/easy_debounce.dart';
-import 'package:flutter/foundation.dart';
+import '/shared_pages/design/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
+import '/services/subscription_service.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 
 import 'pay_model.dart';
 export 'pay_model.dart';
 
-class _PromoActivationException implements Exception {
-  const _PromoActivationException(this.message);
-
-  final String message;
-}
-
 class PayWidget extends StatefulWidget {
   const PayWidget({super.key});
 
-  static String routeName = 'pay';
+  static String routeName = 'Pay';
   static String routePath = '/pay';
 
   @override
   State<PayWidget> createState() => _PayWidgetState();
 }
 
-class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
-  static List<PackagesRecord>? _packagesMemoryCache;
-  static Future<List<PackagesRecord>>? _packagesInFlightFuture;
+enum _PlanKind { monthly, quarterly }
+
+class _PlanData {
+  const _PlanData({
+    required this.kind,
+    required this.productId,
+    required this.title,
+    required this.subtitle,
+    required this.fallbackPrice,
+    required this.periodLabel,
+    required this.icon,
+    required this.features,
+    this.badge,
+  });
+
+  final _PlanKind kind;
+  final String productId;
+  final String title;
+  final String subtitle;
+  final String fallbackPrice;
+  final String periodLabel;
+  final IconData icon;
+  final List<String> features;
+  final String? badge;
+}
+
+const _plans = [
+  _PlanData(
+    kind: _PlanKind.monthly,
+    productId: SubscriptionProductIds.monthly,
+    title: 'Basic',
+    subtitle: 'Для старта изучения языка',
+    fallbackPrice: r'$10',
+    periodLabel: 'мес',
+    icon: FFIcons.kwallet02,
+    features: [
+      'До 10 звонков в месяц',
+      'Базовый словарь',
+      'Субтитры в звонках',
+    ],
+  ),
+  _PlanData(
+    kind: _PlanKind.quarterly,
+    productId: SubscriptionProductIds.quarterly,
+    title: 'Pro',
+    subtitle: 'Полный доступ ко всем возможностям',
+    fallbackPrice: r'$20',
+    periodLabel: '3 мес',
+    icon: Icons.auto_awesome_rounded,
+    badge: 'ПОПУЛЯРНЫЙ',
+    features: [
+      'Безлимитные звонки',
+      'Расширенный словарь и флэшкарты',
+      'Перевод в реальном времени',
+      'Приоритетная поддержка',
+    ],
+  ),
+];
+
+class _PayWidgetState extends State<PayWidget> {
+  static const _purple = Color(0xFF7430E8);
+  static const _blueBorder = Color(0xFF7430E8);
+  static const _cardBorder = Color(0xFFEBEBEB);
+  static const _selectedBackground = Color(0xFFF3EEFF);
+  static const _iconBackground = Color(0xFFF3EEFF);
 
   late PayModel _model;
-  bool _isCreatingPaymentSession = false;
-
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
-  final animationsMap = <String, AnimationInfo>{};
+  _PlanKind _selected = _PlanKind.quarterly;
+  Map<String, Package> _packagesByProductId = const {};
+  bool _isLoadingPackages = true;
+  bool _isPurchasing = false;
 
   @override
   void initState() {
     super.initState();
     _model = createModel(context, () => PayModel());
-    _model.packagesFuture ??= _getPackagesFuture(
-      forceRefresh: _packagesMemoryCache != null,
-    );
-
-    _model.nameTextController ??= TextEditingController();
-    _model.nameFocusNode ??= FocusNode();
-    _model.nameFocusNode!.addListener(() => safeSetState(() {}));
-    animationsMap.addAll({
-      'columnOnActionTriggerAnimation': AnimationInfo(
-        trigger: AnimationTrigger.onActionTrigger,
-        applyInitialState: true,
-        effectsBuilder: () => [
-          ShakeEffect(
-            curve: Curves.easeInOut,
-            delay: 0.0.ms,
-            duration: 200.0.ms,
-            hz: 5,
-            offset: Offset(10.0, 0.0),
-            rotation: 0,
-          ),
-        ],
-      ),
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadPackages();
     });
-    setupAnimations(
-      animationsMap.values.where((anim) =>
-          anim.trigger == AnimationTrigger.onActionTrigger ||
-          !anim.applyInitialState),
-      this,
-    );
   }
 
   @override
   void dispose() {
     _model.dispose();
-
     super.dispose();
   }
 
-  Future<List<PackagesRecord>> _getPackagesFuture({
-    bool forceRefresh = false,
-  }) {
-    final cachedPackages = _packagesMemoryCache;
-    if (!forceRefresh && cachedPackages != null) {
-      return SynchronousFuture<List<PackagesRecord>>(cachedPackages);
+  _PlanData get _selectedPlan =>
+      _plans.firstWhere((plan) => plan.kind == _selected);
+
+  Package? get _selectedPackage =>
+      _packagesByProductId[_selectedPlan.productId];
+
+  Future<void> _loadPackages() async {
+    if (mounted) {
+      safeSetState(() {
+        _isLoadingPackages = true;
+      });
     }
 
-    final inFlightFuture = _packagesInFlightFuture;
-    if (inFlightFuture != null) {
-      return inFlightFuture;
-    }
+    final packages = await SubscriptionService.instance
+        .fetchSubscriptionPackages()
+        .timeout(const Duration(seconds: 20), onTimeout: () => const []);
 
-    late final Future<List<PackagesRecord>> packagesFuture;
-    packagesFuture = queryPackagesRecordOnce().then((packages) {
-      final normalizedPackages = List<PackagesRecord>.unmodifiable(packages);
-      if (normalizedPackages.isNotEmpty) {
-        _packagesMemoryCache = normalizedPackages;
-      } else {
-        _packagesMemoryCache = null;
-      }
-      return normalizedPackages;
-    }).whenComplete(() {
-      if (identical(_packagesInFlightFuture, packagesFuture)) {
-        _packagesInFlightFuture = null;
-      }
-    });
-
-    _packagesInFlightFuture = packagesFuture;
-    return packagesFuture;
-  }
-
-  PackagesRecord? _effectiveSelectedPackage([
-    List<PackagesRecord>? packages,
-  ]) {
-    final availablePackages = packages ?? _packagesMemoryCache ?? const [];
-    if (availablePackages.isEmpty) {
-      return _model.tarifDoc;
-    }
-
-    final selectedReferencePath = _model.tarifDoc?.reference.path;
-    if (selectedReferencePath == null) {
-      return availablePackages.first;
-    }
-
-    return availablePackages.firstWhereOrNull(
-          (record) => record.reference.path == selectedReferencePath,
-        ) ??
-        availablePackages.first;
-  }
-
-  Future<PackagesRecord?> _resolveSelectedPackageForCheckout() async {
-    if (_packagesInFlightFuture != null) {
-      try {
-        final packages = await (_model.packagesFuture ??= _getPackagesFuture());
-        return _effectiveSelectedPackage(packages);
-      } catch (_) {
-        return _effectiveSelectedPackage();
-      }
-    }
-
-    final currentSelection = _effectiveSelectedPackage();
-    if (currentSelection != null) {
-      return currentSelection;
-    }
-
-    final packages = await (_model.packagesFuture ??= _getPackagesFuture());
-    return _effectiveSelectedPackage(packages);
-  }
-
-  String? _normalizeVisibleErrorMessage(String? rawMessage) {
-    final normalized = rawMessage?.trim();
-    if (normalized == null || normalized.isEmpty) {
-      return null;
-    }
-
-    final lowerCased = normalized.toLowerCase();
-    const genericMessages = {
-      'internal',
-      'internal error',
-      'unknown',
-      'failed-precondition',
-      'firebase_functions/internal',
-    };
-
-    if (genericMessages.contains(lowerCased)) {
-      return null;
-    }
-
-    return normalized;
-  }
-
-  String? _extractMessageFromFunctionsDetails(dynamic details) {
-    if (details is String) {
-      return _normalizeVisibleErrorMessage(details);
-    }
-
-    if (details is Map) {
-      for (final key in const [
-        'userMessage',
-        'message',
-        'providerMessage',
-        'details',
-        'error',
-      ]) {
-        final candidate = _normalizeVisibleErrorMessage(
-          details[key]?.toString(),
-        );
-        if (candidate != null) {
-          return candidate;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  String _resolvePaymentErrorMessage(FirebaseFunctionsException error) {
-    final detailsMessage = _extractMessageFromFunctionsDetails(error.details);
-    if (detailsMessage != null) {
-      return detailsMessage;
-    }
-
-    final directMessage = _normalizeVisibleErrorMessage(error.message);
-    if (directMessage != null) {
-      return directMessage;
-    }
-
-    switch (error.code) {
-      case 'failed-precondition':
-        return 'Не удалось создать платеж. Проверьте настройки оплаты и попробуйте еще раз.';
-      case 'unauthenticated':
-        return 'Нужно заново войти в аккаунт, чтобы создать платеж.';
-      default:
-        return 'Не удалось создать платеж. Попробуйте еще раз.';
-    }
-  }
-
-  Future<PromoCodesRecord?> _findPromoCode(String promoCode) async {
-    final candidates = <String>{
-      promoCode,
-      promoCode.toUpperCase(),
-    }.where((candidate) => candidate.isNotEmpty);
-
-    for (final candidate in candidates) {
-      final promoCodeRecord = await queryPromoCodesRecordOnce(
-        queryBuilder: (promoCodesRecord) => promoCodesRecord.where(
-          'code',
-          isEqualTo: candidate,
-        ),
-        singleRecord: true,
-      ).then((records) => records.firstOrNull);
-
-      if (promoCodeRecord != null) {
-        return promoCodeRecord;
-      }
-    }
-
-    return null;
-  }
-
-  Future<void> _showPromoCodeNotification(
-    String header, {
-    String text = '',
-    bool isError = true,
-  }) async {
     if (!mounted) {
       return;
     }
 
-    await actions.showTopNotification(
-      context,
-      header,
-      text,
-      isError,
-    );
+    safeSetState(() {
+      _packagesByProductId = {
+        for (final package in packages)
+          package.storeProduct.identifier: package,
+      };
+      _isLoadingPackages = false;
+    });
   }
 
-  Future<void> _handleApplyPromoCode() async {
-    final enteredPromoCode = _model.nameTextController.text.trim();
-    if (enteredPromoCode.isEmpty) {
+  String _priceFor(_PlanData plan) {
+    final package = _packagesByProductId[plan.productId];
+    return package?.storeProduct.priceString ?? plan.fallbackPrice;
+  }
+
+  Future<void> _purchaseSelectedPlan() async {
+    if (_isPurchasing) {
       return;
     }
 
-    FocusScope.of(context).unfocus();
-    FocusManager.instance.primaryFocus?.unfocus();
+    Package? package = _selectedPackage;
+    if (package == null) {
+      await _loadPackages();
+      if (!mounted) {
+        return;
+      }
+      package = _selectedPackage;
+    }
+
+    if (package == null) {
+      _showSnackBar('Покупки пока недоступны. Проверьте продукты RevenueCat.');
+      return;
+    }
+
+    safeSetState(() {
+      _isPurchasing = true;
+    });
 
     try {
-      final promoCodeRecord = await _findPromoCode(enteredPromoCode);
-      if (promoCodeRecord == null) {
-        await _showPromoCodeNotification('Промокод не найден');
+      final info = await SubscriptionService.instance.purchasePackage(package);
+      if (!mounted || info == null) {
         return;
       }
 
-      final userRef = currentUserReference;
-      if (userRef == null) {
-        throw const _PromoActivationException(
-          'Нужно заново войти в аккаунт, чтобы активировать промокод.',
-        );
-      }
-
-      final now = getCurrentTimestamp;
-      PromoCodesRecord? activatedPromoCode;
-
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final promoSnapshot = await transaction.get(promoCodeRecord.reference);
-        if (!promoSnapshot.exists) {
-          throw const _PromoActivationException('Промокод не найден');
-        }
-
-        final freshPromoCode = PromoCodesRecord.fromSnapshot(promoSnapshot);
-        if (!freshPromoCode.isActive) {
-          throw const _PromoActivationException('Промокод неактивен');
-        }
-
-        final expiredDate = freshPromoCode.expiredDate;
-        if (expiredDate == null || !expiredDate.isAfter(now)) {
-          throw const _PromoActivationException('Промокод истёк');
-        }
-
-        final alreadyUsed =
-            freshPromoCode.usedBy.any((entry) => entry.user == userRef);
-        if (alreadyUsed) {
-          throw const _PromoActivationException(
-            'Вы уже использовали этот промокод',
-          );
-        }
-
-        if (freshPromoCode.usageCount >= freshPromoCode.usageLimit) {
-          throw const _PromoActivationException('Промокод исчерпан');
-        }
-
-        final promoValue = freshPromoCode.valueSamllTalk.toDouble();
-        if (promoValue <= 0) {
-          throw const _PromoActivationException('Промокод недоступен');
-        }
-
-        transaction.update(freshPromoCode.reference, {
-          'usedBy': FieldValue.arrayUnion([
-            getPromoUsedByFirestoreData(
-              updatePromoUsedByStruct(
-                PromoUsedByStruct(
-                  user: userRef,
-                  data: now,
-                ),
-                clearUnsetFields: false,
-              ),
-              true,
-            ),
-          ]),
-          'usageCount': FieldValue.increment(1),
-        });
-
-        transaction.update(userRef, {
-          'balanceST.smallTalks': FieldValue.increment(promoValue),
-          'balanceST.minutes': FieldValue.increment(promoValue * 10),
-        });
-
-        final transactionDoc = TransactionsRecord.collection.doc();
-        transaction.set(
-          transactionDoc,
-          createTransactionsRecordData(
-            userId: userRef,
-            createdAt: now,
-            type: TypeTransactions.promocode,
-            amountST: promoValue,
-            promoCodeDocRef: freshPromoCode.reference,
-            promoCode: freshPromoCode.code,
-          ),
-        );
-
-        activatedPromoCode = freshPromoCode;
-      });
-
-      if (!mounted || activatedPromoCode == null) {
-        return;
-      }
-
-      safeSetState(() {
-        _model.codeCopy = activatedPromoCode;
-        _model.nameTextController?.clear();
-      });
-
-      await _showPromoCodeNotification(
-        'Промокод активирован',
-        text:
-            'Вы получили ${activatedPromoCode!.valueSamllTalk.toString()} Small Talk!',
-        isError: false,
-      );
-    } on _PromoActivationException catch (error) {
-      await _showPromoCodeNotification(error.message);
-    } catch (error, stackTrace) {
-      debugPrint('Failed to apply promo code: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      await _showPromoCodeNotification(
-        'Не удалось активировать промокод',
-        text: 'Попробуйте еще раз.',
-      );
-    } finally {
-      if (mounted) {
-        safeSetState(() {});
-      }
-    }
-  }
-
-  Future<void> _handlePayPressed() async {
-    if (_isCreatingPaymentSession) {
-      return;
-    }
-
-    final selectedPackage = await _resolveSelectedPackageForCheckout();
-    if (selectedPackage == null) {
-      if (animationsMap['columnOnActionTriggerAnimation'] != null) {
-        animationsMap['columnOnActionTriggerAnimation']!
-            .controller
-            .forward(from: 0.0);
-      }
-      HapticFeedback.mediumImpact();
-      return;
-    }
-
-    safeSetState(() => _isCreatingPaymentSession = true);
-
-    var paymentUrl = '';
-    var transactionRefPath = '';
-
-    try {
-      final response = await FirebaseFunctions.instance
-          .httpsCallable('createPaymentSession')
-          .call({
-        'packageId': selectedPackage.reference.id,
-      });
-      final responseData =
-          Map<String, dynamic>.from((response.data as Map?) ?? const {});
-
-      paymentUrl = (responseData['paymentUrl']?.toString() ?? '').trim();
-      transactionRefPath =
-          (responseData['transactionRefPath']?.toString() ?? '').trim();
-
-      if (paymentUrl.isEmpty || transactionRefPath.isEmpty) {
-        throw Exception('Payment session response is incomplete');
-      }
-    } on FirebaseFunctionsException catch (error) {
-      if (mounted) {
-        showSnackbar(
-          context,
-          _resolvePaymentErrorMessage(error),
-        );
+      final hasPro =
+          info.entitlements.active.containsKey(kSubscriptionProEntitlementId);
+      if (hasPro) {
+        _showSnackBar('Подписка активна.');
+        context.safePop();
       }
     } catch (_) {
       if (mounted) {
-        showSnackbar(
-          context,
-          'Не удалось создать платеж. Попробуйте еще раз.',
-        );
+        _showSnackBar('Не удалось оформить подписку. Попробуйте еще раз.');
       }
     } finally {
       if (mounted) {
-        safeSetState(() => _isCreatingPaymentSession = false);
+        safeSetState(() {
+          _isPurchasing = false;
+        });
       }
     }
+  }
 
-    if (!mounted || paymentUrl.isEmpty || transactionRefPath.isEmpty) {
-      return;
-    }
-
-    context.pushNamed(
-      PayWebWiewWidget.routeName,
-      queryParameters: {
-        'paymentUrl': serializeParam(paymentUrl, ParamType.String),
-        'transactionRefPath':
-            serializeParam(transactionRefPath, ParamType.String),
-      }.withoutNulls,
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
-    final promoCodeFieldFocused = _model.nameFocusNode?.hasFocus ?? false;
-
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -480,880 +206,399 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: Stack(
+        backgroundColor: ExpatlioDesign.background,
+        body: Column(
           children: [
-            Align(
-              alignment: AlignmentDirectional(0, 0),
-              child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.max,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Column(
-                        mainAxisSize: MainAxisSize.max,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding:
-                                EdgeInsetsDirectional.fromSTEB(10, 0, 0, 0),
-                            child: Text(
-                              FFLocalizations.of(context).getText(
-                                '1uhw3x91' /* Выберите тариф */,
+            _Header(onBack: () => context.safePop()),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsetsDirectional.fromSTEB(10, 34, 10, 24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 680),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Выберите свой тариф',
+                          textAlign: TextAlign.center,
+                          style: FlutterFlowTheme.of(context)
+                              .headlineMedium
+                              .override(
+                                fontFamily: 'sf pro display',
+                                color: ExpatlioDesign.text,
+                                fontSize: 31,
+                                letterSpacing: 0.0,
+                                fontWeight: FontWeight.w700,
                               ),
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Отмените или измените подписку в любой момент',
+                          textAlign: TextAlign.center,
+                          style:
+                              FlutterFlowTheme.of(context).bodyMedium.override(
+                                    fontFamily: 'sf pro display',
+                                    color: ExpatlioDesign.muted,
+                                    fontSize: 20,
+                                    letterSpacing: 0.0,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                        ),
+                        SizedBox(height: 36),
+                        for (final plan in _plans) ...[
+                          _PlanCard(
+                            plan: plan,
+                            selected: _selected == plan.kind,
+                            price: _priceFor(plan),
+                            onTap: () {
+                              safeSetState(() {
+                                _selected = plan.kind;
+                              });
+                            },
+                          ),
+                          if (plan != _plans.last) SizedBox(height: 20),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            _BottomBar(
+              plan: _selectedPlan,
+              price: _priceFor(_selectedPlan),
+              isBusy: _isPurchasing,
+              isLoading: _isLoadingPackages,
+              onPressed: _purchaseSelectedPlan,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.onBack});
+
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return BasicPageHeader(
+      title: 'Тарифы',
+      onBack: onBack,
+    );
+  }
+}
+
+class _PlanCard extends StatelessWidget {
+  const _PlanCard({
+    required this.plan,
+    required this.selected,
+    required this.price,
+    required this.onTap,
+  });
+
+  final _PlanData plan;
+  final bool selected;
+  final String price;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: selected
+              ? _PayWidgetState._selectedBackground
+              : ExpatlioDesign.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected
+                ? _PayWidgetState._blueBorder
+                : _PayWidgetState._cardBorder,
+            width: selected ? 2.5 : 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: EdgeInsetsDirectional.fromSTEB(26, 24, 26, 24),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 78,
+                height: 78,
+                decoration: BoxDecoration(
+                  color: _PayWidgetState._iconBackground,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  plan.icon,
+                  color: _PayWidgetState._purple,
+                  size: 32,
+                ),
+              ),
+              SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            plan.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: FlutterFlowTheme.of(context)
+                                .titleMedium
+                                .override(
+                                  fontFamily: 'sf pro display',
+                                  color: ExpatlioDesign.text,
+                                  fontSize: 27,
+                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ),
+                        if (plan.badge != null) ...[
+                          SizedBox(width: 10),
+                          Container(
+                            padding:
+                                EdgeInsetsDirectional.fromSTEB(12, 5, 12, 5),
+                            decoration: BoxDecoration(
+                              color: _PayWidgetState._purple,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              plan.badge!,
                               style: FlutterFlowTheme.of(context)
                                   .bodyMedium
                                   .override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 20,
+                                    fontFamily: 'sf pro display',
+                                    color: ExpatlioDesign.card,
+                                    fontSize: 14,
                                     letterSpacing: 0.0,
+                                    fontWeight: FontWeight.w700,
                                   ),
-                            ),
-                          ),
-                          Padding(
-                            padding:
-                                EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
-                            child: FutureBuilder<List<PackagesRecord>>(
-                              future: _model.packagesFuture,
-                              initialData: _packagesMemoryCache,
-                              builder: (context, snapshot) {
-                                // Customize what your widget looks like when it's loading.
-                                if (!snapshot.hasData) {
-                                  return TarifLoaderWidget();
-                                }
-                                List<PackagesRecord>
-                                    listViewPackagesRecordList = snapshot.data!;
-                                final effectiveSelectedPackage =
-                                    _effectiveSelectedPackage(
-                                  listViewPackagesRecordList,
-                                );
-
-                                return Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: List.generate(
-                                      listViewPackagesRecordList.length,
-                                      (listViewIndex) {
-                                    final listViewPackagesRecord =
-                                        listViewPackagesRecordList[
-                                            listViewIndex];
-                                    return Padding(
-                                      padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0,
-                                        listViewIndex == 0 ? 0.0 : 6.0,
-                                        0.0,
-                                        0.0,
-                                      ),
-                                      child: InkWell(
-                                        splashColor: Colors.transparent,
-                                        focusColor: Colors.transparent,
-                                        hoverColor: Colors.transparent,
-                                        highlightColor: Colors.transparent,
-                                        onTap: () async {
-                                          _model.tarifDoc =
-                                              listViewPackagesRecord;
-                                          safeSetState(() {});
-                                          HapticFeedback.mediumImpact();
-                                        },
-                                        child: Stack(
-                                          alignment:
-                                              AlignmentDirectional(1, -1.4),
-                                          children: [
-                                            Container(
-                                              width: double.infinity,
-                                              height: 90,
-                                              decoration: BoxDecoration(
-                                                color: listViewPackagesRecord
-                                                            .reference.path ==
-                                                        effectiveSelectedPackage
-                                                            ?.reference.path
-                                                    ? FlutterFlowTheme.of(
-                                                            context)
-                                                        .primary
-                                                    : FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryBackground,
-                                                borderRadius:
-                                                    BorderRadius.circular(26),
-                                                border: Border.all(
-                                                  color: listViewPackagesRecord
-                                                              .reference.path ==
-                                                          effectiveSelectedPackage
-                                                              ?.reference.path
-                                                      ? FlutterFlowTheme.of(
-                                                              context)
-                                                          .primaryText
-                                                      : Colors.transparent,
-                                                  width: 1,
-                                                ),
-                                              ),
-                                              child: Padding(
-                                                padding: EdgeInsetsDirectional
-                                                    .fromSTEB(20, 16, 20, 16),
-                                                child: Column(
-                                                  mainAxisSize:
-                                                      MainAxisSize.max,
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.max,
-                                                      mainAxisAlignment:
-                                                          MainAxisAlignment
-                                                              .spaceBetween,
-                                                      children: [
-                                                        Text(
-                                                          listViewPackagesRecord
-                                                              .name,
-                                                          style: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .bodyMedium
-                                                              .override(
-                                                                fontFamily:
-                                                                    'Cool',
-                                                                color: listViewPackagesRecord.reference.path ==
-                                                                        effectiveSelectedPackage
-                                                                            ?.reference
-                                                                            .path
-                                                                    ? FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .primaryBackground
-                                                                    : FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .primaryText,
-                                                                fontSize: 24,
-                                                                letterSpacing:
-                                                                    0.0,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                              ),
-                                                        ),
-                                                        Text(
-                                                          '${listViewPackagesRecord.price.toString()}₽',
-                                                          style: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .bodyMedium
-                                                              .override(
-                                                                fontFamily:
-                                                                    'Cool',
-                                                                color: listViewPackagesRecord.reference.path ==
-                                                                        effectiveSelectedPackage
-                                                                            ?.reference
-                                                                            .path
-                                                                    ? FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .primaryBackground
-                                                                    : FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .primaryText,
-                                                                fontSize: 24,
-                                                                letterSpacing:
-                                                                    0.0,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                              ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.max,
-                                                      mainAxisAlignment:
-                                                          MainAxisAlignment
-                                                              .spaceBetween,
-                                                      children: [
-                                                        if (listViewPackagesRecord
-                                                                .description !=
-                                                            '')
-                                                          Text(
-                                                            listViewPackagesRecord
-                                                                .description,
-                                                            style: FlutterFlowTheme
-                                                                    .of(context)
-                                                                .bodyMedium
-                                                                .override(
-                                                                  fontFamily:
-                                                                      'sf pro display',
-                                                                  color: listViewPackagesRecord
-                                                                              .reference.path ==
-                                                                          effectiveSelectedPackage
-                                                                              ?.reference
-                                                                              .path
-                                                                      ? FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .success
-                                                                      : FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .error,
-                                                                  fontSize: 15,
-                                                                  letterSpacing:
-                                                                      0.0,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .normal,
-                                                                  lineHeight:
-                                                                      1.5,
-                                                                ),
-                                                          ),
-                                                        if (listViewPackagesRecord
-                                                                .oldPrice !=
-                                                            0)
-                                                          Text(
-                                                            ' ${listViewPackagesRecord.oldPrice.toString()}₽ ',
-                                                            style: FlutterFlowTheme
-                                                                    .of(context)
-                                                                .bodyMedium
-                                                                .override(
-                                                                  fontFamily:
-                                                                      'sf pro display',
-                                                                  color: listViewPackagesRecord
-                                                                              .reference.path ==
-                                                                          effectiveSelectedPackage
-                                                                              ?.reference
-                                                                              .path
-                                                                      ? FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .primaryBackground
-                                                                      : FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .secondaryText,
-                                                                  fontSize: 15,
-                                                                  letterSpacing:
-                                                                      0.0,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .normal,
-                                                                  decoration:
-                                                                      TextDecoration
-                                                                          .lineThrough,
-                                                                  lineHeight:
-                                                                      1.5,
-                                                                ),
-                                                          ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                            if (listViewPackagesRecord
-                                                    .reference.path ==
-                                                effectiveSelectedPackage
-                                                    ?.reference.path)
-                                              Padding(
-                                                padding: EdgeInsetsDirectional
-                                                    .fromSTEB(0, 0, 2, 0),
-                                                child: Container(
-                                                  width: 24,
-                                                  height: 24,
-                                                  decoration: BoxDecoration(
-                                                    color: FlutterFlowTheme.of(
-                                                            context)
-                                                        .success,
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                  child: Align(
-                                                    alignment:
-                                                        AlignmentDirectional(
-                                                            0, 0),
-                                                    child: Icon(
-                                                      Icons.done,
-                                                      color: Colors.black,
-                                                      size: 13,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                );
-                              },
                             ),
                           ),
                         ],
-                      ).animateOnActionTrigger(
-                        animationsMap['columnOnActionTriggerAnimation']!,
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(10, 40, 0, 0),
-                        child: Text(
-                          FFLocalizations.of(context).getText(
-                            '2dwkyn2f' /* Промокод */,
-                          ),
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 20,
-                                    letterSpacing: 0.0,
-                                  ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
-                        child: Container(
-                          width: double.infinity,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            color:
-                                FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(100),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.max,
-                              children: [
-                                Container(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: FlutterFlowTheme.of(context)
-                                        .secondaryBackground,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Align(
-                                    alignment: AlignmentDirectional(0, 0),
-                                    child: Icon(
-                                      FFIcons.kgift02,
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryText,
-                                      size: 20,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        8, 0, 0, 0),
-                                    child: Container(
-                                      width: double.infinity,
-                                      child: TextFormField(
-                                        controller: _model.nameTextController,
-                                        focusNode: _model.nameFocusNode,
-                                        onChanged: (_) => EasyDebounce.debounce(
-                                          '_model.nameTextController',
-                                          Duration(milliseconds: 0),
-                                          () => safeSetState(() {}),
-                                        ),
-                                        autofocus: false,
-                                        textCapitalization:
-                                            TextCapitalization.characters,
-                                        textInputAction: TextInputAction.done,
-                                        obscureText: false,
-                                        decoration: InputDecoration(
-                                          isDense: false,
-                                          labelText: FFLocalizations.of(context)
-                                              .getText(
-                                            'ozmnhrl5' /* Введите промокод */,
-                                          ),
-                                          labelStyle: FlutterFlowTheme.of(
-                                                  context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                fontSize: 16,
-                                                letterSpacing: 0.0,
-                                              ),
-                                          enabledBorder: InputBorder.none,
-                                          focusedBorder: InputBorder.none,
-                                          errorBorder: InputBorder.none,
-                                          focusedErrorBorder: InputBorder.none,
-                                          suffixIcon: _model.nameTextController!
-                                                  .text.isNotEmpty
-                                              ? InkWell(
-                                                  onTap: () async {
-                                                    _model.nameTextController
-                                                        ?.clear();
-                                                    safeSetState(() {});
-                                                  },
-                                                  child: Icon(
-                                                    Icons.clear,
-                                                    size: 18,
-                                                  ),
-                                                )
-                                              : null,
-                                        ),
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              fontSize: 16,
-                                              letterSpacing: 0.0,
-                                            ),
-                                        cursorColor:
-                                            FlutterFlowTheme.of(context)
-                                                .primaryText,
-                                        enableInteractiveSelection: true,
-                                        validator: _model
-                                            .nameTextControllerValidator
-                                            .asValidator(context),
-                                        inputFormatters: [
-                                          if (!isAndroid && !isiOS)
-                                            TextInputFormatter.withFunction(
-                                                (oldValue, newValue) {
-                                              return TextEditingValue(
-                                                selection: newValue.selection,
-                                                text: newValue.text
-                                                    .toCapitalization(
-                                                        TextCapitalization
-                                                            .characters),
-                                              );
-                                            }),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (_model.nameTextController.text != '')
-                                  FlutterFlowIconButton(
-                                    borderRadius: 70,
-                                    buttonSize: 56,
-                                    fillColor:
-                                        FlutterFlowTheme.of(context).primary,
-                                    icon: Icon(
-                                      FFIcons.kchevronRight,
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryBackground,
-                                      size: 20,
-                                    ),
-                                    onPressed: () async {
-                                      await _handleApplyPromoCode();
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(10, 40, 0, 0),
-                        child: Text(
-                          FFLocalizations.of(context).getText(
-                            'd4ayjswx' /* История операций */,
-                          ),
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 20,
-                                    letterSpacing: 0.0,
-                                  ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
-                        child: Container(
-                          width: double.infinity,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color:
-                                FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(100),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.max,
-                              children: [
-                                Expanded(
-                                  child: InkWell(
-                                    splashColor: Colors.transparent,
-                                    focusColor: Colors.transparent,
-                                    hoverColor: Colors.transparent,
-                                    highlightColor: Colors.transparent,
-                                    onTap: () async {
-                                      _model.replenishment = 0;
-                                      safeSetState(() {});
-                                    },
-                                    child: Container(
-                                      width: double.infinity,
-                                      height: 100,
-                                      decoration: BoxDecoration(
-                                        color: valueOrDefault<Color>(
-                                          _model.replenishment == 0
-                                              ? FlutterFlowTheme.of(context)
-                                                  .secondaryBackground
-                                              : Colors.transparent,
-                                          FlutterFlowTheme.of(context)
-                                              .secondaryBackground,
-                                        ),
-                                        borderRadius: BorderRadius.circular(24),
-                                        shape: BoxShape.rectangle,
-                                      ),
-                                      child: Align(
-                                        alignment: AlignmentDirectional(0, 0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            '1owu01u1' /* Все */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color: valueOrDefault<Color>(
-                                                  _model.replenishment == 0
-                                                      ? FlutterFlowTheme.of(
-                                                              context)
-                                                          .primaryText
-                                                      : FlutterFlowTheme.of(
-                                                              context)
-                                                          .secondaryText,
-                                                  FlutterFlowTheme.of(context)
-                                                      .primaryText,
-                                                ),
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: InkWell(
-                                    splashColor: Colors.transparent,
-                                    focusColor: Colors.transparent,
-                                    hoverColor: Colors.transparent,
-                                    highlightColor: Colors.transparent,
-                                    onTap: () async {
-                                      _model.replenishment = 1;
-                                      safeSetState(() {});
-                                    },
-                                    child: Container(
-                                      width: double.infinity,
-                                      height: 100,
-                                      decoration: BoxDecoration(
-                                        color: valueOrDefault<Color>(
-                                          _model.replenishment == 1
-                                              ? FlutterFlowTheme.of(context)
-                                                  .secondaryBackground
-                                              : Colors.transparent,
-                                          Colors.transparent,
-                                        ),
-                                        borderRadius: BorderRadius.circular(24),
-                                        shape: BoxShape.rectangle,
-                                      ),
-                                      child: Align(
-                                        alignment: AlignmentDirectional(0, 0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'm8dxuyz4' /* Пополнения */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color: valueOrDefault<Color>(
-                                                  _model.replenishment == 1
-                                                      ? FlutterFlowTheme.of(
-                                                              context)
-                                                          .primaryText
-                                                      : FlutterFlowTheme.of(
-                                                              context)
-                                                          .secondaryText,
-                                                  FlutterFlowTheme.of(context)
-                                                      .secondaryText,
-                                                ),
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: InkWell(
-                                    splashColor: Colors.transparent,
-                                    focusColor: Colors.transparent,
-                                    hoverColor: Colors.transparent,
-                                    highlightColor: Colors.transparent,
-                                    onTap: () async {
-                                      _model.replenishment = 2;
-                                      safeSetState(() {});
-                                    },
-                                    child: Container(
-                                      width: double.infinity,
-                                      height: 100,
-                                      decoration: BoxDecoration(
-                                        color: valueOrDefault<Color>(
-                                          _model.replenishment == 2
-                                              ? FlutterFlowTheme.of(context)
-                                                  .secondaryBackground
-                                              : Colors.transparent,
-                                          Colors.transparent,
-                                        ),
-                                        borderRadius: BorderRadius.circular(24),
-                                        shape: BoxShape.rectangle,
-                                      ),
-                                      child: Align(
-                                        alignment: AlignmentDirectional(0, 0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'xh0vamif' /* Списания */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color: valueOrDefault<Color>(
-                                                  _model.replenishment == 2
-                                                      ? FlutterFlowTheme.of(
-                                                              context)
-                                                          .primaryText
-                                                      : FlutterFlowTheme.of(
-                                                              context)
-                                                          .secondaryText,
-                                                  FlutterFlowTheme.of(context)
-                                                      .secondaryText,
-                                                ),
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
-                        child: StreamBuilder<List<TransactionsRecord>>(
-                          stream: queryTransactionsRecord(
-                            queryBuilder: (transactionsRecord) =>
-                                transactionsRecord
-                                    .where(
-                                      'userId',
-                                      isEqualTo: currentUserReference,
-                                    )
-                                    .orderBy('createdAt', descending: true),
-                          ),
-                          builder: (context, snapshot) {
-                            // Customize what your widget looks like when it's loading.
-                            if (!snapshot.hasData) {
-                              return Center(
-                                child: SizedBox(
-                                  width: 50,
-                                  height: 50,
-                                  child: SpinKitCircle(
-                                    color:
-                                        FlutterFlowTheme.of(context).secondary,
-                                    size: 50,
-                                  ),
-                                ),
-                              );
-                            }
-                            List<TransactionsRecord>
-                                containerTransactionsRecordList =
-                                snapshot.data!;
-
-                            return Container(
-                              decoration: BoxDecoration(),
-                              child: Builder(
-                                builder: (context) {
-                                  final list = containerTransactionsRecordList
-                                      .where((e) => () {
-                                            if (_model.replenishment == 1) {
-                                              return ((e.type ==
-                                                      TypeTransactions
-                                                          .purchase) ||
-                                                  (e.type ==
-                                                      TypeTransactions.bonus));
-                                            } else if (_model.replenishment ==
-                                                2) {
-                                              return (e.type ==
-                                                  TypeTransactions.call_charge);
-                                            } else {
-                                              return true;
-                                            }
-                                          }())
-                                      .toList();
-
-                                  if (list.isEmpty) {
-                                    return Center(
-                                      child: EmptyWidget(
-                                        txt:
-                                            'По выбранному типу операций пока ничего нет. Попробуйте другой фильтр.',
-                                      ),
-                                    );
-                                  }
-
-                                  return Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children:
-                                        List.generate(list.length, (listIndex) {
-                                      final listItem = list[listIndex];
-                                      return Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                          0.0,
-                                          listIndex == 0 ? 0.0 : 6.0,
-                                          0.0,
-                                          0.0,
-                                        ),
-                                        child: TransWidget(
-                                          key: Key(
-                                              'Keya8r_${listIndex}_of_${list.length}'),
-                                          trans: listItem,
-                                        ),
-                                      );
-                                    }),
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ]
-                        .addToStart(SizedBox(height: 115))
-                        .addToEnd(SizedBox(height: 120)),
-                  ),
-                ),
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    FlutterFlowTheme.of(context).secondaryBackground,
-                    Color(0xEFF2F2F7),
-                    Color(0x00F2F2F7)
-                  ],
-                  stops: [0, 0.8, 1],
-                  begin: AlignmentDirectional(0, -1),
-                  end: AlignmentDirectional(0, 1),
-                ),
-              ),
-              child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(12, 55, 12, 12),
-                child: Row(
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 45,
-                      height: 45,
-                      decoration: BoxDecoration(
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: 7,
-                            color: Color(0x0D2C2C2C),
-                            offset: Offset(
-                              0,
-                              2,
-                            ),
-                          )
-                        ],
-                        shape: BoxShape.circle,
-                      ),
-                      child: FlutterFlowIconButton(
-                        borderRadius: 70,
-                        buttonSize: 45,
-                        fillColor: Colors.white,
-                        icon: Icon(
-                          FFIcons.kchevronLeft,
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          size: 20,
-                        ),
-                        onPressed: () async {
-                          context.safePop();
-                        },
-                      ),
-                    ),
-                    Text(
-                      FFLocalizations.of(context).getText(
-                        'biuq69s8' /* Финансы */,
-                      ),
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'Cool',
-                            fontSize: 18,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.normal,
-                          ),
-                    ),
-                    Container(
-                      width: 45,
-                      height: 45,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (!keyboardVisible && !promoCodeFieldFocused)
-              Align(
-                alignment: AlignmentDirectional(0, 1),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Color(0x00F2F2F7),
-                        Color(0xACF2F2F7),
-                        FlutterFlowTheme.of(context).secondaryBackground
                       ],
-                      stops: [0, 0.2, 1],
-                      begin: AlignmentDirectional(0, -1),
-                      end: AlignmentDirectional(0, 1),
                     ),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(6, 12, 6, 35),
-                    child: FutureBuilder<List<PackagesRecord>>(
-                      future: _model.packagesFuture,
-                      initialData: _packagesMemoryCache,
-                      builder: (context, snapshot) {
-                        final effectiveSelectedPackage = snapshot.hasData
-                            ? _effectiveSelectedPackage(snapshot.data!)
-                            : _effectiveSelectedPackage();
-
-                        return ButtonWidget(
-                          text: FFLocalizations.of(context).getText(
-                            '5visqusd' /* Оплатить */,
+                    SizedBox(height: 8),
+                    Text(
+                      plan.subtitle,
+                      style: FlutterFlowTheme.of(context).bodyMedium.override(
+                            fontFamily: 'sf pro display',
+                            color: ExpatlioDesign.muted,
+                            fontSize: 20,
+                            letterSpacing: 0.0,
+                            fontWeight: FontWeight.w400,
                           ),
-                          loadingText:
-                              FFLocalizations.of(context).getVariableText(
-                            ruText: 'Создаем оплату...',
-                            enText: 'Creating payment...',
-                          ),
-                          busyStyle: ButtonBusyStyle.spinner,
-                          keyboardAwarePadding: false,
-                          padding: EdgeInsets.zero,
-                          trailingContent: effectiveSelectedPackage != null
-                              ? Text(
-                                  '${effectiveSelectedPackage.price.toString()}₽',
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryText,
-                                        fontSize: 15,
-                                        letterSpacing: 0.0,
-                                      ),
-                                )
-                              : null,
-                          action: () async {
-                            await _handlePayPressed();
-                          },
-                        );
-                      },
                     ),
-                  ),
+                    SizedBox(height: 10),
+                    RichText(
+                      textScaler: MediaQuery.of(context).textScaler,
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: price,
+                            style: FlutterFlowTheme.of(context)
+                                .titleLarge
+                                .override(
+                                  fontFamily: 'sf pro display',
+                                  color: _PayWidgetState._purple,
+                                  fontSize: 31,
+                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                          TextSpan(
+                            text: ' / ${plan.periodLabel}',
+                            style: FlutterFlowTheme.of(context)
+                                .bodyMedium
+                                .override(
+                                  fontFamily: 'sf pro display',
+                                  color: ExpatlioDesign.muted,
+                                  fontSize: 24,
+                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 18),
+                    for (final feature in plan.features) ...[
+                      _FeatureLine(text: feature),
+                      if (feature != plan.features.last) SizedBox(height: 13),
+                    ],
+                  ],
                 ),
               ),
-          ],
+              SizedBox(width: 18),
+              _SelectionIndicator(selected: selected),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectionIndicator extends StatelessWidget {
+  const _SelectionIndicator({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    if (selected) {
+      return Container(
+        width: 42,
+        height: 42,
+        decoration: const BoxDecoration(
+          color: _PayWidgetState._purple,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.check_rounded,
+          color: ExpatlioDesign.card,
+          size: 27,
+        ),
+      );
+    }
+
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.card,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: const Color(0xFFE6E6E6),
+          width: 2,
+        ),
+      ),
+    );
+  }
+}
+
+class _FeatureLine extends StatelessWidget {
+  const _FeatureLine({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.check_rounded,
+          color: _PayWidgetState._purple,
+          size: 23,
+        ),
+        SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: FlutterFlowTheme.of(context).bodyMedium.override(
+                  fontFamily: 'sf pro display',
+                  color: ExpatlioDesign.text,
+                  fontSize: 20,
+                  letterSpacing: 0.0,
+                  fontWeight: FontWeight.w400,
+                  lineHeight: 1.25,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BottomBar extends StatelessWidget {
+  const _BottomBar({
+    required this.plan,
+    required this.price,
+    required this.isBusy,
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  final _PlanData plan;
+  final String price;
+  final bool isBusy;
+  final bool isLoading;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: EdgeInsetsDirectional.fromSTEB(10, 20, 10, 12),
+        decoration: const BoxDecoration(
+          color: ExpatlioDesign.card,
+          border: Border(
+            top: BorderSide(color: ExpatlioDesign.border),
+          ),
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: isBusy ? null : onPressed,
+              child: Container(
+                width: double.infinity,
+                height: 78,
+                decoration: BoxDecoration(
+                  color: _PayWidgetState._purple,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.center,
+                child: isBusy || isLoading
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(
+                        'Выбрать ${plan.title} · $price/${plan.periodLabel}',
+                        textAlign: TextAlign.center,
+                        style:
+                            FlutterFlowTheme.of(context).titleMedium.override(
+                                  fontFamily: 'sf pro display',
+                                  color: ExpatlioDesign.card,
+                                  fontSize: 24,
+                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+              ),
+            ),
+          ),
         ),
       ),
     );

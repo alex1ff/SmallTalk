@@ -2,9 +2,10 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_card/review_card_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'my_rew_model.dart';
@@ -53,7 +54,7 @@ class _MyRewWidgetState extends State<MyRewWidget> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: Center(
               child: SizedBox(
                 width: 50.0,
@@ -75,7 +76,7 @@ class _MyRewWidgetState extends State<MyRewWidget> {
           },
           child: Scaffold(
             key: scaffoldKey,
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: Stack(
               children: [
                 SingleChildScrollView(
@@ -509,77 +510,9 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                         .addToEnd(SizedBox(height: 35.0)),
                   ),
                 ),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        FlutterFlowTheme.of(context).secondaryBackground,
-                        Color(0xEFF2F2F7),
-                        Color(0x00F2F2F7)
-                      ],
-                      stops: [0.0, 0.8, 1.0],
-                      begin: AlignmentDirectional(0.0, -1.0),
-                      end: AlignmentDirectional(0, 1.0),
-                    ),
-                  ),
-                  child: Padding(
-                    padding:
-                        EdgeInsetsDirectional.fromSTEB(12.0, 55.0, 12.0, 12.0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          width: 45.0,
-                          height: 45.0,
-                          decoration: BoxDecoration(
-                            boxShadow: [
-                              BoxShadow(
-                                blurRadius: 7.0,
-                                color: Color(0x0D2C2C2C),
-                                offset: Offset(
-                                  0.0,
-                                  2.0,
-                                ),
-                              )
-                            ],
-                            shape: BoxShape.circle,
-                          ),
-                          child: FlutterFlowIconButton(
-                            borderRadius: 70.0,
-                            buttonSize: 45.0,
-                            fillColor: Colors.white,
-                            icon: Icon(
-                              FFIcons.kchevronLeft,
-                              color: FlutterFlowTheme.of(context).primaryText,
-                              size: 20.0,
-                            ),
-                            onPressed: () async {
-                              context.safePop();
-                            },
-                          ),
-                        ),
-                        Text(
-                          FFLocalizations.of(context).getText(
-                            'r4c8ksc9' /* Мои отзывы */,
-                          ),
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 18.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.normal,
-                                  ),
-                        ),
-                        Container(
-                          width: 45.0,
-                          height: 45.0,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ],
-                    ),
+                BasicPageHeader(
+                  title: FFLocalizations.of(context).getText(
+                    'r4c8ksc9' /* Мои отзывы */,
                   ),
                 ),
               ],

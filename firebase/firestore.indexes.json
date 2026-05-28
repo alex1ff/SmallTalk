@@ -119,6 +119,94 @@
       ]
     },
     {
+      "collectionGroup": "userPublicProfiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isProfileComplete",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "language_instruction_NS.code",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "userPublicProfiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isProfileComplete",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "language_instruction_NS.code",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "Country_NS.code",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "userPublicProfiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isProfileComplete",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "language_instruction_NS.code",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "level",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "userPublicProfiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isProfileComplete",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "language_instruction_NS.code",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "Country_NS.code",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "level",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "reviews",
       "queryScope": "COLLECTION",
       "fields": [

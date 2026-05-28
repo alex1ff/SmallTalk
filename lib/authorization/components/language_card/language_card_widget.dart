@@ -1,6 +1,7 @@
 import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 export 'language_card_model.dart';
@@ -35,11 +36,8 @@ class LanguageCardWidget extends StatelessWidget {
       },
       child: Container(
         width: double.infinity,
-        height: 60.0,
-        decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
-          borderRadius: BorderRadius.circular(26.0),
-        ),
+        height: 62.0,
+        decoration: ExpatlioDesign.cardDecoration(radius: 16.0),
         child: Padding(
           padding: EdgeInsets.all(4.0),
           child: Row(
@@ -49,8 +47,8 @@ class LanguageCardWidget extends StatelessWidget {
                 width: 52.0,
                 height: 52.0,
                 decoration: BoxDecoration(
-                  color: Color(0xFFF2F2F7),
-                  borderRadius: BorderRadius.circular(22.0),
+                  color: ExpatlioDesign.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14.0),
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),
@@ -65,7 +63,7 @@ class LanguageCardWidget extends StatelessWidget {
                         )
                       : Icon(
                           Icons.language_rounded,
-                          color: FlutterFlowTheme.of(context).secondaryText,
+                          color: ExpatlioDesign.primary,
                           size: 24.0,
                         ),
                 ),
@@ -80,8 +78,10 @@ class LanguageCardWidget extends StatelessWidget {
                     ),
                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'sf pro display',
+                          color: ExpatlioDesign.text,
                           fontSize: 16.0,
                           letterSpacing: 0.0,
+                          fontWeight: FontWeight.w600,
                         ),
                   ),
                 ),
@@ -95,14 +95,14 @@ class LanguageCardWidget extends StatelessWidget {
                     width: selectionIndicatorSize,
                     height: selectionIndicatorSize,
                     decoration: BoxDecoration(
-                      color: FlutterFlowTheme.of(context).success,
+                      color: ExpatlioDesign.primary,
                       shape: BoxShape.circle,
                     ),
                     child: Align(
                       alignment: AlignmentDirectional(0.0, 0.0),
                       child: Icon(
                         FFIcons.kcheck,
-                        color: Colors.black,
+                        color: Colors.white,
                         size: 14.0,
                       ),
                     ),

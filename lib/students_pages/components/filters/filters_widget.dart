@@ -3,16 +3,15 @@ import '/authorization/components/country_card/country_card_widget.dart';
 import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
-import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/edit_components/edit_country/edit_country_widget.dart';
 import '/shared_pages/edit_components/edit_lang/edit_lang_widget.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'filters_model.dart';
 export 'filters_model.dart';
 
@@ -216,43 +215,24 @@ class _FiltersWidgetState extends State<FiltersWidget> {
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              Container(
-                width: double.infinity,
-                height: 16.0,
-                child: custom_widgets.NotchedClipper(
-                  width: double.infinity,
-                  height: 16.0,
-                ),
-              ),
               Flexible(
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).secondaryBackground,
+                    color: ExpatlioDesign.background,
                   ),
                   child: Padding(
                     padding:
-                        EdgeInsetsDirectional.fromSTEB(6.0, 16.0, 6.0, 0.0),
+                        EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 35.0),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Align(
-                          alignment: AlignmentDirectional(0.0, -1.0),
-                          child: Text(
-                            FFLocalizations.of(context).getText(
-                              '507c1jln' /* Фильтры */,
-                            ),
-                            textAlign: TextAlign.start,
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'Cool',
-                                  fontSize: 26.0,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.normal,
-                                ),
+                        BottomSheetHeader(
+                          title: FFLocalizations.of(context).getText(
+                            '507c1jln' /* Фильтры */,
                           ),
+                          onConfirm: () => Navigator.pop(context),
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
@@ -291,25 +271,23 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                                     backgroundColor: Colors.transparent,
                                     context: context,
                                     builder: (context) {
-                                      return WebViewAware(
-                                        child: Padding(
-                                          padding:
-                                              MediaQuery.viewInsetsOf(context),
-                                          child: EditLangWidget(
-                                            selected: currentUserDocument!
-                                                .learningLanguage,
-                                            title: 'Язык изучения',
-                                            action: (lang) async {
-                                              await currentUserReference!
-                                                  .update(createUsersRecordData(
-                                                learningLanguage:
-                                                    updateLanguageStruct(
-                                                  lang,
-                                                  clearUnsetFields: false,
-                                                ),
-                                              ));
-                                            },
-                                          ),
+                                      return Padding(
+                                        padding:
+                                            MediaQuery.viewInsetsOf(context),
+                                        child: EditLangWidget(
+                                          selected: currentUserDocument!
+                                              .learningLanguage,
+                                          title: 'Язык изучения',
+                                          action: (lang) async {
+                                            await currentUserReference!
+                                                .update(createUsersRecordData(
+                                              learningLanguage:
+                                                  updateLanguageStruct(
+                                                lang,
+                                                clearUnsetFields: false,
+                                              ),
+                                            ));
+                                          },
                                         ),
                                       );
                                     },
@@ -358,31 +336,29 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                                     backgroundColor: Colors.transparent,
                                     context: context,
                                     builder: (context) {
-                                      return WebViewAware(
-                                        child: Padding(
-                                          padding:
-                                              MediaQuery.viewInsetsOf(context),
-                                          child: EditCountryWidget(
-                                            title: 'Локация cобеседника',
-                                            selecte: currentUserDocument!
-                                                .preferences.preferredLocation,
-                                            persistSelectedCountryToUserCountry:
-                                                false,
-                                            action: (lang) async {
-                                              await currentUserReference!
-                                                  .update(createUsersRecordData(
-                                                preferences:
-                                                    createPreferencesStruct(
-                                                  preferredLocation:
-                                                      updateCountryStruct(
-                                                    lang,
-                                                    clearUnsetFields: false,
-                                                  ),
+                                      return Padding(
+                                        padding:
+                                            MediaQuery.viewInsetsOf(context),
+                                        child: EditCountryWidget(
+                                          title: 'Локация cобеседника',
+                                          selecte: currentUserDocument!
+                                              .preferences.preferredLocation,
+                                          persistSelectedCountryToUserCountry:
+                                              false,
+                                          action: (lang) async {
+                                            await currentUserReference!
+                                                .update(createUsersRecordData(
+                                              preferences:
+                                                  createPreferencesStruct(
+                                                preferredLocation:
+                                                    updateCountryStruct(
+                                                  lang,
                                                   clearUnsetFields: false,
                                                 ),
-                                              ));
-                                            },
-                                          ),
+                                                clearUnsetFields: false,
+                                              ),
+                                            ));
+                                          },
                                         ),
                                       );
                                     },
@@ -415,22 +391,6 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                           padding: EdgeInsetsDirectional.fromSTEB(
                               10.0, 12.0, 10.0, 0.0),
                           child: _buildPreferredPartnerLevelSelector(context),
-                        ),
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 40.0, 0.0, 0.0),
-                          child: wrapWithModel(
-                            model: _model.buttonModel,
-                            updateCallback: () => safeSetState(() {}),
-                            child: ButtonWidget(
-                              text: FFLocalizations.of(context).getText(
-                                'z87iidnf' /* Готово */,
-                              ),
-                              action: () async {
-                                Navigator.pop(context);
-                              },
-                            ),
-                          ),
                         ),
                       ],
                     ),

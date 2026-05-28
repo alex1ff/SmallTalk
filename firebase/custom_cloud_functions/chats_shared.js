@@ -76,16 +76,8 @@ function getConnectedCallStartMillis(sessionData = {}) {
   const legacyCallConnectedAt = toMillis(
     sessionData.sessionMetadata?.callConnectedAtTimestamp,
   );
-  const startedAt = toMillis(sessionData.startedAt);
-  const acceptedAt =
-    toMillis(sessionData.acceptedAt) ||
-    toMillis(sessionData.sessionMetadata?.acceptedAt);
-  const serverConnectedAt =
-    startedAt > 0 && (acceptedAt === 0 || startedAt - acceptedAt > 1000)
-      ? startedAt
-      : 0;
 
-  return callConnectedAt || legacyCallConnectedAt || serverConnectedAt || 0;
+  return callConnectedAt || legacyCallConnectedAt || 0;
 }
 
 function getUnlockParticipants(sessionData = {}) {
@@ -265,6 +257,12 @@ function getConversationCallEventEligibility(sessionData = {}, options = {}) {
   const callOutcome = resolveConversationCallOutcome(sessionData, options);
   if (!callOutcome) {
     return { eligible: false, reason: "ignored_not_final" };
+  }
+  if (
+    callOutcome === CALL_EVENT_OUTCOME_COMPLETED &&
+    getConnectedCallStartMillis(sessionData) <= 0
+  ) {
+    return { eligible: false, reason: "ignored_not_connected" };
   }
 
   if (toMillis(sessionData.createdAt) < getChatsRolloutMillis()) {

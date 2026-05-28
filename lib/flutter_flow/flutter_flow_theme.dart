@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '/shared_pages/design/expatlio_design.dart';
+
 abstract class FlutterFlowTheme {
   static const double minTextScaleFactor = 1.0;
   static const double maxTextScaleFactor = 1.0;
@@ -122,22 +124,22 @@ class LightModeTheme extends FlutterFlowTheme {
   @Deprecated('Use tertiary instead')
   Color get tertiaryColor => tertiary;
 
-  late Color primary = const Color(0xFFE88CD4);
-  late Color secondary = const Color(0xFFA0BBFF);
-  late Color tertiary = const Color(0xFFFF79A7);
-  late Color alternate = const Color(0xFFE0E3E7);
-  late Color primaryText = const Color(0xFF000000);
-  late Color secondaryText = const Color(0xFF9B9A9D);
-  late Color primaryBackground = const Color(0xFFFFFFFF);
-  late Color secondaryBackground = const Color(0xFFF2F2F7);
-  late Color accent1 = const Color(0x4C4B39EF);
-  late Color accent2 = const Color(0x4D39D2C0);
-  late Color accent3 = const Color(0x4DEE8B60);
+  late Color primary = ExpatlioDesign.primary;
+  late Color secondary = ExpatlioDesign.primaryEnd;
+  late Color tertiary = ExpatlioDesign.orange;
+  late Color alternate = ExpatlioDesign.border;
+  late Color primaryText = ExpatlioDesign.text;
+  late Color secondaryText = ExpatlioDesign.muted;
+  late Color primaryBackground = ExpatlioDesign.card;
+  late Color secondaryBackground = ExpatlioDesign.background;
+  late Color accent1 = const Color(0x1A7430E8);
+  late Color accent2 = const Color(0x1AB23DE8);
+  late Color accent3 = const Color(0x1AF97316);
   late Color accent4 = const Color(0xCCFFFFFF);
-  late Color success = const Color(0xFF4AFF5F);
-  late Color warning = const Color(0xFFFFCC31);
-  late Color error = const Color(0xFFED5154);
-  late Color info = const Color(0xFFFFFFFF);
+  late Color success = ExpatlioDesign.success;
+  late Color warning = ExpatlioDesign.warning;
+  late Color error = ExpatlioDesign.danger;
+  late Color info = ExpatlioDesign.info;
 }
 
 abstract class Typography {
@@ -193,126 +195,90 @@ class ThemeTypography extends Typography {
 
   final FlutterFlowTheme theme;
 
-  String get displayLargeFamily => 'sf pro display';
+  TextStyle _style(
+    Color color,
+    double size,
+    FontWeight weight, {
+    double height = 1.24,
+    String fontFamily = ExpatlioDesign.fontFamily,
+  }) {
+    return TextStyle(
+      fontFamily: fontFamily,
+      color: color,
+      fontWeight: weight,
+      fontSize: size,
+      height: height,
+      letterSpacing: 0,
+    );
+  }
+
+  TextStyle _headingStyle(Color color, double size, FontWeight weight) {
+    return _style(
+      color,
+      size,
+      weight,
+      height: 1.18,
+      fontFamily: ExpatlioDesign.headingFontFamily,
+    );
+  }
+
+  String get displayLargeFamily => ExpatlioDesign.headingFontFamily;
   bool get displayLargeIsCustom => true;
-  TextStyle get displayLarge => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.w600,
-        fontSize: 64.0,
-      );
-  String get displayMediumFamily => 'sf pro display';
+  TextStyle get displayLarge =>
+      _headingStyle(theme.primaryText, 40.0, FontWeight.w700);
+  String get displayMediumFamily => ExpatlioDesign.headingFontFamily;
   bool get displayMediumIsCustom => true;
-  TextStyle get displayMedium => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.w600,
-        fontSize: 44.0,
-      );
-  String get displaySmallFamily => 'sf pro display';
+  TextStyle get displayMedium =>
+      _headingStyle(theme.primaryText, 34.0, FontWeight.w700);
+  String get displaySmallFamily => ExpatlioDesign.headingFontFamily;
   bool get displaySmallIsCustom => true;
-  TextStyle get displaySmall => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.w600,
-        fontSize: 36.0,
-      );
-  String get headlineLargeFamily => 'sf pro display';
+  TextStyle get displaySmall =>
+      _headingStyle(theme.primaryText, 28.0, FontWeight.w700);
+  String get headlineLargeFamily => ExpatlioDesign.headingFontFamily;
   bool get headlineLargeIsCustom => true;
-  TextStyle get headlineLarge => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.w600,
-        fontSize: 32.0,
-      );
-  String get headlineMediumFamily => 'sf pro display';
+  TextStyle get headlineLarge =>
+      _headingStyle(theme.primaryText, 24.0, FontWeight.w700);
+  String get headlineMediumFamily => ExpatlioDesign.headingFontFamily;
   bool get headlineMediumIsCustom => true;
-  TextStyle get headlineMedium => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.w600,
-        fontSize: 28.0,
-      );
-  String get headlineSmallFamily => 'sf pro display';
+  TextStyle get headlineMedium =>
+      _headingStyle(theme.primaryText, 22.0, FontWeight.w600);
+  String get headlineSmallFamily => ExpatlioDesign.headingFontFamily;
   bool get headlineSmallIsCustom => true;
-  TextStyle get headlineSmall => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.w600,
-        fontSize: 24.0,
-      );
-  String get titleLargeFamily => 'sf pro display';
+  TextStyle get headlineSmall =>
+      _headingStyle(theme.primaryText, 20.0, FontWeight.w600);
+  String get titleLargeFamily => ExpatlioDesign.headingFontFamily;
   bool get titleLargeIsCustom => true;
-  TextStyle get titleLarge => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.w600,
-        fontSize: 20.0,
-      );
-  String get titleMediumFamily => 'sf pro display';
+  TextStyle get titleLarge =>
+      _headingStyle(theme.primaryText, 18.0, FontWeight.w600);
+  String get titleMediumFamily => ExpatlioDesign.headingFontFamily;
   bool get titleMediumIsCustom => true;
-  TextStyle get titleMedium => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.w600,
-        fontSize: 18.0,
-      );
-  String get titleSmallFamily => 'sf pro display';
+  TextStyle get titleMedium =>
+      _headingStyle(theme.primaryText, 16.0, FontWeight.w600);
+  String get titleSmallFamily => ExpatlioDesign.headingFontFamily;
   bool get titleSmallIsCustom => true;
-  TextStyle get titleSmall => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.w600,
-        fontSize: 16.0,
-      );
-  String get labelLargeFamily => 'sf pro display';
+  TextStyle get titleSmall =>
+      _headingStyle(theme.primaryText, 15.0, FontWeight.w600);
+  String get labelLargeFamily => ExpatlioDesign.fontFamily;
   bool get labelLargeIsCustom => true;
-  TextStyle get labelLarge => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.secondaryText,
-        fontWeight: FontWeight.normal,
-        fontSize: 16.0,
-      );
-  String get labelMediumFamily => 'sf pro display';
+  TextStyle get labelLarge =>
+      _style(theme.secondaryText, 15.0, FontWeight.w600);
+  String get labelMediumFamily => ExpatlioDesign.fontFamily;
   bool get labelMediumIsCustom => true;
-  TextStyle get labelMedium => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.secondaryText,
-        fontWeight: FontWeight.normal,
-        fontSize: 14.0,
-      );
-  String get labelSmallFamily => 'sf pro display';
+  TextStyle get labelMedium =>
+      _style(theme.secondaryText, 13.0, FontWeight.w500);
+  String get labelSmallFamily => ExpatlioDesign.fontFamily;
   bool get labelSmallIsCustom => true;
-  TextStyle get labelSmall => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.secondaryText,
-        fontWeight: FontWeight.normal,
-        fontSize: 12.0,
-      );
-  String get bodyLargeFamily => 'sf pro display';
+  TextStyle get labelSmall =>
+      _style(theme.secondaryText, 12.0, FontWeight.w500);
+  String get bodyLargeFamily => ExpatlioDesign.fontFamily;
   bool get bodyLargeIsCustom => true;
-  TextStyle get bodyLarge => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.normal,
-        fontSize: 16.0,
-      );
-  String get bodyMediumFamily => 'sf pro display';
+  TextStyle get bodyLarge => _style(theme.primaryText, 16.0, FontWeight.w400);
+  String get bodyMediumFamily => ExpatlioDesign.fontFamily;
   bool get bodyMediumIsCustom => true;
-  TextStyle get bodyMedium => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.normal,
-        fontSize: 14.0,
-      );
-  String get bodySmallFamily => 'sf pro display';
+  TextStyle get bodyMedium => _style(theme.primaryText, 15.0, FontWeight.w400);
+  String get bodySmallFamily => ExpatlioDesign.fontFamily;
   bool get bodySmallIsCustom => true;
-  TextStyle get bodySmall => TextStyle(
-        fontFamily: 'sf pro display',
-        color: theme.primaryText,
-        fontWeight: FontWeight.normal,
-        fontSize: 12.0,
-      );
+  TextStyle get bodySmall => _style(theme.primaryText, 13.0, FontWeight.w400);
 }
 
 extension TextStyleHelper on TextStyle {

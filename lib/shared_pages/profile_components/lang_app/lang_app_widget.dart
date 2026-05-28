@@ -1,9 +1,7 @@
 import '/authorization/components/language_card/language_card_widget.dart';
-import '/components/button/button_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
@@ -49,10 +47,14 @@ class _LangAppWidgetState extends State<LangAppWidget> {
     super.dispose();
   }
 
+  void _saveLanguage() {
+    setAppLanguage(context, _model.selected!.code);
+    Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     context.watch<FFAppState>();
-    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Stack(
       alignment: AlignmentDirectional(0.0, 1.0),
@@ -63,39 +65,24 @@ class _LangAppWidgetState extends State<LangAppWidget> {
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              Container(
-                width: double.infinity,
-                height: 16.0,
-                child: custom_widgets.NotchedClipper(
-                  width: double.infinity,
-                  height: 16.0,
-                ),
-              ),
               Flexible(
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).secondaryBackground,
+                    color: ExpatlioDesign.card,
                   ),
                   child: Padding(
                     padding:
-                        EdgeInsetsDirectional.fromSTEB(6.0, 16.0, 6.0, 122.0),
+                        EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 35.0),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text(
-                          FFLocalizations.of(context).getText(
+                        BottomSheetHeader(
+                          title: FFLocalizations.of(context).getText(
                             '2wr6p6ar' /* Язык приложения */,
                           ),
-                          textAlign: TextAlign.start,
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 26.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.normal,
-                                  ),
+                          onConfirm: _saveLanguage,
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
@@ -134,62 +121,6 @@ class _LangAppWidgetState extends State<LangAppWidget> {
                       ],
                     ),
                   ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        AnimatedPadding(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsetsDirectional.fromSTEB(
-              0.0, 0.0, 6.0, keyboardVisible ? 6.0 : 35.0),
-          child: Row(
-            mainAxisSize: MainAxisSize.max,
-            children: [
-              Expanded(
-                child: wrapWithModel(
-                  model: _model.buttonModel,
-                  updateCallback: () => safeSetState(() {}),
-                  child: ButtonWidget(
-                    text: FFLocalizations.of(context).getText(
-                      'lbypxcbp' /* Сохранить */,
-                    ),
-                    keyboardAwarePadding: false,
-                    padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
-                    action: () async {
-                      setAppLanguage(context, _model.selected!.code);
-                      Navigator.pop(context);
-                    },
-                  ),
-                ),
-              ),
-              Container(
-                decoration: BoxDecoration(
-                  boxShadow: [
-                    BoxShadow(
-                      blurRadius: 7.0,
-                      color: Color(0x0D2C2C2C),
-                      offset: Offset(
-                        0.0,
-                        2.0,
-                      ),
-                    )
-                  ],
-                  shape: BoxShape.circle,
-                ),
-                child: FlutterFlowIconButton(
-                  borderRadius: 50.0,
-                  buttonSize: 60.0,
-                  fillColor: FlutterFlowTheme.of(context).primaryBackground,
-                  icon: Icon(
-                    Icons.close_sharp,
-                    color: FlutterFlowTheme.of(context).error,
-                    size: 20.0,
-                  ),
-                  onPressed: () async {
-                    Navigator.pop(context);
-                  },
                 ),
               ),
             ],

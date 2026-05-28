@@ -108,8 +108,7 @@ void main() {
     );
   }
 
-  testWidgets(
-      'spinner mode shows loading UI in the white circle and blocks repeat taps',
+  testWidgets('spinner mode shows loading UI and blocks repeat taps',
       (tester) async {
     final completer = Completer<void>();
     var tapCount = 0;
@@ -135,13 +134,9 @@ void main() {
 
     expect(tapCount, 1);
     expect(find.text('Sending...'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('button_widget_circle')),
-        matching: find.byType(CircularProgressIndicator),
-      ),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey<String>('button_widget_spinner')),
+        findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     await tester.tap(find.byType(ButtonWidget));
     await tester.pump();

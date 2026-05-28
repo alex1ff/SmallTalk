@@ -1,8 +1,8 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'celebration_top_up_model.dart';
 export 'celebration_top_up_model.dart';
@@ -54,7 +54,7 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
               alignment: AlignmentDirectional(0.0, 0.0),
               child: Icon(
                 FFIcons.kcheck,
-                color: FlutterFlowTheme.of(context).primaryBackground,
+                color: ExpatlioDesign.card,
                 size: 12.0,
               ),
             ),
@@ -84,31 +84,17 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                width: double.infinity,
-                height: 16.0,
-                child: custom_widgets.NotchedClipper(
-                  width: double.infinity,
-                  height: 16.0,
-                ),
-              ),
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
+                  color: ExpatlioDesign.background,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'Юх-ху!',
-                      textAlign: TextAlign.start,
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'Cool',
-                            fontSize: 26.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.normal,
-                          ),
+                    BottomSheetHeader(
+                      title: 'Юх-ху!',
+                      onConfirm: () => Navigator.pop(context),
                     ),
                     Stack(
                       alignment: AlignmentDirectional(1.15, -1.2),
@@ -277,26 +263,8 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                         ),
                       ],
                     ),
-                    Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 35.0),
-                      child: FlutterFlowIconButton(
-                        borderRadius: 60.0,
-                        buttonSize: 56.0,
-                        fillColor: FlutterFlowTheme.of(context).success,
-                        icon: Icon(
-                          Icons.check,
-                          color: Colors.black,
-                          size: 24.0,
-                        ),
-                        onPressed: () async {
-                          Navigator.pop(context);
-                        },
-                      ),
-                    ),
-                  ]
-                      .divide(SizedBox(height: 24.0))
-                      .addToStart(SizedBox(height: 16.0)),
+                    const SizedBox(height: 35.0),
+                  ].divide(SizedBox(height: 24.0)),
                 ),
               ),
             ],

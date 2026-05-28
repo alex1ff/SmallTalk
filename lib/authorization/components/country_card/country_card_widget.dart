@@ -1,6 +1,7 @@
 import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 export 'country_card_model.dart';
 
@@ -38,11 +39,8 @@ class CountryCardWidget extends StatelessWidget {
       },
       child: Container(
         width: double.infinity,
-        height: 60.0,
-        decoration: BoxDecoration(
-          color: theme.primaryBackground,
-          borderRadius: BorderRadius.circular(26.0),
-        ),
+        height: 62.0,
+        decoration: ExpatlioDesign.cardDecoration(radius: 16.0),
         child: Padding(
           padding: EdgeInsets.all(4.0),
           child: Row(
@@ -52,8 +50,8 @@ class CountryCardWidget extends StatelessWidget {
                 width: 52.0,
                 height: 52.0,
                 decoration: BoxDecoration(
-                  color: theme.secondaryBackground,
-                  borderRadius: BorderRadius.circular(22.0),
+                  color: ExpatlioDesign.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14.0),
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),
@@ -69,7 +67,7 @@ class CountryCardWidget extends StatelessWidget {
                         )
                       : Icon(
                           Icons.public_outlined,
-                          color: theme.secondaryText,
+                          color: ExpatlioDesign.primary,
                           size: 24.0,
                         ),
                 ),
@@ -84,8 +82,10 @@ class CountryCardWidget extends StatelessWidget {
                     ),
                     style: theme.bodyMedium.override(
                       fontFamily: 'sf pro display',
+                      color: ExpatlioDesign.text,
                       fontSize: 16.0,
                       letterSpacing: 0.0,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -99,14 +99,14 @@ class CountryCardWidget extends StatelessWidget {
                     width: selectionIndicatorSize,
                     height: selectionIndicatorSize,
                     decoration: BoxDecoration(
-                      color: theme.success,
+                      color: ExpatlioDesign.primary,
                       shape: BoxShape.circle,
                     ),
                     child: Align(
                       alignment: AlignmentDirectional(0.0, 0.0),
                       child: Icon(
                         FFIcons.kcheck,
-                        color: Colors.black,
+                        color: Colors.white,
                         size: 14.0,
                       ),
                     ),

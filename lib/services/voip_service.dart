@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart';
 // Импорт для навигации и backend
 import '/backend/backend.dart';
 import '/flutter_flow/nav/nav.dart';
+import '/flutter_flow/permissions_util.dart';
 
 /// VoIP сервис для обработки входящих звонков
 /// Использует CallKit (iOS) и ConnectionService (Android)
@@ -161,6 +162,10 @@ class VoIPService {
     return true;
   }
 
+  void _releaseProcessAcceptClaim(String sessionId) {
+    _processAcceptClaimedAtBySession.remove(sessionId);
+  }
+
   Future<bool> _shouldEndSessionViaFallbackLookup(String sessionId) async {
     try {
       final userId = _auth.currentUser?.uid;
@@ -215,8 +220,7 @@ class VoIPService {
       // 2. Получаем FCM токен
       String? fcmToken = await _fcm.getToken();
       if (fcmToken != null) {
-        debugPrint(
-            '🔔 VoIPService: Got FCM token: ${fcmToken.substring(0, 20)}...');
+        debugPrint('🔔 VoIPService: Got FCM token');
         await _saveVoipToken(fcmToken);
       } else {
         debugPrint('⚠️ VoIPService: Failed to get FCM token');
@@ -397,6 +401,7 @@ class VoIPService {
 
     debugPrint('🔔 VoIPService: Deinitializing...');
     _initializing = false;
+    await _clearRegisteredVoipTokens();
 
     final tokenSub = _tokenRefreshSub;
     _tokenRefreshSub = null;
@@ -421,7 +426,36 @@ class VoIPService {
     debugPrint('✅ VoIPService: Deinitialized');
   }
 
-  /// Сохранение FCM токена в Firestore
+  Future<void> _registerVoipToken({
+    required String tokenType,
+    required String token,
+  }) async {
+    final trimmedToken = token.trim();
+    if (trimmedToken.isEmpty) {
+      return;
+    }
+
+    await _functions.httpsCallable('registerVoipToken').call({
+      'tokenType': tokenType,
+      'token': trimmedToken,
+    });
+  }
+
+  Future<void> _clearRegisteredVoipTokens() async {
+    if (_auth.currentUser == null) {
+      return;
+    }
+
+    try {
+      await _functions.httpsCallable('registerVoipToken').call({
+        'clearAll': true,
+      });
+    } catch (e) {
+      debugPrint('⚠️ VoIPService: Failed to clear registered tokens: $e');
+    }
+  }
+
+  /// Сохранение FCM токена через серверный контракт.
   Future<void> _saveVoipToken(String token) async {
     try {
       final user = _auth.currentUser;
@@ -431,10 +465,7 @@ class VoIPService {
         return;
       }
 
-      await _firestore.collection('users').doc(user.uid).update({
-        'voipToken': token,
-        'voipTokenUpdatedAt': FieldValue.serverTimestamp(),
-      });
+      await _registerVoipToken(tokenType: 'fcm', token: token);
 
       debugPrint('✅ VoIPService: Token saved for user ${user.uid}');
     } catch (e) {
@@ -442,7 +473,7 @@ class VoIPService {
     }
   }
 
-  /// Сохранение PushKit токена в Firestore (iOS)
+  /// Сохранение PushKit токена через серверный контракт (iOS).
   Future<void> _savePushKitToken(String token) async {
     try {
       final user = _auth.currentUser;
@@ -452,10 +483,7 @@ class VoIPService {
         return;
       }
 
-      await _firestore.collection('users').doc(user.uid).update({
-        'voipPushToken': token,
-        'voipPushTokenUpdatedAt': FieldValue.serverTimestamp(),
-      });
+      await _registerVoipToken(tokenType: 'pushkit', token: token);
 
       debugPrint('✅ VoIPService: PushKit token saved for user ${user.uid}');
     } catch (e) {
@@ -666,20 +694,30 @@ class VoIPService {
       return;
     }
     _acceptInProgress.add(sessionId);
-    final isSameSession = _lastAcceptedSessionId == sessionId;
-    _lastAcceptedSessionId = sessionId;
-    _lastAcceptedIsTutor = false;
-    _lastRoomUrl = null;
-    _lastMeetingToken = null;
-    _lastRoomName = null;
-    if (!isSameSession) {
-      _lastNavigatedSessionId = null;
-      _lastNavigatedIsTutor = null;
-    }
-
-    debugPrint('✅ VoIPService: Call accepted: $sessionId');
 
     try {
+      if (!(await ensureCameraAndMicrophonePermissions())) {
+        debugPrint(
+          '⚠️ VoIPService: camera or microphone permission denied before accepting $sessionId',
+        );
+        _releaseProcessAcceptClaim(sessionId);
+        await endCurrentCall(sessionId: sessionId);
+        return;
+      }
+
+      final isSameSession = _lastAcceptedSessionId == sessionId;
+      _lastAcceptedSessionId = sessionId;
+      _lastAcceptedIsTutor = false;
+      _lastRoomUrl = null;
+      _lastMeetingToken = null;
+      _lastRoomName = null;
+      if (!isSameSession) {
+        _lastNavigatedSessionId = null;
+        _lastNavigatedIsTutor = null;
+      }
+
+      debugPrint('✅ VoIPService: Call accepted: $sessionId');
+
       final payloadRoomUrl = extra['roomUrl'] ?? data['roomUrl'];
       final payloadMeetingToken = extra['meetingToken'] ?? data['meetingToken'];
       final payloadRoomName = extra['roomName'] ?? data['roomName'];

@@ -2,6 +2,7 @@ import '/authorization/components/country/country_widget.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 
 class StudentOnboardingCountryStep extends StatelessWidget {
@@ -54,7 +55,7 @@ class StudentOnboardingCountryStep extends StatelessWidget {
                 ),
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'sf pro display',
-                      color: FlutterFlowTheme.of(context).secondaryText,
+                      color: ExpatlioDesign.muted,
                       fontSize: 16.0,
                       letterSpacing: 0.0,
                       fontWeight: FontWeight.normal,

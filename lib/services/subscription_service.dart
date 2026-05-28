@@ -1,0 +1,309 @@
+// SubscriptionService — singleton wrapper over RevenueCat SDK.
+//
+// Responsibilities:
+//   • Configure RevenueCat with platform-specific public API keys.
+//   • Sync Firebase Auth uid ↔ RevenueCat App User ID.
+//   • Fetch offerings (1mo / 3mo subscription packages).
+//   • Launch native paywall via Purchases.purchasePackage(...).
+//   • Stream CustomerInfo updates to UI.
+//   • Expose `hasActiveEntitlement` for client-side gating.
+//
+// Server-side flow remains source of truth:
+//   • RevenueCat → revenueCatWebhook Cloud Function → users.subscription
+//   • Client reads users.subscription for persistent gating
+//   • This service is used for the purchase flow and for live UI updates
+//     between webhook delivery (a few seconds delay is normal).
+//
+// CLAUDE.md rule: never call Purchases.* directly from page widgets —
+// always go through this service.
+
+import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
+import 'package:purchases_flutter/purchases_flutter.dart';
+
+/// Public RevenueCat API keys. These are SAFE to commit — RC public keys
+/// are designed to live in client code; the SECRET key (used server-side
+/// for `grant_promo_entitlement`) lives in Firebase Secret Manager.
+///
+/// Provide real values from RevenueCat Dashboard → Project settings →
+/// API keys → "Public app-specific API key".
+class SubscriptionApiKeys {
+  const SubscriptionApiKeys._();
+
+  static const String _iosPublicFromEnv =
+      String.fromEnvironment('REVENUECAT_IOS_PUBLIC_KEY');
+  static const String _appStorePublicFromEnv =
+      String.fromEnvironment('REVENUECAT_APPSTORE_API_KEY');
+
+  /// Public App Store SDK key. Safe to bundle in the app; never put the
+  /// RevenueCat `sk_...` secret key here.
+  static const String iosPublicFallback = 'appl_uOxpqrnmkxvmCHhFmxJqQePzjRA';
+
+  static String get iosPublic => resolveRevenueCatPublicKey(
+        primary: _iosPublicFromEnv,
+        secondary: _appStorePublicFromEnv,
+        fallback: iosPublicFallback,
+        allowedPrefix: 'appl_',
+      );
+
+  static const String androidPublic = String.fromEnvironment(
+    'REVENUECAT_ANDROID_PUBLIC_KEY',
+    defaultValue: 'goog_REPLACE_ME',
+  );
+}
+
+@visibleForTesting
+String resolveRevenueCatPublicKey({
+  required String primary,
+  required String fallback,
+  String secondary = '',
+  String? allowedPrefix,
+}) {
+  for (final key in [primary, secondary, fallback]) {
+    final normalized = key.trim();
+    if (normalized.isEmpty || normalized.contains('REPLACE_ME')) {
+      continue;
+    }
+    if (allowedPrefix == null || normalized.startsWith(allowedPrefix)) {
+      return normalized;
+    }
+  }
+  return '';
+}
+
+/// Entitlement ID configured in RevenueCat dashboard. Must match the value
+/// in firebase/custom_cloud_functions/revenue_cat_webhook.js and
+/// grant_promo_entitlement.js (PRO_ENTITLEMENT_ID).
+const String kSubscriptionProEntitlementId = 'pro_access';
+
+/// Stable identifiers of our two products in App Store Connect / Google
+/// Play. Used when looking up packages inside the current Offering.
+class SubscriptionProductIds {
+  const SubscriptionProductIds._();
+  static const String monthly = 'smalltalk_monthly';
+  static const String quarterly = 'smalltalk_quarterly';
+}
+
+class SubscriptionService {
+  SubscriptionService._internal();
+  static final SubscriptionService _instance = SubscriptionService._internal();
+  factory SubscriptionService() => _instance;
+
+  /// Convenience alias matching the VoIPService pattern.
+  static SubscriptionService get instance => _instance;
+
+  bool _configured = false;
+  bool _configuring = false;
+
+  /// Last known CustomerInfo from RevenueCat. `null` until first event.
+  CustomerInfo? _customerInfo;
+  CustomerInfo? get customerInfo => _customerInfo;
+
+  final StreamController<CustomerInfo> _customerInfoController =
+      StreamController<CustomerInfo>.broadcast();
+
+  /// Broadcast stream of CustomerInfo updates. UI can `listen` to react to
+  /// entitlement changes (e.g., refresh "Subscription active until X").
+  Stream<CustomerInfo> get customerInfoStream => _customerInfoController.stream;
+
+  /// True iff the user has the `pro_access` entitlement active right now.
+  /// Use this for ephemeral UI state — the persistent gating signal is
+  /// users.subscription.expiresAt (mirrored by the webhook).
+  bool get hasActiveEntitlement {
+    final info = _customerInfo;
+    if (info == null) return false;
+    return info.entitlements.active.containsKey(kSubscriptionProEntitlementId);
+  }
+
+  /// Initialise RevenueCat. Call this once from `main.dart` AFTER Firebase
+  /// initialisation. Safe to call multiple times — guards re-entry.
+  Future<void> configure() async {
+    if (_configured || _configuring) return;
+    _configuring = true;
+    try {
+      await Purchases.setLogLevel(
+        kDebugMode ? LogLevel.debug : LogLevel.warn,
+      );
+
+      final String apiKey = _resolveApiKey();
+      if (_isPlaceholderKey(apiKey)) {
+        debugPrint(
+          '⚠️ SubscriptionService: RevenueCat API key is a placeholder. '
+          'Set SubscriptionApiKeys.iosPublic / androidPublic before shipping.',
+        );
+      }
+
+      await Purchases.configure(PurchasesConfiguration(apiKey));
+
+      // Initial pull so `hasActiveEntitlement` is meaningful before the
+      // first listener event fires.
+      try {
+        _customerInfo = await Purchases.getCustomerInfo();
+      } catch (e, st) {
+        debugPrint(
+            '⚠️ SubscriptionService: initial getCustomerInfo failed: $e\n$st');
+      }
+
+      Purchases.addCustomerInfoUpdateListener(_handleCustomerInfoUpdate);
+      _configured = true;
+    } catch (e, st) {
+      debugPrint('❌ SubscriptionService.configure failed: $e\n$st');
+      rethrow;
+    } finally {
+      _configuring = false;
+    }
+  }
+
+  String _resolveApiKey() {
+    if (Platform.isIOS || Platform.isMacOS) {
+      return SubscriptionApiKeys.iosPublic;
+    }
+    if (Platform.isAndroid) {
+      return SubscriptionApiKeys.androidPublic;
+    }
+    // Web / desktop: RevenueCat web SDK is a separate package and not
+    // wired up in Phase 1. Fall through to iOS key so the call doesn't
+    // crash; offerings will be empty and UI will fall back to "Subscribe
+    // in the mobile app" copy.
+    return SubscriptionApiKeys.iosPublic;
+  }
+
+  bool _isPlaceholderKey(String key) =>
+      key.contains('REPLACE_ME') || key.isEmpty;
+
+  void _handleCustomerInfoUpdate(CustomerInfo info) {
+    _customerInfo = info;
+    if (!_customerInfoController.isClosed) {
+      _customerInfoController.add(info);
+    }
+  }
+
+  /// Bind RevenueCat App User ID to the Firebase uid. Call right after
+  /// Firebase Auth sign-in and on app start when a user is already signed
+  /// in. Idempotent — RC handles the case where the user is already
+  /// logged in to the same id.
+  Future<void> logInUser(String firebaseUid) async {
+    if (!_configured) {
+      await configure();
+    }
+    if (firebaseUid.isEmpty) return;
+    try {
+      final result = await Purchases.logIn(firebaseUid);
+      _customerInfo = result.customerInfo;
+      _customerInfoController.add(result.customerInfo);
+    } catch (e, st) {
+      debugPrint('⚠️ SubscriptionService.logInUser failed: $e\n$st');
+    }
+  }
+
+  /// Clear the RC user. Call on Firebase Auth sign-out.
+  Future<void> logOutUser() async {
+    if (!_configured) return;
+    try {
+      final info = await Purchases.logOut();
+      _customerInfo = info;
+      _customerInfoController.add(info);
+    } catch (e, st) {
+      // RC throws if you log out an anonymous user — that's fine, ignore.
+      debugPrint('ℹ️ SubscriptionService.logOutUser: $e\n$st');
+    }
+  }
+
+  /// Fetch the current Offering and return its monthly + quarterly
+  /// packages, in the order the UI expects (monthly first, quarterly
+  /// second — quarterly is marked "popular" client-side).
+  /// Returns an empty list if RC has no current offering or the offering
+  /// doesn't expose either of our expected products.
+  Future<List<Package>> fetchSubscriptionPackages() async {
+    if (!_configured) {
+      await configure();
+    }
+    try {
+      final offerings = await Purchases.getOfferings();
+      final current = offerings.current;
+      if (current == null) return const [];
+
+      final List<Package> result = [];
+      for (final pkg in current.availablePackages) {
+        final productId = pkg.storeProduct.identifier;
+        if (productId == SubscriptionProductIds.monthly ||
+            productId == SubscriptionProductIds.quarterly) {
+          result.add(pkg);
+        }
+      }
+      // Sort: monthly first, then quarterly.
+      result.sort((a, b) {
+        final aIsMonthly =
+            a.storeProduct.identifier == SubscriptionProductIds.monthly;
+        final bIsMonthly =
+            b.storeProduct.identifier == SubscriptionProductIds.monthly;
+        if (aIsMonthly == bIsMonthly) return 0;
+        return aIsMonthly ? -1 : 1;
+      });
+      return result;
+    } catch (e, st) {
+      debugPrint(
+          '❌ SubscriptionService.fetchSubscriptionPackages failed: $e\n$st');
+      return const [];
+    }
+  }
+
+  /// Launch the native paywall and complete the purchase. Returns the
+  /// updated CustomerInfo on success, or `null` if the user cancelled.
+  /// Throws `PlatformException` on unexpected errors so callers can show
+  /// a snackbar.
+  Future<CustomerInfo?> purchasePackage(Package package) async {
+    if (!_configured) {
+      await configure();
+    }
+    try {
+      final result = await Purchases.purchasePackage(package);
+      _customerInfo = result;
+      _customerInfoController.add(result);
+      return result;
+    } on PlatformException catch (e) {
+      final errorCode = PurchasesErrorHelper.getErrorCode(e);
+      if (errorCode == PurchasesErrorCode.purchaseCancelledError) {
+        return null;
+      }
+      debugPrint(
+        '❌ SubscriptionService.purchasePackage failed: code=$errorCode '
+        'message=${e.message}',
+      );
+      rethrow;
+    }
+  }
+
+  /// Force a fresh fetch of CustomerInfo. Useful after returning from a
+  /// background paywall or restoring purchases.
+  Future<void> refresh() async {
+    if (!_configured) return;
+    try {
+      final info = await Purchases.getCustomerInfo();
+      _customerInfo = info;
+      _customerInfoController.add(info);
+    } catch (e, st) {
+      debugPrint('⚠️ SubscriptionService.refresh failed: $e\n$st');
+    }
+  }
+
+  /// Restore prior purchases (e.g. after reinstall). Returns updated
+  /// CustomerInfo or `null` on failure.
+  Future<CustomerInfo?> restorePurchases() async {
+    if (!_configured) {
+      await configure();
+    }
+    try {
+      final info = await Purchases.restorePurchases();
+      _customerInfo = info;
+      _customerInfoController.add(info);
+      return info;
+    } catch (e, st) {
+      debugPrint('⚠️ SubscriptionService.restorePurchases failed: $e\n$st');
+      return null;
+    }
+  }
+}

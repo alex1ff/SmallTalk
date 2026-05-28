@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'button_model.dart';
 export 'button_model.dart';
@@ -20,6 +21,7 @@ class ButtonWidget extends StatefulWidget {
     this.keyboardAwarePadding = true,
     this.enabled = true,
     this.padding,
+    this.height = ExpatlioDesign.buttonHeight,
   });
 
   final Future Function()? action;
@@ -30,13 +32,13 @@ class ButtonWidget extends StatefulWidget {
   final bool keyboardAwarePadding;
   final bool enabled;
   final EdgeInsetsGeometry? padding;
+  final double height;
 
   @override
   State<ButtonWidget> createState() => _ButtonWidgetState();
 }
 
 class _ButtonWidgetState extends State<ButtonWidget> {
-  static const _circleKey = ValueKey<String>('button_widget_circle');
   static const _spinnerKey = ValueKey<String>('button_widget_spinner');
   static const _animationDuration = Duration(milliseconds: 160);
 
@@ -120,68 +122,65 @@ class _ButtonWidgetState extends State<ButtonWidget> {
           highlightColor: Colors.transparent,
           onTap: isInteractive ? _handleTap : null,
           child: Container(
-            height: 60.0,
+            height: widget.height,
             decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryText,
-              borderRadius: BorderRadius.circular(50.0),
+              gradient: ExpatlioDesign.primaryGradient,
+              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x227430E8),
+                  blurRadius: 18.0,
+                  offset: Offset(0.0, 8.0),
+                ),
+              ],
             ),
             child: Padding(
-              padding: const EdgeInsets.all(2.0),
+              padding:
+                  const EdgeInsetsDirectional.fromSTEB(20.0, 0.0, 20.0, 0.0),
               child: Row(
-                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment:
+                    widget.trailingContent != null && !showsSpinner
+                        ? MainAxisAlignment.spaceBetween
+                        : MainAxisAlignment.center,
                 children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.fromSTEB(
-                          16.0, 0.0, 0.0, 0.0),
-                      child: Text(
-                        displayedText,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'Cool',
-                              color: FlutterFlowTheme.of(context)
-                                  .primaryBackground,
-                              fontSize: 20.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FontWeight.normal,
-                            ),
+                  if (showsSpinner) ...[
+                    SizedBox(
+                      key: _spinnerKey,
+                      width: 20.0,
+                      height: 20.0,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Colors.white,
+                        ),
                       ),
+                    ),
+                    const SizedBox(width: 10.0),
+                  ],
+                  Flexible(
+                    fit: widget.trailingContent != null && !showsSpinner
+                        ? FlexFit.tight
+                        : FlexFit.loose,
+                    child: Text(
+                      displayedText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: widget.trailingContent != null && !showsSpinner
+                          ? TextAlign.start
+                          : TextAlign.center,
+                      style: FlutterFlowTheme.of(context).bodyMedium.override(
+                            fontFamily: 'sf pro display',
+                            color: Colors.white,
+                            fontSize: 17.0,
+                            letterSpacing: 0.0,
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
                   ),
                   if (widget.trailingContent != null && !showsSpinner) ...[
-                    widget.trailingContent!,
                     const SizedBox(width: 12.0),
+                    widget.trailingContent!,
                   ],
-                  Container(
-                    key: _circleKey,
-                    width: 56.0,
-                    height: 56.0,
-                    decoration: BoxDecoration(
-                      color: FlutterFlowTheme.of(context).primaryBackground,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Align(
-                      alignment: const AlignmentDirectional(0.0, 0.0),
-                      child: showsSpinner
-                          ? SizedBox(
-                              key: _spinnerKey,
-                              width: 20.0,
-                              height: 20.0,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  FlutterFlowTheme.of(context).primaryText,
-                                ),
-                              ),
-                            )
-                          : const Icon(
-                              FFIcons.karrowRight,
-                              color: Colors.black,
-                              size: 20.0,
-                            ),
-                    ),
-                  ),
                 ],
               ),
             ),

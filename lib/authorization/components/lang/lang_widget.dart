@@ -1,8 +1,8 @@
 import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/structs/index.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -117,28 +117,22 @@ class _LangWidgetState extends State<LangWidget> {
 
     final searchField = Container(
       width: double.infinity,
-      height: 60.0,
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(100.0),
-      ),
+      height: 58.0,
+      decoration: ExpatlioDesign.cardDecoration(radius: 16.0),
       child: Padding(
-        padding: const EdgeInsets.all(2.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(6.0, 4.0, 10.0, 4.0),
         child: Row(
           mainAxisSize: MainAxisSize.max,
           children: [
             Container(
-              width: 56.0,
-              height: 56.0,
-              decoration: BoxDecoration(
-                color: FlutterFlowTheme.of(context).secondaryBackground,
-                shape: BoxShape.circle,
-              ),
+              width: 48.0,
+              height: 48.0,
+              decoration: ExpatlioDesign.softPrimaryDecoration(),
               child: Align(
                 alignment: AlignmentDirectional(0.0, 0.0),
                 child: Icon(
                   FFIcons.ksearchLg,
-                  color: FlutterFlowTheme.of(context).primaryText,
+                  color: ExpatlioDesign.primary,
                   size: 18.0,
                 ),
               ),
@@ -156,24 +150,13 @@ class _LangWidgetState extends State<LangWidget> {
                     autofocus: false,
                     textCapitalization: TextCapitalization.sentences,
                     textInputAction: TextInputAction.done,
+                    textAlignVertical: TextAlignVertical.center,
                     obscureText: false,
-                    decoration: InputDecoration(
-                      isDense: false,
-                      labelText: FFLocalizations.of(context).getText(
+                    decoration: ExpatlioDesign.formFieldDecoration(
+                      context,
+                      hintText: FFLocalizations.of(context).getText(
                         'fo4zvvcg' /* Поиск */,
                       ),
-                      labelStyle: FlutterFlowTheme.of(context)
-                          .bodyMedium
-                          .override(
-                            fontFamily: 'sf pro display',
-                            color: FlutterFlowTheme.of(context).secondaryText,
-                            fontSize: 16.0,
-                            letterSpacing: 0.0,
-                          ),
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      errorBorder: InputBorder.none,
-                      focusedErrorBorder: InputBorder.none,
                       suffixIcon: _model.searchL2TextController!.text.isNotEmpty
                           ? InkWell(
                               onTap: () {
@@ -182,17 +165,14 @@ class _LangWidgetState extends State<LangWidget> {
                               },
                               child: const Icon(
                                 Icons.clear,
+                                color: ExpatlioDesign.muted,
                                 size: 16.0,
                               ),
                             )
                           : null,
                     ),
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          fontSize: 16.0,
-                          letterSpacing: 0.0,
-                        ),
-                    cursorColor: FlutterFlowTheme.of(context).primaryText,
+                    style: ExpatlioDesign.formTextStyle(context),
+                    cursorColor: ExpatlioDesign.primary,
                     enableInteractiveSelection: true,
                     validator: _model.searchL2TextControllerValidator
                         .asValidator(context),

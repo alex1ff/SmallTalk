@@ -1,9 +1,12 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/backend/schema/enums/enums.dart';
 import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/index.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -23,14 +26,36 @@ class BlackListWidget extends StatefulWidget {
 
 class _BlackListWidgetState extends State<BlackListWidget> {
   late BlackListModel _model;
-  final _userFutureCache = <DocumentReference, Future<UsersRecord>>{};
+  final _userFutureCache = <String, Future<UserPublicProfilesRecord?>>{};
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
-  Future<UsersRecord> _getUserFuture(DocumentReference ref) {
+  Future<UserPublicProfilesRecord?> _getUserFuture(DocumentReference ref) {
     return _userFutureCache.putIfAbsent(
-        ref, () => UsersRecord.getDocumentOnce(ref));
+      ref.path,
+      () => UserPublicProfilesRecord.maybeGetDocumentOnce(
+        UserPublicProfilesRecord.collection.doc(ref.id),
+      ),
+    );
   }
+
+  String _publicProfileDisplayName(
+    BuildContext context,
+    UserPublicProfilesRecord? profile,
+  ) {
+    final displayName = profile?.displayName.trim();
+    if (displayName != null && displayName.isNotEmpty) {
+      return displayName;
+    }
+
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Пользователь',
+      enText: 'User',
+    );
+  }
+
+  String _publicProfilePhotoUrl(UserPublicProfilesRecord? profile) =>
+      profile?.photoUrl.trim() ?? '';
 
   @override
   void initState() {
@@ -54,11 +79,11 @@ class _BlackListWidgetState extends State<BlackListWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: Stack(
           children: [
             Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+              padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
               child: AuthUserStreamWidget(
                 builder: (context) => Builder(
                   builder: (context) {
@@ -88,11 +113,12 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                       separatorBuilder: (_, __) => SizedBox(height: 6.0),
                       itemBuilder: (context, listIndex) {
                         final listItem = list[listIndex];
-                        return FutureBuilder<UsersRecord>(
+                        return FutureBuilder<UserPublicProfilesRecord?>(
                           future: _getUserFuture(listItem),
                           builder: (context, snapshot) {
                             // Customize what your widget looks like when it's loading.
-                            if (!snapshot.hasData) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
                               return Center(
                                 child: SizedBox(
                                   width: 50.0,
@@ -106,7 +132,15 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                               );
                             }
 
-                            final containerUsersRecord = snapshot.data!;
+                            final containerUserPublicProfile = snapshot.data;
+                            final profileDisplayName =
+                                _publicProfileDisplayName(
+                              context,
+                              containerUserPublicProfile,
+                            );
+                            final profilePhotoUrl = _publicProfilePhotoUrl(
+                              containerUserPublicProfile,
+                            );
 
                             return InkWell(
                               splashColor: Colors.transparent,
@@ -114,12 +148,16 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
                               onTap: () async {
-                                if (containerUsersRecord.verifNS) {
+                                if (containerUserPublicProfile?.role ==
+                                        UserRole.native_speaker &&
+                                    (containerUserPublicProfile
+                                            ?.approvedTeacher ??
+                                        false)) {
                                   context.pushNamed(
                                     NativeSpeakerPageWidget.routeName,
                                     queryParameters: {
                                       'nsUserDocRef': serializeParam(
-                                        containerUsersRecord.reference,
+                                        listItem,
                                         ParamType.DocumentReference,
                                       ),
                                     }.withoutNulls,
@@ -128,14 +166,18 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                               },
                               child: Container(
                                 width: double.infinity,
-                                height: 60.0,
+                                height: 72.0,
                                 decoration: BoxDecoration(
-                                  color: FlutterFlowTheme.of(context)
-                                      .primaryBackground,
-                                  borderRadius: BorderRadius.circular(26.0),
+                                  color: ExpatlioDesign.background,
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: ExpatlioDesign.border,
+                                    ),
+                                  ),
                                 ),
                                 child: Padding(
-                                  padding: EdgeInsets.all(4.0),
+                                  padding: EdgeInsetsDirectional.fromSTEB(
+                                      0.0, 8.0, 0.0, 8.0),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
                                     children: [
@@ -143,18 +185,37 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                                         width: 52.0,
                                         height: 52.0,
                                         decoration: BoxDecoration(
-                                          color: Color(0xFFF2F2F7),
-                                          image: DecorationImage(
-                                            fit: BoxFit.cover,
-                                            image: CachedNetworkImageProvider(
-                                              containerUsersRecord.photoUrl,
-                                              maxWidth: 104,
-                                              maxHeight: 104,
-                                            ),
-                                          ),
+                                          color: ExpatlioDesign.mutedSurface,
+                                          image: profilePhotoUrl.isNotEmpty
+                                              ? DecorationImage(
+                                                  fit: BoxFit.cover,
+                                                  image:
+                                                      CachedNetworkImageProvider(
+                                                    profilePhotoUrl,
+                                                    maxWidth: 104,
+                                                    maxHeight: 104,
+                                                  ),
+                                                )
+                                              : null,
                                           borderRadius:
-                                              BorderRadius.circular(22.0),
+                                              BorderRadius.circular(26.0),
                                         ),
+                                        child: profilePhotoUrl.isEmpty
+                                            ? Center(
+                                                child: Text(
+                                                  profileDisplayName
+                                                      .characters.first
+                                                      .toUpperCase(),
+                                                  style:
+                                                      ExpatlioDesign.textStyle(
+                                                    context,
+                                                    color: ExpatlioDesign.muted,
+                                                    size: 16.0,
+                                                    weight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              )
+                                            : null,
                                       ),
                                       Expanded(
                                         child: Padding(
@@ -162,13 +223,15 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                                               EdgeInsetsDirectional.fromSTEB(
                                                   12.0, 0.0, 0.0, 0.0),
                                           child: Text(
-                                            containerUsersRecord.displayName,
+                                            profileDisplayName,
                                             style: FlutterFlowTheme.of(context)
                                                 .bodyMedium
                                                 .override(
                                                   fontFamily: 'sf pro display',
+                                                  color: ExpatlioDesign.text,
                                                   fontSize: 16.0,
                                                   letterSpacing: 0.0,
+                                                  fontWeight: FontWeight.w700,
                                                 ),
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -184,12 +247,17 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                                           size: 18.0,
                                         ),
                                         onPressed: () async {
-                                          await currentUserReference!.update({
+                                          final signedInUserRef =
+                                              currentUserReference;
+                                          if (signedInUserRef == null) {
+                                            return;
+                                          }
+                                          await signedInUserRef.update({
                                             ...mapToFirestore(
                                               {
                                                 'blockedUsers':
                                                     FieldValue.arrayRemove([
-                                                  containerUsersRecord.reference
+                                                  listItem,
                                                 ]),
                                               },
                                             ),
@@ -209,75 +277,9 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                 ),
               ),
             ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    FlutterFlowTheme.of(context).secondaryBackground,
-                    Color(0xEFF2F2F7),
-                    Color(0x00F2F2F7)
-                  ],
-                  stops: [0.0, 0.8, 1.0],
-                  begin: AlignmentDirectional(0.0, -1.0),
-                  end: AlignmentDirectional(0, 1.0),
-                ),
-              ),
-              child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(12.0, 55.0, 12.0, 12.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 45.0,
-                      height: 45.0,
-                      decoration: BoxDecoration(
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: 7.0,
-                            color: Color(0x0D2C2C2C),
-                            offset: Offset(
-                              0.0,
-                              2.0,
-                            ),
-                          )
-                        ],
-                        shape: BoxShape.circle,
-                      ),
-                      child: FlutterFlowIconButton(
-                        borderRadius: 70.0,
-                        buttonSize: 45.0,
-                        fillColor: Colors.white,
-                        icon: Icon(
-                          FFIcons.kchevronLeft,
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          size: 20.0,
-                        ),
-                        onPressed: () async {
-                          context.safePop();
-                        },
-                      ),
-                    ),
-                    Text(
-                      FFLocalizations.of(context).getText(
-                        'qjrrp4il' /* Ченый список */,
-                      ),
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'Cool',
-                            fontSize: 18.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.normal,
-                          ),
-                    ),
-                    Container(
-                      width: 45.0,
-                      height: 45.0,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ),
+            BasicPageHeader(
+              title: FFLocalizations.of(context).getText(
+                'qjrrp4il' /* Ченый список */,
               ),
             ),
           ],

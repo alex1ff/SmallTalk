@@ -1,13 +1,24 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
+const { getUserVoipTokens } = require("./voip_tokens");
 const {
   CALL_EVENT_OUTCOME_MISSED,
   ensureConversationCallEventForSession,
 } = require("./chats_shared");
+const {
+  resolveDailyRoomName,
+} = require("./daily_room");
+const {
+  deleteDailyRoomForSession,
+} = require("./daily_room_cleanup");
 const { isSupportedSessionRole } = require("./video_sessions_shared");
+const {
+  createIncomingCallNotificationInTransaction,
+} = require("./call_notifications");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
+const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 
 /*
 ОБНОВЛЕННАЯ ФУНКЦИЯ: declineCall
@@ -15,7 +26,7 @@ const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 */
 
 exports.declineCall = functions
-  .runWith({ secrets: apnsSecrets })
+  .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .https.onCall(async (data, context) => {
     console.log("❌ Tutor declining call (updated version)...");
 
@@ -40,51 +51,6 @@ exports.declineCall = functions
         );
       }
 
-      // Получаем данные видео сессии
-      const sessionDoc = await admin
-        .firestore()
-        .collection("videoSessions")
-        .doc(sessionId)
-        .get();
-
-      if (!sessionDoc.exists) {
-        console.log("❌ Video session not found:", sessionId);
-        throw new functions.https.HttpsError(
-          "not-found",
-          "Video session not found",
-        );
-      }
-
-      const sessionData = sessionDoc.data();
-      console.log("📋 Session data status:", sessionData.status);
-      console.log("👤 Current tutor ID:", sessionData.currentTutorId);
-
-      // Проверяем, что сессия в статусе поиска
-      if (sessionData.status !== "searching") {
-        console.log(
-          "❌ Session is not in searching status:",
-          sessionData.status,
-        );
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Session is not available for declining",
-        );
-      }
-
-      // Проверяем, что звонок адресован этому преподавателю
-      if (sessionData.currentTutorId !== tutorId) {
-        console.log(
-          "❌ Session is not for this tutor. Expected:",
-          sessionData.currentTutorId,
-          "Got:",
-          tutorId,
-        );
-        throw new functions.https.HttpsError(
-          "permission-denied",
-          "This session is not assigned to you",
-        );
-      }
-
       // Получаем данные преподавателя (для валидации роли)
       const tutorDoc = await admin
         .firestore()
@@ -100,20 +66,100 @@ exports.declineCall = functions
 
       console.log("🔄 Processing session decline...");
 
-      // Добавляем преподавателя в список попыток
-      const triedTutors = [...(sessionData.triedTutors || []), tutorId];
+      const db = admin.firestore();
+      const sessionRef = db.collection("videoSessions").doc(sessionId);
+      const declineResult = await db.runTransaction(async (transaction) => {
+        const sessionDoc = await transaction.get(sessionRef);
+        if (!sessionDoc.exists) {
+          console.log("❌ Video session not found:", sessionId);
+          throw new functions.https.HttpsError(
+            "not-found",
+            "Video session not found",
+          );
+        }
 
-      console.log("📝 Updating tried tutors list:", triedTutors);
+        const sessionData = sessionDoc.data() || {};
+        console.log("📋 Session data status:", sessionData.status);
+        console.log("👤 Current tutor ID:", sessionData.currentTutorId);
 
-      // Обновляем сессию
-      await admin
-        .firestore()
-        .collection("videoSessions")
-        .doc(sessionId)
-        .update({
-          triedTutors: triedTutors,
-          currentTutorId: admin.firestore.FieldValue.delete(),
-        });
+        // Проверяем, что сессия в статусе поиска
+        if (sessionData.status !== "searching") {
+          console.log(
+            "❌ Session is not in searching status:",
+            sessionData.status,
+          );
+          throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Session is not available for declining",
+          );
+        }
+
+        // Проверяем, что звонок адресован этому преподавателю
+        if (sessionData.currentTutorId !== tutorId) {
+          console.log(
+            "❌ Session is not for this tutor. Expected:",
+            sessionData.currentTutorId,
+            "Got:",
+            tutorId,
+          );
+          throw new functions.https.HttpsError(
+            "permission-denied",
+            "This session is not assigned to you",
+          );
+        }
+
+        // Добавляем преподавателя в список попыток
+        const triedTutors = Array.from(new Set([
+          ...(sessionData.triedTutors || []),
+          tutorId,
+        ]));
+
+        console.log("📝 Updating tried tutors list:", triedTutors);
+
+        const availableTutors = sessionData.availableTutors || [];
+        const nextTutor = availableTutors.find(
+          (candidateId) => !triedTutors.includes(candidateId),
+        );
+        const sessionUpdate = {
+          triedTutors,
+          currentTutorId: nextTutor || admin.firestore.FieldValue.delete(),
+        };
+        if (!nextTutor) {
+          sessionUpdate.status = "no_tutors_available";
+        }
+
+        const notification = nextTutor
+          ? createIncomingCallNotificationInTransaction({
+            db,
+            transaction,
+            sessionId,
+            recipientId: nextTutor,
+            sessionData: {
+              ...sessionData,
+              triedTutors,
+              currentTutorId: nextTutor,
+            },
+            studentNameFallback: "Студент",
+          })
+          : null;
+
+        transaction.update(sessionRef, sessionUpdate);
+
+        return {
+          dailyRoomName: nextTutor ? null : resolveDailyRoomName(sessionData),
+          nextSessionData: {
+            ...sessionData,
+            triedTutors,
+            currentTutorId: nextTutor || null,
+            status: nextTutor ? sessionData.status : "no_tutors_available",
+          },
+          nextTutor: nextTutor || null,
+          sessionData,
+          triedTutors,
+          notificationId: notification?.notificationId || null,
+          pushPayload: notification?.pushPayload || null,
+        };
+      });
 
       console.log("🔔 Marking notification as declined...");
 
@@ -140,13 +186,12 @@ exports.declineCall = functions
 
       try {
         await ensureConversationCallEventForSession({
-          db: admin.firestore(),
+          db,
           sessionId,
-          sessionRef: admin.firestore()
-            .collection("videoSessions")
-            .doc(sessionId),
+          sessionRef,
           sessionData: {
-            ...sessionData,
+            ...declineResult.sessionData,
+            triedTutors: declineResult.triedTutors,
             currentTutorId: tutorId,
           },
           callOutcome: CALL_EVENT_OUTCOME_MISSED,
@@ -157,12 +202,24 @@ exports.declineCall = functions
         console.error("⚠️ Failed to create declined call event:", error);
       }
 
-      // Отправляем уведомление следующему преподавателю
-      console.log("📨 Sending notification to next tutor...");
-      await sendNotificationToNextTutor(sessionId, {
-        ...sessionData,
-        triedTutors: triedTutors,
-      });
+      if (declineResult.dailyRoomName) {
+        await deleteDailyRoomForSession({
+          db,
+          sessionId,
+          roomName: declineResult.dailyRoomName,
+          source: "declineCall_no_tutors",
+        });
+      } else if (declineResult.nextTutor) {
+        // Отправляем уведомление следующему преподавателю
+        console.log("📨 Sending notification to next tutor...");
+        await sendNotificationToNextTutor(
+          sessionId,
+          {
+            ...declineResult.nextSessionData,
+            pushPayload: declineResult.pushPayload,
+          },
+        );
+      }
 
       console.log("✅ Call declined successfully");
 
@@ -202,8 +259,8 @@ async function sendVoipPushToTutor(tutorId, callData) {
     const voipTopic =
       process.env.IOS_VOIP_TOPIC ||
       (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
-    const voipPushToken = tutorData.voipPushToken;
-    const fcmToken = tutorData.voipToken;
+    const { voipPushToken, voipToken: fcmToken } =
+      await getUserVoipTokens(tutorId, tutorData);
 
     if (!voipPushToken && !fcmToken) {
       console.log("⚠️ Tutor has no push tokens saved");
@@ -239,7 +296,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
       return;
     }
 
-    console.log("📱 FCM token found:", fcmToken.substring(0, 20) + "...");
+    console.log("📱 FCM token found");
     console.log("📦 Using apns-topic for FCM fallback:", bundleId);
 
     const message = {
@@ -287,64 +344,38 @@ async function sendVoipPushToTutor(tutorId, callData) {
 // ОТПРАВКА УВЕДОМЛЕНИЯ СЛЕДУЮЩЕМУ ПРЕПОДАВАТЕЛЮ
 async function sendNotificationToNextTutor(sessionId, sessionData) {
   try {
-    const availableTutors = sessionData.availableTutors || [];
-    const triedTutors = sessionData.triedTutors || [];
-
-    console.log("🎯 Available tutors:", availableTutors);
-    console.log("❌ Tried tutors:", triedTutors);
-
-    // Находим следующего преподавателя
-    const nextTutor = availableTutors.find(
-      (tutorId) => !triedTutors.includes(tutorId),
-    );
-
+    const nextTutor = sessionData.currentTutorId;
     if (!nextTutor) {
-      console.log("❌ No more tutors available");
-      await admin
-        .firestore()
-        .collection("videoSessions")
-        .doc(sessionId)
-        .update({
-          status: "no_tutors_available",
-        });
+      console.log(
+        "⏭️ Skipping next tutor notification for session",
+        sessionId,
+        "reason:",
+        "no_assigned_tutor",
+      );
       return;
     }
 
-    console.log("📨 Sending notification to tutor:", nextTutor);
-
-    // Обновляем текущего преподавателя в сессии
-    await admin.firestore().collection("videoSessions").doc(sessionId).update({
-      currentTutorId: nextTutor,
-    });
-
-    // Создаем уведомление в Firestore
-    const expiresAt = new Date();
-    expiresAt.setSeconds(expiresAt.getSeconds() + 45);
-
-    const notificationData = {
-      recipientId: nextTutor,
-      sessionId: sessionId,
-      type: "incoming_call",
-      status: "sent",
-      title: "Входящий звонок",
-      message: `${sessionData.studentInfo.name} хочет попрактиковать ${sessionData.language}`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-      studentInfo: sessionData.studentInfo,
+    const freshSessionData = sessionData || {};
+    const studentInfo = freshSessionData.studentInfo || {};
+    const pushPayload = sessionData.pushPayload || {
+      sessionId,
+      studentName: studentInfo.name || "Студент",
+      studentId: freshSessionData.studentId,
+      studentPhoto: studentInfo.photo,
+      language: freshSessionData.language,
     };
-
-    await admin.firestore().collection("notifications").add(notificationData);
+    console.log("📨 Sending notification to tutor:", nextTutor);
     console.log("✅ Firestore notification created for tutor:", nextTutor);
 
     // 🔔 Отправляем VoIP push преподавателю
     console.log("📲 Sending VoIP push to next tutor...");
     try {
       await sendVoipPushToTutor(nextTutor, {
-        sessionId: sessionId,
-        studentName: sessionData.studentInfo.name,
-        studentId: sessionData.studentId,
-        studentPhoto: sessionData.studentInfo.photo,
-        language: sessionData.language,
+        sessionId,
+        studentName: pushPayload.studentName || "Студент",
+        studentId: pushPayload.studentId,
+        studentPhoto: pushPayload.studentPhoto,
+        language: pushPayload.language,
       });
       console.log("✅ VoIP push sent to next tutor");
     } catch (pushError) {

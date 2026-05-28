@@ -91,6 +91,36 @@ class TransactionsRecord extends FirestoreRecord {
   double get minutesPurchased => _minutesPurchased ?? 0.0;
   bool hasMinutesPurchased() => _minutesPurchased != null;
 
+  // ─── SUBSCRIPTION REWORK ─ preserve through FlutterFlow regenerate ───
+  // Subscription metadata. Audit fields (revenueCatEventId, environment,
+  // originalTransactionId, cancelReason, etc.) are written by the webhook
+  // but kept as untyped Firestore data — only fields useful to the client
+  // get typed getters here.
+
+  // "productId" field — "smalltalk_monthly" | "smalltalk_quarterly" | "trial".
+  String? _productId;
+  String get productId => _productId ?? '';
+  bool hasProductId() => _productId != null;
+
+  // "periodMonths" field — 1 or 3 for paid plans, 0 for trial / promo.
+  int? _periodMonths;
+  int get periodMonths => _periodMonths ?? 0;
+  bool hasPeriodMonths() => _periodMonths != null;
+
+  // "subscriptionExpiresAt" field — when the entitlement granted by this
+  // transaction stops being valid.
+  DateTime? _subscriptionExpiresAt;
+  DateTime? get subscriptionExpiresAt => _subscriptionExpiresAt;
+  bool hasSubscriptionExpiresAt() => _subscriptionExpiresAt != null;
+
+  // "currency" field — ISO code (e.g. "USD", "RUB"). Set by RevenueCat,
+  // can differ from the platform's RUB base when paid via App Store / Play
+  // in another locale.
+  String? _currency;
+  String get currency => _currency ?? '';
+  bool hasCurrency() => _currency != null;
+  // ─────────────────────────────────────────────────────────────────────
+
   void _initializeFields() {
     _userId = snapshotData['userId'] as DocumentReference?;
     _createdAt = snapshotData['createdAt'] as DateTime?;
@@ -111,6 +141,12 @@ class TransactionsRecord extends FirestoreRecord {
     _paymentId = snapshotData['paymentId'] as String?;
     _amount = castToType<double>(snapshotData['amount']);
     _minutesPurchased = castToType<double>(snapshotData['minutesPurchased']);
+    // ─── SUBSCRIPTION REWORK ─ preserve through FlutterFlow regenerate ─
+    _productId = snapshotData['productId'] as String?;
+    _periodMonths = castToType<int>(snapshotData['periodMonths']);
+    _subscriptionExpiresAt = snapshotData['subscriptionExpiresAt'] as DateTime?;
+    _currency = snapshotData['currency'] as String?;
+    // ───────────────────────────────────────────────────────────────────
   }
 
   static CollectionReference get collection =>
@@ -163,6 +199,12 @@ Map<String, dynamic> createTransactionsRecordData({
   String? paymentId,
   double? amount,
   double? minutesPurchased,
+  // ─── SUBSCRIPTION REWORK ─ keep through FlutterFlow regenerate ────────
+  String? productId,
+  int? periodMonths,
+  DateTime? subscriptionExpiresAt,
+  String? currency,
+  // ──────────────────────────────────────────────────────────────────────
 }) {
   final firestoreData = mapToFirestore(
     <String, dynamic>{
@@ -181,6 +223,12 @@ Map<String, dynamic> createTransactionsRecordData({
       'paymentId': paymentId,
       'amount': amount,
       'minutesPurchased': minutesPurchased,
+      // ─── SUBSCRIPTION REWORK ───────────────────────────────────────
+      'productId': productId,
+      'periodMonths': periodMonths,
+      'subscriptionExpiresAt': subscriptionExpiresAt,
+      'currency': currency,
+      // ──────────────────────────────────────────────────────────────
     }.withoutNulls,
   );
 
@@ -207,7 +255,13 @@ class TransactionsRecordDocumentEquality
         e1?.promoCode == e2?.promoCode &&
         e1?.paymentId == e2?.paymentId &&
         e1?.amount == e2?.amount &&
-        e1?.minutesPurchased == e2?.minutesPurchased;
+        e1?.minutesPurchased == e2?.minutesPurchased &&
+        // ─── SUBSCRIPTION REWORK ───────────────────────────────────────
+        e1?.productId == e2?.productId &&
+        e1?.periodMonths == e2?.periodMonths &&
+        e1?.subscriptionExpiresAt == e2?.subscriptionExpiresAt &&
+        e1?.currency == e2?.currency;
+    // ──────────────────────────────────────────────────────────────
   }
 
   @override
@@ -226,7 +280,13 @@ class TransactionsRecordDocumentEquality
         e?.promoCode,
         e?.paymentId,
         e?.amount,
-        e?.minutesPurchased
+        e?.minutesPurchased,
+        // ─── SUBSCRIPTION REWORK ───────────────────────────────────────
+        e?.productId,
+        e?.periodMonths,
+        e?.subscriptionExpiresAt,
+        e?.currency,
+        // ──────────────────────────────────────────────────────────────
       ]);
 
   @override

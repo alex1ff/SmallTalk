@@ -19,9 +19,18 @@ void main() {
       expect(source, contains('resolveFriendsForUser(currentUserDocument)'));
       expect(source, contains('kConversationMessageTypeCallEvent'));
       expect(source, contains('conversationPartnerIsFriend'));
+      expect(
+        source,
+        contains('UserPublicProfilesRecord.maybeGetDocumentOnce'),
+      );
+      expect(
+        source,
+        contains('FutureBuilder<UserPublicProfilesRecord?>'),
+      );
       expect(source, contains('initialData: const _ConversationsLoadState()'));
       expect(source, contains('You do not have messages yet.'));
       expect(source, contains('You do not have chats with friends yet.'));
+      expect(source, isNot(contains('UsersRecord.getDocumentOnce(ref)')));
       expect(source, isNot(contains('fetchRecentHubCallSessions')));
       expect(source, isNot(contains("ruText: 'Звонки'")));
     });
@@ -105,8 +114,10 @@ void main() {
           source, contains('FirebaseAuth.instance.currentUser?.emailVerified'));
       expect(source, contains('sendCustomEmailVerification('));
       expect(source, contains('_refreshEmailVerificationStatus'));
-      expect(source,
-          contains('This does not limit calls, chats, or profile access.'));
+      expect(source, contains('Timer.periodic('));
+      expect(source, contains('_emailVerificationPollTimer'));
+      expect(source, contains('_profileHeaderCard(context)'));
+      expect(source, isNot(contains('Refresh status')));
       expect(
           registration, contains('unawaited(_sendInitialEmailVerification())'));
       expect(emailFunction, contains('generateEmailVerificationLink'));
@@ -143,7 +154,7 @@ void main() {
       );
       expect(
           payCopy, contains('!canAccessTeacherSurfaces(currentUserDocument)'));
-      expect(payCopy, contains('type: TypeTransactions.withdrawal'));
+      expect(payCopy, contains("httpsCallable('requestWithdrawal')"));
       expect(myRewNS, contains('return AuthUserStreamWidget('));
       expect(
         myRewNS,
@@ -260,7 +271,7 @@ void main() {
       expect(profile, contains('ensureCanonicalCurrentUserDocument('));
       expect(profile, contains('DashboardNSWidget.routeName'));
       expect(profile, contains('availabilityToday:'));
-      expect(profile, contains('isInCall: false'));
+      expect(profile, isNot(contains('isInCall: false')));
       expect(profile, contains('Подать заявку снова'));
       expect(celebration, contains('ваша заявка отправлена'));
       expect(celebration, contains('Что дальше:'));
@@ -268,6 +279,20 @@ void main() {
         celebration,
         contains('Мы сообщим, когда проверка завершится'),
       );
+    });
+
+    test('celebration confetti does not intercept bottom sheet actions', () {
+      final studentCelebration = _source(
+        'lib/authorization/components/celebration_s_t/celebration_s_t_widget.dart',
+      );
+      final teacherCelebration = _source(
+        'lib/authorization/components/celebration_n_s/celebration_n_s_widget.dart',
+      );
+
+      expect(studentCelebration, contains('IgnorePointer('));
+      expect(teacherCelebration, contains('IgnorePointer('));
+      expect(studentCelebration, contains('Confetti_Animation.json'));
+      expect(teacherCelebration, contains('Confetti_Animation.json'));
     });
 
     test('tab shell and nav bar keep profile as a shared tab', () {
@@ -314,7 +339,7 @@ void main() {
       expect(studentDashboard, contains('AddInterWidget()'));
       expect(studentDashboard, contains('_StudentAvailabilitySwitchControl'));
       expect(studentDashboard, contains('availabilityToday:'));
-      expect(studentDashboard, contains('isInCall: false'));
+      expect(studentDashboard, isNot(contains('isInCall: false')));
       expect(studentDashboard, contains('FieldValue.arrayRemove'));
       expect(studentDashboard,
           isNot(contains('hasPendingTeacherVerification(latestUser)')));

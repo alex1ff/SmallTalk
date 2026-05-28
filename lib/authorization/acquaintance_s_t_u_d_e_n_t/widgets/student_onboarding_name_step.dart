@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -47,7 +48,7 @@ class StudentOnboardingNameStep extends StatelessWidget {
               ),
               style: FlutterFlowTheme.of(context).bodyMedium.override(
                     fontFamily: 'sf pro display',
-                    color: FlutterFlowTheme.of(context).secondaryText,
+                    color: ExpatlioDesign.muted,
                     fontSize: 16.0,
                     letterSpacing: 0.0,
                     fontWeight: FontWeight.normal,
@@ -57,92 +58,48 @@ class StudentOnboardingNameStep extends StatelessWidget {
           Padding(
             padding: const EdgeInsetsDirectional.only(top: 60.0),
             child: Container(
-              width: double.infinity,
-              height: 60.0,
-              decoration: BoxDecoration(
-                color: FlutterFlowTheme.of(context).primaryBackground,
-                borderRadius: BorderRadius.circular(100.0),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(2.0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 56.0,
-                      height: 56.0,
-                      decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).secondaryBackground,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Align(
-                        alignment: AlignmentDirectional.center,
-                        child: Icon(
-                          FFIcons.kuser03,
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          size: 20.0,
-                        ),
-                      ),
+              decoration: ExpatlioDesign.formGroupDecoration(),
+              padding: ExpatlioDesign.formGroupPadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    FFLocalizations.of(context).getVariableText(
+                      ruText: 'Ваше имя',
+                      enText: 'Your name',
                     ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsetsDirectional.fromSTEB(
-                            8.0, 0.0, 8.0, 0.0),
-                        child: TextFormField(
-                          key: const ValueKey<String>(
-                              'student_onboarding_name_field'),
-                          controller: controller,
-                          focusNode: focusNode,
-                          onFieldSubmitted: (_) async {
-                            await onSubmitted?.call();
-                          },
-                          autofocus: false,
-                          textCapitalization: TextCapitalization.sentences,
-                          textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
-                            isDense: false,
-                            labelText:
-                                FFLocalizations.of(context).getVariableText(
-                              ruText: 'Ваше имя',
-                              enText: 'Your name',
+                    style: ExpatlioDesign.formLabelStyle(context),
+                  ),
+                  const SizedBox(height: 6.0),
+                  TextFormField(
+                    key:
+                        const ValueKey<String>('student_onboarding_name_field'),
+                    controller: controller,
+                    focusNode: focusNode,
+                    onFieldSubmitted: (_) async {
+                      await onSubmitted?.call();
+                    },
+                    autofocus: false,
+                    textCapitalization: TextCapitalization.sentences,
+                    textInputAction: TextInputAction.next,
+                    textAlignVertical: TextAlignVertical.center,
+                    decoration: ExpatlioDesign.formFieldDecoration(context),
+                    style: ExpatlioDesign.formTextStyle(context),
+                    cursorColor: ExpatlioDesign.primary,
+                    enableInteractiveSelection: true,
+                    inputFormatters: [
+                      if (!isAndroid && !isiOS)
+                        TextInputFormatter.withFunction(
+                          (oldValue, newValue) => TextEditingValue(
+                            selection: newValue.selection,
+                            text: newValue.text.toCapitalization(
+                              TextCapitalization.sentences,
                             ),
-                            labelStyle: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color: FlutterFlowTheme.of(context)
-                                      .secondaryText,
-                                  fontSize: 16.0,
-                                  letterSpacing: 0.0,
-                                ),
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            errorBorder: InputBorder.none,
-                            focusedErrorBorder: InputBorder.none,
                           ),
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'sf pro display',
-                                    fontSize: 16.0,
-                                    letterSpacing: 0.0,
-                                  ),
-                          cursorColor: FlutterFlowTheme.of(context).primaryText,
-                          enableInteractiveSelection: true,
-                          inputFormatters: [
-                            if (!isAndroid && !isiOS)
-                              TextInputFormatter.withFunction(
-                                (oldValue, newValue) => TextEditingValue(
-                                  selection: newValue.selection,
-                                  text: newValue.text.toCapitalization(
-                                    TextCapitalization.sentences,
-                                  ),
-                                ),
-                              ),
-                          ],
                         ),
-                      ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),

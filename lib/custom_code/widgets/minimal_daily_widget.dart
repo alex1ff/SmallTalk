@@ -495,7 +495,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       minutes: 10,
       title: 'Прошло 10 минут',
       subtitle: 'Можно завершить звонок, когда будешь готов(а).',
-      accentColor: Color(0xFFE88CD4),
+      accentColor: Color(0xFF7430E8),
     ),
   ];
 
@@ -3488,27 +3488,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     _sessionStartedMarked = true;
-    final sessionRef =
-        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId);
 
     try {
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final snapshot = await transaction.get(sessionRef);
-        if (!snapshot.exists) return;
-
-        final data = snapshot.data() ?? <String, dynamic>{};
-        final status = (data['status'] ?? '').toString();
-        if (status == 'ended' || status == 'cancelled') return;
-
-        final sessionMetadata = data['sessionMetadata'];
-        final connectedAt =
-            sessionMetadata is Map ? sessionMetadata['callConnectedAt'] : null;
-        if (connectedAt != null) return;
-
-        transaction.update(sessionRef, {
-          'startedAt': FieldValue.serverTimestamp(),
-          'sessionMetadata.callConnectedAt': FieldValue.serverTimestamp(),
-        });
+      await FirebaseFunctions.instance
+          .httpsCallable('markSessionConnected')
+          .call(<String, dynamic>{
+        'sessionId': sessionId,
       });
     } catch (e) {
       _sessionStartedMarked = false;
@@ -4549,12 +4534,27 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _buildControlButton(
           icon: _state.cameraEnabled ? Icons.videocam : Icons.videocam_off,
           isActive: _state.cameraEnabled,
+          tooltip:
+              _state.cameraEnabled ? 'Выключить камеру' : 'Включить камеру',
+          semanticLabel: _state.cameraEnabled
+              ? 'Камера включена. Выключить камеру'
+              : 'Камера выключена. Включить камеру',
+          semanticHint: 'Переключает камеру в звонке',
+          semanticToggled: _state.cameraEnabled,
           onPressed: () => _updateInputSettings(camera: !_state.cameraEnabled),
           isEndCall: false,
         ),
         _buildControlButton(
           icon: _state.microphoneEnabled ? Icons.mic : Icons.mic_off,
           isActive: _state.microphoneEnabled,
+          tooltip: _state.microphoneEnabled
+              ? 'Выключить микрофон'
+              : 'Включить микрофон',
+          semanticLabel: _state.microphoneEnabled
+              ? 'Микрофон включен. Выключить микрофон'
+              : 'Микрофон выключен. Включить микрофон',
+          semanticHint: 'Переключает микрофон в звонке',
+          semanticToggled: _state.microphoneEnabled,
           onPressed: () =>
               _updateInputSettings(microphone: !_state.microphoneEnabled),
           isEndCall: false,
@@ -4563,6 +4563,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           icon:
               _state.isChatOpen ? Icons.chat_bubble : Icons.chat_bubble_outline,
           isActive: _state.isChatOpen,
+          tooltip: _chatControlTooltip(),
+          semanticLabel: _chatControlSemanticLabel(),
+          semanticHint: 'Открывает или скрывает чат звонка',
+          semanticToggled: _state.isChatOpen,
           onPressed: _toggleChatOpen,
           isEndCall: false,
           badgeCount: _state.unreadChatCount,
@@ -4570,6 +4574,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _buildControlButton(
           icon: Icons.call_end,
           isActive: true,
+          tooltip: 'Завершить звонок',
+          semanticLabel: 'Завершить звонок',
+          semanticHint: 'Завершает текущий видеозвонок',
           onPressed: () => _endCall(endReason: 'user_ended'),
           isEndCall: true,
         ),
@@ -4581,8 +4588,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildControlButton({
     required IconData icon,
     required bool isActive,
+    required String tooltip,
+    required String semanticLabel,
     required VoidCallback onPressed,
     required bool isEndCall,
+    String? semanticHint,
+    bool? semanticToggled,
     int badgeCount = 0,
   }) {
     return Stack(
@@ -4607,25 +4618,75 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                     width: 0.8,
                   ),
           ),
-          child: IconButton(
-            icon: Icon(icon, color: Colors.white),
-            onPressed: onPressed,
-            iconSize: 24,
-            padding: EdgeInsets.zero,
+          child: Semantics(
+            container: true,
+            button: true,
+            enabled: true,
+            label: semanticLabel,
+            hint: semanticHint,
+            toggled: semanticToggled,
+            onTap: onPressed,
+            child: Tooltip(
+              message: tooltip,
+              excludeFromSemantics: true,
+              child: ExcludeSemantics(
+                child: IconButton(
+                  icon: Icon(icon, color: Colors.white),
+                  onPressed: onPressed,
+                  iconSize: 24,
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+            ),
           ),
         ),
         if (badgeCount > 0)
           Positioned(
             top: -2,
             right: -2,
-            child: _buildUnreadBadge(badgeCount),
+            child: ExcludeSemantics(
+              child: _buildUnreadBadge(badgeCount),
+            ),
           ),
       ],
     );
   }
 
+  String _chatControlTooltip() {
+    final unreadCount = _state.unreadChatCount;
+    final baseLabel = _state.isChatOpen ? 'Закрыть чат' : 'Открыть чат';
+
+    if (!_state.isChatOpen && unreadCount > 0) {
+      return '$baseLabel, ${_unreadMessagesSemanticLabel(unreadCount)}';
+    }
+
+    return baseLabel;
+  }
+
+  String _chatControlSemanticLabel() {
+    if (_state.isChatOpen) {
+      return 'Чат открыт. Закрыть чат';
+    }
+    if (_state.unreadChatCount > 0) {
+      return 'Чат закрыт. Открыть чат. '
+          '${_unreadMessagesSemanticLabel(_state.unreadChatCount)}';
+    }
+    return 'Чат закрыт. Открыть чат';
+  }
+
+  String _formatUnreadChatCount(int count) {
+    return count > 99 ? '99+' : count.toString();
+  }
+
+  String _unreadMessagesSemanticLabel(int count) {
+    if (count > 99) {
+      return 'Больше 99 непрочитанных сообщений';
+    }
+    return 'Непрочитанных сообщений: ${_formatUnreadChatCount(count)}';
+  }
+
   Widget _buildUnreadBadge(int count) {
-    final label = count > 99 ? '99+' : count.toString();
+    final label = _formatUnreadChatCount(count);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       constraints: const BoxConstraints(minWidth: 22),
@@ -4757,9 +4818,23 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               ],
             ),
           ),
-          IconButton(
-            onPressed: () => _setChatOpen(false),
-            icon: const Icon(Icons.close, color: Colors.white),
+          Semantics(
+            container: true,
+            button: true,
+            enabled: true,
+            label: 'Закрыть чат',
+            hint: 'Скрывает панель чата',
+            onTap: () => _setChatOpen(false),
+            child: Tooltip(
+              message: 'Закрыть чат',
+              excludeFromSemantics: true,
+              child: ExcludeSemantics(
+                child: IconButton(
+                  onPressed: () => _setChatOpen(false),
+                  icon: const Icon(Icons.close, color: Colors.white),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -4903,11 +4978,18 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         valueListenable: _chatTextController,
         builder: (context, value, _) {
           final canSend = _canSendChatText(value.text);
+          final hasRemoteParticipant = _hasRemoteParticipantPresent();
+          final disabledSendHint = hasRemoteParticipant
+              ? 'Введите текст сообщения'
+              : 'Дождитесь подключения собеседника';
+          final disabledSendTooltip = hasRemoteParticipant
+              ? 'Введите сообщение для отправки'
+              : 'Дождитесь собеседника';
 
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (!_hasRemoteParticipantPresent())
+              if (!hasRemoteParticipant)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
                   child: Text(
@@ -4944,7 +5026,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                           fontSize: 14,
                         ),
                         decoration: InputDecoration(
-                          hintText: _hasRemoteParticipantPresent()
+                          hintText: hasRemoteParticipant
                               ? 'Написать сообщение'
                               : 'Ожидаем собеседника...',
                           hintStyle: TextStyle(
@@ -4966,8 +5048,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                     ),
                     const SizedBox(width: 8),
                     SizedBox(
-                      width: 42,
-                      height: 42,
+                      width: 48,
+                      height: 48,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: canSend
@@ -4975,18 +5057,40 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                               : Colors.white.withValues(alpha: 0.08),
                           shape: BoxShape.circle,
                         ),
-                        child: IconButton(
-                          onPressed: canSend
+                        child: Semantics(
+                          container: true,
+                          button: true,
+                          enabled: canSend,
+                          label: canSend
+                              ? 'Отправить сообщение'
+                              : 'Отправка сообщения недоступна',
+                          hint: canSend
+                              ? 'Отправляет сообщение в чат'
+                              : disabledSendHint,
+                          onTap: canSend
                               ? () => unawaited(_sendChatMessage())
                               : null,
-                          icon: Icon(
-                            Icons.send_rounded,
-                            size: 18,
-                            color: canSend
-                                ? Colors.white
-                                : Colors.white.withValues(alpha: 0.32),
+                          child: Tooltip(
+                            message: canSend
+                                ? 'Отправить сообщение'
+                                : disabledSendTooltip,
+                            excludeFromSemantics: true,
+                            child: ExcludeSemantics(
+                              child: IconButton(
+                                onPressed: canSend
+                                    ? () => unawaited(_sendChatMessage())
+                                    : null,
+                                icon: Icon(
+                                  Icons.send_rounded,
+                                  size: 18,
+                                  color: canSend
+                                      ? Colors.white
+                                      : Colors.white.withValues(alpha: 0.32),
+                                ),
+                                padding: EdgeInsets.zero,
+                              ),
+                            ),
                           ),
-                          padding: EdgeInsets.zero,
                         ),
                       ),
                     ),

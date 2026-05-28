@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'empty_model.dart';
 export 'empty_model.dart';
@@ -47,23 +48,28 @@ class _EmptyWidgetState extends State<EmptyWidget> {
         child: Column(
           mainAxisSize: MainAxisSize.max,
           children: [
-            Image.asset(
-              'assets/images/Group_1171275321.png',
-              width: 120.0,
-              fit: BoxFit.cover,
+            SizedBox(
+              width: 104.0,
+              height: 104.0,
+              child: Image.asset(
+                'assets/images/Group_1171275321.png',
+                fit: BoxFit.contain,
+              ),
             ),
             Padding(
               padding: EdgeInsetsDirectional.fromSTEB(0.0, 16.0, 0.0, 0.0),
               child: Text(
-                  FFLocalizations.of(context).getVariableText(
+                FFLocalizations.of(context).getVariableText(
                   ruText: 'Здесь пока пусто',
                   enText: 'Nothing here yet',
                 ),
                 textAlign: TextAlign.center,
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'Cool',
-                      fontSize: 20.0,
+                      fontFamily: 'sf pro display',
+                      color: ExpatlioDesign.text,
+                      fontSize: 18.0,
                       letterSpacing: 0.0,
+                      fontWeight: FontWeight.w700,
                     ),
               ),
             ),
@@ -77,7 +83,7 @@ class _EmptyWidgetState extends State<EmptyWidget> {
                 textAlign: TextAlign.center,
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'sf pro display',
-                      color: FlutterFlowTheme.of(context).secondaryText,
+                      color: ExpatlioDesign.muted,
                       fontSize: 15.0,
                       letterSpacing: 0.0,
                     ),

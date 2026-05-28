@@ -2,9 +2,10 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_card/review_card_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/services/user_match_profile.dart';
 import '/index.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
@@ -50,7 +51,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
       builder: (context) {
         if (loggedIn && currentUserDocument == null) {
           return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: const Center(
               child: CircularProgressIndicator.adaptive(),
             ),
@@ -72,7 +73,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
           });
 
           return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: Center(
               child: Text(
                 FFLocalizations.of(context).getVariableText(
@@ -1204,79 +1205,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                               'В этом разделе будут появляться отзывы учеников о ваших занятиях. Проведите первые звонки, и оценки с комментариями отобразятся здесь.',
                         ),
                       ),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            FlutterFlowTheme.of(context).secondaryBackground,
-                            Color(0xEFF2F2F7),
-                            Color(0x00F2F2F7)
-                          ],
-                          stops: [0.0, 0.8, 1.0],
-                          begin: AlignmentDirectional(0.0, -1.0),
-                          end: AlignmentDirectional(0, 1.0),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(
-                            12.0, 55.0, 12.0, 12.0),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.max,
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Container(
-                              width: 45.0,
-                              height: 45.0,
-                              decoration: BoxDecoration(
-                                boxShadow: [
-                                  BoxShadow(
-                                    blurRadius: 7.0,
-                                    color: Color(0x0D2C2C2C),
-                                    offset: Offset(
-                                      0.0,
-                                      2.0,
-                                    ),
-                                  )
-                                ],
-                                shape: BoxShape.circle,
-                              ),
-                              child: FlutterFlowIconButton(
-                                borderRadius: 70.0,
-                                buttonSize: 45.0,
-                                fillColor: Colors.white,
-                                icon: Icon(
-                                  FFIcons.kchevronLeft,
-                                  color:
-                                      FlutterFlowTheme.of(context).primaryText,
-                                  size: 20.0,
-                                ),
-                                onPressed: () async {
-                                  context.safePop();
-                                },
-                              ),
-                            ),
-                            Text(
-                              FFLocalizations.of(context).getText(
-                                '6on93f38' /* Мои отзывы */,
-                              ),
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 18.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.normal,
-                                  ),
-                            ),
-                            Container(
-                              width: 45.0,
-                              height: 45.0,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ],
-                        ),
+                    BasicPageHeader(
+                      title: FFLocalizations.of(context).getText(
+                        '6on93f38' /* Мои отзывы */,
                       ),
                     ),
                   ],

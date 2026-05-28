@@ -36,7 +36,7 @@ class CallSummaryModel extends FlutterFlowModel<CallSummaryWidget> {
   late ButtonModel buttonModel;
 
   // Cached future so it is not recreated on every build().
-  Future<UsersRecord>? userFuture;
+  Future<UserPublicProfilesRecord?>? userFuture;
 
   @override
   void initState(BuildContext context) {

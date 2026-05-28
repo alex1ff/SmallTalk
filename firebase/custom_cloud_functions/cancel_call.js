@@ -1,6 +1,11 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
-const { deleteDailyRoom } = require("./daily_room");
+const {
+  resolveDailyRoomName,
+} = require("./daily_room");
+const {
+  deleteDailyRoomForSession,
+} = require("./daily_room_cleanup");
 const {
   CALL_EVENT_OUTCOME_CANCELLED,
   ensureConversationCallEventForSession,
@@ -25,56 +30,56 @@ exports.cancelCall = functions
     console.log("👨‍🎓 Student ID:", studentId);
     console.log("📺 Session ID:", sessionId);
 
-    // Проверяем, что студент может отменить эту сессию
-    const sessionDoc = await admin
-      .firestore()
-      .collection("videoSessions")
-      .doc(sessionId)
-      .get();
-
-    if (!sessionDoc.exists) {
-      console.log("❌ Video session not found:", sessionId);
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Video session not found",
-      );
-    }
-
-    const sessionData = sessionDoc.data();
-    console.log("📋 Session data status:", sessionData.status);
-    console.log("👤 Session student ID:", sessionData.studentId);
-
-    // Проверяем, что это сессия этого студента
-    if (sessionData.studentId !== studentId) {
-      console.log("❌ Permission denied - wrong student");
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "You can only cancel your own sessions",
-      );
-    }
-
-    // Проверяем, что сессию можно отменить
-    if (!["searching", "connecting"].includes(sessionData.status)) {
-      console.log(
-        "❌ Session cannot be cancelled, current status:",
-        sessionData.status,
-      );
+    if (!sessionId) {
       throw new functions.https.HttpsError(
         "invalid-argument",
-        `Session cannot be cancelled. Current status: ${sessionData.status}`,
+        "Session ID is required",
       );
     }
 
     console.log("🔄 Updating session status to cancelled...");
 
-    const dailyRoomName = sessionData.dailyRoomName;
-
-    // Обновляем статус сессии на отменен
+    const db = admin.firestore();
     const sessionRef = admin
       .firestore()
       .collection("videoSessions")
       .doc(sessionId);
-    await sessionRef.update({
+    const txResult = await db.runTransaction(async (transaction) => {
+      const sessionDoc = await transaction.get(sessionRef);
+      if (!sessionDoc.exists) {
+        console.log("❌ Video session not found:", sessionId);
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Video session not found",
+        );
+      }
+
+      const sessionData = sessionDoc.data() || {};
+      console.log("📋 Session data status:", sessionData.status);
+      console.log("👤 Session student ID:", sessionData.studentId);
+
+      // Проверяем, что это сессия этого студента
+      if (sessionData.studentId !== studentId) {
+        console.log("❌ Permission denied - wrong student");
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "You can only cancel your own sessions",
+        );
+      }
+
+      // Проверяем, что сессию можно отменить
+      if (!["searching", "connecting"].includes(sessionData.status)) {
+        console.log(
+          "❌ Session cannot be cancelled, current status:",
+          sessionData.status,
+        );
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          `Session cannot be cancelled. Current status: ${sessionData.status}`,
+        );
+      }
+
+      transaction.update(sessionRef, {
         status: "cancelled",
         endedAt: admin.firestore.FieldValue.serverTimestamp(),
         cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -87,25 +92,36 @@ exports.cancelCall = functions
         studentNavigationTriggered: false,
       });
 
+      return {
+        dailyRoomName: resolveDailyRoomName(sessionData),
+        sessionData,
+      };
+    });
+
     try {
       await ensureConversationCallEventForSession({
-        db: admin.firestore(),
+        db,
         sessionId,
         sessionRef,
         sessionData: {
-          ...sessionData,
+          ...txResult.sessionData,
           status: "cancelled",
         },
         callOutcome: CALL_EVENT_OUTCOME_CANCELLED,
         eventMillis: Date.now(),
-        partnerId: sessionData.currentTutorId,
+        partnerId: txResult.sessionData.currentTutorId,
       });
     } catch (error) {
       console.error("⚠️ Failed to create cancelled call event:", error);
     }
 
-    if (dailyRoomName) {
-      await deleteDailyRoom(dailyRoomName);
+    if (txResult.dailyRoomName) {
+      await deleteDailyRoomForSession({
+        db,
+        sessionId,
+        roomName: txResult.dailyRoomName,
+        source: "cancelCall",
+      });
     }
 
     console.log("🔔 Cancelling active notifications...");
@@ -138,13 +154,16 @@ exports.cancelCall = functions
     }
 
     // Если есть текущий преподаватель, освобождаем его
-    if (sessionData.currentTutorId) {
-      console.log("👨‍🏫 Releasing current tutor:", sessionData.currentTutorId);
+    if (txResult.sessionData.currentTutorId) {
+      console.log(
+        "👨‍🏫 Releasing current tutor:",
+        txResult.sessionData.currentTutorId,
+      );
       try {
         await admin
           .firestore()
           .collection("users")
-          .doc(sessionData.currentTutorId)
+          .doc(txResult.sessionData.currentTutorId)
           .update({
             currentSessionId: admin.firestore.FieldValue.delete(),
           });

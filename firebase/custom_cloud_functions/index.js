@@ -3,6 +3,8 @@ admin.initializeApp();
 
 const createVideoSession = require("./create_video_session.js");
 exports.createVideoSession = createVideoSession.createVideoSession;
+const directCallStatus = require("./direct_call_status.js");
+exports.getDirectCallStatus = directCallStatus.getDirectCallStatus;
 const acceptCall = require("./accept_call.js");
 exports.acceptCall = acceptCall.acceptCall;
 const declineCall = require("./decline_call.js");
@@ -19,10 +21,26 @@ exports.requestSessionExtension =
   requestSessionExtension.requestSessionExtension;
 const cleanupExpiredSessions = require("./cleanup_expired_sessions.js");
 exports.cleanupExpiredSessions = cleanupExpiredSessions.cleanupExpiredSessions;
+const failedDailyRoomDeleteCleanup = require(
+  "./cleanup_failed_daily_room_deletes.js",
+);
+exports.cleanupFailedDailyRoomDeletes =
+  failedDailyRoomDeleteCleanup.cleanupFailedDailyRoomDeletes;
 const getSessionTokens = require("./get_session_tokens.js");
 exports.getSessionTokens = getSessionTokens.getSessionTokens;
+const markSessionConnected = require("./mark_session_connected.js");
+exports.markSessionConnected = markSessionConnected.markSessionConnected;
+const dailyWebhook = require("./daily_webhook.js");
+exports.dailyWebhook = dailyWebhook.dailyWebhook;
 const getDeepgramToken = require("./get_deepgram_token.js");
 exports.getDeepgramToken = getDeepgramToken.getDeepgramToken;
+const registerVoipToken = require("./register_voip_token.js");
+exports.registerVoipToken = registerVoipToken.registerVoipToken;
+const legacyVoipTokenMigration = require("./migrate_legacy_voip_tokens.js");
+exports.migrateLegacyVoipTokens =
+  legacyVoipTokenMigration.migrateLegacyVoipTokens;
+exports.scheduledLegacyVoipTokenMigration =
+  legacyVoipTokenMigration.scheduledLegacyVoipTokenMigration;
 const submitReview = require("./submit_review.js");
 exports.submitReview = submitReview.submitReview;
 const createPaymentSession = require("./create_payment_session.js");
@@ -39,6 +57,8 @@ exports.repairConversationMessageSummaries =
   conversationMessageSummaries.repairConversationMessageSummaries;
 const userMatchProfileSync = require("./user_match_profile_sync.js");
 exports.syncUserMatchProfile = userMatchProfileSync.syncUserMatchProfile;
+const publicUserProfiles = require("./public_user_profiles.js");
+exports.syncUserPublicProfile = publicUserProfiles.syncUserPublicProfile;
 const teacherVerificationRequests = require("./teacher_verification_requests.js");
 exports.syncTeacherVerificationRequest =
   teacherVerificationRequests.syncTeacherVerificationRequest;
@@ -47,3 +67,15 @@ exports.sendCustomEmailVerification =
   emailVerification.sendCustomEmailVerification;
 const persistCallChat = require("./persist_call_chat.js");
 exports.persistCallChat = persistCallChat.persistCallChat;
+const revenueCatWebhook = require("./revenue_cat_webhook.js");
+exports.revenueCatWebhook = revenueCatWebhook.revenueCatWebhook;
+const grantPromoEntitlement = require("./grant_promo_entitlement.js");
+exports.grantPromoEntitlement = grantPromoEntitlement.grantPromoEntitlement;
+const redeemPromoCode = require("./redeem_promo_code.js");
+exports.redeemPromoCode = redeemPromoCode.redeemPromoCode;
+const claimRegistrationGift = require("./claim_registration_gift.js");
+exports.claimRegistrationGift = claimRegistrationGift.claimRegistrationGift;
+const requestWithdrawal = require("./request_withdrawal.js");
+exports.requestWithdrawal = requestWithdrawal.requestWithdrawal;
+const cleanupExpiredGifts = require("./cleanup_expired_gifts.js");
+exports.cleanupExpiredGifts = cleanupExpiredGifts.cleanupExpiredGifts;

@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'chip_model.dart';
@@ -11,13 +12,15 @@ class ChipWidget extends StatefulWidget {
     required this.text,
     this.currentSelected,
     required this.callbackAction,
-    required this.img,
+    this.img,
+    this.icon,
   });
 
   final String? text;
   final String? currentSelected;
   final Future Function(String selected)? callbackAction;
   final String? img;
+  final IconData? icon;
 
   @override
   State<ChipWidget> createState() => _ChipWidgetState();
@@ -59,11 +62,8 @@ class _ChipWidgetState extends State<ChipWidget> {
       },
       child: Container(
         width: double.infinity,
-        height: 60.0,
-        decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
-          borderRadius: BorderRadius.circular(26.0),
-        ),
+        height: 62.0,
+        decoration: ExpatlioDesign.cardDecoration(radius: 16.0),
         child: Padding(
           padding: EdgeInsets.all(4.0),
           child: Row(
@@ -73,22 +73,12 @@ class _ChipWidgetState extends State<ChipWidget> {
                 width: 52.0,
                 height: 52.0,
                 decoration: BoxDecoration(
-                  color: Color(0xFFF2F2F7),
-                  borderRadius: BorderRadius.circular(22.0),
+                  color: ExpatlioDesign.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14.0),
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),
-                  child: CachedNetworkImage(
-                    imageUrl: widget.img!,
-                    width: 25.0,
-                    height: 25.0,
-                    fit: BoxFit.contain,
-                    memCacheWidth: 50,
-                    memCacheHeight: 50,
-                    placeholder: (context, url) => const SizedBox.shrink(),
-                    errorWidget: (context, url, error) =>
-                        Icon(Icons.person, size: 24, color: Colors.grey),
-                  ),
+                  child: _buildLeadingIcon(),
                 ),
               ),
               Expanded(
@@ -101,8 +91,10 @@ class _ChipWidgetState extends State<ChipWidget> {
                     ),
                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'sf pro display',
+                          color: ExpatlioDesign.text,
                           fontSize: 16.0,
                           letterSpacing: 0.0,
+                          fontWeight: FontWeight.w600,
                         ),
                   ),
                 ),
@@ -114,14 +106,14 @@ class _ChipWidgetState extends State<ChipWidget> {
                     width: 30.0,
                     height: 30.0,
                     decoration: BoxDecoration(
-                      color: FlutterFlowTheme.of(context).success,
+                      color: ExpatlioDesign.primary,
                       shape: BoxShape.circle,
                     ),
                     child: Align(
                       alignment: AlignmentDirectional(0.0, 0.0),
                       child: Icon(
                         FFIcons.kcheck,
-                        color: Colors.black,
+                        color: Colors.white,
                         size: 15.0,
                       ),
                     ),
@@ -130,6 +122,40 @@ class _ChipWidgetState extends State<ChipWidget> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLeadingIcon() {
+    if (widget.icon != null) {
+      return Icon(
+        widget.icon,
+        size: 24.0,
+        color: ExpatlioDesign.primary,
+      );
+    }
+
+    final imageUrl = widget.img;
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Icon(
+        Icons.image_not_supported_outlined,
+        size: 24.0,
+        color: ExpatlioDesign.primary,
+      );
+    }
+
+    return CachedNetworkImage(
+      imageUrl: imageUrl,
+      width: 25.0,
+      height: 25.0,
+      fit: BoxFit.contain,
+      memCacheWidth: 50,
+      memCacheHeight: 50,
+      placeholder: (context, url) => const SizedBox.shrink(),
+      errorWidget: (context, url, error) => Icon(
+        Icons.image_not_supported_outlined,
+        size: 24.0,
+        color: ExpatlioDesign.primary,
       ),
     );
   }

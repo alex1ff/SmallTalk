@@ -7,6 +7,7 @@ import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/chat_thread/chat_thread_widget.dart';
 
 import 'favorite_model.dart';
@@ -25,15 +26,35 @@ class FavoriteWidget extends StatefulWidget {
 class _FavoriteWidgetState extends State<FavoriteWidget> {
   late FavoriteModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
-  final _userFutureCache = <String, Future<UsersRecord>>{};
+  final _userFutureCache = <String, Future<UserPublicProfilesRecord?>>{};
   int _selectedChatTabIndex = 0;
 
-  Future<UsersRecord> _getUserFuture(DocumentReference ref) {
+  Future<UserPublicProfilesRecord?> _getUserFuture(DocumentReference ref) {
     return _userFutureCache.putIfAbsent(
       ref.path,
-      () => UsersRecord.getDocumentOnce(ref),
+      () => UserPublicProfilesRecord.maybeGetDocumentOnce(
+        UserPublicProfilesRecord.collection.doc(ref.id),
+      ),
     );
   }
+
+  String _publicProfileDisplayName(
+    BuildContext context,
+    UserPublicProfilesRecord? profile,
+  ) {
+    final displayName = profile?.displayName.trim();
+    if (displayName != null && displayName.isNotEmpty) {
+      return displayName;
+    }
+
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Пользователь',
+      enText: 'User',
+    );
+  }
+
+  String _publicProfilePhotoUrl(UserPublicProfilesRecord? profile) =>
+      profile?.photoUrl.trim() ?? '';
 
   Stream<_ConversationsLoadState> _watchConversationsForUser(
       String currentUid) {
@@ -150,20 +171,14 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
   Widget _buildHeader(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            FlutterFlowTheme.of(context).secondaryBackground,
-            const Color(0xEFF2F2F7),
-            const Color(0x00F2F2F7),
-          ],
-          stops: const [0.0, 0.8, 1.0],
-          begin: const AlignmentDirectional(0.0, -1.0),
-          end: const AlignmentDirectional(0.0, 1.0),
-        ),
-      ),
+      color: ExpatlioDesign.background,
       child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(12.0, 55.0, 12.0, 12.0),
+        padding: EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.itemSpacing,
+          MediaQuery.paddingOf(context).top,
+          ExpatlioDesign.itemSpacing,
+          0.0,
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.max,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -180,12 +195,11 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                 ruText: 'Чаты',
                 enText: 'Chats',
               ),
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'Cool',
-                    fontSize: 18.0,
-                    letterSpacing: 0.0,
-                    fontWeight: FontWeight.normal,
-                  ),
+              style: ExpatlioDesign.textStyle(
+                context,
+                size: 17.0,
+                weight: FontWeight.w700,
+              ),
             ),
             Container(
               width: 45.0,
@@ -221,35 +235,22 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
         },
         child: Container(
           width: double.infinity,
-          height: 100.0,
+          height: 36.0,
           decoration: BoxDecoration(
-            color: valueOrDefault<Color>(
-              selected
-                  ? FlutterFlowTheme.of(context).secondaryBackground
-                  : Colors.transparent,
-              selected
-                  ? FlutterFlowTheme.of(context).secondaryBackground
-                  : Colors.transparent,
-            ),
-            borderRadius: BorderRadius.circular(24.0),
+            color: selected ? ExpatlioDesign.card : Colors.transparent,
+            borderRadius: BorderRadius.circular(10.0),
             shape: BoxShape.rectangle,
           ),
           child: Align(
             alignment: const AlignmentDirectional(0.0, 0.0),
             child: Text(
               label,
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'sf pro display',
-                    color: valueOrDefault<Color>(
-                      selected
-                          ? FlutterFlowTheme.of(context).primaryText
-                          : FlutterFlowTheme.of(context).secondaryText,
-                      selected
-                          ? FlutterFlowTheme.of(context).primaryText
-                          : FlutterFlowTheme.of(context).secondaryText,
-                    ),
-                    letterSpacing: 0.0,
-                  ),
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: selected ? ExpatlioDesign.text : ExpatlioDesign.muted,
+                size: 14.0,
+                weight: FontWeight.w500,
+              ),
             ),
           ),
         ),
@@ -259,13 +260,18 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
   Widget _buildChatsTabBar(BuildContext context) {
     return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(10.0, 8.0, 10.0, 12.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.pagePadding,
+        ExpatlioDesign.compactSpacing,
+        ExpatlioDesign.pagePadding,
+        ExpatlioDesign.itemSpacing,
+      ),
       child: Container(
         width: double.infinity,
-        height: 40.0,
+        height: 38.0,
         decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
-          borderRadius: BorderRadius.circular(100.0),
+          color: ExpatlioDesign.mutedSurface,
+          borderRadius: BorderRadius.circular(12.0),
         ),
         child: Padding(
           padding: const EdgeInsets.all(2.0),
@@ -305,7 +311,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       return const SizedBox.shrink();
     }
 
-    return FutureBuilder<UsersRecord>(
+    return FutureBuilder<UserPublicProfilesRecord?>(
       future: _getUserFuture(partnerRef),
       builder: (context, partnerSnapshot) {
         if (partnerSnapshot.hasError) {
@@ -321,11 +327,13 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           );
         }
 
-        if (!partnerSnapshot.hasData) {
+        if (partnerSnapshot.connectionState == ConnectionState.waiting) {
           return _conversationLoadingCard(context);
         }
 
-        final partner = partnerSnapshot.data!;
+        final partner = partnerSnapshot.data;
+        final partnerDisplayName = _publicProfileDisplayName(context, partner);
+        final partnerPhotoUrl = _publicProfilePhotoUrl(partner);
         final unread =
             conversationIsUnreadForUser(conversation, currentUserUid);
         final subtitle = _conversationSubtitle(context, conversation);
@@ -338,43 +346,61 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           onTap: () => _openConversation(conversation),
           child: Container(
             width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 6.0),
+            margin: EdgeInsets.zero,
             decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryBackground,
-              borderRadius: BorderRadius.circular(26.0),
+              color: Colors.transparent,
+              border: const Border(
+                bottom: BorderSide(color: ExpatlioDesign.border),
+              ),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(10.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.pagePadding,
+                ExpatlioDesign.itemSpacing,
+                ExpatlioDesign.pagePadding,
+                ExpatlioDesign.itemSpacing,
+              ),
               child: Row(
                 children: [
                   Container(
-                    width: 54.0,
-                    height: 54.0,
+                    width: 52.0,
+                    height: 52.0,
                     decoration: BoxDecoration(
-                      color: FlutterFlowTheme.of(context).secondaryBackground,
-                      borderRadius: BorderRadius.circular(20.0),
-                      image: partner.photoUrl.isNotEmpty
+                      color: ExpatlioDesign.mutedSurface,
+                      shape: BoxShape.circle,
+                      image: partnerPhotoUrl.isNotEmpty
                           ? DecorationImage(
                               fit: BoxFit.cover,
                               image: CachedNetworkImageProvider(
-                                partner.photoUrl,
+                                partnerPhotoUrl,
                                 maxWidth: 108,
                                 maxHeight: 108,
                               ),
                             )
                           : null,
                     ),
-                    child: partner.photoUrl.isEmpty
-                        ? Icon(
-                            Icons.person_rounded,
-                            color: FlutterFlowTheme.of(context).secondaryText,
+                    child: partnerPhotoUrl.isEmpty
+                        ? Center(
+                            child: Text(
+                              partnerDisplayName.characters.first.toUpperCase(),
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                color: ExpatlioDesign.muted,
+                                size: 14.0,
+                                weight: FontWeight.w600,
+                              ),
+                            ),
                           )
                         : null,
                   ),
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsetsDirectional.fromSTEB(
-                          12.0, 0.0, 0.0, 0.0),
+                        ExpatlioDesign.itemSpacing,
+                        0.0,
+                        0.0,
+                        0.0,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
@@ -386,18 +412,15 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                   children: [
                                     Flexible(
                                       child: Text(
-                                        partner.displayName,
+                                        partnerDisplayName,
                                         overflow: TextOverflow.ellipsis,
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              fontSize: 16.0,
-                                              fontWeight: unread
-                                                  ? FontWeight.w600
-                                                  : FontWeight.w500,
-                                              letterSpacing: 0.0,
-                                            ),
+                                        style: ExpatlioDesign.textStyle(
+                                          context,
+                                          size: 16.0,
+                                          weight: unread
+                                              ? FontWeight.w700
+                                              : FontWeight.w600,
+                                        ),
                                       ),
                                     ),
                                     if (isFriend)
@@ -429,15 +452,12 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                             subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color: FlutterFlowTheme.of(context)
-                                      .secondaryText,
-                                  fontSize: 14.0,
-                                  letterSpacing: 0.0,
-                                ),
+                            style: ExpatlioDesign.textStyle(
+                              context,
+                              color: ExpatlioDesign.muted,
+                              size: 14.0,
+                              weight: FontWeight.w400,
+                            ),
                           ),
                         ],
                       ),
@@ -454,15 +474,12 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                             conversation.lastMessageAt ??
                                 conversation.unlockedAt,
                           ),
-                          style: FlutterFlowTheme.of(context)
-                              .bodyMedium
-                              .override(
-                                fontFamily: 'sf pro display',
-                                color:
-                                    FlutterFlowTheme.of(context).secondaryText,
-                                fontSize: 12.0,
-                                letterSpacing: 0.0,
-                              ),
+                          style: ExpatlioDesign.textStyle(
+                            context,
+                            color: ExpatlioDesign.muted,
+                            size: 12.0,
+                            weight: FontWeight.w400,
+                          ),
                         ),
                         const SizedBox(height: 8.0),
                         Icon(
@@ -561,7 +578,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   }
 
   Widget _conversationLoadingCard(BuildContext context) {
-    final placeholderColor = FlutterFlowTheme.of(context).secondaryBackground;
+    const placeholderColor = ExpatlioDesign.mutedSurface;
 
     Widget placeholder({
       required double width,
@@ -580,13 +597,20 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 6.0),
+      margin: EdgeInsets.zero,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
+        color: Colors.transparent,
+        border: const Border(
+          bottom: BorderSide(color: ExpatlioDesign.border),
+        ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(10.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.itemSpacing,
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.itemSpacing,
+        ),
         child: Row(
           children: [
             placeholder(
@@ -596,8 +620,12 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
             ),
             Expanded(
               child: Padding(
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 0.0, 0.0),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.itemSpacing,
+                  0.0,
+                  0.0,
+                  0.0,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -607,7 +635,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                       height: 14.0,
                       radius: 20.0,
                     ),
-                    const SizedBox(height: 8.0),
+                    const SizedBox(height: ExpatlioDesign.compactSpacing),
                     placeholder(
                       width: 210.0,
                       height: 12.0,
@@ -618,7 +646,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
               ),
             ),
             Padding(
-              padding: const EdgeInsetsDirectional.only(start: 10.0),
+              padding: const EdgeInsetsDirectional.only(
+                start: ExpatlioDesign.itemSpacing,
+              ),
               child: placeholder(
                 width: 42.0,
                 height: 12.0,
@@ -679,20 +709,31 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   }) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 10.0),
-      padding: const EdgeInsetsDirectional.fromSTEB(14.0, 12.0, 14.0, 12.0),
+      margin: const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.pagePadding,
+        0.0,
+        ExpatlioDesign.pagePadding,
+        ExpatlioDesign.itemSpacing,
+      ),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.sectionSpacing,
+        ExpatlioDesign.itemSpacing,
+        ExpatlioDesign.sectionSpacing,
+        ExpatlioDesign.itemSpacing,
+      ),
       decoration: BoxDecoration(
         color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(20.0),
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: ExpatlioDesign.border),
       ),
       child: Text(
         text,
-        style: FlutterFlowTheme.of(context).bodyMedium.override(
-              fontFamily: 'sf pro display',
-              color: FlutterFlowTheme.of(context).secondaryText,
-              fontSize: 14.0,
-              letterSpacing: 0.0,
-            ),
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: ExpatlioDesign.muted,
+          size: 14.0,
+          weight: FontWeight.w400,
+        ),
       ),
     );
   }
@@ -718,94 +759,93 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
-              child: AuthUserStreamWidget(
-                builder: (context) {
-                  if (currentUserUid.isEmpty || currentUserDocument == null) {
-                    return _buildLoadingState(context);
-                  }
+            AuthUserStreamWidget(
+              builder: (context) {
+                if (currentUserUid.isEmpty || currentUserDocument == null) {
+                  return _buildLoadingState(context);
+                }
 
-                  final friends =
-                      resolveFriendsForUser(currentUserDocument).toList();
+                final friends =
+                    resolveFriendsForUser(currentUserDocument).toList();
 
-                  return StreamBuilder<_ConversationsLoadState>(
-                    stream: _watchConversationsForUser(currentUserUid),
-                    initialData: const _ConversationsLoadState(),
-                    builder: (context, conversationsSnapshot) {
-                      if (conversationsSnapshot.hasError) {
-                        debugPrint(
-                          'FavoriteWidget: conversations stream error: ${conversationsSnapshot.error}',
-                        );
-                      }
-
-                      final conversationsState = conversationsSnapshot.data;
-                      final conversationsError = conversationsSnapshot.error;
-                      final conversationsLoading =
-                          conversationsSnapshot.connectionState ==
-                                  ConnectionState.waiting &&
-                              conversationsState == null &&
-                              !conversationsSnapshot.hasError;
-                      final conversationsLoadFailed =
-                          conversationsSnapshot.hasError;
-                      final conversationsAccessDenied =
-                          _isPermissionDenied(conversationsError);
-
-                      final conversations = conversationsState != null
-                          ? (() {
-                              final loadedConversations = conversationsState
-                                  .conversations
-                                  .where(
-                                      (conversation) => conversation.isUnlocked)
-                                  .toList();
-                              loadedConversations.sort(
-                                compareConversationsForInbox,
-                              );
-                              return loadedConversations;
-                            })()
-                          : <ConversationsRecord>[];
-
-                      final showFriendsTab = _selectedChatTabIndex == 1;
-
-                      return Stack(
-                        children: [
-                          SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 115.0),
-                                _buildChatsTabBar(context),
-                                if (showFriendsTab)
-                                  _buildFriendsTabContent(
-                                    context,
-                                    friends: friends,
-                                    conversations: conversations,
-                                  )
-                                else
-                                  _buildMessagesTabContent(
-                                    context,
-                                    conversationsLoading: conversationsLoading,
-                                    conversationsLoadFailed:
-                                        conversationsLoadFailed,
-                                    conversationsAccessDenied:
-                                        conversationsAccessDenied,
-                                    conversations: conversations,
-                                    friends: friends,
-                                  ),
-                                const SizedBox(height: 120.0),
-                              ],
-                            ),
-                          ),
-                          _buildHeader(context),
-                        ],
+                return StreamBuilder<_ConversationsLoadState>(
+                  stream: _watchConversationsForUser(currentUserUid),
+                  initialData: const _ConversationsLoadState(),
+                  builder: (context, conversationsSnapshot) {
+                    if (conversationsSnapshot.hasError) {
+                      debugPrint(
+                        'FavoriteWidget: conversations stream error: ${conversationsSnapshot.error}',
                       );
-                    },
-                  );
-                },
-              ),
+                    }
+
+                    final conversationsState = conversationsSnapshot.data;
+                    final conversationsError = conversationsSnapshot.error;
+                    final conversationsLoading =
+                        conversationsSnapshot.connectionState ==
+                                ConnectionState.waiting &&
+                            conversationsState == null &&
+                            !conversationsSnapshot.hasError;
+                    final conversationsLoadFailed =
+                        conversationsSnapshot.hasError;
+                    final conversationsAccessDenied =
+                        _isPermissionDenied(conversationsError);
+
+                    final conversations = conversationsState != null
+                        ? (() {
+                            final loadedConversations = conversationsState
+                                .conversations
+                                .where(
+                                    (conversation) => conversation.isUnlocked)
+                                .toList();
+                            loadedConversations.sort(
+                              compareConversationsForInbox,
+                            );
+                            return loadedConversations;
+                          })()
+                        : <ConversationsRecord>[];
+
+                    final showFriendsTab = _selectedChatTabIndex == 1;
+
+                    return Stack(
+                      children: [
+                        SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                height: MediaQuery.paddingOf(context).top + 56,
+                              ),
+                              _buildChatsTabBar(context),
+                              if (showFriendsTab)
+                                _buildFriendsTabContent(
+                                  context,
+                                  friends: friends,
+                                  conversations: conversations,
+                                )
+                              else
+                                _buildMessagesTabContent(
+                                  context,
+                                  conversationsLoading: conversationsLoading,
+                                  conversationsLoadFailed:
+                                      conversationsLoadFailed,
+                                  conversationsAccessDenied:
+                                      conversationsAccessDenied,
+                                  conversations: conversations,
+                                  friends: friends,
+                                ),
+                              const SizedBox(height: 120.0),
+                            ],
+                          ),
+                        ),
+                        _buildHeader(context),
+                      ],
+                    );
+                  },
+                );
+              },
             ),
           ],
         ),

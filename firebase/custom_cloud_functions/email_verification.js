@@ -4,6 +4,7 @@ const axios = require("axios");
 
 const RESEND_SEND_EMAIL_URL = "https://api.resend.com/emails";
 const RESEND_TIMEOUT_MS = 10000;
+const resendSecrets = ["RESEND_API_KEY"];
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -244,9 +245,9 @@ async function sendCustomEmailVerificationHandler(data, context, deps = {}) {
   }
 }
 
-exports.sendCustomEmailVerification = functions.https.onCall(
-  sendCustomEmailVerificationHandler,
-);
+exports.sendCustomEmailVerification = functions
+  .runWith({secrets: resendSecrets})
+  .https.onCall(sendCustomEmailVerificationHandler);
 
 exports.__private__ = {
   buildVerificationEmailHtml,

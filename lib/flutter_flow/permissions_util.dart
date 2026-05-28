@@ -31,3 +31,18 @@ Future<void> requestPermission(Permission setting) async {
   }
   await setting.request();
 }
+
+Future<bool> ensureCameraAndMicrophonePermissions() async {
+  if (!(await getPermissionStatus(cameraPermission))) {
+    await requestPermission(cameraPermission);
+  }
+
+  if (!(await getPermissionStatus(microphonePermission))) {
+    await requestPermission(microphonePermission);
+  }
+
+  final hasCameraPermission = await getPermissionStatus(cameraPermission);
+  final hasMicrophonePermission =
+      await getPermissionStatus(microphonePermission);
+  return hasCameraPermission && hasMicrophonePermission;
+}

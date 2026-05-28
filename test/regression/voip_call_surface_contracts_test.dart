@@ -148,6 +148,55 @@ void main() {
       );
     });
 
+    test('MinimalDailyWidget marks connected sessions through callable', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+
+      expect(source, contains("httpsCallable('markSessionConnected')"));
+      expect(source, contains("'sessionId': sessionId"));
+      expect(
+        source,
+        isNot(contains("'sessionMetadata.callConnectedAt': "
+            'FieldValue.serverTimestamp()')),
+      );
+      expect(
+        source,
+        isNot(contains("'startedAt': FieldValue.serverTimestamp()")),
+      );
+    });
+
+    test('connected billing marker requires Daily verification backend', () {
+      final markConnectedSource =
+          _source('firebase/custom_cloud_functions/mark_session_connected.js');
+      final dailyWebhookSource =
+          _source('firebase/custom_cloud_functions/daily_webhook.js');
+      final indexSource = _source('firebase/custom_cloud_functions/index.js');
+
+      expect(markConnectedSource, contains('connectedParticipantSignals'));
+      expect(
+        markConnectedSource,
+        contains('dailyPresenceVerificationRequired'),
+      );
+      expect(
+        markConnectedSource,
+        isNot(
+            contains('callConnectedAtSource: "markSessionConnectedTwoParty"')),
+      );
+      expect(markConnectedSource, contains('getDailyRoomPresence'));
+      expect(
+        markConnectedSource,
+        contains('callConnectedAtSource: "dailyPresenceTwoParty"'),
+      );
+
+      expect(dailyWebhookSource, contains('x-webhook-signature'));
+      expect(dailyWebhookSource, contains('x-webhook-timestamp'));
+      expect(
+        dailyWebhookSource,
+        contains('callConnectedAtSource = "dailyWebhookTwoParty"'),
+      );
+      expect(indexSource, contains('exports.dailyWebhook'));
+    });
+
     test('tutor accept waits for backend room credentials before navigating',
         () {
       final source = _source('lib/services/voip_service.dart');
@@ -195,6 +244,495 @@ void main() {
         dailyWidgetSource,
         contains('await WidgetsBinding.instance.endOfFrame;'),
       );
+    });
+
+    test('VideoCallPage handles nullable and changed session references', () {
+      final widgetSource = _source(
+          'lib/shared_pages/video_call_page/video_call_page_widget.dart');
+      final modelSource = _source(
+          'lib/shared_pages/video_call_page/video_call_page_model.dart');
+
+      expect(widgetSource, isNot(contains('widget.videoDocRef!')));
+      expect(widgetSource, contains('_model.bindSession(widget.videoDocRef);'));
+      expect(widgetSource, contains('_buildMissingSessionState'));
+      expect(widgetSource, contains('_hasValidVideoDocRef'));
+      expect(widgetSource, contains('_isSameDocumentReference'));
+      expect(widgetSource, contains('_resetSessionScopedState();'));
+      expect(widgetSource, contains('_tokenLoadingSessionId == sessionId'));
+      expect(widgetSource, contains('sessionStream == null'));
+      expect(widgetSource, contains('_isCurrentSession('));
+      expect(widgetSource, contains('currentRef?.path == sessionPath'));
+      expect(
+          widgetSource, contains('_lastDeepgramTokenSessionId == sessionId'));
+      expect(widgetSource,
+          contains('final terminalSessionRef = widget.videoDocRef;'));
+      expect(widgetSource, contains('terminalSessionId != null'));
+      expect(
+          widgetSource,
+          contains(
+              'VoIPService().endCurrentCall(sessionId: terminalSessionId)'));
+      expect(widgetSource, contains('sessionRefOverride: terminalSessionRef'));
+
+      expect(
+        modelSource,
+        contains('void bindSession(DocumentReference? videoDocRef)'),
+      );
+      expect(modelSource, contains('sessionStream = null;'));
+      expect(
+        modelSource,
+        contains('VideoSessionsRecord.getDocument(videoDocRef)'),
+      );
+    });
+
+    test('Daily call and chat controls have accessible labels', () {
+      final dailyWidgetSource =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+
+      expect(dailyWidgetSource, contains("'Выключить камеру'"));
+      expect(dailyWidgetSource, contains("'Включить камеру'"));
+      expect(
+          dailyWidgetSource, contains("'Камера включена. Выключить камеру'"));
+      expect(
+          dailyWidgetSource, contains("'Камера выключена. Включить камеру'"));
+      expect(dailyWidgetSource, contains("'Выключить микрофон'"));
+      expect(dailyWidgetSource, contains("'Включить микрофон'"));
+      expect(
+        dailyWidgetSource,
+        contains("'Микрофон включен. Выключить микрофон'"),
+      );
+      expect(
+        dailyWidgetSource,
+        contains("'Микрофон выключен. Включить микрофон'"),
+      );
+      expect(dailyWidgetSource, contains('_chatControlTooltip()'));
+      expect(dailyWidgetSource, contains('_chatControlSemanticLabel()'));
+      expect(dailyWidgetSource, contains('toggled: semanticToggled'));
+      expect(dailyWidgetSource, contains("'Завершить звонок'"));
+      expect(dailyWidgetSource, contains("message: 'Закрыть чат'"));
+      expect(dailyWidgetSource, contains("'Отправить сообщение'"));
+      expect(
+        dailyWidgetSource,
+        contains("'Отправка сообщения недоступна'"),
+      );
+      expect(
+        dailyWidgetSource,
+        contains("'Введите сообщение для отправки'"),
+      );
+      expect(dailyWidgetSource, contains('ExcludeSemantics('));
+      expect(dailyWidgetSource, contains('width: 48,'));
+      expect(dailyWidgetSource, contains('height: 48,'));
+    });
+
+    test('chat thread uses public profile projection for partner header', () {
+      final chatThreadSource =
+          _source('lib/shared_pages/chat_thread/chat_thread_widget.dart');
+      final backendSource = _source('lib/backend/backend.dart');
+      final publicProfileRecordSource =
+          _source('lib/backend/schema/user_public_profiles_record.dart');
+      final publicProfileSyncSource =
+          _source('firebase/custom_cloud_functions/public_user_profiles.js');
+      final nativeSpeakerSource = _source(
+          'lib/students_pages/native_speaker_page/native_speaker_page_widget.dart');
+      final rulesSource = _source('firebase/firestore.rules');
+
+      expect(chatThreadSource, contains('_getPublicProfileFuture'));
+      expect(
+        chatThreadSource,
+        contains('UserPublicProfilesRecord.collection.doc(ref.id)'),
+      );
+      expect(
+        chatThreadSource,
+        contains('FutureBuilder<UserPublicProfilesRecord?>'),
+      );
+      expect(
+        chatThreadSource,
+        isNot(contains('UsersRecord.getDocumentOnce(ref)')),
+      );
+      expect(backendSource,
+          contains("export 'schema/user_public_profiles_record.dart';"));
+      expect(publicProfileRecordSource,
+          contains("collection('userPublicProfiles')"));
+      expect(publicProfileRecordSource, contains('maybeGetDocumentOnce'));
+      expect(publicProfileRecordSource, contains('maybeGetDocument'));
+      expect(publicProfileRecordSource, contains('LanguageStruct'));
+      expect(publicProfileRecordSource, contains('CountryStruct'));
+      expect(publicProfileSyncSource, contains('buildPublicUserProfile'));
+      expect(publicProfileSyncSource, contains('aboutMe:'));
+      expect(publicProfileSyncSource, contains('native_language_NS:'));
+      expect(publicProfileSyncSource, isNot(contains('email:')));
+      expect(publicProfileSyncSource, isNot(contains('phone_number:')));
+      expect(publicProfileSyncSource, isNot(contains('balance_NS:')));
+      expect(nativeSpeakerSource,
+          contains('StreamBuilder<UserPublicProfilesRecord?>'));
+      expect(
+        nativeSpeakerSource,
+        contains('UserPublicProfilesRecord.collection.doc(targetRef.id)'),
+      );
+      expect(nativeSpeakerSource,
+          isNot(contains('UsersRecord.getDocument(widget.nsUserDocRef!)')));
+      expect(nativeSpeakerSource, isNot(contains('availabilityToday')));
+      expect(nativeSpeakerSource,
+          isNot(contains("snapshotData['timezoneOffsetMinutes']")));
+      expect(nativeSpeakerSource, isNot(contains('isInCall')));
+      expect(rulesSource, contains('match /userPublicProfiles/{userId}'));
+      expect(
+        rulesSource,
+        matches(RegExp(
+          r'match /userPublicProfiles/\{userId\}\s*\{\s*allow read: if isSignedIn\(\);',
+        )),
+      );
+      expect(rulesSource, contains('allow write: if false;'));
+    });
+
+    test('call details participant card reads public profile projection', () {
+      final callDetailsSource =
+          _source('lib/shared_pages/call_details/call_details_widget.dart');
+
+      expect(
+        callDetailsSource,
+        contains('UserPublicProfilesRecord.collection'),
+      );
+      expect(
+        callDetailsSource,
+        contains('UserPublicProfilesRecord.fromSnapshot(participantSnapshot)'),
+      );
+      expect(callDetailsSource, contains('participant?.ratingAverage'));
+      expect(callDetailsSource, contains('participant?.ratingCount'));
+      expect(
+        callDetailsSource,
+        isNot(contains('UsersRecord.getDocument(participantRef!)')),
+      );
+    });
+
+    test('post-call review identity reads use public profile projection', () {
+      final callSummarySource =
+          _source('lib/shared_pages/call_summary/call_summary_widget.dart');
+      final callSummaryModelSource =
+          _source('lib/shared_pages/call_summary/call_summary_model.dart');
+      final reviewCardSource =
+          _source('lib/components/review_card/review_card_widget.dart');
+
+      expect(
+        callSummarySource,
+        contains('UserPublicProfilesRecord.maybeGetDocumentOnce'),
+      );
+      expect(
+        callSummarySource,
+        contains('UserPublicProfilesRecord.collection.doc(userRef.id)'),
+      );
+      expect(
+        callSummarySource,
+        contains('Future.value(null)'),
+      );
+      expect(
+        callSummarySource,
+        contains('oldWidget.userRef?.path != widget.userRef?.path'),
+      );
+      expect(
+        callSummarySource,
+        contains('FutureBuilder<UserPublicProfilesRecord?>'),
+      );
+      expect(
+        callSummarySource,
+        contains('snapshot.connectionState == ConnectionState.waiting'),
+      );
+      expect(callSummarySource, contains('_summaryUserDisplayName('));
+      expect(callSummarySource, contains('_summaryUserPhotoUrl('));
+      expect(
+        callSummarySource,
+        contains('final targetUserRef = widget.userRef;'),
+      );
+      expect(
+        callSummarySource,
+        isNot(contains('final stackUserPublicProfile = snapshot.data!')),
+      );
+      expect(
+        callSummaryModelSource,
+        contains('Future<UserPublicProfilesRecord?>? userFuture'),
+      );
+      expect(
+        callSummarySource,
+        isNot(contains('UsersRecord.getDocumentOnce(widget.userRef!)')),
+      );
+      expect(
+        callSummarySource,
+        isNot(contains('widget.userRef!.id')),
+      );
+      expect(
+        callSummarySource,
+        isNot(contains('widget.userRef!')),
+      );
+
+      expect(
+        reviewCardSource,
+        contains('Future<UserPublicProfilesRecord?>'),
+      );
+      expect(
+        reviewCardSource,
+        contains('UserPublicProfilesRecord.collection.doc(authorRef.id)'),
+      );
+      expect(
+        reviewCardSource,
+        contains('UserPublicProfilesRecord.maybeGetDocumentOnce'),
+      );
+      expect(
+        reviewCardSource,
+        isNot(contains('UsersRecord.getDocumentOnce(authorRef)')),
+      );
+    });
+
+    test('favorite and blacklist tiles read public profile projection', () {
+      final favSource =
+          _source('lib/students_pages/components/fav/fav_widget.dart');
+      final favoriteSource =
+          _source('lib/students_pages/favorite/favorite_widget.dart');
+      final blackListSource =
+          _source('lib/shared_pages/black_list/black_list_widget.dart');
+
+      expect(
+        favSource,
+        contains('Future<UserPublicProfilesRecord?>'),
+      );
+      expect(
+        favSource,
+        contains('UserPublicProfilesRecord.maybeGetDocumentOnce'),
+      );
+      expect(
+        favSource,
+        contains('UserPublicProfilesRecord.collection.doc(userRef.id)'),
+      );
+      expect(
+        favSource,
+        isNot(contains('UsersRecord.getDocumentOnce(widget.nsUser!)')),
+      );
+
+      expect(
+        favoriteSource,
+        contains('Future<UserPublicProfilesRecord?>'),
+      );
+      expect(
+        favoriteSource,
+        contains('UserPublicProfilesRecord.collection.doc(ref.id)'),
+      );
+      expect(
+        favoriteSource,
+        isNot(contains('UsersRecord.getDocumentOnce(ref)')),
+      );
+
+      expect(
+        blackListSource,
+        contains('Future<UserPublicProfilesRecord?>'),
+      );
+      expect(
+        blackListSource,
+        contains('UserPublicProfilesRecord.collection.doc(ref.id)'),
+      );
+      expect(
+        blackListSource,
+        contains('FieldValue.arrayRemove(['),
+      );
+      expect(
+        blackListSource,
+        contains('listItem,'),
+      );
+      expect(
+        blackListSource,
+        isNot(contains('UsersRecord.getDocumentOnce(ref)')),
+      );
+    });
+
+    test('native speaker detail page reads public profile projection', () {
+      final nativeSpeakerSource = _source(
+          'lib/students_pages/native_speaker_page/native_speaker_page_widget.dart');
+      final publicProfileRecordSource =
+          _source('lib/backend/schema/user_public_profiles_record.dart');
+      final publicProfileSyncSource =
+          _source('firebase/custom_cloud_functions/public_user_profiles.js');
+
+      expect(
+        nativeSpeakerSource,
+        contains('StreamBuilder<UserPublicProfilesRecord?>'),
+      );
+      expect(
+        nativeSpeakerSource,
+        contains('late Stream<UserPublicProfilesRecord?> _publicProfileStream'),
+      );
+      expect(nativeSpeakerSource, contains('void _bindNativeSpeakerRef('));
+      expect(
+        nativeSpeakerSource,
+        contains('void didUpdateWidget(NativeSpeakerPageWidget oldWidget)'),
+      );
+      expect(
+        nativeSpeakerSource,
+        contains('UserPublicProfilesRecord.maybeGetDocument'),
+      );
+      expect(
+        nativeSpeakerSource,
+        contains('UserPublicProfilesRecord.collection.doc(targetRef.id)'),
+      );
+      expect(
+        nativeSpeakerSource,
+        contains("httpsCallable('getDirectCallStatus')"),
+      );
+      expect(
+        nativeSpeakerSource,
+        contains('Future<bool> _ensureDirectCallStatus(String targetTutorId)'),
+      );
+      expect(
+          nativeSpeakerSource, contains('canStartCall(currentUserDocument)'));
+      final directStatusIndex = nativeSpeakerSource
+          .indexOf('await _ensureDirectCallStatus(targetTutorId)');
+      final directMediaPermissionIndex = nativeSpeakerSource.indexOf(
+        'await ensureCameraAndMicrophonePermissions()',
+        directStatusIndex,
+      );
+      expect(directStatusIndex, greaterThanOrEqualTo(0));
+      expect(directMediaPermissionIndex, greaterThan(directStatusIndex));
+      expect(
+        nativeSpeakerSource,
+        isNot(contains('UsersRecord.getDocument(widget.nsUserDocRef!)')),
+      );
+      expect(nativeSpeakerSource, isNot(contains('availabilityToday')));
+      expect(nativeSpeakerSource,
+          isNot(contains("snapshotData['timezoneOffsetMinutes']")));
+      expect(nativeSpeakerSource, isNot(contains('isInCall')));
+      expect(publicProfileRecordSource, contains('LanguageStruct'));
+      expect(publicProfileRecordSource, contains('CountryStruct'));
+      expect(
+        publicProfileSyncSource,
+        isNot(contains('publicCallAvailability')),
+      );
+      expect(publicProfileSyncSource, isNot(contains('acceptsDirectCalls')));
+      expect(
+        publicProfileSyncSource,
+        isNot(contains('callAvailabilityStatus')),
+      );
+    });
+
+    test('user document rules scope private reads and live lifecycle writes',
+        () {
+      final rulesSource = _source('firebase/firestore.rules');
+      final studentDashboardSource = _source(
+          'lib/students_pages/students_dashboard/students_dashboard_widget.dart');
+      final teacherDashboardSource =
+          _source('lib/teachers_pages/dashboard_n_s/dashboard_n_s_widget.dart');
+      final profileSource =
+          _source('lib/shared_pages/profile/profile_widget.dart');
+
+      expect(rulesSource, contains('function canReadUserDocument(userId)'));
+      expect(
+        rulesSource,
+        contains('allow get, list: if canReadUserDocument(userId);'),
+      );
+      expect(rulesSource, contains('function privateUserLifecycleFields()'));
+      expect(rulesSource, contains("'currentSessionId'"));
+      expect(rulesSource, contains("'isAvailable'"));
+      expect(rulesSource, contains("'isInCall'"));
+      expect(rulesSource, contains("'availableAfter'"));
+      expect(rulesSource, contains("'lastCallEndedAt'"));
+      expect(rulesSource, contains('function ownUserRoleUpdateIsValid()'));
+      expect(studentDashboardSource, isNot(contains('isInCall: false')));
+      expect(teacherDashboardSource, isNot(contains('isInCall: false')));
+      expect(profileSource, isNot(contains('isInCall: false')));
+    });
+
+    test('student dashboard gates calls on camera and microphone permissions',
+        () {
+      final permissionsSource =
+          _source('lib/flutter_flow/permissions_util.dart');
+      final studentDashboardSource = _source(
+          'lib/students_pages/students_dashboard/students_dashboard_widget.dart');
+      final waitingForTeacherSource = _source(
+          'lib/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart');
+      final voipServiceSource = _source('lib/services/voip_service.dart');
+      final videoCallPageSource = _source(
+          'lib/shared_pages/video_call_page/video_call_page_widget.dart');
+
+      expect(
+        permissionsSource,
+        contains('Future<bool> ensureCameraAndMicrophonePermissions()'),
+      );
+      expect(
+        permissionsSource,
+        contains('await requestPermission(cameraPermission);'),
+      );
+      expect(
+        permissionsSource,
+        contains('await requestPermission(microphonePermission);'),
+      );
+      expect(
+        permissionsSource,
+        contains('return hasCameraPermission && hasMicrophonePermission;'),
+      );
+      expect(
+        RegExp(r'await ensureCameraAndMicrophonePermissions\(\)')
+            .allMatches(studentDashboardSource)
+            .length,
+        greaterThanOrEqualTo(2),
+      );
+      expect(
+        studentDashboardSource,
+        isNot(matches(RegExp(r'requestPermission\s*\(\s*cameraPermission'))),
+      );
+      expect(
+        studentDashboardSource,
+        isNot(
+            matches(RegExp(r'requestPermission\s*\(\s*microphonePermission'))),
+      );
+
+      final waitingPermissionIndex = waitingForTeacherSource
+          .indexOf('await ensureCameraAndMicrophonePermissions()');
+      final createSessionIndex = waitingForTeacherSource
+          .indexOf("httpsCallable('createVideoSession')");
+      expect(waitingPermissionIndex, greaterThanOrEqualTo(0));
+      expect(createSessionIndex, greaterThan(waitingPermissionIndex));
+
+      final handleAcceptIndex =
+          voipServiceSource.indexOf('Future<void> _handleCallAccept');
+      final acceptPermissionIndex = voipServiceSource.indexOf(
+        'await ensureCameraAndMicrophonePermissions()',
+        handleAcceptIndex,
+      );
+      final studentPrefetchIndex = voipServiceSource.indexOf(
+        'unawaited(_prefetchSessionTokens(sessionId));',
+        acceptPermissionIndex,
+      );
+      final acceptCallIndex = voipServiceSource.indexOf(
+        "httpsCallable('acceptCall')",
+        acceptPermissionIndex,
+      );
+      expect(handleAcceptIndex, greaterThanOrEqualTo(0));
+      expect(acceptPermissionIndex, greaterThan(handleAcceptIndex));
+      expect(studentPrefetchIndex, greaterThan(acceptPermissionIndex));
+      expect(acceptCallIndex, greaterThan(acceptPermissionIndex));
+      expect(
+        voipServiceSource,
+        contains('void _releaseProcessAcceptClaim(String sessionId)'),
+      );
+      final releaseAcceptClaimIndex = voipServiceSource.indexOf(
+        '_releaseProcessAcceptClaim(sessionId);',
+        acceptPermissionIndex,
+      );
+      expect(releaseAcceptClaimIndex, greaterThan(acceptPermissionIndex));
+
+      expect(videoCallPageSource, contains('late Future<bool>'));
+      final videoRefGateIndex =
+          videoCallPageSource.indexOf('if (!_hasValidVideoDocRef)');
+      final videoPermissionRequestIndex = videoCallPageSource
+          .indexOf('await ensureCameraAndMicrophonePermissions()');
+      expect(videoRefGateIndex, greaterThanOrEqualTo(0));
+      expect(videoPermissionRequestIndex, greaterThan(videoRefGateIndex));
+      expect(videoCallPageSource, contains('FutureBuilder<bool>'));
+      expect(videoCallPageSource, contains('_buildMediaPermissionState'));
+      final mediaGateIndex = videoCallPageSource.indexOf('FutureBuilder<bool>');
+      final dailyWidgetIndex =
+          videoCallPageSource.indexOf('custom_widgets.MinimalDailyWidget');
+      expect(mediaGateIndex, greaterThanOrEqualTo(0));
+      expect(dailyWidgetIndex, greaterThan(mediaGateIndex));
+      final gatedFallbackTokenFetchIndex =
+          videoCallPageSource.indexOf('unawaited(_fetchSessionTokens());');
+      expect(gatedFallbackTokenFetchIndex, greaterThan(mediaGateIndex));
+      expect(dailyWidgetIndex, greaterThan(gatedFallbackTokenFetchIndex));
     });
   });
 }

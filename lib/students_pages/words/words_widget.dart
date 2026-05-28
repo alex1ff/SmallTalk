@@ -4,12 +4,12 @@ import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
-import '/students_pages/components/woed/woed_widget.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
+import '/students_pages/words/word_detail_widget.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'words_model.dart';
 export 'words_model.dart';
 
@@ -98,29 +98,23 @@ class _WordsWidgetState extends State<WordsWidget> {
 
   double _reviewBarBottomOffset(BuildContext context) {
     final navClearance =
-        Theme.of(context).platform == TargetPlatform.android ? 92.0 : 72.0;
+        Theme.of(context).platform == TargetPlatform.android ? 12.0 : 10.0;
     return MediaQuery.paddingOf(context).bottom + navClearance;
   }
 
   double _contentBottomPadding(BuildContext context) {
-    return _reviewBarBottomOffset(context) + 88.0;
+    return _reviewBarBottomOffset(context) + 76.0;
   }
 
-  Future<void> _openWordSheet(UserWordsRecord wordDoc) async {
-    await showModalBottomSheet(
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      context: context,
-      builder: (context) {
-        return WebViewAware(
-          child: Padding(
-            padding: MediaQuery.viewInsetsOf(context),
-            child: WoedWidget(word: wordDoc),
-          ),
-        );
-      },
-    ).then((value) => safeSetState(() {}));
+  Future<void> _openWordPage(UserWordsRecord wordDoc) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => WordDetailWidget(
+          initialWord: wordDoc,
+          wordRef: wordDoc.reference,
+        ),
+      ),
+    );
   }
 
   @override
@@ -132,12 +126,13 @@ class _WordsWidgetState extends State<WordsWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: StreamBuilder<List<WordReviewsRecord>>(
           stream: _model.wordReviewsStream,
           builder: (context, reviewSnapshot) {
             final reviews = reviewSnapshot.data ?? const <WordReviewsRecord>[];
             final dueCount = _dueWordsCount(reviews);
+            final hasDueWords = dueCount > 0;
 
             return Stack(
               children: [
@@ -147,24 +142,21 @@ class _WordsWidgetState extends State<WordsWidget> {
                     SafeArea(
                       bottom: false,
                       child: SizedBox(
-                        height: 64.0,
-                        child: Center(
-                          child: Text(
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: 'Словарь',
-                              enText: 'Dictionary',
-                            ),
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color:
-                                      FlutterFlowTheme.of(context).primaryText,
-                                  fontSize: 18.0,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.w700,
+                        height: ExpatlioDesign.pageHeaderHeight,
+                        child: Stack(
+                          alignment: AlignmentDirectional.center,
+                          children: [
+                            Center(
+                              child: Text(
+                                FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Словарь',
+                                  enText: 'Dictionary',
                                 ),
-                          ),
+                                style: ExpatlioDesign.pageHeaderTitleStyle(
+                                    context),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -204,22 +196,19 @@ class _WordsWidgetState extends State<WordsWidget> {
                           return ListView.separated(
                             primary: false,
                             padding: EdgeInsetsDirectional.fromSTEB(
-                              0.0,
-                              22.0,
-                              0.0,
+                              ExpatlioDesign.pagePadding,
+                              ExpatlioDesign.compactSpacing,
+                              ExpatlioDesign.pagePadding,
                               _contentBottomPadding(context),
                             ),
                             itemCount: words.length,
-                            separatorBuilder: (context, index) => Divider(
-                              height: 1.0,
-                              thickness: 1.0,
-                              color: FlutterFlowTheme.of(context).alternate,
-                            ),
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(height: 0.0),
                             itemBuilder: (context, index) {
                               final word = words[index];
                               return _DictionaryWordRow(
                                 wordDoc: word,
-                                onTap: () async => _openWordSheet(word),
+                                onTap: () async => _openWordPage(word),
                               );
                             },
                           );
@@ -229,14 +218,38 @@ class _WordsWidgetState extends State<WordsWidget> {
                   ],
                 ),
                 PositionedDirectional(
-                  start: 13.0,
-                  end: 13.0,
+                  start: 0.0,
+                  end: 0.0,
+                  bottom: 0.0,
+                  child: IgnorePointer(
+                    child: Container(
+                      height: _reviewBarBottomOffset(context) + 96.0,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            ExpatlioDesign.background.withValues(alpha: 0.0),
+                            ExpatlioDesign.background.withValues(alpha: 0.92),
+                            ExpatlioDesign.background,
+                          ],
+                          stops: const [0.0, 0.42, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                PositionedDirectional(
+                  start: ExpatlioDesign.pagePadding,
+                  end: ExpatlioDesign.pagePadding,
                   bottom: _reviewBarBottomOffset(context),
                   child: _ReviewWordsBar(
                     text: _reviewCountText(context, dueCount),
-                    onTap: () async {
-                      context.pushNamed(FlashcardWidget.routeName);
-                    },
+                    onTap: hasDueWords
+                        ? () {
+                            context.pushNamed(FlashcardWidget.routeName);
+                          }
+                        : null,
                   ),
                 ),
               ],
@@ -265,21 +278,29 @@ class _DictionaryWordRow extends StatelessWidget {
         valueOrDefault<String>(entry?.tr.firstOrNull?.text, '-');
     final textStyle = FlutterFlowTheme.of(context).bodyMedium.override(
           fontFamily: 'sf pro display',
-          color: FlutterFlowTheme.of(context).primaryText,
+          color: ExpatlioDesign.text,
           fontSize: 16.0,
           letterSpacing: 0.0,
-          fontWeight: FontWeight.normal,
+          fontWeight: FontWeight.w500,
           lineHeight: 1.2,
         );
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        borderRadius: BorderRadius.circular(12.0),
         onTap: onTap,
-        child: ConstrainedBox(
+        child: Container(
           constraints: const BoxConstraints(minHeight: 49.0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12.0),
+            border: Border.all(
+              color: ExpatlioDesign.border,
+              width: 1.0,
+            ),
+          ),
           child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(13.0, 8.0, 13.0, 8.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(16.0, 8.0, 16.0, 8.0),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -318,28 +339,15 @@ class _ReviewWordsBar extends StatelessWidget {
   });
 
   final String text;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(27.0),
-        onTap: onTap,
-        child: Ink(
-          height: 59.0,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                FlutterFlowTheme.of(context).primary,
-                FlutterFlowTheme.of(context).secondary,
-              ],
-              stops: const [0.0, 1.0],
-              begin: const AlignmentDirectional(-1.0, 0.0),
-              end: const AlignmentDirectional(1.0, 0.0),
-            ),
-            borderRadius: BorderRadius.circular(27.0),
+    final enabled = onTap != null;
+    final decoration = enabled
+        ? BoxDecoration(
+            gradient: ExpatlioDesign.primaryGradient,
+            borderRadius: BorderRadius.circular(16.0),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x302B0B63),
@@ -347,15 +355,30 @@ class _ReviewWordsBar extends StatelessWidget {
                 offset: Offset(0.0, 8.0),
               ),
             ],
-          ),
+          )
+        : BoxDecoration(
+            color: ExpatlioDesign.mutedSurface,
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: ExpatlioDesign.border),
+          );
+    final foregroundColor = enabled ? Colors.white : ExpatlioDesign.muted;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16.0),
+        onTap: onTap,
+        child: Ink(
+          height: 60.0,
+          decoration: decoration,
           child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(18.0, 0.0, 14.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(18.0, 0.0, 13.0, 0.0),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.auto_awesome_outlined,
-                  color: Colors.white,
-                  size: 22.0,
+                  color: foregroundColor,
+                  size: 21.0,
                 ),
                 const SizedBox(width: 14.0),
                 Expanded(
@@ -365,40 +388,42 @@ class _ReviewWordsBar extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'sf pro display',
-                          color: Colors.white,
+                          color: foregroundColor,
                           fontSize: 16.0,
                           letterSpacing: 0.0,
                           fontWeight: FontWeight.w700,
                         ),
                   ),
                 ),
-                const SizedBox(width: 12.0),
-                Container(
-                  height: 45.0,
-                  constraints: const BoxConstraints(minWidth: 98.0),
-                  decoration: BoxDecoration(
-                    color: const Color(0x33FFFFFF),
-                    borderRadius: BorderRadius.circular(23.0),
-                  ),
-                  padding: const EdgeInsetsDirectional.fromSTEB(
-                      22.0, 0.0, 22.0, 0.0),
-                  alignment: Alignment.center,
-                  child: Text(
-                    FFLocalizations.of(context).getVariableText(
-                      ruText: 'Повторить',
-                      enText: 'Review',
+                if (enabled) ...[
+                  const SizedBox(width: 12.0),
+                  Container(
+                    height: 44.0,
+                    constraints: const BoxConstraints(minWidth: 96.0),
+                    decoration: BoxDecoration(
+                      color: const Color(0x33FFFFFF),
+                      borderRadius: BorderRadius.circular(16.0),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          color: Colors.white,
-                          fontSize: 16.0,
-                          letterSpacing: 0.0,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                        20.0, 0.0, 20.0, 0.0),
+                    alignment: Alignment.center,
+                    child: Text(
+                      FFLocalizations.of(context).getVariableText(
+                        ruText: 'Повторить',
+                        enText: 'Review',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: FlutterFlowTheme.of(context).bodyMedium.override(
+                            fontFamily: 'sf pro display',
+                            color: Colors.white,
+                            fontSize: 16.0,
+                            letterSpacing: 0.0,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

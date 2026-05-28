@@ -5,6 +5,7 @@ const path = require("node:path");
 const {
   __private__: {
     buildStudentCallCharge,
+    hasActiveSubscription,
     resolveTeacherEarningUserId,
     shouldProcessExpiredEndReason,
   },
@@ -61,42 +62,48 @@ test("manual end reasons bypass the expiry guard", () => {
   assert.equal(shouldProcess, true);
 });
 
-test("buildStudentCallCharge keeps the free minute and clamps balance", () => {
+test("buildStudentCallCharge debits gift minutes for non-subscribers", () => {
+  // 3-minute call against a 10-minute gift bucket → 7 minutes left.
   const charge = buildStudentCallCharge({
     userId: "student-a",
-    currentMinutes: 3,
-    currentSmallTalks: 0.3,
     duration: 180,
     formattedDuration: "3:00",
+    giftRemainingMinutes: 10,
   });
 
-  assert.equal(charge.freeMinuteApplied, true);
-  assert.equal(charge.billableMinutes, 2);
-  assert.equal(charge.amountST, 0.2);
-  assert.equal(charge.newMinutes, 1);
-  assert.equal(charge.newSmallTalks, 0.1);
+  assert.equal(charge.subscriptionActive, false);
+  assert.equal(charge.giftCovered, true);
+  assert.equal(charge.giftMinutesUsed, 3);
+  assert.equal(charge.newGiftMinutes, 7);
+  assert.equal(charge.amountST, 0);
 });
 
-test("buildStudentCallCharge can charge a second student without payout semantics", () => {
-  const firstStudent = buildStudentCallCharge({
-    userId: "student-a",
-    currentMinutes: 0.5,
-    currentSmallTalks: 0.05,
-    duration: 300,
-    formattedDuration: "5:00",
-  });
-  const secondStudent = buildStudentCallCharge({
+test("buildStudentCallCharge handles call longer than gift bucket", () => {
+  // 5-minute call against 2-minute gift bucket → bucket drained to 0,
+  // remainder is unbilled (the gate already let them in).
+  const charge = buildStudentCallCharge({
     userId: "student-b",
-    currentMinutes: 1,
-    currentSmallTalks: 0.1,
     duration: 300,
     formattedDuration: "5:00",
+    giftRemainingMinutes: 2,
   });
 
-  assert.equal(firstStudent.newMinutes, 0);
-  assert.equal(secondStudent.newMinutes, 0);
-  assert.equal(firstStudent.amountST, 0.4);
-  assert.equal(secondStudent.amountST, 0.4);
+  assert.equal(charge.giftCovered, true);
+  assert.equal(charge.giftMinutesUsed, 2);
+  assert.equal(charge.newGiftMinutes, 0);
+});
+
+test("buildStudentCallCharge marks call uncovered when no gift bucket", () => {
+  const charge = buildStudentCallCharge({
+    userId: "student-c",
+    duration: 120,
+    formattedDuration: "2:00",
+    giftRemainingMinutes: 0,
+  });
+
+  assert.equal(charge.subscriptionActive, false);
+  assert.equal(charge.giftCovered, false);
+  assert.equal(charge.giftMinutesUsed, 0);
 });
 
 test("resolveTeacherEarningUserId pays the teacher regardless of call direction", () => {
@@ -129,6 +136,49 @@ test("resolveTeacherEarningUserId pays the teacher regardless of call direction"
   );
 });
 
+test("buildStudentCallCharge skips debit when subscription is active", () => {
+  const charge = buildStudentCallCharge({
+    userId: "student-a",
+    duration: 1800, // 30 minutes
+    formattedDuration: "30:00",
+    subscriptionActive: true,
+    giftRemainingMinutes: 10,
+  });
+
+  assert.equal(charge.subscriptionActive, true);
+  assert.equal(charge.billableMinutes, 0);
+  assert.equal(charge.amountST, 0);
+  assert.equal(charge.giftCovered, false);
+  // Gift bucket is preserved — subscription wins.
+  assert.equal(charge.newGiftMinutes, 10);
+  assert.equal(charge.giftMinutesUsed, 0);
+});
+
+test("hasActiveSubscription compares expiresAt against the current millis", () => {
+  const now = Date.parse("2026-05-11T12:00:00Z");
+  const futureTs = {
+    toMillis: () => Date.parse("2026-05-15T00:00:00Z"),
+  };
+  const pastTs = {
+    toMillis: () => Date.parse("2026-05-01T00:00:00Z"),
+  };
+
+  assert.equal(
+      hasActiveSubscription({subscription: {expiresAt: futureTs}}, now),
+      true,
+  );
+  assert.equal(
+      hasActiveSubscription({subscription: {expiresAt: pastTs}}, now),
+      false,
+  );
+  assert.equal(
+      hasActiveSubscription({subscription: {}}, now),
+      false,
+  );
+  assert.equal(hasActiveSubscription({}, now), false);
+  assert.equal(hasActiveSubscription(null, now), false);
+});
+
 test("endSession source keeps the ignored_expired_end wrapper path", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "end_session.js"),
@@ -141,4 +191,15 @@ test("endSession source keeps the ignored_expired_end wrapper path", () => {
   assert.match(source, /acceptedResponderRole === "native_speaker"/);
   assert.match(source, /teacherEarningUserId/);
   assert.match(source, /txResult\.teacherEligibleForPayout/);
+  assert.match(source, /getConnectedCallStartMillis\(sessionData\)/);
+  assert.doesNotMatch(source, /serverConnectedAt/);
+  assert.match(source, /\.runWith\(\{\s*secrets:\s*dailySecrets\s*\}\)/);
+  assert.match(source, /dailyRoomName:\s*resolveDailyRoomName\(sessionData\)/);
+  assert.match(
+    source,
+    /backgroundTasks\.push\(deleteDailyRoomForSession\(\{/,
+  );
+  assert.match(source, /source:\s*"endSession_already_ended"/);
+  assert.doesNotMatch(source, /serverConnectedAt/);
+  assert.doesNotMatch(source, /startedAt\s*>\s*0/);
 });

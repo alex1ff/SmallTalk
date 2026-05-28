@@ -1,14 +1,14 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/api_requests/api_calls.dart';
 import '/backend/backend.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/services/user_match_profile.dart';
 import '/students_pages/flashcard/flashcard_content_service.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
 import 'dart:async';
-import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -202,7 +202,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
 
     final labelStyle = FlutterFlowTheme.of(context).bodyMedium.override(
           fontFamily: 'sf pro display',
-          color: FlutterFlowTheme.of(context).secondaryText,
+          color: ExpatlioDesign.muted,
           fontSize: 13.0,
           letterSpacing: 0.0,
           fontWeight: FontWeight.w600,
@@ -217,7 +217,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
+        color: ExpatlioDesign.card,
         borderRadius: BorderRadius.circular(20.0),
         border: Border.all(
           color: FlutterFlowTheme.of(context).alternate,
@@ -487,13 +487,12 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                     Column(
                       mainAxisSize: MainAxisSize.max,
                       children: [
-                        Container(
-                          width: double.infinity,
-                          height: 16.0,
-                          child: custom_widgets.NotchedClipper(
-                            width: double.infinity,
-                            height: 16.0,
+                        BottomSheetHeader(
+                          title: valueOrDefault<String>(
+                            widget.word,
+                            'Слово',
                           ),
+                          showConfirm: false,
                         ),
                         Flexible(
                           child: ClipRRect(
@@ -866,7 +865,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                                     return Container(
                                                                                       height: 35.0,
                                                                                       decoration: BoxDecoration(
-                                                                                        color: FlutterFlowTheme.of(context).primaryBackground,
+                                                                                        color: ExpatlioDesign.card,
                                                                                         borderRadius: BorderRadius.circular(50.0),
                                                                                       ),
                                                                                       child: Padding(
@@ -883,7 +882,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                                                     text: sssssItem.text,
                                                                                                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                                                                                                           fontFamily: 'sf pro display',
-                                                                                                          color: Colors.black,
+                                                                                                          color: ExpatlioDesign.text,
                                                                                                           fontSize: 15.0,
                                                                                                           letterSpacing: 0.0,
                                                                                                           fontWeight: FontWeight.w500,
@@ -1294,7 +1293,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                 children: [
                                                   Icon(
                                                     FFIcons.kstar012,
-                                                    color: Colors.black,
+                                                    color: ExpatlioDesign.text,
                                                     size: 24.0,
                                                   ),
                                                 ],
@@ -1379,7 +1378,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                               children: [
                                                 Icon(
                                                   FFIcons.kstar01,
-                                                  color: Colors.black,
+                                                  color: ExpatlioDesign.text,
                                                   size: 24.0,
                                                 ),
                                               ],
@@ -1391,35 +1390,6 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                   );
                                 },
                               ),
-                            Container(
-                              decoration: BoxDecoration(
-                                boxShadow: [
-                                  BoxShadow(
-                                    blurRadius: 7.0,
-                                    color: Color(0x0D2C2C2C),
-                                    offset: Offset(
-                                      0.0,
-                                      2.0,
-                                    ),
-                                  )
-                                ],
-                                shape: BoxShape.circle,
-                              ),
-                              child: FlutterFlowIconButton(
-                                borderRadius: 50.0,
-                                buttonSize: 60.0,
-                                fillColor: FlutterFlowTheme.of(context)
-                                    .primaryBackground,
-                                icon: Icon(
-                                  Icons.close_sharp,
-                                  color: FlutterFlowTheme.of(context).error,
-                                  size: 20.0,
-                                ),
-                                onPressed: () async {
-                                  Navigator.pop(context);
-                                },
-                              ),
-                            ),
                           ].divide(SizedBox(height: 6.0)),
                         ),
                       ),

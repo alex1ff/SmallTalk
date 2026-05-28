@@ -2,6 +2,7 @@ import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'trans_model.dart';
 export 'trans_model.dart';
@@ -56,7 +57,7 @@ class _TransWidgetState extends State<TransWidget> {
       return Color(0x40ED5154);
     }
     if (_isPendingPurchase) {
-      return FlutterFlowTheme.of(context).secondaryBackground;
+      return ExpatlioDesign.background;
     }
     return Color(0x40ED5154);
   }
@@ -69,7 +70,7 @@ class _TransWidgetState extends State<TransWidget> {
       return FlutterFlowTheme.of(context).error;
     }
     if (_isPendingPurchase) {
-      return FlutterFlowTheme.of(context).secondaryText;
+      return ExpatlioDesign.muted;
     }
     return FlutterFlowTheme.of(context).error;
   }
@@ -82,23 +83,23 @@ class _TransWidgetState extends State<TransWidget> {
       return FlutterFlowTheme.of(context).error;
     }
     if (_isPendingPurchase) {
-      return FlutterFlowTheme.of(context).secondaryText;
+      return ExpatlioDesign.muted;
     }
-    return FlutterFlowTheme.of(context).primaryText;
+    return ExpatlioDesign.text;
   }
 
   Color _titleColor(BuildContext context) {
     if (_isDeclinedWithdrawal) {
       return FlutterFlowTheme.of(context).error;
     }
-    return FlutterFlowTheme.of(context).primaryText;
+    return ExpatlioDesign.text;
   }
 
   Color _subtitleColor(BuildContext context) {
     if (_isDeclinedWithdrawal) {
       return FlutterFlowTheme.of(context).error;
     }
-    return FlutterFlowTheme.of(context).secondaryText;
+    return ExpatlioDesign.muted;
   }
 
   String _amountLabel() {
@@ -222,7 +223,7 @@ class _TransWidgetState extends State<TransWidget> {
   Widget _buildDateText(BuildContext context) {
     final textStyle = FlutterFlowTheme.of(context).bodyMedium.override(
           fontFamily: 'sf pro display',
-          color: FlutterFlowTheme.of(context).secondaryText,
+          color: ExpatlioDesign.muted,
           fontSize: 12.0,
           letterSpacing: 0.0,
         );
@@ -284,10 +285,10 @@ class _TransWidgetState extends State<TransWidget> {
       width: double.infinity,
       height: 60.0,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
+        color: ExpatlioDesign.card,
         borderRadius: BorderRadius.circular(20.0),
         border: Border.all(
-          color: FlutterFlowTheme.of(context).secondaryBackground,
+          color: ExpatlioDesign.background,
         ),
       ),
       child: Padding(

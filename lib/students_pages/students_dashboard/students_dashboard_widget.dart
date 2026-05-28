@@ -1,27 +1,30 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_level_step.dart';
-import '/authorization/components/country/country_widget.dart';
 import '/authorization/components/celebration_s_t/celebration_s_t_widget.dart';
 import '/authorization/components/celebration_top_up/celebration_top_up_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
+import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/services/user_match_profile.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
+import '/shared_pages/profile_components/promo_redeem/promo_redeem_widget.dart';
 import '/students_pages/components/fav/fav_widget.dart';
+// ─── SUBSCRIPTION REWORK ─ subscription state helpers (hasActiveSubscription,
+// formatExpiryDate). Replaces gating by balanceST.
+import '/utils/subscription_utils.dart';
 import '/teachers_pages/components/add_inter/add_inter_widget.dart';
 import '/index.dart';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 
 import 'students_dashboard_model.dart';
 export 'students_dashboard_model.dart';
@@ -51,6 +54,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   late StudentsDashboardModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  String? _partnerCountCacheKey;
+  Future<int?>? _partnerCountFuture;
+  bool _isLocationMenuOpen = false;
+  bool _isLevelMenuOpen = false;
+
+  bool get _showLegacyDashboard => false;
 
   bool get _effectiveAvailabilityEnabled =>
       currentUserDocument?.availabilityToday.enabled ?? false;
@@ -71,23 +80,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     );
   }
 
-  String _formatAvailableMinutes(BuildContext context, double? value) {
-    return formatNumber(
-      value ?? 0.0,
-      formatType: FormatType.custom,
-      format: '#,##0.#',
-      locale: FFLocalizations.of(context).languageCode,
-    );
-  }
-
-  String _formatSmallTalkBalance(BuildContext context, double? value) {
-    return formatNumber(
-      value ?? 0.0,
-      formatType: FormatType.custom,
-      format: '#,##0.##',
-      locale: FFLocalizations.of(context).languageCode,
-    );
-  }
+  // ─── SUBSCRIPTION REWORK ─ legacy balanceST formatters removed; the
+  // dashboard now reads subscription state via subscription_utils.dart. If
+  // you need numeric formatting again, prefer `formatNumber` inline.
 
   Map<String, dynamic> _buildTimezoneMetadataUpdate() {
     final now = DateTime.now();
@@ -118,16 +113,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       backgroundColor: Colors.transparent,
       context: context,
       builder: (context) {
-        return WebViewAware(
-          child: GestureDetector(
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              FocusManager.instance.primaryFocus?.unfocus();
-            },
-            child: Padding(
-              padding: MediaQuery.viewInsetsOf(context),
-              child: AddInterWidget(),
-            ),
+        return GestureDetector(
+          onTap: () {
+            FocusScope.of(context).unfocus();
+            FocusManager.instance.primaryFocus?.unfocus();
+          },
+          child: Padding(
+            padding: MediaQuery.viewInsetsOf(context),
+            child: AddInterWidget(),
           ),
         );
       },
@@ -153,7 +146,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
             enabled: true,
             clearUnsetFields: false,
           ),
-          isInCall: false,
         );
         availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
         await userRef.update(availabilityUpdate);
@@ -325,39 +317,63 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     );
   }
 
-  Future<void> _openPreferredPartnerLevelPicker() async {
-    final initialLevel = currentUserDocument?.preferences.preferredPartnerLevel;
-    final fallbackLevel = initialLevel ??
-        resolveUserMatchLevel(currentUserDocument) ??
-        Level.Basic;
+  List<CountryStruct> _locationDropdownCountries() {
+    final countries = functions.countriesList();
+    return countries.toList()
+      ..sort((left, right) => left.index.compareTo(right.index));
+  }
 
-    final result = await showModalBottomSheet<_PartnerLevelResult>(
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      context: context,
-      builder: (context) {
-        return WebViewAware(
-          child: _PartnerLevelBottomSheet(
-            initialLevel: initialLevel,
-            fallbackLevel: fallbackLevel,
+  String _levelDropdownLabel(Level level) {
+    switch (level) {
+      case Level.Beginner:
+        return 'A1 — Beginner';
+      case Level.Basic:
+        return 'A2 — Basic';
+      case Level.Intermediate:
+        return 'B1 — Intermediate';
+      case Level.Fluent:
+        return 'C1 — Fluent';
+    }
+  }
+
+  Future<void> _openPreferredPartnerLevelPicker(
+    BuildContext anchorContext,
+  ) async {
+    const anyLevelValue = '__any__';
+    final currentPartnerLevel =
+        currentUserDocument?.preferences.preferredPartnerLevel;
+    safeSetState(() => _isLevelMenuOpen = true);
+    final selectedValue = await _showDashboardOptionsMenu<String>(
+      anchorContext,
+      options: [
+        for (final level in Level.values)
+          _DashboardMenuOption<String>(
+            value: level.name,
+            label: _levelDropdownLabel(level),
+            selected: level == currentPartnerLevel,
           ),
-        );
-      },
+        _DashboardMenuOption<String>(
+          value: anyLevelValue,
+          label: _localizedText(
+            context: context,
+            ruText: 'Любой',
+            enText: 'Any',
+          ),
+          selected: currentPartnerLevel == null,
+        ),
+      ],
     );
-
-    if (result == null) {
-      return;
+    if (mounted) {
+      safeSetState(() => _isLevelMenuOpen = false);
     }
 
-    if (!result.didInteract) {
-      safeSetState(() {});
+    if (!mounted || selectedValue == null) {
       return;
     }
 
     final livePreferredPartnerLevel =
         currentUserDocument?.preferences.preferredPartnerLevel;
-    if (result.resetFilter) {
+    if (selectedValue == anyLevelValue) {
       if (livePreferredPartnerLevel != null) {
         await _setPreferredPartnerLevel(null);
       }
@@ -365,52 +381,60 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       return;
     }
 
-    if (result.level == livePreferredPartnerLevel) {
+    final selectedLevel = Level.values.firstWhere(
+      (level) => level.name == selectedValue,
+      orElse: () => livePreferredPartnerLevel ?? Level.Basic,
+    );
+    if (selectedLevel == livePreferredPartnerLevel) {
       safeSetState(() {});
       return;
     }
 
-    await _setPreferredPartnerLevel(result.level);
+    await _setPreferredPartnerLevel(selectedLevel);
     safeSetState(() {});
   }
 
-  Future<void> _openPreferredLocationPicker() async {
+  Future<void> _openPreferredLocationPicker(
+    BuildContext anchorContext,
+  ) async {
     if (!mounted) {
       return;
     }
 
-    final initialPreferredLocation = _preferredLocation(currentUserDocument);
-    final result = await showModalBottomSheet<_LocationPickerResult>(
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    final countries = _locationDropdownCountries();
+    final anyLocationLabel = _localizedText(
       context: context,
-      builder: (context) {
-        return WebViewAware(
-          child: _PartnerLocationBottomSheet(
-            initialCountry: initialPreferredLocation,
-            title: _localizedText(
-              context: context,
-              ruText: 'Локация собеседника',
-              enText: 'Partner location',
-            ),
-          ),
-        );
-      },
+      ruText: 'Любая',
+      enText: 'Any',
     );
+    final currentLocation = _preferredLocation(currentUserDocument);
+    safeSetState(() => _isLocationMenuOpen = true);
+    final selectedCode = await _showDashboardOptionsMenu<String>(
+      anchorContext,
+      options: [
+        for (final country in countries)
+          _DashboardMenuOption<String>(
+            value: country.code,
+            label: _preferredLocationLabel(context, country),
+            selected: country.code == currentLocation?.code,
+          ),
+        _DashboardMenuOption<String>(
+          value: '',
+          label: anyLocationLabel,
+          selected: currentLocation == null,
+        ),
+      ],
+    );
+    if (mounted) {
+      safeSetState(() => _isLocationMenuOpen = false);
+    }
 
-    if (!mounted || result == null) {
+    if (!mounted || selectedCode == null) {
       return;
     }
 
-    if (!result.didInteract) {
-      safeSetState(() {});
-      return;
-    }
-
-    final selectedCountry = result.country;
     final livePreferredLocation = _preferredLocation(currentUserDocument);
-    if (result.resetFilter) {
+    if (selectedCode.isEmpty) {
       if (livePreferredLocation != null) {
         await _clearPreferredLocation();
       }
@@ -418,16 +442,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       return;
     }
 
-    if (selectedCountry == livePreferredLocation) {
+    if (selectedCode == livePreferredLocation?.code) {
       safeSetState(() {});
       return;
     }
 
-    if (selectedCountry == null) {
-      await _clearPreferredLocation();
-      safeSetState(() {});
-      return;
-    }
+    final selectedCountry = countries.firstWhere(
+      (country) => country.code == selectedCode,
+    );
 
     await currentUserReference!.update(
       createUsersRecordData(
@@ -444,6 +466,159 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     safeSetState(() {});
   }
 
+  Future<T?> _showDashboardOptionsMenu<T>(
+    BuildContext anchorContext, {
+    required List<_DashboardMenuOption<T>> options,
+  }) {
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    final overlayBox =
+        Overlay.of(anchorContext).context.findRenderObject() as RenderBox?;
+
+    if (anchorBox == null || overlayBox == null || !anchorBox.attached) {
+      return Future<T?>.value(null);
+    }
+
+    const viewportMargin = 16.0;
+    const minMenuWidth = 206.0;
+    const preferredMenuWidth = 280.0;
+    final anchorOffset =
+        anchorBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+    final availableMenuWidth =
+        math.max(0.0, overlayBox.size.width - (viewportMargin * 2));
+    final menuWidth = math.max(
+      math.min(minMenuWidth, availableMenuWidth),
+      math.min(preferredMenuWidth, availableMenuWidth),
+    );
+    final maxMenuLeft = math.max(
+        viewportMargin, overlayBox.size.width - menuWidth - viewportMargin);
+    final menuLeft = (anchorOffset.dx + anchorBox.size.width - menuWidth)
+        .clamp(viewportMargin, maxMenuLeft)
+        .toDouble();
+    final anchorRect = Rect.fromLTWH(
+      menuLeft,
+      anchorOffset.dy + anchorBox.size.height + 8.0,
+      menuWidth,
+      0.0,
+    );
+
+    return showMenu<T>(
+      context: anchorContext,
+      position:
+          RelativeRect.fromRect(anchorRect, Offset.zero & overlayBox.size),
+      color: ExpatlioDesign.card,
+      elevation: 8.0,
+      shadowColor: const Color(0x12000000),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        side: const BorderSide(color: ExpatlioDesign.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      popUpAnimationStyle: AnimationStyle.noAnimation,
+      constraints: BoxConstraints(
+        minWidth: menuWidth,
+        maxWidth: menuWidth,
+      ),
+      items: [
+        for (final option in options)
+          PopupMenuItem<T>(
+            value: option.value,
+            height: 42.0,
+            padding: EdgeInsets.zero,
+            child: _DashboardDropdownMenuItem(
+              label: option.label,
+              selected: option.selected,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<int?> _loadFilteredPartnerCount({
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) async {
+    try {
+      final activeLanguage =
+          resolveUserActiveConversationLanguage(currentUserDocument);
+      final preferredCountryCode = preferredLocation?.code.trim();
+
+      var query = FirebaseFirestore.instance
+          .collection('userPublicProfiles')
+          .where('role', isEqualTo: UserRole.native_speaker.serialize())
+          .where('isProfileComplete', isEqualTo: true);
+
+      if (activeLanguage != null && activeLanguage.isNotEmpty) {
+        query = query.where(
+          'language_instruction_NS.code',
+          isEqualTo: activeLanguage,
+        );
+      }
+      if (preferredCountryCode != null && preferredCountryCode.isNotEmpty) {
+        query = query.where(
+          'Country_NS.code',
+          isEqualTo: preferredCountryCode,
+        );
+      }
+      if (preferredPartnerLevel != null) {
+        query = query.where(
+          'level',
+          isEqualTo: preferredPartnerLevel.serialize(),
+        );
+      }
+
+      final countSnapshot = await query.count().get();
+      return countSnapshot.count;
+    } catch (error) {
+      debugPrint('StudentsDashboard: failed to load partner count: $error');
+      return null;
+    }
+  }
+
+  Future<int?> _partnerCountFutureFor({
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) {
+    final activeLanguage =
+        resolveUserActiveConversationLanguage(currentUserDocument) ?? '';
+    final cacheKey = [
+      activeLanguage,
+      preferredLocation?.code ?? '',
+      preferredPartnerLevel?.name ?? '',
+    ].join('|');
+
+    if (_partnerCountCacheKey != cacheKey || _partnerCountFuture == null) {
+      _partnerCountCacheKey = cacheKey;
+      _partnerCountFuture = _loadFilteredPartnerCount(
+        preferredLocation: preferredLocation,
+        preferredPartnerLevel: preferredPartnerLevel,
+      );
+    }
+
+    return _partnerCountFuture!;
+  }
+
+  String _partnerCountNoun(BuildContext context, int count) {
+    if (FFLocalizations.of(context).languageCode != 'ru') {
+      return count == 1 ? 'person' : 'people';
+    }
+
+    final lastTwo = count % 100;
+    if (lastTwo >= 11 && lastTwo <= 14) {
+      return 'человек';
+    }
+
+    switch (count % 10) {
+      case 1:
+        return 'человек';
+      case 2:
+      case 3:
+      case 4:
+        return 'человека';
+      default:
+        return 'человек';
+    }
+  }
+
   Widget _buildAvailabilitySection(BuildContext context) {
     return AuthUserStreamWidget(
       builder: (context) => Column(
@@ -457,7 +632,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
               borderRadius: BorderRadius.circular(26.0),
             ),
             child: Padding(
-              padding: EdgeInsets.all(16.0),
+              padding: ExpatlioDesign.cardPadding,
               child: Row(
                 mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -480,7 +655,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
             ),
           ),
           if (_effectiveAvailabilityEnabled) ...[
-            SizedBox(height: 6.0),
+            const SizedBox(height: ExpatlioDesign.compactSpacing),
             Builder(
               builder: (context) {
                 final intervals =
@@ -493,7 +668,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                   shrinkWrap: true,
                   scrollDirection: Axis.vertical,
                   itemCount: intervals.length,
-                  separatorBuilder: (_, __) => SizedBox(height: 6.0),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: ExpatlioDesign.compactSpacing),
                   itemBuilder: (context, intervalsIndex) {
                     final intervalsItem = intervals[intervalsIndex];
                     return Container(
@@ -512,7 +688,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               width: 52.0,
                               height: 52.0,
                               decoration: BoxDecoration(
-                                color: Color(0xFFF2F2F7),
+                                color: ExpatlioDesign.mutedSurface,
                                 borderRadius: BorderRadius.circular(22.0),
                               ),
                               child: Align(
@@ -583,7 +759,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                 );
               },
             ),
-            SizedBox(height: 6.0),
+            const SizedBox(height: ExpatlioDesign.compactSpacing),
             InkWell(
               splashColor: Colors.transparent,
               focusColor: Colors.transparent,
@@ -634,13 +810,329 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               fontWeight: FontWeight.w500,
                             ),
                       ),
-                    ].divide(SizedBox(width: 8.0)),
+                    ].divide(
+                      const SizedBox(width: ExpatlioDesign.compactSpacing),
+                    ),
                   ),
                 ),
               ),
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Future<void> _handleStartConversation() async {
+    if (!hasActiveSubscription(currentUserDocument)) {
+      await showModalBottomSheet(
+        useRootNavigator: true,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        context: context,
+        builder: (context) {
+          return GestureDetector(
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
+            child: Padding(
+              padding: MediaQuery.viewInsetsOf(context),
+              child: NoBalanceWidget(),
+            ),
+          );
+        },
+      ).then((value) => safeSetState(() {}));
+      return;
+    }
+
+    if (!(await ensureCameraAndMicrophonePermissions())) {
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+    context.pushNamed(WaitingForTeacherPageWidget.routeName);
+  }
+
+  Widget _buildReferenceSearchHero(BuildContext context) {
+    final selectedPartnerLevel =
+        currentUserDocument?.preferences.preferredPartnerLevel;
+    final preferredLocation = _preferredLocation(currentUserDocument);
+    final heroHeight =
+        (MediaQuery.sizeOf(context).height - 190.0).clamp(560.0, 760.0);
+
+    return SizedBox(
+      height: heroHeight.toDouble(),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.pagePadding,
+          0.0,
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.pagePaddingLarge,
+        ),
+        child: Column(
+          children: [
+            Image.asset(
+              'assets/images/logo.png',
+              width: 246.0,
+              height: 72.0,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 30.0),
+            _buildAvailabilitySection(context),
+            const SizedBox(height: ExpatlioDesign.itemSpacing),
+            Row(
+              children: [
+                Expanded(
+                  child: _DashboardInlineFilterButton(
+                    title: preferredLocation == null
+                        ? _localizedText(
+                            context: context,
+                            ruText: 'Локация',
+                            enText: 'Location',
+                          )
+                        : '',
+                    label: preferredLocation == null
+                        ? ''
+                        : _preferredLocationLabel(
+                            context,
+                            preferredLocation,
+                          ),
+                    selected: preferredLocation != null,
+                    icon: Icons.location_on_outlined,
+                    menuOpen: _isLocationMenuOpen,
+                    onTap: _openPreferredLocationPicker,
+                    onClear: preferredLocation == null
+                        ? null
+                        : () async {
+                            await _clearPreferredLocation();
+                            safeSetState(() {});
+                          },
+                  ),
+                ),
+                const SizedBox(width: ExpatlioDesign.itemSpacing),
+                Expanded(
+                  child: _DashboardInlineFilterButton(
+                    title: _localizedText(
+                      context: context,
+                      ruText: 'Уровень',
+                      enText: 'Level',
+                    ),
+                    label: selectedPartnerLevel == null
+                        ? ''
+                        : _levelShortLabel(selectedPartnerLevel),
+                    selected: selectedPartnerLevel != null,
+                    icon: Icons.school_outlined,
+                    menuOpen: _isLevelMenuOpen,
+                    onTap: _openPreferredPartnerLevelPicker,
+                    onClear: selectedPartnerLevel == null
+                        ? null
+                        : () async {
+                            await _setPreferredPartnerLevel(null);
+                            safeSetState(() {});
+                          },
+                  ),
+                ),
+              ],
+            ),
+            Expanded(
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  const Positioned(
+                    left: 74.0,
+                    top: 116.0,
+                    child: _DashboardFloatingAvatar(
+                      initials: 'AK',
+                      size: 34.0,
+                      muted: true,
+                    ),
+                  ),
+                  const Positioned(
+                    right: 68.0,
+                    top: 102.0,
+                    child: _DashboardFloatingAvatar(
+                      initials: 'MR',
+                      size: 36.0,
+                      muted: true,
+                    ),
+                  ),
+                  const Positioned(
+                    left: -8.0,
+                    top: 204.0,
+                    child: _DashboardFloatingAvatar(
+                      initials: 'JL',
+                      size: 54.0,
+                    ),
+                  ),
+                  Positioned(
+                    right: -4.0,
+                    top: 196.0,
+                    child: _DashboardFloatingAvatar(
+                      initials: currentUserDisplayName.trim().isNotEmpty
+                          ? currentUserDisplayName.trim()[0].toUpperCase()
+                          : 'ST',
+                      photoUrl: currentUserPhoto,
+                      size: 62.0,
+                    ),
+                  ),
+                  const Positioned(
+                    left: 74.0,
+                    bottom: 116.0,
+                    child: _DashboardFloatingAvatar(
+                      initials: 'EL',
+                      size: 38.0,
+                      muted: true,
+                    ),
+                  ),
+                  const Positioned(
+                    right: 78.0,
+                    bottom: 104.0,
+                    child: _DashboardFloatingAvatar(
+                      initials: 'KT',
+                      size: 40.0,
+                      muted: true,
+                    ),
+                  ),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20.0),
+                          onTap: _handleStartConversation,
+                          child: Container(
+                            width: 240.0,
+                            height: 60.0,
+                            decoration: BoxDecoration(
+                              gradient: ExpatlioDesign.primaryGradient,
+                              borderRadius: BorderRadius.circular(20.0),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x267430E8),
+                                  blurRadius: 22.0,
+                                  offset: Offset(0.0, 10.0),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.auto_awesome_rounded,
+                                  color: Colors.white,
+                                  size: 22.0,
+                                ),
+                                const SizedBox(
+                                    width: ExpatlioDesign.itemSpacing),
+                                Text(
+                                  FFLocalizations.of(context).getVariableText(
+                                    ruText: 'Начать поиск',
+                                    enText: 'Start search',
+                                  ),
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: Colors.white,
+                                    size: 18.0,
+                                    weight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: ExpatlioDesign.itemSpacing),
+                      FutureBuilder<int?>(
+                        future: _partnerCountFutureFor(
+                          preferredLocation: preferredLocation,
+                          preferredPartnerLevel: selectedPartnerLevel,
+                        ),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState !=
+                                  ConnectionState.done &&
+                              !snapshot.hasData) {
+                            return Text(
+                              FFLocalizations.of(context).getVariableText(
+                                ruText: 'считаем людей рядом',
+                                enText: 'counting nearby people',
+                              ),
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                color: ExpatlioDesign.muted,
+                                size: 13.0,
+                                weight: FontWeight.w400,
+                              ),
+                            );
+                          }
+
+                          final count = snapshot.data;
+                          if (count == null) {
+                            return Text(
+                              FFLocalizations.of(context).getVariableText(
+                                ruText: 'количество людей недоступно',
+                                enText: 'people count unavailable',
+                              ),
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                color: ExpatlioDesign.muted,
+                                size: 13.0,
+                                weight: FontWeight.w400,
+                              ),
+                            );
+                          }
+
+                          return RichText(
+                            textScaler: MediaQuery.of(context).textScaler,
+                            text: TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: FFLocalizations.of(context)
+                                      .getVariableText(
+                                    ruText: 'рядом с вами ',
+                                    enText: 'near you ',
+                                  ),
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: ExpatlioDesign.muted,
+                                    size: 13.0,
+                                    weight: FontWeight.w400,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: count.toString(),
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: ExpatlioDesign.success,
+                                    size: 13.0,
+                                    weight: FontWeight.w700,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: ' ${_partnerCountNoun(context, count)}',
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: ExpatlioDesign.muted,
+                                    size: 13.0,
+                                    weight: FontWeight.w400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -660,16 +1152,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
           backgroundColor: Colors.transparent,
           context: context,
           builder: (context) {
-            return WebViewAware(
-              child: GestureDetector(
-                onTap: () {
-                  FocusScope.of(context).unfocus();
-                  FocusManager.instance.primaryFocus?.unfocus();
-                },
-                child: Padding(
-                  padding: MediaQuery.viewInsetsOf(context),
-                  child: CelebrationTopUpWidget(),
-                ),
+            return GestureDetector(
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                FocusManager.instance.primaryFocus?.unfocus();
+              },
+              child: Padding(
+                padding: MediaQuery.viewInsetsOf(context),
+                child: CelebrationTopUpWidget(),
               ),
             );
           },
@@ -681,17 +1171,15 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
           backgroundColor: Colors.transparent,
           context: context,
           builder: (context) {
-            return WebViewAware(
-              child: GestureDetector(
-                onTap: () {
-                  FocusScope.of(context).unfocus();
-                  FocusManager.instance.primaryFocus?.unfocus();
-                },
-                child: Padding(
-                  padding: MediaQuery.viewInsetsOf(context),
-                  child: CelebrationSTWidget(
-                    done: widget.done ?? false,
-                  ),
+            return GestureDetector(
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                FocusManager.instance.primaryFocus?.unfocus();
+              },
+              child: Padding(
+                padding: MediaQuery.viewInsetsOf(context),
+                child: CelebrationSTWidget(
+                  done: widget.done ?? false,
                 ),
               ),
             );
@@ -699,18 +1187,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         ).then((value) => safeSetState(() {}));
       }
     });
-
-    // Create stats stream once, not on every build().
-    final now = DateTime.now().toUtc();
-    final todayMidnight = DateTime.utc(now.year, now.month, now.day);
-    _model.statsStream = queryStatsRecord(
-      parent: currentUserReference,
-      queryBuilder: (statsRecord) => statsRecord.where(
-        'date',
-        isEqualTo: todayMidnight,
-      ),
-      singleRecord: true,
-    );
   }
 
   @override
@@ -729,7 +1205,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: AuthUserStreamWidget(
           builder: (context) {
             if (currentUserUid.isEmpty || currentUserDocument == null) {
@@ -744,211 +1220,206 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                     mainAxisSize: MainAxisSize.max,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
-                        child: Container(
-                          height: 70,
-                          decoration: BoxDecoration(
-                            color:
-                                FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(50),
-                            border: Border.all(
+                      _buildReferenceSearchHero(context),
+                      if (_showLegacyDashboard) ...[
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
+                          child: Container(
+                            height: 70,
+                            decoration: BoxDecoration(
                               color: FlutterFlowTheme.of(context)
-                                  .secondaryBackground,
+                                  .primaryBackground,
+                              borderRadius: BorderRadius.circular(50),
+                              border: Border.all(
+                                color: FlutterFlowTheme.of(context)
+                                    .secondaryBackground,
+                              ),
                             ),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.max,
-                              children: [
-                                Container(
-                                  width: 66,
-                                  height: 66,
-                                  decoration: BoxDecoration(
-                                    color: FlutterFlowTheme.of(context)
-                                        .secondaryBackground,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
+                            child: Padding(
+                              padding: EdgeInsets.all(2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.max,
+                                children: [
+                                  Container(
+                                    width: 66,
+                                    height: 66,
+                                    decoration: BoxDecoration(
                                       color: FlutterFlowTheme.of(context)
                                           .secondaryBackground,
-                                      width: 1,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: FlutterFlowTheme.of(context)
+                                            .secondaryBackground,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Builder(
+                                      builder: (context) {
+                                        if (currentUserPhoto != '') {
+                                          return ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(100),
+                                            child: CachedNetworkImage(
+                                              fadeInDuration:
+                                                  Duration(milliseconds: 0),
+                                              fadeOutDuration:
+                                                  Duration(milliseconds: 0),
+                                              imageUrl: currentUserPhoto,
+                                              width: double.infinity,
+                                              height: double.infinity,
+                                              fit: BoxFit.cover,
+                                              memCacheWidth: 132,
+                                              memCacheHeight: 132,
+                                            ),
+                                          );
+                                        } else {
+                                          return Align(
+                                            alignment:
+                                                AlignmentDirectional(0, 0),
+                                            child: AuthUserStreamWidget(
+                                              builder: (context) {
+                                                final displayName =
+                                                    currentUserDisplayName
+                                                        .trim();
+                                                final firstLetter =
+                                                    displayName.isNotEmpty
+                                                        ? displayName[0]
+                                                            .toUpperCase()
+                                                        : '?';
+                                                return Text(
+                                                  firstLetter,
+                                                  textAlign: TextAlign.center,
+                                                  style: FlutterFlowTheme.of(
+                                                          context)
+                                                      .bodyMedium
+                                                      .override(
+                                                        fontFamily: 'Cool',
+                                                        fontSize: 24,
+                                                        letterSpacing: 0.0,
+                                                      ),
+                                                );
+                                              },
+                                            ),
+                                          );
+                                        }
+                                      },
                                     ),
                                   ),
-                                  child: Builder(
-                                    builder: (context) {
-                                      if (currentUserPhoto != '') {
-                                        return ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(100),
-                                          child: CachedNetworkImage(
-                                            fadeInDuration:
-                                                Duration(milliseconds: 0),
-                                            fadeOutDuration:
-                                                Duration(milliseconds: 0),
-                                            imageUrl: currentUserPhoto,
-                                            width: double.infinity,
-                                            height: double.infinity,
-                                            fit: BoxFit.cover,
-                                            memCacheWidth: 132,
-                                            memCacheHeight: 132,
+                                  Expanded(
+                                    child: Padding(
+                                      padding: EdgeInsetsDirectional.fromSTEB(
+                                          12, 0, 0, 0),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.max,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          AuthUserStreamWidget(
+                                            builder: (context) => Text(
+                                              'Привет, ${currentUserDisplayName}',
+                                              style:
+                                                  FlutterFlowTheme.of(context)
+                                                      .bodyMedium
+                                                      .override(
+                                                        fontFamily:
+                                                            'sf pro display',
+                                                        color:
+                                                            FlutterFlowTheme.of(
+                                                                    context)
+                                                                .secondaryText,
+                                                        fontSize: 15,
+                                                        letterSpacing: 0.0,
+                                                      ),
+                                            ),
                                           ),
-                                        );
-                                      } else {
-                                        return Align(
-                                          alignment: AlignmentDirectional(0, 0),
-                                          child: AuthUserStreamWidget(
-                                            builder: (context) {
-                                              final displayName =
-                                                  currentUserDisplayName.trim();
-                                              final firstLetter = displayName
-                                                      .isNotEmpty
-                                                  ? displayName[0].toUpperCase()
-                                                  : '?';
-                                              return Text(
-                                                firstLetter,
-                                                textAlign: TextAlign.center,
-                                                style:
-                                                    FlutterFlowTheme.of(context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily: 'Cool',
-                                                          fontSize: 24,
-                                                          letterSpacing: 0.0,
-                                                        ),
-                                              );
-                                            },
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        12, 0, 0, 0),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.max,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        AuthUserStreamWidget(
-                                          builder: (context) => Text(
-                                            'Привет, ${currentUserDisplayName}',
+                                          Text(
+                                            FFLocalizations.of(context).getText(
+                                              'xocrym2z' /* Welcome to SmallTalk */,
+                                            ),
                                             style: FlutterFlowTheme.of(context)
                                                 .bodyMedium
                                                 .override(
                                                   fontFamily: 'sf pro display',
-                                                  color: FlutterFlowTheme.of(
-                                                          context)
-                                                      .secondaryText,
-                                                  fontSize: 15,
+                                                  fontSize: 16,
                                                   letterSpacing: 0.0,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
                                           ),
-                                        ),
-                                        Text(
-                                          FFLocalizations.of(context).getText(
-                                            'xocrym2z' /* Welcome to SmallTalk */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                fontSize: 16,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(6, 6, 6, 0),
-                        child: InkWell(
-                          splashColor: Colors.transparent,
-                          focusColor: Colors.transparent,
-                          hoverColor: Colors.transparent,
-                          highlightColor: Colors.transparent,
-                          onTap: () async {
-                            context.pushNamed(PayWidget.routeName);
-                          },
-                          child: Stack(
-                            children: [
-                              Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    55, 0, 55, 0),
-                                child: Container(
-                                  width: double.infinity,
-                                  height: 165,
-                                  decoration: BoxDecoration(
-                                    color: FlutterFlowTheme.of(context)
-                                        .primaryBackground,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: Color(0xFFE0E3E7),
-                                      width: 1,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Row(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Image.asset(
-                                    'assets/images/Group_1171275327_2.png',
-                                    width: 65,
-                                    fit: BoxFit.contain,
-                                  ),
-                                  Image.asset(
-                                    'assets/images/Group_1171275327_1.png',
-                                    width: 65,
-                                    fit: BoxFit.contain,
                                   ),
                                 ],
                               ),
-                              Padding(
-                                padding: EdgeInsets.all(16),
-                                child: Column(
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(6, 6, 6, 0),
+                          child: InkWell(
+                            splashColor: Colors.transparent,
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            highlightColor: Colors.transparent,
+                            onTap: () async {
+                              context.pushNamed(PayWidget.routeName);
+                            },
+                            child: Stack(
+                              children: [
+                                Padding(
+                                  padding: EdgeInsetsDirectional.fromSTEB(
+                                      55, 0, 55, 0),
+                                  child: Container(
+                                    width: double.infinity,
+                                    height: 165,
+                                    decoration: BoxDecoration(
+                                      color: FlutterFlowTheme.of(context)
+                                          .primaryBackground,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Color(0xFFE0E3E7),
+                                        width: 1,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Row(
                                   mainAxisSize: MainAxisSize.max,
-                                  mainAxisAlignment: MainAxisAlignment.start,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Row(
-                                      mainAxisSize: MainAxisSize.max,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          FFLocalizations.of(context).getText(
-                                            'o7w214bz' /* Текущий баланс */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                fontSize: 15,
-                                                letterSpacing: 0.0,
-                                                fontWeight: FontWeight.normal,
-                                              ),
-                                        ),
-                                        AuthUserStreamWidget(
-                                          builder: (context) => Text(
-                                            '~ ${_formatAvailableMinutes(context, currentUserDocument?.balanceST.minutes)} минут',
+                                    Image.asset(
+                                      'assets/images/Group_1171275327_2.png',
+                                      width: 65,
+                                      fit: BoxFit.contain,
+                                    ),
+                                    Image.asset(
+                                      'assets/images/Group_1171275327_1.png',
+                                      width: 65,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ],
+                                ),
+                                Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.max,
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // ─── SUBSCRIPTION REWORK ─────────
+                                      // Was: "Текущий баланс" + "~ X минут".
+                                      // Now: "Подписка" + active/expired hint.
+                                      Row(
+                                        mainAxisSize: MainAxisSize.max,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'Подписка',
                                             style: FlutterFlowTheme.of(context)
                                                 .bodyMedium
                                                 .override(
@@ -961,87 +1432,132 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                   fontWeight: FontWeight.normal,
                                                 ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    RichText(
-                                      textScaler:
-                                          MediaQuery.of(context).textScaler,
-                                      text: TextSpan(
-                                        children: [
-                                          TextSpan(
-                                            text: valueOrDefault<String>(
-                                              _formatSmallTalkBalance(
-                                                context,
-                                                currentUserDocument
-                                                    ?.balanceST.smallTalks,
-                                              ),
-                                              '0',
-                                            ),
-                                            style: FlutterFlowTheme.of(context)
-                                                .bodyMedium
-                                                .override(
-                                                  fontFamily: 'sf pro display',
-                                                  color: FlutterFlowTheme.of(
-                                                          context)
-                                                      .primaryText,
-                                                  fontSize: 40,
-                                                  letterSpacing: 0.0,
-                                                  fontWeight: FontWeight.w300,
-                                                ),
+                                          AuthUserStreamWidget(
+                                            builder: (context) {
+                                              final user = currentUserDocument;
+                                              final active =
+                                                  hasActiveSubscription(user);
+                                              final hasGift =
+                                                  hasUsableGiftMinutes(user);
+                                              final String label;
+                                              final bool highlight;
+                                              if (active) {
+                                                label = 'Активна';
+                                                highlight = true;
+                                              } else if (hasGift) {
+                                                label = 'Подарок';
+                                                highlight = true;
+                                              } else {
+                                                label = 'Не активна';
+                                                highlight = false;
+                                              }
+                                              return Text(
+                                                label,
+                                                style: FlutterFlowTheme.of(
+                                                        context)
+                                                    .bodyMedium
+                                                    .override(
+                                                      fontFamily:
+                                                          'sf pro display',
+                                                      color: highlight
+                                                          ? FlutterFlowTheme.of(
+                                                                  context)
+                                                              .primary
+                                                          : FlutterFlowTheme.of(
+                                                                  context)
+                                                              .secondaryText,
+                                                      fontSize: 15,
+                                                      letterSpacing: 0.0,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                              );
+                                            },
                                           ),
-                                          TextSpan(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              'et82m26d' /* .small talks */,
-                                            ),
-                                            style: TextStyle(
-                                              fontFamily: 'Cool',
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .secondaryText,
-                                              fontWeight: FontWeight.w300,
-                                              fontSize: 24,
-                                            ),
-                                          )
                                         ],
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'Cool',
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .primaryText,
-                                              fontSize: 40,
-                                              letterSpacing: 0.0,
-                                              fontWeight: FontWeight.normal,
-                                            ),
                                       ),
-                                    ),
-                                    Padding(
-                                      padding: EdgeInsetsDirectional.fromSTEB(
-                                          0, 22, 0, 0),
-                                      child: Container(
-                                        height: 45,
-                                        decoration: BoxDecoration(
-                                          color: FlutterFlowTheme.of(context)
-                                              .secondaryBackground,
-                                          borderRadius:
-                                              BorderRadius.circular(100),
-                                        ),
-                                        child: Padding(
-                                          padding: EdgeInsets.all(2),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Padding(
-                                                padding: EdgeInsetsDirectional
-                                                    .fromSTEB(16, 0, 12, 0),
-                                                child: Text(
-                                                  FFLocalizations.of(context)
-                                                      .getText(
-                                                    'nes89ax1' /* Пополнить */,
+                                      // ────────────────────────────────────
+                                      // ─── SUBSCRIPTION REWORK ─────────
+                                      // Was: big SmallTalks counter.
+                                      // Now: subscription expiry date or
+                                      // "Нет активной подписки" copy.
+                                      AuthUserStreamWidget(
+                                        builder: (context) {
+                                          final user = currentUserDocument;
+                                          final active =
+                                              hasActiveSubscription(user);
+                                          final expires =
+                                              subscriptionExpiresAt(user);
+                                          if (active && expires != null) {
+                                            return RichText(
+                                              textScaler: MediaQuery.of(context)
+                                                  .textScaler,
+                                              text: TextSpan(
+                                                children: [
+                                                  TextSpan(
+                                                    text: 'до ',
+                                                    style: TextStyle(
+                                                      fontFamily: 'Cool',
+                                                      color:
+                                                          FlutterFlowTheme.of(
+                                                                  context)
+                                                              .secondaryText,
+                                                      fontWeight:
+                                                          FontWeight.w300,
+                                                      fontSize: 24,
+                                                    ),
                                                   ),
+                                                  TextSpan(
+                                                    text: formatExpiryDate(
+                                                        expires),
+                                                    style: FlutterFlowTheme.of(
+                                                            context)
+                                                        .bodyMedium
+                                                        .override(
+                                                          fontFamily:
+                                                              'sf pro display',
+                                                          color: FlutterFlowTheme
+                                                                  .of(context)
+                                                              .primaryText,
+                                                          fontSize: 40,
+                                                          letterSpacing: 0.0,
+                                                          fontWeight:
+                                                              FontWeight.w300,
+                                                        ),
+                                                  ),
+                                                ],
+                                                style:
+                                                    FlutterFlowTheme.of(context)
+                                                        .bodyMedium
+                                                        .override(
+                                                          fontFamily: 'Cool',
+                                                          color: FlutterFlowTheme
+                                                                  .of(context)
+                                                              .primaryText,
+                                                          fontSize: 40,
+                                                          letterSpacing: 0.0,
+                                                          fontWeight:
+                                                              FontWeight.normal,
+                                                        ),
+                                              ),
+                                            );
+                                          }
+                                          // Fallback: no subscription. Show
+                                          // the unexpired gift bucket if any,
+                                          // else "Нет активной подписки".
+                                          final giftMinutes =
+                                              remainingGiftMinutes(user);
+                                          final giftExpiresAt =
+                                              giftMinutesExpiresAt(user);
+                                          if (giftMinutes > 0 &&
+                                              giftExpiresAt != null) {
+                                            return Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  '${formatGiftMinutes(giftMinutes)} мин в подарок',
                                                   style: FlutterFlowTheme.of(
                                                           context)
                                                       .bodyMedium
@@ -1051,199 +1567,314 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                         color:
                                                             FlutterFlowTheme.of(
                                                                     context)
-                                                                .primaryText,
-                                                        fontSize: 16,
+                                                                .primary,
+                                                        fontSize: 28,
                                                         letterSpacing: 0.0,
                                                         fontWeight:
                                                             FontWeight.w500,
                                                       ),
                                                 ),
-                                              ),
-                                              Container(
-                                                width: 41,
-                                                height: 41,
-                                                decoration: BoxDecoration(
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  'действуют ${formatGiftExpiry(giftExpiresAt)}',
+                                                  style: FlutterFlowTheme.of(
+                                                          context)
+                                                      .bodyMedium
+                                                      .override(
+                                                        fontFamily:
+                                                            'sf pro display',
+                                                        color:
+                                                            FlutterFlowTheme.of(
+                                                                    context)
+                                                                .secondaryText,
+                                                        fontSize: 14,
+                                                        letterSpacing: 0.0,
+                                                      ),
+                                                ),
+                                              ],
+                                            );
+                                          }
+                                          return Text(
+                                            'Нет активной подписки',
+                                            style: FlutterFlowTheme.of(context)
+                                                .bodyMedium
+                                                .override(
+                                                  fontFamily: 'sf pro display',
                                                   color: FlutterFlowTheme.of(
                                                           context)
-                                                      .primaryBackground,
-                                                  shape: BoxShape.circle,
+                                                      .secondaryText,
+                                                  fontSize: 24,
+                                                  letterSpacing: 0.0,
+                                                  fontWeight: FontWeight.w400,
                                                 ),
-                                                child: Align(
-                                                  alignment:
-                                                      AlignmentDirectional(
-                                                          0, 0),
-                                                  child: Icon(
-                                                    FFIcons.kchevronRight,
-                                                    color: FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryText,
-                                                    size: 18,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
+                                          );
+                                        },
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(6, 10, 6, 0),
-                        child: AuthUserStreamWidget(
-                          builder: (context) {
-                            final selectedPartnerLevel = currentUserDocument
-                                ?.preferences.preferredPartnerLevel;
-                            final preferredLocation =
-                                _preferredLocation(currentUserDocument);
-
-                            return Row(
-                              children: [
-                                Expanded(
-                                  child: _DashboardInlineFilterButton(
-                                    title: preferredLocation == null
-                                        ? _localizedText(
-                                            context: context,
-                                            ruText: 'Локация',
-                                            enText: 'Location',
-                                          )
-                                        : '',
-                                    label: preferredLocation == null
-                                        ? ''
-                                        : _preferredLocationLabel(
-                                            context,
-                                            preferredLocation,
-                                          ),
-                                    selected: preferredLocation != null,
-                                    icon: Icons.public_rounded,
-                                    onTap: _openPreferredLocationPicker,
-                                    onClear: preferredLocation == null
-                                        ? null
-                                        : () async {
-                                            await _clearPreferredLocation();
-                                            safeSetState(() {});
-                                          },
-                                  ),
-                                ),
-                                const SizedBox(width: 8.0),
-                                Expanded(
-                                  child: _DashboardInlineFilterButton(
-                                    title: _localizedText(
-                                      context: context,
-                                      ruText: 'Уровень',
-                                      enText: 'Level',
-                                    ),
-                                    label: selectedPartnerLevel == null
-                                        ? _defaultPartnerLevelLabel(
-                                            context,
-                                            currentUserDocument,
-                                          )
-                                        : _levelShortLabel(
-                                            selectedPartnerLevel,
-                                          ),
-                                    selected: selectedPartnerLevel != null,
-                                    icon: Icons.tune_rounded,
-                                    onTap: _openPreferredPartnerLevelPicker,
-                                    onClear: selectedPartnerLevel == null
-                                        ? null
-                                        : () async {
-                                            await _setPreferredPartnerLevel(
-                                              null,
+                                      // ────────────────────────────────────
+                                      // ─── SUBSCRIPTION REWORK ─ promo CTA
+                                      // Always visible so the user can top
+                                      // up gift minutes any time.
+                                      Padding(
+                                        padding: EdgeInsetsDirectional.fromSTEB(
+                                            0, 12, 0, 0),
+                                        child: TextButton(
+                                          onPressed: () async {
+                                            await showModalBottomSheet(
+                                              context: context,
+                                              isScrollControlled: true,
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              builder: (_) =>
+                                                  const PromoRedeemWidget(),
                                             );
                                             safeSetState(() {});
                                           },
+                                          child: Text(
+                                            'У меня есть промокод',
+                                            style: FlutterFlowTheme.of(context)
+                                                .titleSmall
+                                                .override(
+                                                  fontFamily: 'sf pro display',
+                                                  color: FlutterFlowTheme.of(
+                                                          context)
+                                                      .primary,
+                                                  fontSize: 14,
+                                                  letterSpacing: 0.0,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                          ),
+                                        ),
+                                      ),
+                                      // ────────────────────────────────────
+                                      Padding(
+                                        padding: EdgeInsetsDirectional.fromSTEB(
+                                            0, 22, 0, 0),
+                                        child: Container(
+                                          height: 45,
+                                          decoration: BoxDecoration(
+                                            color: FlutterFlowTheme.of(context)
+                                                .secondaryBackground,
+                                            borderRadius:
+                                                BorderRadius.circular(100),
+                                          ),
+                                          child: Padding(
+                                            padding: EdgeInsets.all(2),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Padding(
+                                                  padding: EdgeInsetsDirectional
+                                                      .fromSTEB(16, 0, 12, 0),
+                                                  child: Text(
+                                                    FFLocalizations.of(context)
+                                                        .getText(
+                                                      'nes89ax1' /* Пополнить */,
+                                                    ),
+                                                    style: FlutterFlowTheme.of(
+                                                            context)
+                                                        .bodyMedium
+                                                        .override(
+                                                          fontFamily:
+                                                              'sf pro display',
+                                                          color: FlutterFlowTheme
+                                                                  .of(context)
+                                                              .primaryText,
+                                                          fontSize: 16,
+                                                          letterSpacing: 0.0,
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                        ),
+                                                  ),
+                                                ),
+                                                Container(
+                                                  width: 41,
+                                                  height: 41,
+                                                  decoration: BoxDecoration(
+                                                    color: FlutterFlowTheme.of(
+                                                            context)
+                                                        .primaryBackground,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: Align(
+                                                    alignment:
+                                                        AlignmentDirectional(
+                                                            0, 0),
+                                                    child: Icon(
+                                                      FFIcons.kchevronRight,
+                                                      color:
+                                                          FlutterFlowTheme.of(
+                                                                  context)
+                                                              .primaryText,
+                                                      size: 18,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
-                            );
-                          },
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(6, 8, 6, 0),
-                        child: _buildAvailabilitySection(context),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
-                        child: Stack(
-                          alignment: AlignmentDirectional(0, -1),
-                          children: [
-                            Image.asset(
-                              'assets/images/group_11712750962.webp',
-                              width: double.infinity,
-                              height: 294.27,
-                              fit: BoxFit.contain,
                             ),
-                            Padding(
-                              padding: EdgeInsetsDirectional.fromSTEB(
-                                  60, 110, 60, 0),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment: MainAxisAlignment.center,
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(6, 10, 6, 0),
+                          child: AuthUserStreamWidget(
+                            builder: (context) {
+                              final selectedPartnerLevel = currentUserDocument
+                                  ?.preferences.preferredPartnerLevel;
+                              final preferredLocation =
+                                  _preferredLocation(currentUserDocument);
+
+                              return Row(
                                 children: [
-                                  Text(
-                                    FFLocalizations.of(context).getText(
-                                      'a3nqo0ec' /* Найди собеседника
-для практики */
-                                      ,
+                                  Expanded(
+                                    child: _DashboardInlineFilterButton(
+                                      title: preferredLocation == null
+                                          ? _localizedText(
+                                              context: context,
+                                              ruText: 'Локация',
+                                              enText: 'Location',
+                                            )
+                                          : '',
+                                      label: preferredLocation == null
+                                          ? ''
+                                          : _preferredLocationLabel(
+                                              context,
+                                              preferredLocation,
+                                            ),
+                                      selected: preferredLocation != null,
+                                      icon: Icons.public_rounded,
+                                      onTap: _openPreferredLocationPicker,
+                                      onClear: preferredLocation == null
+                                          ? null
+                                          : () async {
+                                              await _clearPreferredLocation();
+                                              safeSetState(() {});
+                                            },
                                     ),
-                                    textAlign: TextAlign.center,
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'Cool',
-                                          fontSize: 21,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
-                                          lineHeight: 1.1,
-                                        ),
                                   ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        0, 10, 0, 0),
-                                    child: Text(
+                                  const SizedBox(width: 8.0),
+                                  Expanded(
+                                    child: _DashboardInlineFilterButton(
+                                      title: _localizedText(
+                                        context: context,
+                                        ruText: 'Уровень',
+                                        enText: 'Level',
+                                      ),
+                                      label: selectedPartnerLevel == null
+                                          ? _defaultPartnerLevelLabel(
+                                              context,
+                                              currentUserDocument,
+                                            )
+                                          : _levelShortLabel(
+                                              selectedPartnerLevel,
+                                            ),
+                                      selected: selectedPartnerLevel != null,
+                                      icon: Icons.tune_rounded,
+                                      onTap: _openPreferredPartnerLevelPicker,
+                                      onClear: selectedPartnerLevel == null
+                                          ? null
+                                          : () async {
+                                              await _setPreferredPartnerLevel(
+                                                null,
+                                              );
+                                              safeSetState(() {});
+                                            },
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(6, 8, 6, 0),
+                          child: _buildAvailabilitySection(context),
+                        ),
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
+                          child: Stack(
+                            alignment: AlignmentDirectional(0, -1),
+                            children: [
+                              Image.asset(
+                                'assets/images/group_11712750962.webp',
+                                width: double.infinity,
+                                height: 294.27,
+                                fit: BoxFit.contain,
+                              ),
+                              Padding(
+                                padding: EdgeInsetsDirectional.fromSTEB(
+                                    60, 110, 60, 0),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.max,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
                                       FFLocalizations.of(context).getText(
-                                        'crtk35jr' /* Первая минута бесплатно! */,
+                                        'a3nqo0ec' /* Найди собеседника
+для практики */
+                                        ,
                                       ),
                                       textAlign: TextAlign.center,
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium
                                           .override(
-                                            fontFamily: 'sf pro display',
-                                            color: FlutterFlowTheme.of(context)
-                                                .secondaryText,
-                                            fontSize: 15,
+                                            fontFamily: 'Cool',
+                                            fontSize: 21,
                                             letterSpacing: 0.0,
                                             fontWeight: FontWeight.normal,
+                                            lineHeight: 1.1,
                                           ),
                                     ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        0, 29, 0, 0),
-                                    child: InkWell(
-                                      splashColor: Colors.transparent,
-                                      focusColor: Colors.transparent,
-                                      hoverColor: Colors.transparent,
-                                      highlightColor: Colors.transparent,
-                                      onTap: () async {
-                                        final balance = currentUserDocument
-                                                ?.balanceST.smallTalks ??
-                                            0.0;
-                                        if (balance <= 0) {
-                                          await showModalBottomSheet(
-                                            useRootNavigator: true,
-                                            isScrollControlled: true,
-                                            backgroundColor: Colors.transparent,
-                                            context: context,
-                                            builder: (context) {
-                                              return WebViewAware(
-                                                child: GestureDetector(
+                                    Padding(
+                                      padding: EdgeInsetsDirectional.fromSTEB(
+                                          0, 10, 0, 0),
+                                      child: Text(
+                                        FFLocalizations.of(context).getText(
+                                          'crtk35jr' /* Первая минута бесплатно! */,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        style: FlutterFlowTheme.of(context)
+                                            .bodyMedium
+                                            .override(
+                                              fontFamily: 'sf pro display',
+                                              color:
+                                                  FlutterFlowTheme.of(context)
+                                                      .secondaryText,
+                                              fontSize: 15,
+                                              letterSpacing: 0.0,
+                                              fontWeight: FontWeight.normal,
+                                            ),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: EdgeInsetsDirectional.fromSTEB(
+                                          0, 29, 0, 0),
+                                      child: InkWell(
+                                        splashColor: Colors.transparent,
+                                        focusColor: Colors.transparent,
+                                        hoverColor: Colors.transparent,
+                                        highlightColor: Colors.transparent,
+                                        onTap: () async {
+                                          // ─── SUBSCRIPTION REWORK ────
+                                          // Gate by active subscription
+                                          // instead of legacy balanceST.
+                                          if (!hasActiveSubscription(
+                                              currentUserDocument)) {
+                                            // ──────────────────────────
+                                            await showModalBottomSheet(
+                                              useRootNavigator: true,
+                                              isScrollControlled: true,
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              context: context,
+                                              builder: (context) {
+                                                return GestureDetector(
                                                   onTap: () {
                                                     FocusScope.of(context)
                                                         .unfocus();
@@ -1257,485 +1888,485 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                             context),
                                                     child: NoBalanceWidget(),
                                                   ),
-                                                ),
-                                              );
-                                            },
-                                          ).then(
-                                              (value) => safeSetState(() {}));
-                                          return;
-                                        }
-
-                                        if (!(await getPermissionStatus(
-                                            cameraPermission))) {
-                                          await requestPermission(
-                                              cameraPermission);
-                                          if (!(await getPermissionStatus(
-                                              microphonePermission))) {
-                                            await requestPermission(
-                                                microphonePermission);
+                                                );
+                                              },
+                                            ).then(
+                                                (value) => safeSetState(() {}));
                                             return;
                                           }
-                                        }
 
-                                        context.pushNamed(
-                                            WaitingForTeacherPageWidget
-                                                .routeName);
-                                      },
-                                      child: Container(
-                                        width: 233.9,
-                                        height: 60,
-                                        decoration: BoxDecoration(
-                                          color: FlutterFlowTheme.of(context)
-                                              .primaryText,
-                                          borderRadius:
-                                              BorderRadius.circular(100),
-                                        ),
-                                        child: Padding(
-                                          padding: EdgeInsets.all(2),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.max,
-                                            children: [
-                                              Expanded(
-                                                child: Padding(
-                                                  padding: EdgeInsetsDirectional
-                                                      .fromSTEB(16, 0, 0, 0),
-                                                  child: Text(
-                                                    FFLocalizations.of(context)
-                                                        .getText(
-                                                      'flmz1vkr' /* Начать разговор */,
-                                                    ),
-                                                    style: FlutterFlowTheme.of(
-                                                            context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily: 'Cool',
-                                                          color: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .primaryBackground,
-                                                          fontSize: 20,
-                                                          letterSpacing: 0.0,
-                                                          fontWeight:
-                                                              FontWeight.normal,
-                                                        ),
-                                                  ),
-                                                ),
-                                              ),
-                                              Container(
-                                                width: 56,
-                                                height: 56,
-                                                decoration: BoxDecoration(
-                                                  color: FlutterFlowTheme.of(
-                                                          context)
-                                                      .primaryBackground,
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: Align(
-                                                  alignment:
-                                                      AlignmentDirectional(
-                                                          0, 0),
-                                                  child: Icon(
-                                                    FFIcons.karrowRight,
-                                                    color: Colors.black,
-                                                    size: 20,
-                                                  ),
-                                                ),
+                                          if (!(await ensureCameraAndMicrophonePermissions())) {
+                                            return;
+                                          }
+
+                                          if (!mounted) {
+                                            return;
+                                          }
+                                          context.pushNamed(
+                                              WaitingForTeacherPageWidget
+                                                  .routeName);
+                                        },
+                                        child: Container(
+                                          width: 233.9,
+                                          height: 60,
+                                          decoration: BoxDecoration(
+                                            gradient:
+                                                ExpatlioDesign.primaryGradient,
+                                            borderRadius:
+                                                BorderRadius.circular(18),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Color(0x227430E8),
+                                                blurRadius: 18,
+                                                offset: Offset(0, 8),
                                               ),
                                             ],
                                           ),
+                                          child: Center(
+                                            child: Padding(
+                                              padding: EdgeInsetsDirectional
+                                                  .fromSTEB(20, 0, 20, 0),
+                                              child: Text(
+                                                FFLocalizations.of(context)
+                                                    .getText(
+                                                  'flmz1vkr' /* Начать разговор */,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                textAlign: TextAlign.center,
+                                                style:
+                                                    FlutterFlowTheme.of(context)
+                                                        .bodyMedium
+                                                        .override(
+                                                          fontFamily:
+                                                              'sf pro display',
+                                                          color: Colors.white,
+                                                          fontSize: 17,
+                                                          letterSpacing: 0.0,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                              ),
+                                            ),
+                                          ),
                                         ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (resolveFriendsForUser(currentUserDocument)
+                            .isNotEmpty)
+                          Padding(
+                            padding:
+                                EdgeInsetsDirectional.fromSTEB(0, 30, 0, 0),
+                            child: AuthUserStreamWidget(
+                              builder: (context) => Column(
+                                mainAxisSize: MainAxisSize.max,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  InkWell(
+                                    splashColor: Colors.transparent,
+                                    focusColor: Colors.transparent,
+                                    hoverColor: Colors.transparent,
+                                    highlightColor: Colors.transparent,
+                                    onTap: () async {
+                                      context
+                                          .pushNamed(FavoriteWidget.routeName);
+                                    },
+                                    child: Container(
+                                      height: 40,
+                                      decoration: BoxDecoration(),
+                                      child: Padding(
+                                        padding: EdgeInsetsDirectional.fromSTEB(
+                                            16, 0, 16, 0),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.max,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              FFLocalizations.of(context)
+                                                  .getText(
+                                                'a4u0etcs' /* Друзья */,
+                                              ),
+                                              style:
+                                                  FlutterFlowTheme.of(context)
+                                                      .bodyMedium
+                                                      .override(
+                                                        fontFamily: 'Cool',
+                                                        color:
+                                                            FlutterFlowTheme.of(
+                                                                    context)
+                                                                .primaryText,
+                                                        fontSize: 21,
+                                                        letterSpacing: 0.0,
+                                                        fontWeight:
+                                                            FontWeight.normal,
+                                                      ),
+                                            ),
+                                            Icon(
+                                              FFIcons.kchevronRight,
+                                              color:
+                                                  FlutterFlowTheme.of(context)
+                                                      .secondaryText,
+                                              size: 18,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: EdgeInsetsDirectional.fromSTEB(
+                                        0, 10, 0, 0),
+                                    child: Container(
+                                      width: double.infinity,
+                                      height: 180,
+                                      decoration: BoxDecoration(),
+                                      child: Builder(
+                                        builder: (context) {
+                                          final favs = resolveFriendsForUser(
+                                                  currentUserDocument)
+                                              .toList();
+
+                                          return ListView.separated(
+                                            padding: EdgeInsets.symmetric(
+                                                horizontal: 6),
+                                            scrollDirection: Axis.horizontal,
+                                            itemCount: favs.length,
+                                            separatorBuilder: (_, __) =>
+                                                SizedBox(width: 6),
+                                            itemBuilder: (context, favsIndex) {
+                                              final favsItem = favs[favsIndex];
+                                              return FavWidget(
+                                                key: Key(
+                                                    'Keyy7d_${favsIndex}_of_${favs.length}'),
+                                                nsUser: favsItem,
+                                              );
+                                            },
+                                          );
+                                        },
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                      if (resolveFriendsForUser(currentUserDocument).isNotEmpty)
+                          ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(0, 30, 0, 0),
-                          child: AuthUserStreamWidget(
-                            builder: (context) => Column(
-                              mainAxisSize: MainAxisSize.max,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                InkWell(
-                                  splashColor: Colors.transparent,
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  onTap: () async {
-                                    context.pushNamed(FavoriteWidget.routeName);
-                                  },
-                                  child: Container(
-                                    height: 40,
-                                    decoration: BoxDecoration(),
-                                    child: Padding(
-                                      padding: EdgeInsetsDirectional.fromSTEB(
-                                          16, 0, 16, 0),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.max,
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(
-                                            FFLocalizations.of(context).getText(
-                                              'a4u0etcs' /* Друзья */,
-                                            ),
-                                            style: FlutterFlowTheme.of(context)
-                                                .bodyMedium
-                                                .override(
-                                                  fontFamily: 'Cool',
-                                                  color: FlutterFlowTheme.of(
-                                                          context)
-                                                      .primaryText,
-                                                  fontSize: 21,
-                                                  letterSpacing: 0.0,
-                                                  fontWeight: FontWeight.normal,
-                                                ),
-                                          ),
-                                          Icon(
-                                            FFIcons.kchevronRight,
-                                            color: FlutterFlowTheme.of(context)
-                                                .secondaryText,
-                                            size: 18,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      0, 10, 0, 0),
-                                  child: Container(
-                                    width: double.infinity,
-                                    height: 180,
-                                    decoration: BoxDecoration(),
-                                    child: Builder(
-                                      builder: (context) {
-                                        final favs = resolveFriendsForUser(
-                                                currentUserDocument)
-                                            .toList();
-
-                                        return ListView.separated(
-                                          padding: EdgeInsets.symmetric(
-                                              horizontal: 6),
-                                          scrollDirection: Axis.horizontal,
-                                          itemCount: favs.length,
-                                          separatorBuilder: (_, __) =>
-                                              SizedBox(width: 6),
-                                          itemBuilder: (context, favsIndex) {
-                                            final favsItem = favs[favsIndex];
-                                            return FavWidget(
-                                              key: Key(
-                                                  'Keyy7d_${favsIndex}_of_${favs.length}'),
-                                              nsUser: favsItem,
-                                            );
-                                          },
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
+                          padding: EdgeInsetsDirectional.fromSTEB(16, 40, 0, 0),
+                          child: Text(
+                            FFLocalizations.of(context).getText(
+                              'lffx4k7x' /* Статистика за сегодня */,
                             ),
-                          ),
-                        ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(16, 40, 0, 0),
-                        child: Text(
-                          FFLocalizations.of(context).getText(
-                            'lffx4k7x' /* Статистика за сегодня */,
-                          ),
-                          style: FlutterFlowTheme.of(context)
-                              .bodyMedium
-                              .override(
-                                fontFamily: 'Cool',
-                                color: FlutterFlowTheme.of(context).primaryText,
-                                fontSize: 21,
-                                letterSpacing: 0.0,
-                                fontWeight: FontWeight.normal,
-                              ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(6, 10, 6, 0),
-                        child: StreamBuilder<List<StatsRecord>>(
-                          stream: _model.statsStream,
-                          builder: (context, snapshot) {
-                            if (snapshot.hasError) {
-                              return const SizedBox.shrink();
-                            }
-                            if (!snapshot.hasData) {
-                              return Center(
-                                child: SizedBox(
-                                  width: 50,
-                                  height: 50,
-                                  child: SpinKitCircle(
-                                    color:
-                                        FlutterFlowTheme.of(context).secondary,
-                                    size: 50,
-                                  ),
+                            style: FlutterFlowTheme.of(context)
+                                .bodyMedium
+                                .override(
+                                  fontFamily: 'Cool',
+                                  color:
+                                      FlutterFlowTheme.of(context).primaryText,
+                                  fontSize: 21,
+                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.normal,
                                 ),
-                              );
-                            }
-                            List<StatsRecord>
-                                conditionalBuilderStatsRecordList =
-                                snapshot.data!;
-                            final conditionalBuilderStatsRecord =
-                                conditionalBuilderStatsRecordList.isNotEmpty
-                                    ? conditionalBuilderStatsRecordList.first
-                                    : null;
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(6, 10, 6, 0),
+                          child: StreamBuilder<List<StatsRecord>>(
+                            stream: _model.statsStream,
+                            builder: (context, snapshot) {
+                              if (snapshot.hasError) {
+                                return const SizedBox.shrink();
+                              }
+                              if (!snapshot.hasData) {
+                                return Center(
+                                  child: SizedBox(
+                                    width: 50,
+                                    height: 50,
+                                    child: SpinKitCircle(
+                                      color: FlutterFlowTheme.of(context)
+                                          .secondary,
+                                      size: 50,
+                                    ),
+                                  ),
+                                );
+                              }
+                              List<StatsRecord>
+                                  conditionalBuilderStatsRecordList =
+                                  snapshot.data!;
+                              final conditionalBuilderStatsRecord =
+                                  conditionalBuilderStatsRecordList.isNotEmpty
+                                      ? conditionalBuilderStatsRecordList.first
+                                      : null;
 
-                            return Builder(
-                              builder: (context) {
-                                if (conditionalBuilderStatsRecord != null) {
-                                  return Container(
-                                    width: double.infinity,
-                                    decoration: BoxDecoration(
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryBackground,
-                                      borderRadius: BorderRadius.circular(26),
-                                    ),
-                                    child: Padding(
-                                      padding: EdgeInsets.all(16),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.max,
-                                        children: [
-                                          Row(
-                                            mainAxisSize: MainAxisSize.max,
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Column(
-                                                mainAxisSize: MainAxisSize.max,
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    valueOrDefault<String>(
-                                                      conditionalBuilderStatsRecord
-                                                          .minutesToday
-                                                          .toString(),
-                                                      '0',
-                                                    ),
-                                                    style: FlutterFlowTheme.of(
-                                                            context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily: 'Cool',
-                                                          fontSize: 30,
-                                                          letterSpacing: 0.0,
-                                                        ),
-                                                  ),
-                                                  Text(
-                                                    FFLocalizations.of(context)
-                                                        .getText(
-                                                      '2dq1u1yc' /* Продолжительность звонков */,
-                                                    ),
-                                                    style: FlutterFlowTheme.of(
-                                                            context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily:
-                                                              'sf pro display',
-                                                          color: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .secondaryText,
-                                                          fontSize: 16,
-                                                          letterSpacing: 0.0,
-                                                        ),
-                                                  ),
-                                                ],
-                                              ),
-                                              Container(
-                                                width: 64,
-                                                height: 64,
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(26),
-                                                  border: Border.all(
-                                                    color: FlutterFlowTheme.of(
-                                                            context)
-                                                        .secondaryBackground,
-                                                  ),
-                                                ),
-                                                child: Icon(
-                                                  FFIcons.kclock,
-                                                  color: FlutterFlowTheme.of(
-                                                          context)
-                                                      .secondaryText,
-                                                  size: 20,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          Row(
-                                            mainAxisSize: MainAxisSize.max,
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Column(
-                                                mainAxisSize: MainAxisSize.max,
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    valueOrDefault<String>(
-                                                      conditionalBuilderStatsRecord
-                                                          .callsToday
-                                                          .toString(),
-                                                      '0',
-                                                    ),
-                                                    style: FlutterFlowTheme.of(
-                                                            context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily: 'Cool',
-                                                          fontSize: 30,
-                                                          letterSpacing: 0.0,
-                                                        ),
-                                                  ),
-                                                  Text(
-                                                    FFLocalizations.of(context)
-                                                        .getText(
-                                                      'f4nn7fxp' /* Звонков всего */,
-                                                    ),
-                                                    style: FlutterFlowTheme.of(
-                                                            context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily:
-                                                              'sf pro display',
-                                                          color: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .secondaryText,
-                                                          fontSize: 16,
-                                                          letterSpacing: 0.0,
-                                                        ),
-                                                  ),
-                                                ],
-                                              ),
-                                              Container(
-                                                width: 64,
-                                                height: 64,
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(26),
-                                                  border: Border.all(
-                                                    color: FlutterFlowTheme.of(
-                                                            context)
-                                                        .secondaryBackground,
-                                                  ),
-                                                ),
-                                                child: Icon(
-                                                  FFIcons.kphone,
-                                                  color: FlutterFlowTheme.of(
-                                                          context)
-                                                      .secondaryText,
-                                                  size: 20,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ].divide(SizedBox(height: 16)),
+                              return Builder(
+                                builder: (context) {
+                                  if (conditionalBuilderStatsRecord != null) {
+                                    return Container(
+                                      width: double.infinity,
+                                      decoration: BoxDecoration(
+                                        color: FlutterFlowTheme.of(context)
+                                            .primaryBackground,
+                                        borderRadius: BorderRadius.circular(26),
                                       ),
-                                    ),
-                                  );
-                                } else {
-                                  return Container(
-                                    width: double.infinity,
-                                    height: 100,
-                                    decoration: BoxDecoration(
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryBackground,
-                                      borderRadius: BorderRadius.circular(26),
-                                    ),
-                                    child: Padding(
-                                      padding: EdgeInsets.all(2),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.max,
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.start,
-                                        children: [
-                                          Image.asset(
-                                            'assets/images/Group_21.png',
-                                            width: 96,
-                                            height: 96,
-                                            fit: BoxFit.cover,
-                                            alignment: Alignment(0, -1),
-                                          ),
-                                          Padding(
-                                            padding:
-                                                EdgeInsetsDirectional.fromSTEB(
-                                                    12, 0, 0, 0),
-                                            child: Column(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(16),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.max,
+                                          children: [
+                                            Row(
                                               mainAxisSize: MainAxisSize.max,
                                               mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
                                               children: [
-                                                Text(
-                                                  FFLocalizations.of(context)
-                                                      .getText(
-                                                    'laxcndbb' /* Звонков ещё не было */,
-                                                  ),
-                                                  style: FlutterFlowTheme.of(
-                                                          context)
-                                                      .bodyMedium
-                                                      .override(
-                                                        fontFamily:
-                                                            'sf pro display',
-                                                        color:
-                                                            FlutterFlowTheme.of(
-                                                                    context)
-                                                                .primaryText,
-                                                        fontSize: 16,
-                                                        letterSpacing: 0.0,
-                                                        fontWeight:
-                                                            FontWeight.w500,
+                                                Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.max,
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      valueOrDefault<String>(
+                                                        conditionalBuilderStatsRecord
+                                                            .minutesToday
+                                                            .toString(),
+                                                        '0',
                                                       ),
-                                                ),
-                                                Padding(
-                                                  padding: EdgeInsetsDirectional
-                                                      .fromSTEB(0, 6, 0, 0),
-                                                  child: Text(
-                                                    FFLocalizations.of(context)
-                                                        .getText(
-                                                      '0hw93aax' /* Самое время это исправить.
-Нач... */
-                                                      ,
+                                                      style: FlutterFlowTheme
+                                                              .of(context)
+                                                          .bodyMedium
+                                                          .override(
+                                                            fontFamily: 'Cool',
+                                                            fontSize: 30,
+                                                            letterSpacing: 0.0,
+                                                          ),
                                                     ),
-                                                    style: FlutterFlowTheme.of(
+                                                    Text(
+                                                      FFLocalizations.of(
+                                                              context)
+                                                          .getText(
+                                                        '2dq1u1yc' /* Продолжительность звонков */,
+                                                      ),
+                                                      style:
+                                                          FlutterFlowTheme.of(
+                                                                  context)
+                                                              .bodyMedium
+                                                              .override(
+                                                                fontFamily:
+                                                                    'sf pro display',
+                                                                color: FlutterFlowTheme.of(
+                                                                        context)
+                                                                    .secondaryText,
+                                                                fontSize: 16,
+                                                                letterSpacing:
+                                                                    0.0,
+                                                              ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                Container(
+                                                  width: 64,
+                                                  height: 64,
+                                                  decoration: BoxDecoration(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            26),
+                                                    border: Border.all(
+                                                      color: FlutterFlowTheme
+                                                              .of(context)
+                                                          .secondaryBackground,
+                                                    ),
+                                                  ),
+                                                  child: Icon(
+                                                    FFIcons.kclock,
+                                                    color: FlutterFlowTheme.of(
                                                             context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily:
-                                                              'sf pro display',
-                                                          color: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .secondaryText,
-                                                          fontSize: 14,
-                                                          letterSpacing: 0.0,
-                                                        ),
+                                                        .secondaryText,
+                                                    size: 20,
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                          ),
-                                        ],
+                                            Row(
+                                              mainAxisSize: MainAxisSize.max,
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
+                                              children: [
+                                                Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.max,
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      valueOrDefault<String>(
+                                                        conditionalBuilderStatsRecord
+                                                            .callsToday
+                                                            .toString(),
+                                                        '0',
+                                                      ),
+                                                      style: FlutterFlowTheme
+                                                              .of(context)
+                                                          .bodyMedium
+                                                          .override(
+                                                            fontFamily: 'Cool',
+                                                            fontSize: 30,
+                                                            letterSpacing: 0.0,
+                                                          ),
+                                                    ),
+                                                    Text(
+                                                      FFLocalizations.of(
+                                                              context)
+                                                          .getText(
+                                                        'f4nn7fxp' /* Звонков всего */,
+                                                      ),
+                                                      style:
+                                                          FlutterFlowTheme.of(
+                                                                  context)
+                                                              .bodyMedium
+                                                              .override(
+                                                                fontFamily:
+                                                                    'sf pro display',
+                                                                color: FlutterFlowTheme.of(
+                                                                        context)
+                                                                    .secondaryText,
+                                                                fontSize: 16,
+                                                                letterSpacing:
+                                                                    0.0,
+                                                              ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                Container(
+                                                  width: 64,
+                                                  height: 64,
+                                                  decoration: BoxDecoration(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            26),
+                                                    border: Border.all(
+                                                      color: FlutterFlowTheme
+                                                              .of(context)
+                                                          .secondaryBackground,
+                                                    ),
+                                                  ),
+                                                  child: Icon(
+                                                    FFIcons.kphone,
+                                                    color: FlutterFlowTheme.of(
+                                                            context)
+                                                        .secondaryText,
+                                                    size: 20,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ].divide(SizedBox(height: 16)),
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                }
-                              },
-                            );
-                          },
+                                    );
+                                  } else {
+                                    return Container(
+                                      width: double.infinity,
+                                      height: 100,
+                                      decoration: BoxDecoration(
+                                        color: FlutterFlowTheme.of(context)
+                                            .primaryBackground,
+                                        borderRadius: BorderRadius.circular(26),
+                                      ),
+                                      child: Padding(
+                                        padding: EdgeInsets.all(2),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.max,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.start,
+                                          children: [
+                                            Image.asset(
+                                              'assets/images/Group_21.png',
+                                              width: 96,
+                                              height: 96,
+                                              fit: BoxFit.cover,
+                                              alignment: Alignment(0, -1),
+                                            ),
+                                            Padding(
+                                              padding: EdgeInsetsDirectional
+                                                  .fromSTEB(12, 0, 0, 0),
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.max,
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    FFLocalizations.of(context)
+                                                        .getText(
+                                                      'laxcndbb' /* Звонков ещё не было */,
+                                                    ),
+                                                    style: FlutterFlowTheme.of(
+                                                            context)
+                                                        .bodyMedium
+                                                        .override(
+                                                          fontFamily:
+                                                              'sf pro display',
+                                                          color: FlutterFlowTheme
+                                                                  .of(context)
+                                                              .primaryText,
+                                                          fontSize: 16,
+                                                          letterSpacing: 0.0,
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                        ),
+                                                  ),
+                                                  Padding(
+                                                    padding:
+                                                        EdgeInsetsDirectional
+                                                            .fromSTEB(
+                                                                0, 6, 0, 0),
+                                                    child: Text(
+                                                      FFLocalizations.of(
+                                                              context)
+                                                          .getText(
+                                                        '0hw93aax' /* Самое время это исправить.
+Нач... */
+                                                        ,
+                                                      ),
+                                                      style:
+                                                          FlutterFlowTheme.of(
+                                                                  context)
+                                                              .bodyMedium
+                                                              .override(
+                                                                fontFamily:
+                                                                    'sf pro display',
+                                                                color: FlutterFlowTheme.of(
+                                                                        context)
+                                                                    .secondaryText,
+                                                                fontSize: 14,
+                                                                letterSpacing:
+                                                                    0.0,
+                                                              ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                              );
+                            },
+                          ),
                         ),
-                      ),
+                      ],
                     ]
                         .addToStart(SizedBox(height: 55))
                         .addToEnd(SizedBox(height: 116)),
@@ -1782,6 +2413,68 @@ class _StudentAvailabilitySwitchControl extends StatelessWidget {
   }
 }
 
+class _DashboardMenuOption<T> {
+  const _DashboardMenuOption({
+    required this.value,
+    required this.label,
+    this.selected = false,
+  });
+
+  final T value;
+  final String label;
+  final bool selected;
+}
+
+class _DashboardDropdownMenuItem extends StatelessWidget {
+  const _DashboardDropdownMenuItem({
+    required this.label,
+    required this.selected,
+  });
+
+  final String label;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsetsDirectional.fromSTEB(8.0, 3.0, 8.0, 3.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(12.0, 7.0, 10.0, 7.0),
+      decoration: BoxDecoration(
+        color: selected
+            ? ExpatlioDesign.primary.withValues(alpha: 0.12)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10.0),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.text,
+                size: 14.0,
+                weight: FontWeight.w500,
+              ),
+            ),
+          ),
+          if (selected) ...[
+            const SizedBox(width: 10.0),
+            const Icon(
+              Icons.check_rounded,
+              color: ExpatlioDesign.primary,
+              size: 18.0,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _DashboardInlineFilterButton extends StatelessWidget {
   const _DashboardInlineFilterButton({
     required this.title,
@@ -1789,20 +2482,22 @@ class _DashboardInlineFilterButton extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.icon,
+    this.menuOpen = false,
     this.onClear,
   });
 
   final String title;
   final String label;
   final bool selected;
+  final bool menuOpen;
   final IconData icon;
-  final VoidCallback onTap;
+  final Future<void> Function(BuildContext context) onTap;
   final VoidCallback? onClear;
 
   @override
   Widget build(BuildContext context) {
-    final theme = FlutterFlowTheme.of(context);
-    final clearVisible = selected && onClear != null;
+    final clearVisible = selected && onClear != null && !menuOpen;
+    final active = selected || menuOpen;
     final hasTitle = title.trim().isNotEmpty;
     final hasLabel = label.trim().isNotEmpty;
 
@@ -1810,20 +2505,27 @@ class _DashboardInlineFilterButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(999.0),
-        onTap: onTap,
+        onTap: () async => onTap(context),
         child: Container(
           height: 45.0,
-          padding: const EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 12.0, 0.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.itemSpacing,
+            0.0,
+            ExpatlioDesign.itemSpacing,
+            0.0,
+          ),
           decoration: BoxDecoration(
-            color: selected ? theme.primaryText : theme.primaryBackground,
+            color: ExpatlioDesign.card,
             borderRadius: BorderRadius.circular(999.0),
             border: Border.all(
-              color: selected ? theme.primaryText : theme.alternate,
+              color: active
+                  ? ExpatlioDesign.primary.withValues(alpha: 0.22)
+                  : ExpatlioDesign.border,
             ),
           ),
           child: Row(
             children: [
-              const SizedBox(width: 18.0),
+              const SizedBox(width: ExpatlioDesign.sectionSpacing),
               Expanded(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1832,10 +2534,10 @@ class _DashboardInlineFilterButton extends StatelessWidget {
                       icon,
                       size: 16.0,
                       color: selected
-                          ? theme.primaryBackground
-                          : theme.secondaryText,
+                          ? ExpatlioDesign.primary
+                          : ExpatlioDesign.muted,
                     ),
-                    const SizedBox(width: 8.0),
+                    const SizedBox(width: ExpatlioDesign.compactSpacing),
                     Flexible(
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1845,28 +2547,26 @@ class _DashboardInlineFilterButton extends StatelessWidget {
                             Text(
                               title,
                               maxLines: 1,
-                              style: theme.bodyMedium.override(
-                                fontFamily: 'sf pro display',
+                              style: ExpatlioDesign.textStyle(
+                                context,
                                 color: selected
-                                    ? theme.primaryBackground
-                                    : theme.secondaryText,
-                                fontSize: 15.0,
-                                letterSpacing: 0.0,
-                                fontWeight: FontWeight.w500,
+                                    ? ExpatlioDesign.primary
+                                    : ExpatlioDesign.muted,
+                                size: 15.0,
+                                weight: FontWeight.w500,
                               ),
                             ),
                           if (hasTitle && hasLabel)
                             Text(
                               ' · ',
                               maxLines: 1,
-                              style: theme.bodyMedium.override(
-                                fontFamily: 'sf pro display',
+                              style: ExpatlioDesign.textStyle(
+                                context,
                                 color: selected
-                                    ? theme.primaryBackground
-                                    : theme.secondaryText,
-                                fontSize: 15.0,
-                                letterSpacing: 0.0,
-                                fontWeight: FontWeight.w500,
+                                    ? ExpatlioDesign.primary
+                                    : ExpatlioDesign.muted,
+                                size: 15.0,
+                                weight: FontWeight.w500,
                               ),
                             ),
                           if (hasLabel)
@@ -1876,14 +2576,13 @@ class _DashboardInlineFilterButton extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 maxLines: 1,
                                 textAlign: TextAlign.center,
-                                style: theme.bodyMedium.override(
-                                  fontFamily: 'sf pro display',
+                                style: ExpatlioDesign.textStyle(
+                                  context,
                                   color: selected
-                                      ? theme.primaryBackground
-                                      : theme.primaryText,
-                                  fontSize: 15.0,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.w500,
+                                      ? ExpatlioDesign.primary
+                                      : ExpatlioDesign.text,
+                                  size: 15.0,
+                                  weight: FontWeight.w500,
                                 ),
                               ),
                             ),
@@ -1903,11 +2602,19 @@ class _DashboardInlineFilterButton extends StatelessWidget {
                           Icons.close_rounded,
                           size: 16.0,
                           color: selected
-                              ? theme.primaryBackground
-                              : theme.secondaryText,
+                              ? ExpatlioDesign.primary
+                              : ExpatlioDesign.muted,
                         ),
                       )
-                    : null,
+                    : Icon(
+                        menuOpen
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        size: 18.0,
+                        color: selected
+                            ? ExpatlioDesign.primary
+                            : ExpatlioDesign.muted,
+                      ),
               ),
             ],
           ),
@@ -1917,436 +2624,62 @@ class _DashboardInlineFilterButton extends StatelessWidget {
   }
 }
 
-class _PartnerLocationBottomSheet extends StatefulWidget {
-  const _PartnerLocationBottomSheet({
-    required this.initialCountry,
-    required this.title,
+class _DashboardFloatingAvatar extends StatelessWidget {
+  const _DashboardFloatingAvatar({
+    required this.initials,
+    required this.size,
+    this.photoUrl = '',
+    this.muted = false,
   });
 
-  final CountryStruct? initialCountry;
-  final String title;
-
-  @override
-  State<_PartnerLocationBottomSheet> createState() =>
-      _PartnerLocationBottomSheetState();
-}
-
-class _PartnerLocationBottomSheetState
-    extends State<_PartnerLocationBottomSheet> {
-  CountryStruct? _selectedCountry;
-  bool _didInteract = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedCountry = widget.initialCountry;
-  }
+  final String initials;
+  final String photoUrl;
+  final double size;
+  final bool muted;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        FocusScope.of(context).unfocus();
-        FocusManager.instance.primaryFocus?.unfocus();
-      },
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: double.infinity,
-              height: 16.0,
-              child: custom_widgets.NotchedClipper(
-                width: double.infinity,
-                height: 16.0,
-              ),
-            ),
-            Stack(
-              alignment: const AlignmentDirectional(0.0, 1.0),
-              children: [
-                Container(
-                  width: double.infinity,
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.sizeOf(context).height * 0.9,
-                  ),
-                  decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).secondaryBackground,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        widget.title,
-                        textAlign: TextAlign.center,
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'Cool',
-                              fontSize: 26.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FontWeight.normal,
-                            ),
-                      ),
-                      Flexible(
-                        child: Padding(
-                          padding: const EdgeInsetsDirectional.fromSTEB(
-                            6.0,
-                            0.0,
-                            6.0,
-                            0.0,
-                          ),
-                          child: SingleChildScrollView(
-                            primary: false,
-                            child: Column(
-                              children: [
-                                CountryWidget(
-                                  selected: _selectedCountry,
-                                  action: (country) async {
-                                    setState(() {
-                                      _selectedCountry = country;
-                                      _didInteract = true;
-                                    });
-                                  },
-                                ),
-                              ]
-                                  .addToStart(const SizedBox(height: 16.0))
-                                  .addToEnd(const SizedBox(height: 120.0)),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ]
-                        .divide(const SizedBox(height: 16.0))
-                        .addToStart(const SizedBox(height: 16.0)),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsetsDirectional.fromSTEB(
-                    6.0,
-                    0.0,
-                    6.0,
-                    35.0,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _DashboardSheetPrimaryButton(
-                          label: FFLocalizations.of(context).getText(
-                            'z2pbajmj' /* Сохранить */,
-                          ),
-                          onTap: () => Navigator.pop(
-                            context,
-                            _LocationPickerResult(
-                              country: _selectedCountry,
-                              didInteract: _didInteract,
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (_selectedCountry != null) ...[
-                        const SizedBox(width: 8.0),
-                        _DashboardSheetResetButton(
-                          label: FFLocalizations.of(context).getVariableText(
-                            ruText: 'Сброс',
-                            enText: 'Reset',
-                          ),
-                          onTap: () => Navigator.pop(
-                            context,
-                            const _LocationPickerResult(
-                              country: null,
-                              didInteract: true,
-                              resetFilter: true,
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(width: 8.0),
-                      _DashboardSheetCloseButton(
-                        onTap: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+    final hasPhoto = photoUrl.trim().isNotEmpty;
 
-class _LocationPickerResult {
-  const _LocationPickerResult({
-    required this.country,
-    required this.didInteract,
-    this.resetFilter = false,
-  });
-
-  final CountryStruct? country;
-  final bool didInteract;
-  final bool resetFilter;
-}
-
-class _PartnerLevelBottomSheet extends StatefulWidget {
-  const _PartnerLevelBottomSheet({
-    required this.initialLevel,
-    required this.fallbackLevel,
-  });
-
-  final Level? initialLevel;
-  final Level fallbackLevel;
-
-  @override
-  State<_PartnerLevelBottomSheet> createState() =>
-      _PartnerLevelBottomSheetState();
-}
-
-class _PartnerLevelBottomSheetState extends State<_PartnerLevelBottomSheet> {
-  late Level _selectedLevel;
-  late bool _hasExplicitSelection;
-  bool _didInteract = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedLevel = widget.initialLevel ?? widget.fallbackLevel;
-    _hasExplicitSelection = widget.initialLevel != null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: double.infinity,
-            height: 16.0,
-            child: custom_widgets.NotchedClipper(
-              width: double.infinity,
-              height: 16.0,
-            ),
-          ),
-          Stack(
-            alignment: const AlignmentDirectional(0.0, 1.0),
-            children: [
-              Container(
-                width: double.infinity,
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.9,
-                ),
-                decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      FFLocalizations.of(context).getVariableText(
-                        ruText: 'Уровень собеседника',
-                        enText: 'Partner level',
-                      ),
-                      textAlign: TextAlign.center,
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'Cool',
-                            fontSize: 26.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.normal,
-                          ),
-                    ),
-                    Flexible(
-                      child: StudentOnboardingLevelStep(
-                        level: _selectedLevel,
-                        showTitle: false,
-                        onChanged: (level) {
-                          setState(() {
-                            _selectedLevel = level;
-                            _hasExplicitSelection = true;
-                            _didInteract = true;
-                          });
-                        },
-                      ),
-                    ),
-                  ]
-                      .divide(const SizedBox(height: 16.0))
-                      .addToStart(const SizedBox(height: 16.0)),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                  6.0,
-                  0.0,
-                  6.0,
-                  35.0,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _DashboardSheetPrimaryButton(
-                        label: FFLocalizations.of(context).getText(
-                          'z2pbajmj' /* Сохранить */,
-                        ),
-                        onTap: () => Navigator.pop(
-                          context,
-                          _PartnerLevelResult(
-                            level:
-                                _hasExplicitSelection ? _selectedLevel : null,
-                            didInteract: _didInteract,
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (_hasExplicitSelection) ...[
-                      const SizedBox(width: 8.0),
-                      _DashboardSheetResetButton(
-                        label: FFLocalizations.of(context).getVariableText(
-                          ruText: 'Сброс',
-                          enText: 'Reset',
-                        ),
-                        onTap: () => Navigator.pop(
-                          context,
-                          const _PartnerLevelResult(
-                            level: null,
-                            didInteract: true,
-                            resetFilter: true,
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(width: 8.0),
-                    _DashboardSheetCloseButton(
-                      onTap: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: muted ? ExpatlioDesign.mutedSurface : ExpatlioDesign.card,
+        shape: BoxShape.circle,
+        border: Border.all(color: ExpatlioDesign.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x16000000),
+            blurRadius: 12.0,
+            offset: Offset(0.0, 5.0),
           ),
         ],
       ),
+      clipBehavior: Clip.antiAlias,
+      child: hasPhoto
+          ? CachedNetworkImage(
+              imageUrl: photoUrl,
+              fit: BoxFit.cover,
+              memCacheWidth: (size * 2).round(),
+              memCacheHeight: (size * 2).round(),
+              placeholder: (context, url) => const SizedBox.shrink(),
+              errorWidget: (context, url, error) => _buildInitials(context),
+            )
+          : _buildInitials(context),
     );
   }
-}
 
-class _PartnerLevelResult {
-  const _PartnerLevelResult({
-    required this.level,
-    required this.didInteract,
-    this.resetFilter = false,
-  });
-
-  final Level? level;
-  final bool didInteract;
-  final bool resetFilter;
-}
-
-class _DashboardSheetPrimaryButton extends StatelessWidget {
-  const _DashboardSheetPrimaryButton({
-    required this.label,
-    required this.onTap,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: FlutterFlowTheme.of(context).primaryText,
-      borderRadius: BorderRadius.circular(100.0),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(100.0),
-        onTap: onTap,
-        child: SizedBox(
-          height: 60.0,
-          child: Center(
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'Cool',
-                    color: FlutterFlowTheme.of(context).primaryBackground,
-                    fontSize: 20.0,
-                    letterSpacing: 0.0,
-                    fontWeight: FontWeight.normal,
-                  ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DashboardSheetResetButton extends StatelessWidget {
-  const _DashboardSheetResetButton({
-    required this.label,
-    required this.onTap,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: FlutterFlowTheme.of(context).primaryBackground,
-      borderRadius: BorderRadius.circular(100.0),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(100.0),
-        onTap: onTap,
-        child: SizedBox(
-          height: 60.0,
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(horizontal: 18.0),
-            child: Center(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'sf pro display',
-                      color: FlutterFlowTheme.of(context).primaryText,
-                      fontSize: 15.0,
-                      letterSpacing: 0.0,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DashboardSheetCloseButton extends StatelessWidget {
-  const _DashboardSheetCloseButton({
-    required this.onTap,
-  });
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: FlutterFlowTheme.of(context).primaryBackground,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 60.0,
-          height: 60.0,
-          child: Icon(
-            Icons.close_sharp,
-            color: FlutterFlowTheme.of(context).error,
-            size: 20.0,
-          ),
+  Widget _buildInitials(BuildContext context) {
+    return Center(
+      child: Text(
+        initials,
+        maxLines: 1,
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: muted ? ExpatlioDesign.muted : ExpatlioDesign.text,
+          size: size <= 38.0 ? 11.0 : 13.0,
+          weight: FontWeight.w600,
         ),
       ),
     );

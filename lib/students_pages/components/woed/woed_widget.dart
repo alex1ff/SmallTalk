@@ -1,11 +1,12 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/api_requests/api_calls.dart';
 import '/backend/backend.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/services/user_match_profile.dart';
 import '/students_pages/flashcard/flashcard_content_service.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
@@ -535,8 +536,8 @@ class _WoedWidgetState extends State<WoedWidget> {
       padding: const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
       child: Container(
         decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
-          borderRadius: BorderRadius.circular(26.0),
+          color: ExpatlioDesign.card,
+          borderRadius: BorderRadius.circular(16.0),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.max,
@@ -643,7 +644,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                         text: ' [${entryItem.ts}] ',
                         style: TextStyle(
                           fontFamily: 'Cool',
-                          color: FlutterFlowTheme.of(context).secondaryText,
+                          color: ExpatlioDesign.muted,
                           fontWeight: FontWeight.normal,
                           fontSize: 21.0,
                         ),
@@ -652,7 +653,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                         text: _partOfSpeechLabel(entryItem.pos),
                         style: TextStyle(
                           fontFamily: 'Cool',
-                          color: FlutterFlowTheme.of(context).secondaryText,
+                          color: ExpatlioDesign.muted,
                           fontWeight: FontWeight.normal,
                           fontSize: 21.0,
                           fontStyle: FontStyle.italic,
@@ -661,7 +662,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                     ],
                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'Cool',
-                          color: Colors.black,
+                          color: ExpatlioDesign.text,
                           fontSize: 21.0,
                           letterSpacing: 0.0,
                           fontWeight: FontWeight.normal,
@@ -748,7 +749,9 @@ class _WoedWidgetState extends State<WoedWidget> {
                                                           .override(
                                                             fontFamily:
                                                                 'sf pro display',
-                                                            color: Colors.black,
+                                                            color:
+                                                                ExpatlioDesign
+                                                                    .text,
                                                             fontSize: 15.0,
                                                             letterSpacing: 0.0,
                                                             fontWeight:
@@ -885,8 +888,8 @@ class _WoedWidgetState extends State<WoedWidget> {
 
               return Container(
                 decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).primaryBackground,
-                  borderRadius: BorderRadius.circular(26.0),
+                  color: ExpatlioDesign.card,
+                  borderRadius: BorderRadius.circular(16.0),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -898,7 +901,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                         sentenceItem.text,
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
                               fontFamily: 'sf pro display',
-                              color: Colors.black,
+                              color: ExpatlioDesign.text,
                               fontSize: 16.0,
                               letterSpacing: 0.0,
                               fontWeight: FontWeight.w500,
@@ -982,13 +985,12 @@ class _WoedWidgetState extends State<WoedWidget> {
                     Column(
                       mainAxisSize: MainAxisSize.max,
                       children: [
-                        SizedBox(
-                          width: double.infinity,
-                          height: 16.0,
-                          child: custom_widgets.NotchedClipper(
-                            width: double.infinity,
-                            height: 16.0,
+                        BottomSheetHeader(
+                          title: valueOrDefault<String>(
+                            widget.word?.entry.firstOrNull?.text,
+                            'Слово',
                           ),
+                          showConfirm: false,
                         ),
                         Flexible(
                           child: ClipRRect(
@@ -1082,25 +1084,11 @@ class _WoedWidgetState extends State<WoedWidget> {
                                   _isSaved
                                       ? Icons.favorite_rounded
                                       : Icons.favorite_border,
-                                  color:
-                                      FlutterFlowTheme.of(context).primaryText,
+                                  color: ExpatlioDesign.text,
                                   size: 20.0,
                                 ),
                                 onPressed: _toggleDictionaryWord,
                               ),
-                            FlutterFlowIconButton(
-                              borderRadius: 70.0,
-                              buttonSize: 60.0,
-                              fillColor: Colors.white,
-                              icon: Icon(
-                                Icons.close_sharp,
-                                color: FlutterFlowTheme.of(context).error,
-                                size: 20.0,
-                              ),
-                              onPressed: () async {
-                                Navigator.pop(context);
-                              },
-                            ),
                           ].divide(const SizedBox(height: 6.0)),
                         ),
                       ),

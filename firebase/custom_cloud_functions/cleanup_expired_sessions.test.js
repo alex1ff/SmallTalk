@@ -106,6 +106,78 @@ test("never-connected expired sessions do not write same-day repeat history", ()
   assert.equal(payload.pairHistoryWrite, null);
 });
 
+test("client-signal-only expired sessions do not write repeat history", () => {
+  const db = admin.firestore();
+  const endedAtMillis = Date.parse("2026-04-14T11:30:00Z");
+  const sessionRef = db.collection("videoSessions").doc("client-signaled");
+  const sessionData = {
+    studentId: "student-a",
+    tutorId: "teacher-b",
+    createdAt: admin.firestore.Timestamp.fromMillis(
+      endedAtMillis - 10 * 60 * 1000,
+    ),
+    startedAt: admin.firestore.Timestamp.fromMillis(
+      endedAtMillis - 5 * 60 * 1000,
+    ),
+    sessionMetadata: {
+      connectedParticipantSignals: {
+        "student-a": {source: "markSessionConnected"},
+        "teacher-b": {source: "markSessionConnected"},
+      },
+      connectedParticipantSignalsComplete: true,
+    },
+  };
+
+  const payload = buildExpiredSessionCleanupPayload({
+    db,
+    sessionId: sessionRef.id,
+    sessionRef,
+    sessionData,
+    endedAtMillis,
+  });
+
+  assert.equal(payload.duration, 300);
+  assert.equal(payload.sessionUpdate.status, "ended");
+  assert.equal(payload.pairHistoryWrite, null);
+  assert.equal(
+    payload.sessionUpdate["matchContext.completedPairId"],
+    undefined,
+  );
+});
+
+test("Daily-verified expired sessions write repeat history", () => {
+  const db = admin.firestore();
+  const endedAtMillis = Date.parse("2026-04-14T11:45:00Z");
+  const sessionRef = db.collection("videoSessions").doc("daily-verified");
+  const sessionData = {
+    studentId: "student-a",
+    tutorId: "teacher-b",
+    createdAt: admin.firestore.Timestamp.fromMillis(
+      endedAtMillis - 10 * 60 * 1000,
+    ),
+    startedAt: admin.firestore.Timestamp.fromMillis(
+      endedAtMillis - 5 * 60 * 1000,
+    ),
+    sessionMetadata: {
+      callConnectedAt: admin.firestore.Timestamp.fromMillis(
+        endedAtMillis - 5 * 60 * 1000,
+      ),
+      callConnectedAtSource: "dailyWebhookTwoParty",
+    },
+  };
+
+  const payload = buildExpiredSessionCleanupPayload({
+    db,
+    sessionId: sessionRef.id,
+    sessionRef,
+    sessionData,
+    endedAtMillis,
+  });
+
+  assert.ok(payload.pairHistoryWrite);
+  assert.equal(payload.pairHistoryWrite.pairId, "student-a_teacher-b");
+});
+
 test("queueExpiredSessionCleanup writes repeat history and release updates", () => {
   const endedAtMillis = Date.parse("2026-04-14T12:00:00Z");
   const historyDocId = `${getUtcDayKey(endedAtMillis)}_student-a_teacher-b`;
@@ -189,4 +261,7 @@ test("cleanupExpiredSessions runs every minute as an expiry backstop", () => {
   );
 
   assert.match(source, /\.schedule\("every 1 minutes"\)/);
+  assert.match(source, /dailyRoomName:\s*resolveDailyRoomName\(freshData\)/);
+  assert.match(source, /await deleteDailyRoomForSession\(\{/);
+  assert.match(source, /source:\s*"cleanupExpiredSessions"/);
 });

@@ -3,8 +3,8 @@ import '/backend/backend.dart';
 import '/backend/firebase_storage/storage.dart';
 import '/backend/schema/enums/enums.dart';
 import '/custom_code/actions/index.dart' as actions;
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/flutter_flow/upload_data.dart';
 import '/index.dart';
@@ -1130,7 +1130,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
       onTap: _closeKeyboard,
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: Stack(
           children: [
             Padding(
@@ -1162,7 +1162,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                   gradient: LinearGradient(
                     colors: [
                       const Color(0x00F2F2F7),
-                      FlutterFlowTheme.of(context).secondaryBackground,
+                      ExpatlioDesign.background,
                     ],
                     stops: const [0.0, 1.0],
                     begin: const AlignmentDirectional(0.0, -1.0),

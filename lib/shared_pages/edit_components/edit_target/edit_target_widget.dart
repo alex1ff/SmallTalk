@@ -1,12 +1,10 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/chips/chips_widget.dart';
 import '/backend/backend.dart';
-import '/components/button/button_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/custom_code/actions/index.dart' as actions;
-import '/custom_code/widgets/index.dart' as custom_widgets;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'edit_target_model.dart';
@@ -52,10 +50,35 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
     super.dispose();
   }
 
+  Future<void> _saveTarget() async {
+    if (_model.purpose.isEmpty) {
+      await actions.showTopNotification(
+        context,
+        'Выберите минимум одну цель',
+        '',
+        true,
+      );
+      return;
+    }
+    await currentUserReference!.update({
+      ...mapToFirestore(
+        {
+          'purpose': _model.purpose,
+        },
+      ),
+    });
+    await widget.action?.call(
+      _model.purpose.length <= 1
+          ? _model.purpose.firstOrNull!
+          : '${_model.purpose.firstOrNull}, +${(_model.purpose.length - 1).toString()}',
+    );
+    if (mounted) {
+      Navigator.pop(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
-
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
       child: Column(
@@ -64,34 +87,21 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
         children: [
           Container(
             width: double.infinity,
-            height: 16.0,
-            child: custom_widgets.NotchedClipper(
-              width: double.infinity,
-              height: 16.0,
-            ),
-          ),
-          Container(
-            width: double.infinity,
             constraints: BoxConstraints(
               maxHeight: MediaQuery.sizeOf(context).height * 0.9,
             ),
             decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).secondaryBackground,
+              color: ExpatlioDesign.card,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  FFLocalizations.of(context).getText(
+                BottomSheetHeader(
+                  title: FFLocalizations.of(context).getText(
                     '2sp7ybe9' /* Цели изучения языка */,
                   ),
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'Cool',
-                        fontSize: 26.0,
-                        letterSpacing: 0.0,
-                        fontWeight: FontWeight.normal,
-                      ),
+                  onConfirm: _saveTarget,
                 ),
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
@@ -245,95 +255,8 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                     ],
                   ),
                 ),
-                AnimatedPadding(
-                  duration: const Duration(milliseconds: 160),
-                  curve: Curves.easeOutCubic,
-                  padding: EdgeInsetsDirectional.fromSTEB(
-                      0.0, 0.0, 6.0, keyboardVisible ? 6.0 : 35.0),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.max,
-                    children: [
-                      Expanded(
-                        child: wrapWithModel(
-                          model: _model.buttonModel,
-                          updateCallback: () => safeSetState(() {}),
-                          child: ButtonWidget(
-                            text: FFLocalizations.of(context).getText(
-                              '6k2h1hbt' /* Сохранить */,
-                            ),
-                            keyboardAwarePadding: false,
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                6.0, 0.0, 6.0, 0.0),
-                            loadingText:
-                                FFLocalizations.of(context).getVariableText(
-                              ruText: 'Сохраняем...',
-                              enText: 'Saving...',
-                            ),
-                            busyStyle: ButtonBusyStyle.spinner,
-                            action: () async {
-                              if (_model.purpose.isNotEmpty) {
-                                await currentUserReference!.update({
-                                  ...mapToFirestore(
-                                    {
-                                      'purpose': _model.purpose,
-                                    },
-                                  ),
-                                });
-                                await widget.action?.call(
-                                  _model.purpose.length <= 1
-                                      ? _model.purpose.firstOrNull!
-                                      : '${_model.purpose.firstOrNull}, +${(_model.purpose.length - 1).toString()}',
-                                );
-                              } else {
-                                await actions.showTopNotification(
-                                  context,
-                                  'Выберите минимум одну цель',
-                                  '',
-                                  true,
-                                );
-                                return;
-                              }
-
-                              Navigator.pop(context);
-                            },
-                          ),
-                        ),
-                      ),
-                      Container(
-                        decoration: BoxDecoration(
-                          boxShadow: [
-                            BoxShadow(
-                              blurRadius: 7.0,
-                              color: Color(0x0D2C2C2C),
-                              offset: Offset(
-                                0.0,
-                                2.0,
-                              ),
-                            )
-                          ],
-                          shape: BoxShape.circle,
-                        ),
-                        child: FlutterFlowIconButton(
-                          borderRadius: 50.0,
-                          buttonSize: 60.0,
-                          fillColor:
-                              FlutterFlowTheme.of(context).primaryBackground,
-                          icon: Icon(
-                            Icons.close_sharp,
-                            color: FlutterFlowTheme.of(context).error,
-                            size: 20.0,
-                          ),
-                          onPressed: () async {
-                            Navigator.pop(context);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ]
-                  .divide(SizedBox(height: 16.0))
-                  .addToStart(SizedBox(height: 16.0)),
+                const SizedBox(height: 35.0),
+              ].divide(SizedBox(height: 16.0)),
             ),
           ),
         ],

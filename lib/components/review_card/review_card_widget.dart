@@ -1,6 +1,7 @@
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
@@ -24,7 +25,7 @@ class ReviewCardWidget extends StatefulWidget {
 
 class _ReviewCardWidgetState extends State<ReviewCardWidget> {
   late ReviewCardModel _model;
-  late Future<UsersRecord?> _userFuture;
+  late Future<UserPublicProfilesRecord?> _userFuture;
 
   String? _normalizedComment() {
     final normalizedComment = widget.rewDoc?.comment.trim();
@@ -37,16 +38,21 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
     return normalizedComment;
   }
 
-  Future<UsersRecord?> _createUserFuture() async {
+  Future<UserPublicProfilesRecord?> _createUserFuture() async {
     final authorRef = widget.rewDoc?.fromUserId;
     if (authorRef == null) {
       return null;
     }
 
-    return UsersRecord.getDocumentOnce(authorRef);
+    return UserPublicProfilesRecord.maybeGetDocumentOnce(
+      UserPublicProfilesRecord.collection.doc(authorRef.id),
+    );
   }
 
-  String _reviewAuthorName(BuildContext context, UsersRecord? user) {
+  String _reviewAuthorName(
+    BuildContext context,
+    UserPublicProfilesRecord? user,
+  ) {
     final displayName = user?.displayName.trim();
     if (displayName != null && displayName.isNotEmpty) {
       return displayName;
@@ -92,10 +98,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
 
     return Container(
       width: widget.width,
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
-      ),
+      decoration: ExpatlioDesign.cardDecoration(radius: 20.0),
       child: Padding(
         padding: EdgeInsets.all(16.0),
         child: Column(
@@ -107,7 +110,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: FutureBuilder<UsersRecord?>(
+                  child: FutureBuilder<UserPublicProfilesRecord?>(
                     future: _userFuture,
                     builder: (context, snapshot) {
                       if (snapshot.connectionState != ConnectionState.done) {
@@ -123,7 +126,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                         );
                       }
 
-                      final containerUsersRecord = snapshot.data;
+                      final containerUserPublicProfile = snapshot.data;
 
                       return Container(
                         decoration: BoxDecoration(),
@@ -138,7 +141,8 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                                 shape: BoxShape.circle,
                               ),
                               child: CachedNetworkImage(
-                                imageUrl: containerUsersRecord?.photoUrl ?? '',
+                                imageUrl:
+                                    containerUserPublicProfile?.photoUrl ?? '',
                                 fit: BoxFit.cover,
                                 memCacheWidth: 90,
                                 memCacheHeight: 90,
@@ -156,14 +160,14 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                                     Text(
                                       _reviewAuthorName(
                                         context,
-                                        containerUsersRecord,
+                                        containerUserPublicProfile,
                                       ),
                                       maxLines: 1,
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium
                                           .override(
                                             fontFamily: 'sf pro display',
-                                            color: Colors.black,
+                                            color: ExpatlioDesign.text,
                                             fontSize: 15.0,
                                             letterSpacing: 0.0,
                                             fontWeight: FontWeight.w600,
@@ -204,8 +208,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                   ),
                   direction: Axis.horizontal,
                   rating: widget.rewDoc!.rating.toDouble(),
-                  unratedColor:
-                      FlutterFlowTheme.of(context).secondaryBackground,
+                  unratedColor: ExpatlioDesign.mutedSurface,
                   itemCount: 5,
                   itemSize: 18.0,
                 ),

@@ -118,6 +118,21 @@ test("assertPersistEligibility rejects non-participants", () => {
   );
 });
 
+test("assertPersistEligibility rejects startedAt-only sessions", () => {
+  const sessionData = qualifyingSessionData();
+  delete sessionData.sessionMetadata.callConnectedAt;
+
+  assert.throws(
+    () =>
+      assertPersistEligibility({
+        sessionData,
+        userId: "student",
+        nowMillis: Date.parse("2026-04-19T09:05:10Z"),
+      }),
+    /not eligible/,
+  );
+});
+
 test("buildPersistCallChatMessages keeps text before call event timestamp", () => {
   const {makeRef} = createFakeFirestore();
   const sessionRef = makeRef("videoSessions/session-1");

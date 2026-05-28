@@ -246,5 +246,6 @@ test(
   assert.doesNotMatch(source, /native_language_NS\.code/);
   assert.match(source, /loadSameDayRepeatCandidateIds\(\s*db,\s*requesterId,/);
   assert.match(source, /const sessionPolicyFields = buildCreateSessionPolicyFields\(\);/);
+  assert.match(source, /await deleteDailyRoom\(precreatedRoomName\)/);
   },
 );

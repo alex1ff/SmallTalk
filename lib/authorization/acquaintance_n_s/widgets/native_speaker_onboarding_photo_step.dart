@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 
@@ -55,14 +56,14 @@ class NativeSpeakerOnboardingPhotoStep extends StatelessWidget {
               width: double.infinity,
               height: 479.1,
               decoration: BoxDecoration(
-                color: FlutterFlowTheme.of(context).primaryBackground,
-                borderRadius: BorderRadius.circular(26.0),
+                color: ExpatlioDesign.card,
+                borderRadius: BorderRadius.circular(16.0),
               ),
               child: Builder(
                 builder: (context) {
                   if (hasLocalPhoto) {
                     return ClipRRect(
-                      borderRadius: BorderRadius.circular(26.0),
+                      borderRadius: BorderRadius.circular(16.0),
                       child: Image.memory(
                         localPhoto!.bytes!,
                         width: double.infinity,
@@ -73,7 +74,7 @@ class NativeSpeakerOnboardingPhotoStep extends StatelessWidget {
                   }
                   if (hasRemotePhoto) {
                     return ClipRRect(
-                      borderRadius: BorderRadius.circular(26.0),
+                      borderRadius: BorderRadius.circular(16.0),
                       child: Image.network(
                         existingPhotoUrl,
                         width: double.infinity,
@@ -97,7 +98,7 @@ class NativeSpeakerOnboardingPhotoStep extends StatelessWidget {
                           ),
                           child: Icon(
                             FFIcons.kcameraPlus,
-                            color: FlutterFlowTheme.of(context).primaryText,
+                            color: ExpatlioDesign.text,
                             size: 20.0,
                           ),
                         ),

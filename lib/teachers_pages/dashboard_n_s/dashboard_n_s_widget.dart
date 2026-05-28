@@ -1,19 +1,18 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/celebration_n_s/celebration_n_s_widget.dart';
 import '/backend/backend.dart';
-import '/components/button/button_widget.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/user_match_profile.dart';
+import '/shared_pages/design/bottom_sheet_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/teachers_pages/components/add_inter/add_inter_widget.dart';
 import '/index.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'dart:async';
 import 'dashboard_n_s_model.dart';
 export 'dashboard_n_s_model.dart';
@@ -130,16 +129,14 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
       backgroundColor: Colors.transparent,
       context: context,
       builder: (context) {
-        return WebViewAware(
-          child: GestureDetector(
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              FocusManager.instance.primaryFocus?.unfocus();
-            },
-            child: Padding(
-              padding: MediaQuery.viewInsetsOf(context),
-              child: AddInterWidget(),
-            ),
+        return GestureDetector(
+          onTap: () {
+            FocusScope.of(context).unfocus();
+            FocusManager.instance.primaryFocus?.unfocus();
+          },
+          child: Padding(
+            padding: MediaQuery.viewInsetsOf(context),
+            child: AddInterWidget(),
           ),
         );
       },
@@ -159,9 +156,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       context: context,
-      builder: (context) => const WebViewAware(
-        child: PendingTeacherReviewBottomSheet(),
-      ),
+      builder: (context) => PendingTeacherReviewBottomSheet(),
     );
   }
 
@@ -247,7 +242,6 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
             enabled: true,
             clearUnsetFields: false,
           ),
-          isInCall: false,
         );
         availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
         await currentUserReference!.update(availabilityUpdate);
@@ -331,7 +325,6 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
               enabled: false,
               clearUnsetFields: false,
             ),
-            isInCall: false,
           ),
         );
       } catch (error) {
@@ -359,16 +352,14 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
           backgroundColor: Colors.transparent,
           context: context,
           builder: (context) {
-            return WebViewAware(
-              child: GestureDetector(
-                onTap: () {
-                  FocusScope.of(context).unfocus();
-                  FocusManager.instance.primaryFocus?.unfocus();
-                },
-                child: Padding(
-                  padding: MediaQuery.viewInsetsOf(context),
-                  child: CelebrationNSWidget(),
-                ),
+            return GestureDetector(
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                FocusManager.instance.primaryFocus?.unfocus();
+              },
+              child: Padding(
+                padding: MediaQuery.viewInsetsOf(context),
+                child: CelebrationNSWidget(),
               ),
             );
           },
@@ -406,7 +397,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
       builder: (context) {
         if (loggedIn && currentUserDocument == null) {
           return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: const Center(
               child: CircularProgressIndicator.adaptive(),
             ),
@@ -416,7 +407,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
         if (!_canUseTeacherShell) {
           _scheduleStudentDashboardRedirect();
           return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: const SizedBox.shrink(),
           );
         }
@@ -430,9 +421,9 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
           },
           child: Scaffold(
             key: scaffoldKey,
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+              padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.max,
@@ -440,14 +431,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                   children: [
                     Container(
                       height: 70.0,
-                      decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).primaryBackground,
-                        borderRadius: BorderRadius.circular(50.0),
-                        border: Border.all(
-                          color:
-                              FlutterFlowTheme.of(context).secondaryBackground,
-                        ),
-                      ),
+                      decoration: ExpatlioDesign.cardDecoration(radius: 24.0),
                       child: Padding(
                         padding: EdgeInsets.all(2.0),
                         child: Row(
@@ -461,8 +445,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                     .secondaryBackground,
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: FlutterFlowTheme.of(context)
-                                      .secondaryBackground,
+                                  color: ExpatlioDesign.border,
                                 ),
                               ),
                               child: Builder(
@@ -578,15 +561,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                               child: Container(
                                 width: double.infinity,
                                 height: 165.0,
-                                decoration: BoxDecoration(
-                                  color: FlutterFlowTheme.of(context)
-                                      .primaryBackground,
-                                  borderRadius: BorderRadius.circular(12.0),
-                                  border: Border.all(
-                                    color: Color(0xFFE0E3E7),
-                                    width: 1.0,
-                                  ),
-                                ),
+                                decoration:
+                                    ExpatlioDesign.cardDecoration(radius: 24.0),
                               ),
                             ),
                             Row(
@@ -807,8 +783,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                         width: double.infinity,
                         height: 60.0,
                         decoration: BoxDecoration(
-                          color: FlutterFlowTheme.of(context).primaryBackground,
-                          borderRadius: BorderRadius.circular(26.0),
+                          color: ExpatlioDesign.card,
+                          borderRadius: BorderRadius.circular(16.0),
                         ),
                         child: Padding(
                           padding: EdgeInsets.all(16.0),
@@ -878,7 +854,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                               width: 52.0,
                                               height: 52.0,
                                               decoration: BoxDecoration(
-                                                color: Color(0xFFF2F2F7),
+                                                color:
+                                                    ExpatlioDesign.mutedSurface,
                                                 borderRadius:
                                                     BorderRadius.circular(22.0),
                                               ),
@@ -982,7 +959,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .primaryBackground,
-                                    borderRadius: BorderRadius.circular(26.0),
+                                    borderRadius: BorderRadius.circular(16.0),
                                     border: Border.all(
                                       color: FlutterFlowTheme.of(context)
                                           .secondaryBackground,
@@ -1076,7 +1053,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .primaryBackground,
-                                    borderRadius: BorderRadius.circular(26.0),
+                                    borderRadius: BorderRadius.circular(16.0),
                                   ),
                                   child: Padding(
                                     padding: EdgeInsets.all(16.0),
@@ -1299,7 +1276,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .primaryBackground,
-                                    borderRadius: BorderRadius.circular(26.0),
+                                    borderRadius: BorderRadius.circular(16.0),
                                   ),
                                   child: Padding(
                                     padding: EdgeInsets.all(2.0),
@@ -1452,8 +1429,8 @@ class PendingTeacherReviewCard extends StatelessWidget {
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
-          borderRadius: BorderRadius.circular(26.0),
+          color: ExpatlioDesign.card,
+          borderRadius: BorderRadius.circular(16.0),
         ),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -1464,7 +1441,7 @@ class PendingTeacherReviewCard extends StatelessWidget {
                 width: 48.0,
                 height: 48.0,
                 decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
+                  color: ExpatlioDesign.background,
                   borderRadius: BorderRadius.circular(18.0),
                 ),
                 child: Icon(
@@ -1528,30 +1505,29 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                width: double.infinity,
-                height: 16.0,
-                child: custom_widgets.NotchedClipper(
-                  width: double.infinity,
-                  height: 16.0,
-                ),
-              ),
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
+                  color: ExpatlioDesign.background,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    BottomSheetHeader(
+                      title: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Заявка на проверке',
+                        enText: 'Request under review',
+                      ),
+                      onConfirm: () => Navigator.pop(context),
+                    ),
                     Padding(
                       padding: const EdgeInsetsDirectional.fromSTEB(
-                          6.0, 6.0, 6.0, 0.0),
+                          6.0, 0.0, 6.0, 0.0),
                       child: Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          color: FlutterFlowTheme.of(context).primaryBackground,
-                          borderRadius: BorderRadius.circular(38.0),
+                          color: ExpatlioDesign.card,
+                          borderRadius: BorderRadius.circular(20.0),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(24.0),
@@ -1619,18 +1595,7 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
                         ),
                       ),
                     ),
-                    ButtonWidget(
-                      text: FFLocalizations.of(context).getVariableText(
-                        ruText: 'Понятно',
-                        enText: 'Got it',
-                      ),
-                      keyboardAwarePadding: false,
-                      padding: const EdgeInsetsDirectional.fromSTEB(
-                          6.0, 24.0, 6.0, 35.0),
-                      action: () async {
-                        Navigator.pop(context);
-                      },
-                    ),
+                    const SizedBox(height: 35.0),
                   ],
                 ),
               ),

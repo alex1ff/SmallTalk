@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,7 +35,7 @@ class NativeSpeakerOnboardingAboutMeStep extends StatelessWidget {
               maxLines: 2,
               style: FlutterFlowTheme.of(context).bodyMedium.override(
                     fontFamily: 'Cool',
-                    color: Colors.black,
+                    color: ExpatlioDesign.text,
                     fontSize: 43.0,
                     letterSpacing: 0.0,
                     fontWeight: FontWeight.normal,
@@ -51,7 +52,7 @@ class NativeSpeakerOnboardingAboutMeStep extends StatelessWidget {
               ),
               style: FlutterFlowTheme.of(context).bodyMedium.override(
                     fontFamily: 'sf pro display',
-                    color: FlutterFlowTheme.of(context).secondaryText,
+                    color: ExpatlioDesign.muted,
                     fontSize: 16.0,
                     letterSpacing: 0.0,
                     fontWeight: FontWeight.normal,
@@ -60,79 +61,60 @@ class NativeSpeakerOnboardingAboutMeStep extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsetsDirectional.only(top: 60.0),
-            child: TextFormField(
-              key: const ValueKey<String>(
-                  'native_speaker_onboarding_about_me_field'),
-              controller: controller,
-              focusNode: focusNode,
-              onFieldSubmitted: (_) async {
-                await onSubmitted?.call();
-              },
-              autofocus: false,
-              textCapitalization: TextCapitalization.sentences,
-              textInputAction: TextInputAction.done,
-              decoration: InputDecoration(
-                isDense: false,
-                hintText: FFLocalizations.of(context).getVariableText(
-                  ruText:
-                      'Люблю готовить, изучаю испанский и много путешествую',
-                  enText: 'I love cooking, study Spanish, and travel a lot',
-                ),
-                hintStyle: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'sf pro display',
-                      color: FlutterFlowTheme.of(context).secondaryText,
-                      fontSize: 16.0,
-                      letterSpacing: 0.0,
+            child: Container(
+              decoration: ExpatlioDesign.formGroupDecoration(),
+              padding: ExpatlioDesign.formGroupPadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    FFLocalizations.of(context).getVariableText(
+                      ruText: 'О себе',
+                      enText: 'About you',
                     ),
-                enabledBorder: OutlineInputBorder(
-                  borderSide:
-                      const BorderSide(color: Color(0x00000000), width: 1.0),
-                  borderRadius: BorderRadius.circular(16.0),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderSide:
-                      const BorderSide(color: Color(0x00000000), width: 1.0),
-                  borderRadius: BorderRadius.circular(16.0),
-                ),
-                errorBorder: OutlineInputBorder(
-                  borderSide: BorderSide(
-                    color: FlutterFlowTheme.of(context).error,
-                    width: 1.0,
+                    style: ExpatlioDesign.formLabelStyle(context),
                   ),
-                  borderRadius: BorderRadius.circular(16.0),
-                ),
-                focusedErrorBorder: OutlineInputBorder(
-                  borderSide: BorderSide(
-                    color: FlutterFlowTheme.of(context).error,
-                    width: 1.0,
-                  ),
-                  borderRadius: BorderRadius.circular(16.0),
-                ),
-                filled: true,
-                fillColor: FlutterFlowTheme.of(context).primaryBackground,
-                contentPadding: const EdgeInsets.all(16.0),
-                hoverColor: FlutterFlowTheme.of(context).primaryBackground,
-              ),
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'sf pro display',
-                    fontSize: 16.0,
-                    letterSpacing: 0.0,
-                  ),
-              maxLines: 12,
-              minLines: 4,
-              cursorColor: FlutterFlowTheme.of(context).primaryText,
-              enableInteractiveSelection: true,
-              inputFormatters: [
-                if (!isAndroid && !isiOS)
-                  TextInputFormatter.withFunction((oldValue, newValue) {
-                    return TextEditingValue(
-                      selection: newValue.selection,
-                      text: newValue.text.toCapitalization(
-                        TextCapitalization.sentences,
+                  const SizedBox(height: 6.0),
+                  TextFormField(
+                    key: const ValueKey<String>(
+                        'native_speaker_onboarding_about_me_field'),
+                    controller: controller,
+                    focusNode: focusNode,
+                    onFieldSubmitted: (_) async {
+                      await onSubmitted?.call();
+                    },
+                    autofocus: false,
+                    textCapitalization: TextCapitalization.sentences,
+                    textInputAction: TextInputAction.done,
+                    decoration: ExpatlioDesign.formFieldDecoration(
+                      context,
+                      hintText: FFLocalizations.of(context).getVariableText(
+                        ruText:
+                            'Люблю готовить, изучаю испанский и много путешествую',
+                        enText:
+                            'I love cooking, study Spanish, and travel a lot',
                       ),
-                    );
-                  }),
-              ],
+                      maxLines: 4,
+                    ),
+                    style: ExpatlioDesign.formTextStyle(context),
+                    maxLines: 12,
+                    minLines: 4,
+                    cursorColor: ExpatlioDesign.primary,
+                    enableInteractiveSelection: true,
+                    inputFormatters: [
+                      if (!isAndroid && !isiOS)
+                        TextInputFormatter.withFunction((oldValue, newValue) {
+                          return TextEditingValue(
+                            selection: newValue.selection,
+                            text: newValue.text.toCapitalization(
+                              TextCapitalization.sentences,
+                            ),
+                          );
+                        }),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],

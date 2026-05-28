@@ -267,6 +267,22 @@ class UsersRecord extends FirestoreRecord {
   LanguageStruct get nativeLanguageNS => _nativeLanguageNS ?? LanguageStruct();
   bool hasNativeLanguageNS() => _nativeLanguageNS != null;
 
+  // "subscription" field. ─── SUBSCRIPTION REWORK ───────────────────────────
+  // Mirrored from RevenueCat by the revenueCatWebhook Cloud Function. Read
+  // for gating (subscription?.expiresAt is in the future = active). Never
+  // mutate from the client. Preserve through FlutterFlow regenerations.
+  SubscriptionStruct? _subscription;
+  SubscriptionStruct? get subscription => _subscription;
+  bool hasSubscription() => _subscription != null;
+
+  // "giftMinutes" field. Short-lived free minutes (registration trial
+  // and promo-code grants). Independent of subscription. Server reads
+  // and decrements via end_session.js; client only reads for UI.
+  GiftMinutesStruct? _giftMinutes;
+  GiftMinutesStruct? get giftMinutes => _giftMinutes;
+  bool hasGiftMinutes() => _giftMinutes != null;
+  // ──────────────────────────────────────────────────────────────────────
+
   void _initializeFields() {
     _email = snapshotData['email'] as String?;
     _uid = snapshotData['uid'] as String?;
@@ -332,6 +348,14 @@ class UsersRecord extends FirestoreRecord {
     _nativeLanguageNS = snapshotData['native_language_NS'] is LanguageStruct
         ? snapshotData['native_language_NS']
         : LanguageStruct.maybeFromMap(snapshotData['native_language_NS']);
+    // ─── SUBSCRIPTION REWORK ─ preserve through FlutterFlow regenerate ──
+    _subscription = snapshotData['subscription'] is SubscriptionStruct
+        ? snapshotData['subscription']
+        : SubscriptionStruct.maybeFromMap(snapshotData['subscription']);
+    _giftMinutes = snapshotData['giftMinutes'] is GiftMinutesStruct
+        ? snapshotData['giftMinutes']
+        : GiftMinutesStruct.maybeFromMap(snapshotData['giftMinutes']);
+    // ────────────────────────────────────────────────────────────────────
   }
 
   static CollectionReference get collection =>
@@ -400,6 +424,10 @@ Map<String, dynamic> createUsersRecordData({
   int? totalCalls,
   LanguageStruct? languageInstructionNS,
   LanguageStruct? nativeLanguageNS,
+  // ─── SUBSCRIPTION REWORK ───────────────────────────────────────────────
+  SubscriptionStruct? subscription,
+  GiftMinutesStruct? giftMinutes,
+  // ──────────────────────────────────────────────────────────────────────
 }) {
   final firestoreData = mapToFirestore(
     <String, dynamic>{
@@ -467,6 +495,12 @@ Map<String, dynamic> createUsersRecordData({
   // Handle nested data for "native_language_NS" field.
   addLanguageStructData(firestoreData, nativeLanguageNS, 'native_language_NS');
 
+  // ─── SUBSCRIPTION REWORK ─ Handle nested data for "subscription" field.
+  addSubscriptionStructData(firestoreData, subscription, 'subscription');
+  // Handle nested data for "giftMinutes" field.
+  addGiftMinutesStructData(firestoreData, giftMinutes, 'giftMinutes');
+  // ──────────────────────────────────────────────────────────────────────
+
   return firestoreData;
 }
 
@@ -510,7 +544,11 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e1?.availabilityToday == e2?.availabilityToday &&
         e1?.totalCalls == e2?.totalCalls &&
         e1?.languageInstructionNS == e2?.languageInstructionNS &&
-        e1?.nativeLanguageNS == e2?.nativeLanguageNS;
+        e1?.nativeLanguageNS == e2?.nativeLanguageNS &&
+        // ─── SUBSCRIPTION REWORK ───────────────────────────────────────
+        e1?.subscription == e2?.subscription &&
+        e1?.giftMinutes == e2?.giftMinutes;
+    // ──────────────────────────────────────────────────────────────
   }
 
   @override
@@ -548,7 +586,11 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e?.availabilityToday,
         e?.totalCalls,
         e?.languageInstructionNS,
-        e?.nativeLanguageNS
+        e?.nativeLanguageNS,
+        // ─── SUBSCRIPTION REWORK ─────────────────────────────────────
+        e?.subscription,
+        e?.giftMinutes,
+        // ────────────────────────────────────────────────────────────
       ]);
 
   @override

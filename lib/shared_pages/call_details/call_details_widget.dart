@@ -8,6 +8,8 @@ import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
 import '/shared_pages/learning/caption_word_flow.dart';
 import '/shared_pages/learning/interactive_caption_text.dart';
@@ -19,7 +21,6 @@ import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'call_details_model.dart';
 export 'call_details_model.dart';
 
@@ -240,8 +241,8 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
+        color: ExpatlioDesign.card,
+        borderRadius: BorderRadius.circular(16.0),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -260,7 +261,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
           .bodyMedium
           .override(
             fontFamily: 'sf pro display',
-            color: FlutterFlowTheme.of(context).secondaryText,
+            color: ExpatlioDesign.muted,
             fontSize: 14.0,
             letterSpacing: 0.0,
           )
@@ -389,20 +390,18 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
       backgroundColor: Colors.transparent,
       context: context,
       builder: (context) {
-        return WebViewAware(
-          child: GestureDetector(
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              FocusManager.instance.primaryFocus?.unfocus();
-            },
-            child: Padding(
-              padding: MediaQuery.viewInsetsOf(context),
-              child: buildSavedCaptionWordSheet(
-                existingWord: existingWord,
-                word: selectedWord,
-                languageCode: session.language,
-                sentence: log.text,
-              ),
+        return GestureDetector(
+          onTap: () {
+            FocusScope.of(context).unfocus();
+            FocusManager.instance.primaryFocus?.unfocus();
+          },
+          child: Padding(
+            padding: MediaQuery.viewInsetsOf(context),
+            child: buildSavedCaptionWordSheet(
+              existingWord: existingWord,
+              word: selectedWord,
+              languageCode: session.language,
+              sentence: log.text,
             ),
           ),
         );
@@ -429,12 +428,12 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
       key: ValueKey(log.reference.path),
       width: double.infinity,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).secondaryBackground,
+        color: ExpatlioDesign.background,
         borderRadius: BorderRadius.circular(20.0),
         border: Border.all(
-          color: FlutterFlowTheme.of(context).primaryText.withValues(
-                alpha: 0.06,
-              ),
+          color: ExpatlioDesign.text.withValues(
+            alpha: 0.06,
+          ),
           width: 1.0,
         ),
       ),
@@ -754,73 +753,10 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            FlutterFlowTheme.of(context).secondaryBackground,
-            const Color(0xEFF2F2F7),
-            const Color(0x00F2F2F7),
-          ],
-          stops: const [0.0, 0.8, 1.0],
-          begin: const AlignmentDirectional(0.0, -1.0),
-          end: const AlignmentDirectional(0.0, 1.0),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(12.0, 55.0, 12.0, 12.0),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              width: 45.0,
-              height: 45.0,
-              decoration: BoxDecoration(
-                boxShadow: const [
-                  BoxShadow(
-                    blurRadius: 7.0,
-                    color: Color(0x0D2C2C2C),
-                    offset: Offset(0.0, 2.0),
-                  ),
-                ],
-                shape: BoxShape.circle,
-              ),
-              child: FlutterFlowIconButton(
-                borderRadius: 70.0,
-                buttonSize: 45.0,
-                fillColor: Colors.white,
-                icon: Icon(
-                  FFIcons.kchevronLeft,
-                  color: FlutterFlowTheme.of(context).primaryText,
-                  size: 20.0,
-                ),
-                onPressed: () async {
-                  context.safePop();
-                },
-              ),
-            ),
-            Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Детали звонка',
-                enText: 'Call details',
-              ),
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'Cool',
-                    fontSize: 18.0,
-                    letterSpacing: 0.0,
-                    fontWeight: FontWeight.normal,
-                  ),
-            ),
-            Container(
-              width: 45.0,
-              height: 45.0,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-              ),
-            ),
-          ],
-        ),
+    return BasicPageHeader(
+      title: FFLocalizations.of(context).getVariableText(
+        ruText: 'Детали звонка',
+        enText: 'Call details',
       ),
     );
   }
@@ -969,7 +905,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
           softWrap: false,
           style: FlutterFlowTheme.of(context).bodyMedium.override(
                 fontFamily: 'sf pro display',
-                color: FlutterFlowTheme.of(context).secondaryText,
+                color: ExpatlioDesign.muted,
                 fontSize: 14.0,
                 letterSpacing: 0.0,
               ),
@@ -1065,8 +1001,8 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     return Container(
       height: 177.5,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
+        color: ExpatlioDesign.card,
+        borderRadius: BorderRadius.circular(16.0),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -1291,8 +1227,8 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            color: FlutterFlowTheme.of(context).primaryBackground,
-            borderRadius: BorderRadius.circular(26.0),
+            color: ExpatlioDesign.card,
+            borderRadius: BorderRadius.circular(16.0),
           ),
           alignment: const AlignmentDirectional(0.0, 0.0),
           child: Padding(
@@ -1320,56 +1256,15 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
           textCapitalization: TextCapitalization.sentences,
           textInputAction: TextInputAction.done,
           obscureText: false,
-          decoration: InputDecoration(
-            isDense: false,
+          decoration: ExpatlioDesign.formFieldDecoration(
+            context,
             hintText: reviewCommentHintText(context, _model.rating),
-            hintStyle: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'sf pro display',
-                  color: FlutterFlowTheme.of(context).secondaryText,
-                  fontSize: 16.0,
-                  letterSpacing: 0.0,
-                ),
-            enabledBorder: OutlineInputBorder(
-              borderSide: const BorderSide(
-                color: Color(0x00000000),
-                width: 1.0,
-              ),
-              borderRadius: BorderRadius.circular(26.0),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderSide: const BorderSide(
-                color: Color(0x00000000),
-                width: 1.0,
-              ),
-              borderRadius: BorderRadius.circular(26.0),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderSide: BorderSide(
-                color: FlutterFlowTheme.of(context).error,
-                width: 1.0,
-              ),
-              borderRadius: BorderRadius.circular(26.0),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderSide: BorderSide(
-                color: FlutterFlowTheme.of(context).error,
-                width: 1.0,
-              ),
-              borderRadius: BorderRadius.circular(26.0),
-            ),
-            filled: true,
-            fillColor: FlutterFlowTheme.of(context).primaryBackground,
-            contentPadding: const EdgeInsets.all(16.0),
-            hoverColor: FlutterFlowTheme.of(context).primaryBackground,
+            maxLines: 12,
           ),
-          style: FlutterFlowTheme.of(context).bodyMedium.override(
-                fontFamily: 'sf pro display',
-                fontSize: 16.0,
-                letterSpacing: 0.0,
-              ),
+          style: ExpatlioDesign.formTextStyle(context),
           maxLines: 12,
           minLines: 2,
-          cursorColor: FlutterFlowTheme.of(context).primaryText,
+          cursorColor: ExpatlioDesign.primary,
           enableInteractiveSelection: true,
           validator:
               _model.reviewCommentTextControllerValidator.asValidator(context),
@@ -1489,7 +1384,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   Widget build(BuildContext context) {
     if (widget.videoDocRef == null) {
       return Scaffold(
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: Center(
           child: Text(
             FFLocalizations.of(context).getVariableText(
@@ -1513,7 +1408,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: AuthUserStreamWidget(
           builder: (context) => StreamBuilder<VideoSessionsRecord>(
             stream: VideoSessionsRecord.getDocument(widget.videoDocRef!),
@@ -1622,19 +1517,19 @@ class _CallParticipantCard extends StatelessWidget {
   final String fallbackName;
   final String fallbackPhotoUrl;
 
-  String _resolvedDisplayName(UsersRecord? user) {
+  String _resolvedDisplayName(UserPublicProfilesRecord? user) {
     final displayName = user?.displayName.trim() ?? '';
     return displayName.isNotEmpty ? displayName : fallbackName;
   }
 
-  String _resolvedPhotoUrl(UsersRecord? user) {
+  String _resolvedPhotoUrl(UserPublicProfilesRecord? user) {
     final photoUrl = user?.photoUrl.trim() ?? '';
     return photoUrl.isNotEmpty ? photoUrl : fallbackPhotoUrl;
   }
 
   Future<void> _openParticipant(
     BuildContext context,
-    UsersRecord? participant,
+    UserPublicProfilesRecord? participant,
   ) async {
     final targetRef = participantRef;
     if (targetRef == null || participant?.role != UserRole.native_speaker) {
@@ -1657,16 +1552,23 @@ class _CallParticipantCard extends StatelessWidget {
       );
     }
 
-    return StreamBuilder<UsersRecord>(
-      stream: UsersRecord.getDocument(participantRef!),
+    return StreamBuilder<DocumentSnapshot<Object?>>(
+      stream: UserPublicProfilesRecord.collection
+          .doc(participantRef!.id)
+          .snapshots(),
       builder: (context, snapshot) {
-        final participant = snapshot.data;
+        final participantSnapshot = snapshot.data;
+        final participant = participantSnapshot != null &&
+                participantSnapshot.exists &&
+                participantSnapshot.data() != null
+            ? UserPublicProfilesRecord.fromSnapshot(participantSnapshot)
+            : null;
 
         return _CallParticipantCardBody(
           displayName: _resolvedDisplayName(participant),
           photoUrl: _resolvedPhotoUrl(participant),
-          ratingAverage: participant?.rating.average,
-          hasReviews: (participant?.rating.totalReviews ?? 0) > 0,
+          ratingAverage: participant?.ratingAverage,
+          hasReviews: (participant?.ratingCount ?? 0) > 0,
           onTap: participant?.role == UserRole.native_speaker
               ? () => _openParticipant(context, participant)
               : null,
@@ -1702,8 +1604,8 @@ class _CallParticipantCardBody extends StatelessWidget {
       child: Container(
         width: 140.0,
         decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
-          borderRadius: BorderRadius.circular(26.0),
+          color: ExpatlioDesign.card,
+          borderRadius: BorderRadius.circular(16.0),
         ),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -1801,10 +1703,10 @@ class _ParticipantAvatar extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).secondaryBackground,
+        color: ExpatlioDesign.background,
         shape: BoxShape.circle,
         border: Border.all(
-          color: FlutterFlowTheme.of(context).secondaryBackground,
+          color: ExpatlioDesign.background,
           width: borderWidth,
         ),
       ),
@@ -1845,7 +1747,7 @@ class _ParticipantAvatarFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: FlutterFlowTheme.of(context).secondaryBackground,
+      color: ExpatlioDesign.background,
       alignment: Alignment.center,
       child: Text(
         _initial(),

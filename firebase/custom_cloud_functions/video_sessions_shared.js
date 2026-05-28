@@ -693,6 +693,113 @@ function getSessionParticipantIds(sessionData = {}) {
   return ids;
 }
 
+function getAcceptedSessionCredentialParticipantIds(sessionData = {}) {
+  const ids = [];
+  const participantIds = Array.isArray(sessionData.participantIds) ?
+    sessionData.participantIds :
+    [];
+
+  participantIds.forEach((value) => {
+    const normalized = normalizeString(value);
+    if (normalized && !ids.includes(normalized)) {
+      ids.push(normalized);
+    }
+  });
+
+  [
+    getRequesterId(sessionData),
+    normalizeString(
+      sessionData.tutorId || sessionData.matchContext?.acceptedResponderId,
+    ),
+  ]
+    .filter(Boolean)
+    .forEach((value) => {
+      const normalized = normalizeString(value);
+      if (normalized && !ids.includes(normalized)) {
+        ids.push(normalized);
+      }
+    });
+
+  return ids;
+}
+
+function isAcceptedSessionCredentialParticipant(sessionData = {}, userId) {
+  const normalizedUserId = normalizeString(userId);
+  if (!normalizedUserId) {
+    return false;
+  }
+
+  return getAcceptedSessionCredentialParticipantIds(sessionData)
+    .includes(normalizedUserId);
+}
+
+function isCredentialSessionStatus(status) {
+  return ["active", "connecting"].includes(normalizeCode(status));
+}
+
+function readTimestampMillis(value) {
+  if (!value) return null;
+  if (typeof value.toMillis === "function") {
+    const millis = Number(value.toMillis());
+    return Number.isFinite(millis) ? millis : null;
+  }
+  if (value instanceof Date) {
+    const millis = value.getTime();
+    return Number.isFinite(millis) ? millis : null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const millis = Date.parse(value);
+    return Number.isFinite(millis) ? millis : null;
+  }
+  return null;
+}
+
+function isCredentialSessionUnexpired(
+  sessionData = {},
+  nowMillis = Date.now(),
+) {
+  const expiresAtMillis = readTimestampMillis(sessionData.expiresAt);
+  if (expiresAtMillis === null) {
+    return false;
+  }
+  const safeNowMillis = Number.isFinite(Number(nowMillis))
+    ? Number(nowMillis)
+    : Date.now();
+  return expiresAtMillis > safeNowMillis;
+}
+
+function isCredentialSessionJoinable(sessionData = {}, nowMillis = Date.now()) {
+  return isCredentialSessionStatus(sessionData.status) &&
+    isCredentialSessionUnexpired(sessionData, nowMillis);
+}
+
+function getCredentialTtlSeconds(
+  sessionData = {},
+  maxSeconds = 60 * 60,
+  nowMillis = Date.now(),
+) {
+  const expiresAtMillis = readTimestampMillis(sessionData.expiresAt);
+  if (expiresAtMillis === null) {
+    return 0;
+  }
+  const safeNowMillis = Number.isFinite(Number(nowMillis))
+    ? Number(nowMillis)
+    : Date.now();
+  const remainingSeconds = Math.floor(
+    (expiresAtMillis - safeNowMillis) / 1000,
+  );
+  if (remainingSeconds < 1) {
+    return 0;
+  }
+  return Math.min(
+    readPositiveInteger(maxSeconds, 60 * 60),
+    remainingSeconds,
+  );
+}
+
 function isSessionParticipant(sessionData = {}, userId) {
   const normalizedUserId = normalizeString(userId);
   if (!normalizedUserId) {
@@ -716,6 +823,8 @@ module.exports = {
   buildUniversalSessionPolicy,
   extractBlockedIds,
   getAssignedResponderId,
+  getAcceptedSessionCredentialParticipantIds,
+  getCredentialTtlSeconds,
   getLegacyPriorityScore,
   hasLegacyMatchProfileSource,
   getRequesterId,
@@ -723,6 +832,10 @@ module.exports = {
   getSessionPolicyExpiresAt,
   getSessionParticipantIds,
   isApprovedTeacher,
+  isAcceptedSessionCredentialParticipant,
+  isCredentialSessionJoinable,
+  isCredentialSessionStatus,
+  isCredentialSessionUnexpired,
   isRequesterForSession,
   isSessionParticipant,
   isSupportedSessionRole,

@@ -85,10 +85,13 @@ function evaluateTutorAvailabilityWindow(tutorData, now = new Date()) {
     tutorData && typeof tutorData.availabilityToday === "object"
       ? tutorData.availabilityToday
       : {};
-  const enabled =
-    tutorData && tutorData.isAvailable !== undefined
+  const hasStructuredEnabled =
+    typeof availabilityToday.enabled === "boolean";
+  const enabled = hasStructuredEnabled
+    ? availabilityToday.enabled
+    : tutorData && tutorData.isAvailable !== undefined
       ? Boolean(tutorData.isAvailable)
-      : (availabilityToday.enabled ?? true);
+      : true;
 
   if (!enabled) {
     return {

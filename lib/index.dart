@@ -34,8 +34,10 @@ export '/authorization/recover_pass/recover_pass_widget.dart'
     show RecoverPassWidget;
 export '/authorization/policy/policy_widget.dart' show PolicyWidget;
 export '/teachers_pages/pay_copy/pay_copy_widget.dart' show PayCopyWidget;
-export '/students_pages/pay_web_wiew/pay_web_wiew_widget.dart'
-    show PayWebWiewWidget;
+// ─── SUBSCRIPTION REWORK ─ removed. T-Bank pay WebView is gone;
+// payments go through RC paywall now.
+// export '/students_pages/pay_web_wiew/pay_web_wiew_widget.dart'
+//     show PayWebWiewWidget;
 export '/shared_pages/black_list/black_list_widget.dart' show BlackListWidget;
 export '/teachers_pages/my_rew_n_s/my_rew_n_s_widget.dart' show MyRewNSWidget;
 export '/students_pages/favorite/favorite_widget.dart' show FavoriteWidget;

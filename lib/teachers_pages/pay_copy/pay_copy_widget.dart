@@ -8,15 +8,17 @@ import '/flutter_flow/flutter_flow_animations.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/index.dart';
 import '/services/user_match_profile.dart';
 import '/teachers_pages/components/add_card/add_card_widget.dart';
 import '/teachers_pages/components/edit_card/edit_card_widget.dart';
 import '/custom_code/actions/index.dart' as actions;
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 
 import 'pay_copy_model.dart';
 export 'pay_copy_model.dart';
@@ -123,7 +125,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
     });
 
     return Scaffold(
-      backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+      backgroundColor: ExpatlioDesign.background,
       body: Center(
         child: Text(
           FFLocalizations.of(context).getVariableText(
@@ -138,62 +140,29 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
   }
 
   Future<void> _submitWithdrawalRequest() async {
-    final userRef = currentUserReference;
     final selectedCardRef = _effectiveSelectedCardRef();
-    if (userRef == null || selectedCardRef == null) {
+    if (selectedCardRef == null) {
       return;
     }
 
-    final now = getCurrentTimestamp;
-    var requestCreated = false;
-
-    await FirebaseFirestore.instance.runTransaction((transaction) async {
-      final userSnapshot = await transaction.get(userRef);
-      if (!userSnapshot.exists) {
+    try {
+      await FirebaseFunctions.instance.httpsCallable('requestWithdrawal').call({
+        'cardId': selectedCardRef.id,
+      });
+    } on FirebaseFunctionsException catch (error) {
+      if (!mounted) {
         return;
       }
-
-      final selectedCardSnapshot = await transaction.get(selectedCardRef);
-      if (!selectedCardSnapshot.exists) {
-        return;
-      }
-
-      final freshUser = UsersRecord.fromSnapshot(userSnapshot);
-      if (!canAccessTeacherSurfaces(freshUser)) {
-        return;
-      }
-
-      final availableBalance = freshUser.balanceNS;
-      if (availableBalance <= 0) {
-        return;
-      }
-
-      final withdrawalRef = TransactionsRecord.collection.doc();
-      transaction.set(
-        withdrawalRef,
-        createTransactionsRecordData(
-          userId: userRef,
-          createdAt: now,
-          type: TypeTransactions.withdrawal,
-          status: StatusTransactions.pending,
-          amount: availableBalance,
-          card: selectedCardRef,
-        ),
+      await actions.showTopNotification(
+        context,
+        error.message ?? 'Не удалось создать заявку на вывод',
+        '',
+        true,
       );
+      return;
+    }
 
-      transaction.update(
-        userRef,
-        mapToFirestore(
-          {
-            'balance_NS': FieldValue.delete(),
-          },
-        ),
-      );
-
-      requestCreated = true;
-    });
-
-    if (!mounted || !requestCreated) {
+    if (!mounted) {
       return;
     }
 
@@ -211,7 +180,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
       builder: (context) {
         if (loggedIn && currentUserDocument == null) {
           return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: const Center(
               child: CircularProgressIndicator.adaptive(),
             ),
@@ -230,7 +199,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
           },
           child: Scaffold(
             key: scaffoldKey,
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: Stack(
               children: [
                 Padding(
@@ -314,21 +283,19 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                                     Colors.transparent,
                                                 context: context,
                                                 builder: (context) {
-                                                  return WebViewAware(
-                                                    child: GestureDetector(
-                                                      onTap: () {
-                                                        FocusScope.of(context)
-                                                            .unfocus();
-                                                        FocusManager.instance
-                                                            .primaryFocus
-                                                            ?.unfocus();
-                                                      },
-                                                      child: Padding(
-                                                        padding: MediaQuery
-                                                            .viewInsetsOf(
-                                                                context),
-                                                        child: EditCardWidget(),
-                                                      ),
+                                                  return GestureDetector(
+                                                    onTap: () {
+                                                      FocusScope.of(context)
+                                                          .unfocus();
+                                                      FocusManager
+                                                          .instance.primaryFocus
+                                                          ?.unfocus();
+                                                    },
+                                                    child: Padding(
+                                                      padding: MediaQuery
+                                                          .viewInsetsOf(
+                                                              context),
+                                                      child: EditCardWidget(),
                                                     ),
                                                   );
                                                 },
@@ -391,8 +358,8 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                                         height: 52,
                                                         decoration:
                                                             BoxDecoration(
-                                                          color:
-                                                              Color(0xFFF2F2F7),
+                                                          color: ExpatlioDesign
+                                                              .mutedSurface,
                                                           borderRadius:
                                                               BorderRadius
                                                                   .circular(22),
@@ -497,18 +464,15 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                 backgroundColor: Colors.transparent,
                                 context: context,
                                 builder: (context) {
-                                  return WebViewAware(
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        FocusScope.of(context).unfocus();
-                                        FocusManager.instance.primaryFocus
-                                            ?.unfocus();
-                                      },
-                                      child: Padding(
-                                        padding:
-                                            MediaQuery.viewInsetsOf(context),
-                                        child: AddCardWidget(),
-                                      ),
+                                  return GestureDetector(
+                                    onTap: () {
+                                      FocusScope.of(context).unfocus();
+                                      FocusManager.instance.primaryFocus
+                                          ?.unfocus();
+                                    },
+                                    child: Padding(
+                                      padding: MediaQuery.viewInsetsOf(context),
+                                      child: AddCardWidget(),
                                     ),
                                   );
                                 },
@@ -862,76 +826,9 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                     ),
                   ),
                 ),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        FlutterFlowTheme.of(context).secondaryBackground,
-                        Color(0xEFF2F2F7),
-                        Color(0x00F2F2F7)
-                      ],
-                      stops: [0, 0.8, 1],
-                      begin: AlignmentDirectional(0, -1),
-                      end: AlignmentDirectional(0, 1),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(12, 55, 12, 12),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          width: 45,
-                          height: 45,
-                          decoration: BoxDecoration(
-                            boxShadow: [
-                              BoxShadow(
-                                blurRadius: 7,
-                                color: Color(0x0D2C2C2C),
-                                offset: Offset(
-                                  0,
-                                  2,
-                                ),
-                              )
-                            ],
-                            shape: BoxShape.circle,
-                          ),
-                          child: FlutterFlowIconButton(
-                            borderRadius: 70,
-                            buttonSize: 45,
-                            fillColor: Colors.white,
-                            icon: Icon(
-                              FFIcons.kchevronLeft,
-                              color: FlutterFlowTheme.of(context).primaryText,
-                              size: 20,
-                            ),
-                            onPressed: () async {
-                              context.safePop();
-                            },
-                          ),
-                        ),
-                        Text(
-                          FFLocalizations.of(context).getText(
-                            'qzktwdnl' /* Финансы */,
-                          ),
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 18,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.normal,
-                                  ),
-                        ),
-                        Container(
-                          width: 45,
-                          height: 45,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ],
-                    ),
+                BasicPageHeader(
+                  title: FFLocalizations.of(context).getText(
+                    'qzktwdnl' /* Финансы */,
                   ),
                 ),
                 Align(

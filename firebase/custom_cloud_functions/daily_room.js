@@ -31,6 +31,13 @@ function getRoomNameFromUrl(roomUrl) {
   }
 }
 
+function resolveDailyRoomName(sessionData = {}) {
+  const roomName = sessionData.dailyRoomName
+    ? String(sessionData.dailyRoomName).trim()
+    : "";
+  return roomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
+}
+
 async function getDailyRoom(roomName) {
   if (!roomName) return null;
   const { apiKey } = getDailyEnv();
@@ -53,6 +60,103 @@ async function getDailyRoom(roomName) {
     }
     throw error;
   }
+}
+
+async function getDailyRoomPresence(roomName) {
+  if (!roomName) {
+    return { participants: [], count: 0 };
+  }
+
+  const { apiKey } = getDailyEnv();
+
+  const response = await axios.get(
+    "https://api.daily.co/v1/presence",
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "User-Agent": "SmallTalk-App/1.0",
+      },
+      timeout: 5000,
+    },
+  );
+  const participants = readDailyPresenceParticipants(
+    response.data || {},
+    roomName,
+  );
+  return {
+    roomName,
+    participants,
+    count: participants.length,
+  };
+}
+
+function readDailyPresenceParticipants(presenceData = {}, roomName = "") {
+  if (!presenceData || typeof presenceData !== "object") {
+    return [];
+  }
+  if (Array.isArray(presenceData)) {
+    return presenceData.filter((participant) => {
+      return participant && typeof participant === "object";
+    });
+  }
+  const normalizedRoomName = typeof roomName === "string" ? roomName.trim() : "";
+  if (
+    normalizedRoomName &&
+    Array.isArray(presenceData[normalizedRoomName])
+  ) {
+    return readDailyPresenceParticipants(presenceData[normalizedRoomName]);
+  }
+  return Array.isArray(presenceData.participants)
+    ? presenceData.participants.filter((participant) => {
+      return participant && typeof participant === "object";
+    })
+    : [];
+}
+
+function dailyPresenceHasUser(presenceData = {}, userId, roomName = "") {
+  const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
+  if (!normalizedUserId) {
+    return false;
+  }
+
+  return readDailyPresenceParticipants(presenceData, roomName)
+    .some((participant) => {
+    const candidateIds = [
+      participant.user_id,
+      participant.userId,
+      participant.userID,
+    ];
+    return candidateIds.some((candidate) => {
+      return typeof candidate === "string" && candidate.trim() === normalizedUserId;
+    });
+  });
+}
+
+function dailyPresenceHasAcceptedParticipants({
+  presenceData = {},
+  roomName = "",
+  participantIds = [],
+}) {
+  const normalizedParticipantIds = Array.isArray(participantIds)
+    ? participantIds
+      .map((participantId) => {
+        return typeof participantId === "string" ? participantId.trim() : "";
+      })
+      .filter(Boolean)
+    : [];
+  if (normalizedParticipantIds.length < 2) {
+    return false;
+  }
+
+  return normalizedParticipantIds.every((participantId) => {
+    return dailyPresenceHasUser(presenceData, participantId, roomName);
+  });
+}
+
+async function isDailyUserPresentInRoom({ roomName, userId }) {
+  const presence = await getDailyRoomPresence(roomName);
+  return dailyPresenceHasUser(presence, userId);
 }
 
 function decodeTokenClaims(token) {
@@ -235,21 +339,33 @@ async function createMeetingToken({
   return token;
 }
 
+function isDailyRoomAlreadyDeletedError(error) {
+  if (!error || !error.response) return false;
+  return error.response.status === 404 || error.response.data?.deleted === true;
+}
+
 async function deleteDailyRoom(roomName) {
   if (!roomName) return null;
 
   try {
     const { apiKey } = getDailyEnv();
-    await axios.delete(`https://api.daily.co/v1/rooms/${roomName}`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+    await axios.delete(
+      `https://api.daily.co/v1/rooms/${encodeURIComponent(roomName)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 5000,
       },
-      timeout: 5000,
-    });
+    );
     console.log("🧹 Daily room deleted:", roomName);
     return true;
   } catch (error) {
+    if (isDailyRoomAlreadyDeletedError(error)) {
+      console.log("🧹 Daily room already deleted or expired:", roomName);
+      return true;
+    }
     console.error(
       "⚠️ Failed to delete Daily room (non-critical):",
       roomName,
@@ -264,7 +380,10 @@ module.exports = {
   createMeetingToken,
   deleteDailyRoom,
   getDailyRoom,
+  getDailyRoomPresence,
   getRoomNameFromUrl,
+  isDailyUserPresentInRoom,
+  resolveDailyRoomName,
   isDailyRoomConfigCompatible,
   DAILY_ROOM_CONFIG_VERSION,
   __private__: {
@@ -272,6 +391,11 @@ module.exports = {
     DAILY_ROOM_ENFORCE_UNIQUE_USER_IDS,
     DAILY_ROOM_MAX_PARTICIPANTS,
     buildRoomConfig,
+    dailyPresenceHasAcceptedParticipants,
+    dailyPresenceHasUser,
+    isDailyRoomAlreadyDeletedError,
     isDailyRoomConfigCompatible,
+    readDailyPresenceParticipants,
+    resolveDailyRoomName,
   },
 };

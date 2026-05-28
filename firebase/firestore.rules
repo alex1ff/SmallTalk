@@ -206,13 +206,7 @@ service cloud.firestore {
     }
 
     function canCreateTransaction() {
-      return isAdmin() || (
-        isOwnerRef(request.resource.data.userId) &&
-        (
-          request.resource.data.type != 'withdrawal' ||
-          hasApprovedTeacherAccreditation(get(currentUserRef()).data)
-        )
-      );
+      return isAdmin();
     }
 
     function protectedTeacherAccreditationFields() {
@@ -224,6 +218,15 @@ service cloud.firestore {
         'teacherAccreditationUpdatedAt',
         'verif_NS',
         'matchProfile'
+      ];
+    }
+
+    function privateUserTokenFields() {
+      return [
+        'voipToken',
+        'voipTokenUpdatedAt',
+        'voipPushToken',
+        'voipPushTokenUpdatedAt'
       ];
     }
 
@@ -401,16 +404,113 @@ service cloud.firestore {
 
     function canCreateOwnUser(userId) {
       return isSelf(userId) &&
-        !request.resource.data.keys().hasAny(protectedTeacherAccreditationFields());
+        ownUserUidIsValid(userId) &&
+        ownUserRoleCreateIsValid() &&
+        !request.resource.data.keys().hasAny(protectedTeacherAccreditationFields()) &&
+        !request.resource.data.keys().hasAny(privateUserTokenFields()) &&
+        !request.resource.data.keys().hasAny(privateUserLifecycleFields()) &&
+        !request.resource.data.keys().hasAny(serverOwnedUserFields());
     }
 
     function canUpdateOwnUser(userId) {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
       return isSelf(userId) &&
+        ownUserUidUpdateIsValid(userId) &&
+        ownUserRoleUpdateIsValid() &&
+        !changedKeys.hasAny(privateUserTokenFields()) &&
+        !changedKeys.hasAny(privateUserLifecycleFields()) &&
+        !changedKeys.hasAny(serverOwnedUserFields()) &&
         (
-          !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(protectedTeacherAccreditationFields()) ||
+          !changedKeys.hasAny(protectedTeacherAccreditationFields()) ||
           canSetOwnTeacherAccreditationPending()
         );
+    }
+
+    function canReadUserDocument(userId) {
+      return isAdmin() ||
+        isSelf(userId) ||
+        (
+          isSignedIn() &&
+          resource.data.uid == request.auth.uid
+        );
+    }
+
+    function ownUserUidIsValid(userId) {
+      return !request.resource.data.keys().hasAny(['uid']) ||
+        request.resource.data.uid == userId;
+    }
+
+    function ownUserUidUpdateIsValid(userId) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid']) ||
+        request.resource.data.uid == userId;
+    }
+
+    function ownUserRoleCreateIsValid() {
+      return !request.resource.data.keys().hasAny(['role']) ||
+        request.resource.data.get('role', '') in ['student', 'native_speaker'];
+    }
+
+    function ownUserRoleUpdateIsValid() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return !changedKeys.hasAny(['role']) ||
+        (
+          request.resource.data.get('role', '') == 'student' ||
+          canSetInitialOwnRole() ||
+          canSetOwnNativeSpeakerRole()
+        );
+    }
+
+    function canSetInitialOwnRole() {
+      return !resource.data.keys().hasAny(['role']) &&
+        request.resource.data.get('role', '') in ['student', 'native_speaker'];
+    }
+
+    function canSetOwnNativeSpeakerRole() {
+      return request.resource.data.get('role', '') == 'native_speaker' &&
+        (
+          hasApprovedTeacherAccreditation(resource.data) ||
+          hasPendingTeacherAccreditation(resource.data) ||
+          canSetOwnTeacherAccreditationPending()
+        );
+    }
+
+    function hasPendingTeacherAccreditation(data) {
+      return (
+        data.keys().hasAny(['teacherAccreditationStatus']) &&
+        data.teacherAccreditationStatus == 'pending'
+      ) ||
+      (
+        data.keys().hasAny(['teacherVerificationStatus']) &&
+        data.teacherVerificationStatus == 'pending'
+      ) ||
+      (
+        data.keys().hasAny(['verificationStatus']) &&
+        data.verificationStatus == 'pending'
+      );
+    }
+
+    function privateUserLifecycleFields() {
+      return [
+        'currentSessionId',
+        'isAvailable',
+        'isInCall',
+        'availableAfter',
+        'lastCallEndedAt'
+      ];
+    }
+
+    function serverOwnedUserFields() {
+      return [
+        'balanceST',
+        'balance_NS',
+        'earnings',
+        'giftMinutes',
+        'priorityScore',
+        'rating',
+        'subscription',
+        'queuePriority',
+        'totalCalls'
+      ];
     }
 
     function canSetOwnTeacherAccreditationPending() {
@@ -419,12 +519,10 @@ service cloud.firestore {
           'verif_NS'
         ]) &&
         (
-          !resource.data.keys().hasAny(['teacherAccreditationStatus']) ||
-          resource.data.teacherAccreditationStatus != 'approved'
+          resource.data.get('teacherAccreditationStatus', null) != 'approved'
         ) &&
         (
-          !resource.data.keys().hasAny(['verif_NS']) ||
-          resource.data.verif_NS != true
+          resource.data.get('verif_NS', null) != true
         ) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'teacherVerificationStatus',
@@ -433,15 +531,28 @@ service cloud.firestore {
           'teacherAccreditationUpdatedAt',
           'matchProfile'
         ]) &&
-        request.resource.data.teacherAccreditationStatus == 'pending' &&
-        request.resource.data.verif_NS == false;
+        request.resource.data.get('teacherAccreditationStatus', null) == 'pending' &&
+        request.resource.data.get('verif_NS', null) == false;
     }
 
     match /users/{userId} {
       allow create: if isAdmin() || canCreateOwnUser(userId);
-      allow read: if isSignedIn();
+      allow get, list: if canReadUserDocument(userId);
       allow update: if isAdmin() || canUpdateOwnUser(userId);
       allow delete: if isAdmin();
+    }
+
+    match /userPrivateTokens/{userId} {
+      allow read, write: if false;
+    }
+
+    match /registrationGiftClaims/{userId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /userPublicProfiles/{userId} {
+      allow read: if isSignedIn();
+      allow write: if false;
     }
 
     match /teacherVerificationRequests/{userId} {

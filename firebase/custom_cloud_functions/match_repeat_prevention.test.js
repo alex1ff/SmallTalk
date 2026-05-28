@@ -154,3 +154,32 @@ test(
     assert.deepEqual(payload.data.participantIds, ["student-a", "teacher-b"]);
   },
 );
+
+test("buildCompletedPairHistoryWrite ignores startedAt without Daily verification", () => {
+  const db = admin.firestore();
+  const completedAtMillis = Date.parse("2026-04-15T00:01:00Z");
+  const sessionRef = db.collection("videoSessions").doc("client-only-session");
+
+  const payload = buildCompletedPairHistoryWrite({
+    db,
+    sessionId: sessionRef.id,
+    sessionRef,
+    sessionData: {
+      studentId: "student-a",
+      tutorId: "teacher-b",
+      startedAt: {
+        toMillis: () => Date.parse("2026-04-14T23:56:00Z"),
+      },
+      sessionMetadata: {
+        connectedParticipantSignals: {
+          "student-a": {source: "markSessionConnected"},
+          "teacher-b": {source: "markSessionConnected"},
+        },
+        connectedParticipantSignalsComplete: true,
+      },
+    },
+    completedAtMillis,
+  });
+
+  assert.equal(payload, null);
+});

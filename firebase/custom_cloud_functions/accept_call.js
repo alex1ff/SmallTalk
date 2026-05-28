@@ -1,10 +1,12 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
+const { getUserVoipTokens } = require("./voip_tokens");
 const {
   createDailyRoom,
   createMeetingToken,
   DAILY_ROOM_CONFIG_VERSION,
+  deleteDailyRoom,
   getDailyRoom,
   getRoomNameFromUrl,
   isDailyRoomConfigCompatible,
@@ -13,8 +15,10 @@ const { evaluateTutorAvailabilityWindow } = require("./availability");
 const {
   buildAcceptedSessionPolicyState,
   buildSessionUserInfo,
+  getCredentialTtlSeconds,
   getRequesterId,
   isApprovedTeacher,
+  isCredentialSessionJoinable,
   isSupportedSessionRole,
   normalizeRole,
 } = require("./video_sessions_shared");
@@ -52,6 +56,23 @@ function buildAcceptCallResponseSessionData(sessionData = {}) {
   };
 }
 
+function getDailyCredentialTtlOrThrow(sessionData = {}) {
+  if (!isCredentialSessionJoinable(sessionData)) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      `Session is not joinable (status: ${sessionData.status || "unknown"})`,
+    );
+  }
+  const credentialTtlSeconds = getCredentialTtlSeconds(sessionData, 60 * 60);
+  if (credentialTtlSeconds < 1) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Session credential window has expired",
+    );
+  }
+  return credentialTtlSeconds;
+}
+
 exports.acceptCall = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .https.onCall(async (data, context) => {
@@ -60,6 +81,7 @@ exports.acceptCall = functions
     let tutorId = null;
     let sessionRef = null;
     let lockAcquired = false;
+    let transientDailyRoomName = null;
     try {
       // === 1. АУТЕНТИФИКАЦИЯ И ВАЛИДАЦИЯ ===
       if (!context.auth) {
@@ -178,12 +200,14 @@ exports.acceptCall = functions
         let existingRoomName =
           sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
         let existingMeetingToken = null;
+        const existingCredentialTtlSeconds =
+          getDailyCredentialTtlOrThrow(sessionData);
 
         if (existingRoomName) {
           try {
             existingMeetingToken = await createMeetingToken({
               roomName: existingRoomName,
-              expSeconds: 3600,
+              expSeconds: existingCredentialTtlSeconds,
               isOwner: false,
               userId: tutorId,
               userName:
@@ -291,6 +315,14 @@ exports.acceptCall = functions
 
       // === 5. ПОЛУЧЕНИЕ ИЛИ СОЗДАНИЕ КОМНАТЫ DAILY.CO ===
       console.log("🏠 Resolving Daily.co room...");
+      const activePolicyUpdate =
+        buildAcceptCallPolicyUpdateFields(sessionData);
+      const acceptedSessionCredentialData = {
+        status: "active",
+        expiresAt: activePolicyUpdate.sessionUpdateFields.expiresAt,
+      };
+      const readAcceptedCredentialTtlSeconds = () =>
+        getDailyCredentialTtlOrThrow(acceptedSessionCredentialData);
 
       let roomUrl = sessionData.dailyRoomUrl || null;
       let roomName =
@@ -350,36 +382,19 @@ exports.acceptCall = functions
         }
       }
 
-      let studentMeetingToken = null;
-
       if (roomUrl && roomName) {
-        // Create tutor and student tokens in parallel
+        const tokenExpSeconds = readAcceptedCredentialTtlSeconds();
         try {
-          const studentName =
-            sessionData.studentInfo?.name ||
-            studentData.display_name ||
-            "Caller";
-          const [tutorToken, studentToken] = await Promise.all([
-            createMeetingToken({
-              roomName,
-              expSeconds: 3600,
-              isOwner: false,
-              userId: tutorId,
-              userName: tutorData.display_name || "Partner",
-            }),
-            createMeetingToken({
-              roomName,
-              expSeconds: 3600,
-              isOwner: true,
-              userId: requesterId,
-              userName: studentName,
-            }),
-          ]);
-          meetingToken = tutorToken;
-          studentMeetingToken = studentToken;
+          meetingToken = await createMeetingToken({
+            roomName,
+            expSeconds: tokenExpSeconds,
+            isOwner: false,
+            userId: tutorId,
+            userName: tutorData.display_name || "Partner",
+          });
         } catch (tokenError) {
           console.error(
-            "❌ Failed to create meeting tokens for precreated room:",
+            "❌ Failed to create tutor meeting token for precreated room:",
             tokenError.message,
           );
         }
@@ -390,11 +405,11 @@ exports.acceptCall = functions
           roomUrl = null;
           roomName = null;
           roomCreatedAt = null;
-          studentMeetingToken = null;
         }
       }
 
       if (!roomUrl) {
+        const roomExpSeconds = readAcceptedCredentialTtlSeconds();
         try {
           const studentName =
             sessionData.studentInfo?.name ||
@@ -406,31 +421,20 @@ exports.acceptCall = functions
             tutorId,
             studentName,
             tutorName: tutorData.display_name || "Partner",
-            expSeconds: 3600,
+            expSeconds: roomExpSeconds,
           });
           roomUrl = dailyRoom.url;
           roomName = dailyRoom.name;
+          transientDailyRoomName = dailyRoom.name;
           roomCreatedAt = Date.now();
 
-          // Create tutor and student tokens in parallel
-          const [tutorToken, studentToken] = await Promise.all([
-            createMeetingToken({
-              roomName,
-              expSeconds: 3600,
-              isOwner: false,
-              userId: tutorId,
-              userName: tutorData.display_name || "Partner",
-            }),
-            createMeetingToken({
-              roomName,
-              expSeconds: 3600,
-              isOwner: true,
-              userId: requesterId,
-              userName: studentName,
-            }),
-          ]);
-          meetingToken = tutorToken;
-          studentMeetingToken = studentToken;
+          meetingToken = await createMeetingToken({
+            roomName,
+            expSeconds: readAcceptedCredentialTtlSeconds(),
+            isOwner: false,
+            userId: tutorId,
+            userName: tutorData.display_name || "Partner",
+          });
         } catch (roomError) {
           console.error("❌ Failed to create Daily room:", roomError);
           throw new functions.https.HttpsError(
@@ -450,8 +454,6 @@ exports.acceptCall = functions
 
       // === 6. ОБНОВЛЕНИЕ СЕССИИ В ТРАНЗАКЦИИ ===
       console.log("🔄 Updating session and user statuses in transaction...");
-      const activePolicyUpdate =
-        buildAcceptCallPolicyUpdateFields(sessionData);
       const txnResult = await admin
         .firestore()
         .runTransaction(async (transaction) => {
@@ -519,11 +521,6 @@ exports.acceptCall = functions
               activePolicyUpdate.sessionUpdateFields.sessionPolicy;
           }
 
-          // Store student meeting token in session for faster student join
-          if (studentMeetingToken) {
-            sessionUpdate.studentMeetingToken = studentMeetingToken;
-          }
-
           transaction.update(sessionRef, sessionUpdate);
 
           // Обновляем статус преподавателя
@@ -540,6 +537,10 @@ exports.acceptCall = functions
         });
 
       if (txnResult?.alreadyAccepted) {
+        if (transientDailyRoomName) {
+          await deleteDailyRoom(transientDailyRoomName);
+          transientDailyRoomName = null;
+        }
         console.log(
           "ℹ️ Session already active for this tutor (txn), returning existing room",
         );
@@ -548,11 +549,13 @@ exports.acceptCall = functions
         const existingRoomName =
           existing.dailyRoomName || getRoomNameFromUrl(existingRoomUrl);
         let existingMeetingToken = null;
+        const existingCredentialTtlSeconds =
+          getDailyCredentialTtlOrThrow(existing);
         if (existingRoomName) {
           try {
             existingMeetingToken = await createMeetingToken({
               roomName: existingRoomName,
-              expSeconds: 3600,
+              expSeconds: existingCredentialTtlSeconds,
               isOwner: false,
               userId: tutorId,
               userName: tutorData.display_name || "Partner",
@@ -576,6 +579,8 @@ exports.acceptCall = functions
         };
       }
 
+      transientDailyRoomName = null;
+
       // 🔔 === ОТПРАВКА PUSH + ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ (ПАРАЛЛЕЛЬНО) ===
       console.log("📲 Sending push + updating notifications in parallel...");
       await Promise.all([
@@ -585,7 +590,7 @@ exports.acceptCall = functions
           callerId: tutorId,
           callerPhoto: tutorData.photo_url || null,
           roomUrl: roomUrl,
-          meetingToken: studentMeetingToken || "",
+          meetingToken: "",
           roomName: roomName || "",
         }).catch((pushError) => {
           console.error(
@@ -652,6 +657,11 @@ exports.acceptCall = functions
         }
       }
 
+      if (transientDailyRoomName) {
+        await deleteDailyRoom(transientDailyRoomName);
+        transientDailyRoomName = null;
+      }
+
       if (error.code && error.message) {
         throw error;
       }
@@ -693,8 +703,8 @@ async function sendVoipPushToStudent(studentId, callData) {
     const voipTopic =
       process.env.IOS_VOIP_TOPIC ||
       (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
-    const voipPushToken = studentData.voipPushToken;
-    const fcmToken = studentData.voipToken;
+    const { voipPushToken, voipToken: fcmToken } =
+      await getUserVoipTokens(studentId, studentData);
 
     if (!voipPushToken && !fcmToken) {
       console.log("⚠️ Student has no push tokens saved.");
@@ -733,7 +743,7 @@ async function sendVoipPushToStudent(studentId, callData) {
       return;
     }
 
-    console.log("📱 FCM token found:", fcmToken.substring(0, 20) + "...");
+    console.log("📱 FCM token found");
     console.log("📦 Using apns-topic for FCM fallback:", bundleId);
 
     const message = {

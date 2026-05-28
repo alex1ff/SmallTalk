@@ -3,6 +3,8 @@ import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.d
 import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/flutter_flow/permissions_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import '/services/partner_filter_preferences.dart';
 import '/services/user_match_profile.dart';
@@ -102,12 +104,10 @@ class _WaitingForTeacherPageWidgetState
     final status = _nonEmpty(data['status']?.toString()) ?? '';
     final roomUrl = _nonEmpty(data['dailyRoomUrl']?.toString()) ?? '';
     final roomName = _nonEmpty(data['dailyRoomName']?.toString()) ?? '';
-    final meetingToken =
-        _nonEmpty(data['studentMeetingToken']?.toString()) ?? '';
     final studentTriggered =
         data['studentNavigationTriggered'] == true ? '1' : '0';
 
-    return '$status|$roomUrl|$roomName|$meetingToken|$studentTriggered';
+    return '$status|$roomUrl|$roomName|$studentTriggered';
   }
 
   void _detachSessionListener() {
@@ -259,6 +259,27 @@ class _WaitingForTeacherPageWidgetState
           'WaitingForTeacher: user profile is not ready yet, delaying createVideoSession.',
         );
         _createSessionRequested = false;
+        return;
+      }
+
+      final hasMediaPermissions = await ensureCameraAndMicrophonePermissions();
+      if (!mounted) {
+        return;
+      }
+      if (!hasMediaPermissions) {
+        _createSessionRequested = false;
+        _model.sessionId = null;
+        _createFailed = true;
+        _createMessage = _localizedText(
+          ruText: 'Разрешите доступ к камере и микрофону, чтобы начать звонок.',
+          enText: 'Allow camera and microphone access to start a call.',
+        );
+        debugPrint(
+          'WaitingForTeacher: camera or microphone permission denied before createVideoSession.',
+        );
+        return;
+      }
+      if (!mounted) {
         return;
       }
 
@@ -434,23 +455,15 @@ class _WaitingForTeacherPageWidgetState
     final status = data['status'] as String?;
     final roomUrl = _nonEmpty(data['dailyRoomUrl'] as String?);
     final roomName = _nonEmpty(data['dailyRoomName'] as String?);
-    final studentMeetingToken =
-        _nonEmpty(data['studentMeetingToken'] as String?);
     final studentTriggered = data['studentNavigationTriggered'] == true;
 
     final isActive = status == 'active' || status == 'connected';
 
     // Navigate when session is active and we have room data
-    if ((isActive || studentTriggered) && roomUrl != null) {
-      if (studentMeetingToken != null) {
-        _navigateToVideoCall(
-          roomUrl: roomUrl,
-          meetingToken: studentMeetingToken,
-          roomName: roomName,
-        );
-      } else if (!_tokenFetchInProgress) {
-        _fetchTokenAndNavigate(roomUrl: roomUrl, roomName: roomName);
-      }
+    if ((isActive || studentTriggered) &&
+        roomUrl != null &&
+        !_tokenFetchInProgress) {
+      _fetchTokenAndNavigate(roomUrl: roomUrl, roomName: roomName);
     }
 
     // Auto-pop on terminal statuses
@@ -547,7 +560,7 @@ class _WaitingForTeacherPageWidgetState
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: sessionId == null
             ? _buildStatusBody(context,
                 status: null, isLoading: isLoading, data: null)
@@ -743,8 +756,8 @@ class _WaitingForTeacherPageWidgetState
                     child: Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).primaryBackground,
-                        borderRadius: BorderRadius.circular(26.0),
+                        color: ExpatlioDesign.card,
+                        borderRadius: BorderRadius.circular(16.0),
                       ),
                       child: Padding(
                         padding: EdgeInsets.all(16.0),
@@ -807,7 +820,7 @@ class _WaitingForTeacherPageWidgetState
                     ),
                     options: FFButtonOptions(
                       width: double.infinity,
-                      height: 50.0,
+                      height: ExpatlioDesign.buttonHeight,
                       padding:
                           EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
                       iconAlignment: IconAlignment.end,

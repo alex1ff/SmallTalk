@@ -1,21 +1,26 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
+import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_card/review_card_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
+import '/shared_pages/design/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
+import '/services/user_match_profile.dart';
+// ─── SUBSCRIPTION REWORK ─ gating helper. Replaces balanceST < 0 check.
+import '/utils/subscription_utils.dart';
 import '/index.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'dart:ui' as ui;
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
@@ -44,6 +49,7 @@ class NativeSpeakerPageWidget extends StatefulWidget {
 
 class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   late NativeSpeakerPageModel _model;
+  late Stream<UserPublicProfilesRecord?> _publicProfileStream;
   late Future<List<StatsRecord>> _statsFuture;
   late Future<List<ReviewsRecord>> _reviewsFuture;
 
@@ -62,118 +68,104 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     );
   }
 
-  int? _normalizeOffsetMinutes(dynamic rawValue) {
-    if (rawValue is int) {
-      return rawValue;
+  String _localizedCountryName(CountryStruct country) {
+    final countryName = FFLocalizations.of(context)
+        .getVariableText(
+          ruText: country.nameRu.isNotEmpty ? country.nameRu : country.nameEn,
+          enText: country.nameEn.isNotEmpty ? country.nameEn : country.nameRu,
+        )
+        .trim();
+    if (countryName.isNotEmpty) {
+      return countryName;
     }
-    if (rawValue is double) {
-      return rawValue.toInt();
-    }
-    if (rawValue is String) {
-      return int.tryParse(rawValue.trim());
-    }
-    return null;
+    return country.code;
   }
 
-  int? _parseTimeBoundary(String? rawValue) {
-    if (rawValue == null) {
-      return null;
+  String _profileDisplayName(UserPublicProfilesRecord tutorProfile) {
+    final displayName = tutorProfile.displayName.trim();
+    if (displayName.isNotEmpty) {
+      return displayName;
     }
 
-    final match = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(rawValue.trim());
-    if (match == null) {
-      return null;
-    }
-
-    final hours = int.tryParse(match.group(1)!);
-    final minutes = int.tryParse(match.group(2)!);
-    if (hours == null ||
-        minutes == null ||
-        hours < 0 ||
-        hours > 23 ||
-        minutes < 0 ||
-        minutes > 59) {
-      return null;
-    }
-
-    return hours * 60 + minutes;
+    return _localizedText(
+      ruText: 'Пользователь',
+      enText: 'User',
+    );
   }
 
-  bool _intervalContains({
-    required int localMinutes,
-    required int startMinutes,
-    required int endMinutes,
-  }) {
-    if (startMinutes == endMinutes) {
-      return false;
+  String _profileCountryAndStatus(UserPublicProfilesRecord tutorProfile) {
+    final countryName = _localizedCountryName(tutorProfile.countryNS);
+    final status = _buildTutorStatusLabel(tutorProfile);
+    if (countryName.isEmpty) {
+      return status;
     }
 
-    if (startMinutes < endMinutes) {
-      return localMinutes >= startMinutes && localMinutes < endMinutes;
-    }
-
-    return localMinutes >= startMinutes || localMinutes < endMinutes;
+    return '$countryName | $status';
   }
 
-  bool _isTutorAvailableNow(UsersRecord tutorRecord) {
-    final availabilityToday = tutorRecord.availabilityToday;
-    final enabled = availabilityToday.enabled;
-    if (!enabled) {
-      return false;
-    }
-
-    final intervals = availabilityToday.intervals;
-    if (intervals.isEmpty) {
-      return true;
-    }
-
-    final timezoneOffsetMinutes = _normalizeOffsetMinutes(
-        tutorRecord.snapshotData['timezoneOffsetMinutes']);
-    if (timezoneOffsetMinutes == null) {
-      return true;
-    }
-
-    final localNow =
-        DateTime.now().toUtc().add(Duration(minutes: timezoneOffsetMinutes));
-    final localMinutes = localNow.hour * 60 + localNow.minute;
-
-    for (final interval in intervals) {
-      final startMinutes = _parseTimeBoundary(interval.start);
-      final endMinutes = _parseTimeBoundary(interval.end);
-      if (startMinutes == null || endMinutes == null) {
-        continue;
-      }
-
-      if (_intervalContains(
-        localMinutes: localMinutes,
-        startMinutes: startMinutes,
-        endMinutes: endMinutes,
-      )) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  String _buildTutorStatusLabel(UsersRecord tutorRecord) {
-    if (tutorRecord.isInCall) {
+  String _buildTutorStatusLabel(UserPublicProfilesRecord tutorProfile) {
+    if (tutorProfile.approvedTeacher) {
       return _localizedText(
-        ruText: 'Занят',
-        enText: 'Busy',
-      );
-    }
-
-    if (_isTutorAvailableNow(tutorRecord)) {
-      return _localizedText(
-        ruText: 'В сети',
-        enText: 'Online',
+        ruText: 'Проверенный преподаватель',
+        enText: 'Verified tutor',
       );
     }
 
     return _localizedText(
-      ruText: 'Не в сети',
-      enText: 'Offline',
+      ruText: 'Носитель языка',
+      enText: 'Native speaker',
+    );
+  }
+
+  bool _isVerifiedNativeSpeaker(UserPublicProfilesRecord tutorProfile) {
+    return tutorProfile.role == UserRole.native_speaker &&
+        tutorProfile.approvedTeacher;
+  }
+
+  Stream<UserPublicProfilesRecord?> _nativeSpeakerPublicProfileStream(
+    DocumentReference? targetRef,
+  ) {
+    if (targetRef == null || targetRef.id.isEmpty) {
+      return Stream<UserPublicProfilesRecord?>.value(null);
+    }
+
+    return UserPublicProfilesRecord.maybeGetDocument(
+      UserPublicProfilesRecord.collection.doc(targetRef.id),
+    );
+  }
+
+  void _bindNativeSpeakerRef(DocumentReference? targetRef) {
+    _publicProfileStream = _nativeSpeakerPublicProfileStream(targetRef);
+    _statsFuture = queryStatsRecordOnce(
+      parent: targetRef,
+      queryBuilder: (statsRecord) => statsRecord.where(
+        'isAllTime',
+        isEqualTo: true,
+      ),
+      singleRecord: true,
+    );
+    _reviewsFuture = queryReviewsRecordOnce(
+      queryBuilder: (reviewsRecord) => reviewsRecord
+          .where(
+            'toUserId',
+            isEqualTo: targetRef,
+          )
+          .orderBy('createdAt', descending: true),
+    );
+    _model.ratingBarValue = null;
+  }
+
+  Widget _buildProfileUnavailableState() {
+    return Scaffold(
+      backgroundColor: ExpatlioDesign.background,
+      body: Center(
+        child: EmptyWidget(
+          txt: _localizedText(
+            ruText: 'Профиль преподавателя недоступен.',
+            enText: 'Tutor profile is unavailable.',
+          ),
+        ),
+      ),
     );
   }
 
@@ -187,27 +179,74 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     );
   }
 
+  Map<String, dynamic> _stringKeyedMap(Object? value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is Map) {
+      return value.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return const <String, dynamic>{};
+  }
+
+  void _showDirectCallUnavailableSnackBar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _localizedText(
+            ruText: 'Преподаватель сейчас недоступен.',
+            enText: 'Tutor is unavailable right now.',
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _ensureDirectCallStatus(String targetTutorId) async {
+    try {
+      final activeLanguage =
+          resolveUserActiveConversationLanguage(currentUserDocument);
+      final payload = <String, dynamic>{
+        'targetUserId': targetTutorId,
+        if (activeLanguage != null && activeLanguage.isNotEmpty)
+          'language': activeLanguage,
+      };
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('getDirectCallStatus')
+          .call(payload);
+      final statusData = _stringKeyedMap(result.data);
+      if (statusData['canStartDirectCall'] == true) {
+        return true;
+      }
+    } on FirebaseFunctionsException catch (error) {
+      debugPrint(
+        'NativeSpeakerPage: getDirectCallStatus failed: '
+        '${error.code} ${error.message ?? ''}',
+      );
+    } catch (error) {
+      debugPrint('NativeSpeakerPage: direct call status failed: $error');
+    }
+
+    if (mounted) {
+      _showDirectCallUnavailableSnackBar();
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
     _model = createModel(context, () => NativeSpeakerPageModel());
     _scrollController.addListener(_onScroll);
-    _statsFuture = queryStatsRecordOnce(
-      parent: widget.nsUserDocRef,
-      queryBuilder: (statsRecord) => statsRecord.where(
-        'isAllTime',
-        isEqualTo: true,
-      ),
-      singleRecord: true,
-    );
-    _reviewsFuture = queryReviewsRecordOnce(
-      queryBuilder: (reviewsRecord) => reviewsRecord
-          .where(
-            'toUserId',
-            isEqualTo: widget.nsUserDocRef,
-          )
-          .orderBy('createdAt', descending: true),
-    );
+    _bindNativeSpeakerRef(widget.nsUserDocRef);
+  }
+
+  @override
+  void didUpdateWidget(NativeSpeakerPageWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.nsUserDocRef?.path != widget.nsUserDocRef?.path) {
+      _bindNativeSpeakerRef(widget.nsUserDocRef);
+    }
   }
 
   double get _snapOffset {
@@ -263,12 +302,13 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<UsersRecord>(
-      stream: UsersRecord.getDocument(widget.nsUserDocRef!),
+    return StreamBuilder<UserPublicProfilesRecord?>(
+      stream: _publicProfileStream,
       builder: (context, snapshot) {
-        if (snapshot.hasError || !snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
           return Scaffold(
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: Center(
               child: SizedBox(
                 width: 50.0,
@@ -282,21 +322,24 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
           );
         }
 
-        final nativeSpeakerPageUsersRecord = snapshot.data!;
+        final nativeSpeakerPublicProfile = snapshot.data;
+        if (snapshot.hasError || nativeSpeakerPublicProfile == null) {
+          return _buildProfileUnavailableState();
+        }
+
         final hasInstructionLanguage = _hasLanguageData(
-          nativeSpeakerPageUsersRecord.languageInstructionNS,
+          nativeSpeakerPublicProfile.languageInstructionNS,
         );
         final hasNativeLanguage = _hasLanguageData(
-          nativeSpeakerPageUsersRecord.nativeLanguageNS,
+          nativeSpeakerPublicProfile.nativeLanguageNS,
         );
-        final isAvailableForCalls =
-            _isTutorAvailableNow(nativeSpeakerPageUsersRecord);
+        final isVerifiedNativeSpeaker =
+            _isVerifiedNativeSpeaker(nativeSpeakerPublicProfile);
         final isBlockedByStudent =
             (currentUserDocument?.blockedUsers.toList() ?? [])
                 .contains(widget.nsUserDocRef);
         final canStartDirectCall = !widget.hideDirectCallAction &&
-            !nativeSpeakerPageUsersRecord.isInCall &&
-            isAvailableForCalls &&
+            isVerifiedNativeSpeaker &&
             !isBlockedByStudent;
         final conversationRef = _conversationRefForPeer(widget.nsUserDocRef);
         final canOpenChat = widget.hideDirectCallAction &&
@@ -310,7 +353,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
           },
           child: Scaffold(
             key: scaffoldKey,
-            backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+            backgroundColor: ExpatlioDesign.background,
             body: Stack(
               children: [
                 CustomScrollView(
@@ -323,12 +366,12 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                             MediaQuery.sizeOf(context).height * 0.5,
                         minHeaderExtent:
                             MediaQuery.of(context).padding.top + kToolbarHeight,
-                        photoUrl: nativeSpeakerPageUsersRecord.photoUrl,
-                        displayName: nativeSpeakerPageUsersRecord.displayName,
-                        cityAndStatus:
-                            '${nativeSpeakerPageUsersRecord.countryNS.nameEn} | ${_buildTutorStatusLabel(nativeSpeakerPageUsersRecord)}',
-                        ratingAverage:
-                            nativeSpeakerPageUsersRecord.rating.average,
+                        photoUrl: nativeSpeakerPublicProfile.photoUrl,
+                        displayName:
+                            _profileDisplayName(nativeSpeakerPublicProfile),
+                        cityAndStatus: _profileCountryAndStatus(
+                            nativeSpeakerPublicProfile),
+                        ratingAverage: nativeSpeakerPublicProfile.ratingAverage,
                       ),
                     ),
                     SliverToBoxAdapter(
@@ -419,8 +462,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 Flexible(
                                   child: Text(
                                     functions.getReviewString(
-                                        nativeSpeakerPageUsersRecord
-                                            .rating.totalReviews
+                                        nativeSpeakerPublicProfile.ratingCount
                                             .toString()),
                                     style: FlutterFlowTheme.of(context)
                                         .bodyMedium
@@ -440,7 +482,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                             padding: EdgeInsetsDirectional.fromSTEB(
                                 16.0, 10.0, 16.0, 0.0),
                             child: Text(
-                              nativeSpeakerPageUsersRecord.aboutMe,
+                              nativeSpeakerPublicProfile.aboutMe,
                               maxLines: _model.numMaxLineAbout,
                               style: FlutterFlowTheme.of(context)
                                   .bodyMedium
@@ -453,7 +495,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                             ),
                           ),
                           if (functions.aboutt(
-                                  nativeSpeakerPageUsersRecord.aboutMe,
+                                  nativeSpeakerPublicProfile.aboutMe,
                                   MediaQuery.sizeOf(context).width) ==
                               true)
                             FFButtonWidget(
@@ -476,7 +518,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                       enText: 'Hide',
                                     ),
                               options: FFButtonOptions(
-                                height: 35.0,
+                                height: ExpatlioDesign.buttonHeight,
                                 padding: EdgeInsetsDirectional.fromSTEB(
                                     16.0, 0.0, 16.0, 0.0),
                                 iconPadding: EdgeInsetsDirectional.fromSTEB(
@@ -522,7 +564,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 model: _model.languageCardModel1,
                                 updateCallback: () => safeSetState(() {}),
                                 child: LanguageCardWidget(
-                                  lang: nativeSpeakerPageUsersRecord
+                                  lang: nativeSpeakerPublicProfile
                                       .languageInstructionNS,
                                   callbackAction: (selectedLangData) async {},
                                 ),
@@ -555,7 +597,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 model: _model.languageCardModel2,
                                 updateCallback: () => safeSetState(() {}),
                                 child: LanguageCardWidget(
-                                  lang: nativeSpeakerPageUsersRecord
+                                  lang: nativeSpeakerPublicProfile
                                       .nativeLanguageNS,
                                   callbackAction: (selectedLangData) async {},
                                 ),
@@ -583,7 +625,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                             padding: EdgeInsetsDirectional.fromSTEB(
                                 0.0, 10.0, 0.0, 0.0),
                             child: _buildReviewsSection(
-                                nativeSpeakerPageUsersRecord),
+                                nativeSpeakerPublicProfile),
                           ),
                           SizedBox(
                             height: canStartDirectCall && canOpenChat
@@ -633,10 +675,11 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
                                     colors: [
-                                      Color(0x00F2F2F7),
-                                      Color(0xACF2F2F7),
-                                      FlutterFlowTheme.of(context)
-                                          .secondaryBackground
+                                      ExpatlioDesign.background
+                                          .withValues(alpha: 0.0),
+                                      ExpatlioDesign.background
+                                          .withValues(alpha: 0.84),
+                                      ExpatlioDesign.background
                                     ],
                                     stops: [0.0, 0.2, 1.0],
                                     begin: AlignmentDirectional(0.0, -1.0),
@@ -682,7 +725,9 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                 AnimatedBuilder(
                   animation: _scrollController,
                   builder: (context, _) {
-                    return _buildTopActionButtons();
+                    return _buildTopActionButtons(
+                      _profileDisplayName(nativeSpeakerPublicProfile),
+                    );
                   },
                 ),
               ],
@@ -699,86 +744,38 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         language.nameRu.isNotEmpty;
   }
 
-  Widget _buildTopCircleIconButton({
-    required Widget icon,
-    required Future<void> Function() onPressed,
-  }) {
-    return SizedBox(
-      width: 45.0,
-      height: 45.0,
-      child: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              blurRadius: 7.0,
-              color: Color(0x0D2C2C2C),
-              offset: Offset(0.0, 2.0),
-            ),
-          ],
-          shape: BoxShape.circle,
-        ),
-        child: FlutterFlowIconButton(
-          borderRadius: 70.0,
-          buttonSize: 45.0,
-          fillColor: Colors.white,
-          icon: icon,
-          onPressed: onPressed,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopActionButtons() {
-    return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(8.0, 55.0, 8.0, 0.0),
-      child: Row(
-        mainAxisSize: MainAxisSize.max,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _buildTopCircleIconButton(
+  Widget _buildTopActionButtons(String title) {
+    return BasicPageHeader(
+      title: title,
+      trailing: AuthUserStreamWidget(
+        builder: (context) {
+          final isFriend =
+              userHasFriend(currentUserDocument, widget.nsUserDocRef);
+          return IconButton(
             onPressed: () async {
-              context.safePop();
+              final targetRef = widget.nsUserDocRef;
+              final userRef = currentUserReference;
+              if (targetRef == null || userRef == null) {
+                return;
+              }
+
+              await userRef.update({
+                if (isFriend)
+                  ...buildRemoveFriendUpdateData(targetRef)
+                else
+                  ...buildAddFriendUpdateData(targetRef),
+              });
+              safeSetState(() {});
             },
             icon: Icon(
-              FFIcons.kchevronLeft,
-              color: FlutterFlowTheme.of(context).primaryText,
-              size: 20.0,
+              isFriend ? Icons.favorite_rounded : FFIcons.kheart,
+              color: isFriend
+                  ? FlutterFlowTheme.of(context).error
+                  : ExpatlioDesign.text,
+              size: 22.0,
             ),
-          ),
-          AuthUserStreamWidget(
-            builder: (context) {
-              if (userHasFriend(currentUserDocument, widget.nsUserDocRef)) {
-                return _buildTopCircleIconButton(
-                  onPressed: () async {
-                    await currentUserReference!.update({
-                      ...buildRemoveFriendUpdateData(widget.nsUserDocRef!),
-                    });
-                    safeSetState(() {});
-                  },
-                  icon: Icon(
-                    Icons.favorite_rounded,
-                    color: FlutterFlowTheme.of(context).error,
-                    size: 20.0,
-                  ),
-                );
-              } else {
-                return _buildTopCircleIconButton(
-                  onPressed: () async {
-                    await currentUserReference!.update({
-                      ...buildAddFriendUpdateData(widget.nsUserDocRef!),
-                    });
-                    safeSetState(() {});
-                  },
-                  icon: Icon(
-                    FFIcons.kheart,
-                    color: FlutterFlowTheme.of(context).primaryText,
-                    size: 20.0,
-                  ),
-                );
-              }
-            },
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -812,24 +809,31 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
             keyboardAwarePadding: false,
             padding: EdgeInsets.zero,
             action: () async {
-              final balance = currentUserDocument?.balanceST.smallTalks ?? 0.0;
-              if (balance <= 0) {
+              final targetTutorId = widget.nsUserDocRef?.id;
+              if (targetTutorId == null || targetTutorId.isEmpty) {
+                debugPrint(
+                    'NativeSpeakerPage: missing target tutor id for direct call');
+                return;
+              }
+
+              // ─── SUBSCRIPTION REWORK ─ gate by subscription or gift minutes
+              // instead of legacy balanceST > 0.
+              if (!canStartCall(currentUserDocument)) {
+                // ───────────────────────────────────────────────────────
                 await showModalBottomSheet(
                   useRootNavigator: true,
                   isScrollControlled: true,
                   backgroundColor: Colors.transparent,
                   context: context,
                   builder: (context) {
-                    return WebViewAware(
-                      child: GestureDetector(
-                        onTap: () {
-                          FocusScope.of(context).unfocus();
-                          FocusManager.instance.primaryFocus?.unfocus();
-                        },
-                        child: Padding(
-                          padding: MediaQuery.viewInsetsOf(context),
-                          child: NoBalanceWidget(),
-                        ),
+                    return GestureDetector(
+                      onTap: () {
+                        FocusScope.of(context).unfocus();
+                        FocusManager.instance.primaryFocus?.unfocus();
+                      },
+                      child: Padding(
+                        padding: MediaQuery.viewInsetsOf(context),
+                        child: NoBalanceWidget(),
                       ),
                     );
                   },
@@ -837,25 +841,16 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                 return;
               }
 
-              if (!(await getPermissionStatus(cameraPermission))) {
-                await requestPermission(cameraPermission);
+              if (!await _ensureDirectCallStatus(targetTutorId)) {
+                return;
               }
-              if (!(await getPermissionStatus(microphonePermission))) {
-                await requestPermission(microphonePermission);
-              }
-
-              final hasCameraPermission =
-                  await getPermissionStatus(cameraPermission);
-              final hasMicrophonePermission =
-                  await getPermissionStatus(microphonePermission);
-              if (!hasCameraPermission || !hasMicrophonePermission) {
+              if (!mounted) {
                 return;
               }
 
-              final targetTutorId = widget.nsUserDocRef?.id;
-              if (targetTutorId == null || targetTutorId.isEmpty) {
-                debugPrint(
-                    'NativeSpeakerPage: missing target tutor id for direct call');
+              final hasMediaPermissions =
+                  await ensureCameraAndMicrophonePermissions();
+              if (!hasMediaPermissions || !mounted) {
                 return;
               }
 
@@ -876,7 +871,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     );
   }
 
-  Widget _buildReviewsSection(UsersRecord nativeSpeakerPageUsersRecord) {
+  Widget _buildReviewsSection(UserPublicProfilesRecord nativeSpeakerProfile) {
     return FutureBuilder<List<ReviewsRecord>>(
       future: _reviewsFuture,
       builder: (context, snapshot) {
@@ -900,7 +895,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
             ratingBuckets[review.rating] = ratingBuckets[review.rating]! + 1;
           }
         }
-        final totalReviews = nativeSpeakerPageUsersRecord.rating.totalReviews;
+        final totalReviews = nativeSpeakerProfile.ratingCount;
 
         int countForRating(int ratingValue) => ratingBuckets[ratingValue] ?? 0;
 
@@ -933,7 +928,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                             children: [
                               Text(
                                 formatNumber(
-                                  nativeSpeakerPageUsersRecord.rating.average,
+                                  nativeSpeakerProfile.ratingAverage,
                                   formatType: FormatType.custom,
                                   format: '0.0',
                                   locale: '',
@@ -959,8 +954,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                   ),
                                   direction: Axis.horizontal,
                                   initialRating: _model.ratingBarValue ??=
-                                      nativeSpeakerPageUsersRecord
-                                          .rating.average,
+                                      nativeSpeakerProfile.ratingAverage,
                                   unratedColor: FlutterFlowTheme.of(context)
                                       .primaryBackground,
                                   itemCount: 5,
@@ -975,9 +969,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 child: Text(
                                   functions
                                       .getReviewString(valueOrDefault<String>(
-                                    nativeSpeakerPageUsersRecord
-                                        .rating.totalReviews
-                                        .toString(),
+                                    nativeSpeakerProfile.ratingCount.toString(),
                                     '0',
                                   )),
                                   style: FlutterFlowTheme.of(context)
@@ -1391,7 +1383,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(100.0),
+                                    borderRadius: BorderRadius.circular(18.0),
                                   ),
                                   child: Align(
                                     alignment: AlignmentDirectional(0.0, 0.0),
@@ -1439,7 +1431,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(100.0),
+                                    borderRadius: BorderRadius.circular(18.0),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
@@ -1497,7 +1489,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(100.0),
+                                    borderRadius: BorderRadius.circular(18.0),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
@@ -1555,7 +1547,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(100.0),
+                                    borderRadius: BorderRadius.circular(18.0),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
@@ -1613,7 +1605,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(100.0),
+                                    borderRadius: BorderRadius.circular(18.0),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
@@ -1671,7 +1663,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(100.0),
+                                    borderRadius: BorderRadius.circular(18.0),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
@@ -1922,6 +1914,7 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
     final subtitleColor =
         Color.lerp(Color(0xFFEDEDED), theme.secondaryText, p1)!;
     final bgColor = Colors.transparent;
+    final hasPhoto = photoUrl.trim().isNotEmpty;
 
     return Container(
       color: bgColor,
@@ -1940,15 +1933,26 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
                 opacity: photoOpacity,
                 child: ClipRRect(
                   borderRadius: photoBR,
-                  child: CachedNetworkImage(
-                    imageUrl: photoUrl,
-                    width: photoW,
-                    height: photoH,
-                    fit: BoxFit.cover,
-                    fadeInDuration: Duration.zero,
-                    fadeOutDuration: Duration.zero,
-                    memCacheWidth: 800,
-                  ),
+                  child: hasPhoto
+                      ? CachedNetworkImage(
+                          imageUrl: photoUrl,
+                          width: photoW,
+                          height: photoH,
+                          fit: BoxFit.cover,
+                          fadeInDuration: Duration.zero,
+                          fadeOutDuration: Duration.zero,
+                          memCacheWidth: 800,
+                        )
+                      : Container(
+                          width: photoW,
+                          height: photoH,
+                          color: FlutterFlowTheme.of(context).primaryBackground,
+                          child: Icon(
+                            Icons.person_rounded,
+                            color: FlutterFlowTheme.of(context).secondaryText,
+                            size: (photoW * 0.38).clamp(18.0, 44.0).toDouble(),
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -1965,7 +1969,7 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
                   height: 45.0,
                   decoration: BoxDecoration(
                     color: Color(0x3CFFFFFF),
-                    borderRadius: BorderRadius.circular(100.0),
+                    borderRadius: BorderRadius.circular(18.0),
                   ),
                   child: Padding(
                     padding: EdgeInsets.all(2.0),
@@ -2086,9 +2090,9 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        FlutterFlowTheme.of(context).secondaryBackground,
-                        Color(0xEFF2F2F7),
-                        Color(0x00F2F2F7)
+                        ExpatlioDesign.background,
+                        ExpatlioDesign.background.withValues(alpha: 0.94),
+                        ExpatlioDesign.background.withValues(alpha: 0.0)
                       ],
                       stops: [0.0, 0.8, 1.0],
                       begin: AlignmentDirectional(0.0, -1.0),

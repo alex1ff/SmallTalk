@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -71,9 +72,14 @@ class _ChipsWidgetState extends State<ChipsWidget> {
         height: 118.74,
         decoration: BoxDecoration(
           color: widget.selected
-              ? Color(0xFFE88CD4)
-              : FlutterFlowTheme.of(context).primaryBackground,
-          borderRadius: BorderRadius.circular(20.0),
+              ? ExpatlioDesign.primary.withValues(alpha: 0.10)
+              : ExpatlioDesign.card,
+          borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(
+            color: widget.selected
+                ? ExpatlioDesign.primary
+                : ExpatlioDesign.border,
+          ),
         ),
         child: Padding(
           padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
@@ -85,13 +91,15 @@ class _ChipsWidgetState extends State<ChipsWidget> {
                 width: 60.0,
                 height: 60.0,
                 decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
-                  shape: BoxShape.circle,
+                  color: widget.selected
+                      ? ExpatlioDesign.primary
+                      : ExpatlioDesign.mutedSurface,
+                  borderRadius: BorderRadius.circular(16.0),
                   border: Border.all(
                     color: widget.selected
-                        ? FlutterFlowTheme.of(context).success
-                        : FlutterFlowTheme.of(context).secondaryBackground,
-                    width: 3.0,
+                        ? ExpatlioDesign.primary
+                        : ExpatlioDesign.border,
+                    width: 1.0,
                   ),
                 ),
                 child: Align(
@@ -120,11 +128,11 @@ class _ChipsWidgetState extends State<ChipsWidget> {
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'sf pro display',
                         color: widget.selected
-                            ? FlutterFlowTheme.of(context).primaryBackground
-                            : FlutterFlowTheme.of(context).primaryText,
+                            ? ExpatlioDesign.primary
+                            : ExpatlioDesign.text,
                         fontSize: 15.0,
                         letterSpacing: 0.0,
-                        fontWeight: FontWeight.normal,
+                        fontWeight: FontWeight.w600,
                       ),
                 ),
               ),

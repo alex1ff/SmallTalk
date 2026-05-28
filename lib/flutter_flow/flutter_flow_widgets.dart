@@ -2,6 +2,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 
+import '/shared_pages/design/expatlio_design.dart';
+
 class FFButtonOptions {
   const FFButtonOptions({
     this.textAlign,
@@ -98,10 +100,31 @@ class _FFButtonWidgetState extends State<FFButtonWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final defaultTextStyle = ExpatlioDesign.textStyle(
+      context,
+      color: Colors.white,
+      size: 16.0,
+      weight: FontWeight.w600,
+    );
+    final textStyle = widget.options.textStyle ?? defaultTextStyle;
+    final borderRadius = widget.options.borderRadius ??
+        BorderRadius.circular(ExpatlioDesign.buttonRadius);
+    final borderSide = widget.options.borderSide ?? BorderSide.none;
+    final foregroundColor = textStyle.color ?? Colors.white;
+    final backgroundColor = widget.options.color ?? ExpatlioDesign.primary;
+    final disabledBackgroundColor = widget.options.disabledColor ??
+        ExpatlioDesign.inactive.withValues(alpha: 0.28);
+    final disabledForegroundColor =
+        widget.options.disabledTextColor ?? ExpatlioDesign.inactive;
+    final hoverBackgroundColor =
+        widget.options.hoverColor ?? ExpatlioDesign.primaryPressed;
+    final pressedOverlayColor =
+        widget.options.splashColor ?? Colors.white.withValues(alpha: 0.14);
+
     Widget textWidget = loading
         ? SizedBox(
             width: widget.options.width == null
-                ? _getTextWidth(text, widget.options.textStyle, maxLines)
+                ? _getTextWidth(text, textStyle, maxLines)
                 : null,
             child: Center(
               child: SizedBox(
@@ -109,7 +132,7 @@ class _FFButtonWidgetState extends State<FFButtonWidget> {
                 height: 23,
                 child: CircularProgressIndicator(
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    widget.options.textStyle?.color ?? Colors.white,
+                    foregroundColor,
                   ),
                 ),
               ),
@@ -117,8 +140,7 @@ class _FFButtonWidgetState extends State<FFButtonWidget> {
           )
         : AutoSizeText(
             text ?? '',
-            style:
-                text == null ? null : widget.options.textStyle?.withoutColor(),
+            style: text == null ? null : textStyle.withoutColor(),
             textAlign: widget.options.textAlign,
             maxLines: maxLines,
             overflow: TextOverflow.ellipsis,
@@ -147,65 +169,66 @@ class _FFButtonWidgetState extends State<FFButtonWidget> {
         if (states.contains(WidgetState.hovered) &&
             widget.options.hoverBorderSide != null) {
           return RoundedRectangleBorder(
-            borderRadius:
-                widget.options.borderRadius ?? BorderRadius.circular(8),
+            borderRadius: borderRadius,
             side: widget.options.hoverBorderSide!,
           );
         }
         return RoundedRectangleBorder(
-          borderRadius: widget.options.borderRadius ?? BorderRadius.circular(8),
-          side: widget.options.borderSide ?? BorderSide.none,
+          borderRadius: borderRadius,
+          side: borderSide,
         );
       }),
       foregroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
-        if (states.contains(WidgetState.disabled) &&
-            widget.options.disabledTextColor != null) {
-          return widget.options.disabledTextColor;
+        if (states.contains(WidgetState.disabled)) {
+          return disabledForegroundColor;
         }
         if (states.contains(WidgetState.hovered) &&
             widget.options.hoverTextColor != null) {
           return widget.options.hoverTextColor;
         }
-        return widget.options.textStyle?.color ?? Colors.white;
+        return foregroundColor;
       }),
       backgroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
-        if (states.contains(WidgetState.disabled) &&
-            widget.options.disabledColor != null) {
-          return widget.options.disabledColor;
+        if (states.contains(WidgetState.disabled)) {
+          return disabledBackgroundColor;
         }
-        if (states.contains(WidgetState.hovered) &&
-            widget.options.hoverColor != null) {
-          return widget.options.hoverColor;
+        if (states.contains(WidgetState.hovered)) {
+          return hoverBackgroundColor;
         }
-        return widget.options.color;
+        return backgroundColor;
       }),
       overlayColor: WidgetStateProperty.resolveWith<Color?>((states) {
         if (states.contains(WidgetState.pressed)) {
-          return widget.options.splashColor;
+          return pressedOverlayColor;
         }
         return widget.options.hoverColor == null ? null : Colors.transparent;
       }),
       padding: WidgetStateProperty.all(
         widget.options.padding ??
-            const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+            const EdgeInsetsDirectional.fromSTEB(18.0, 0.0, 18.0, 0.0),
+      ),
+      minimumSize: WidgetStatePropertyAll(
+        Size(0, widget.options.height ?? ExpatlioDesign.buttonHeight),
       ),
       elevation: WidgetStateProperty.resolveWith<double?>((states) {
         if (states.contains(WidgetState.hovered) &&
             widget.options.hoverElevation != null) {
           return widget.options.hoverElevation!;
         }
-        return widget.options.elevation ?? 2.0;
+        return widget.options.elevation ?? 0.0;
       }),
+      shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+      surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+      textStyle: WidgetStatePropertyAll(textStyle),
       iconColor: WidgetStateProperty.resolveWith<Color?>((states) {
-        if (states.contains(WidgetState.disabled) &&
-            widget.options.disabledTextColor != null) {
-          return widget.options.disabledTextColor;
+        if (states.contains(WidgetState.disabled)) {
+          return disabledForegroundColor;
         }
         if (states.contains(WidgetState.hovered) &&
             widget.options.hoverTextColor != null) {
           return widget.options.hoverTextColor;
         }
-        return widget.options.iconColor;
+        return widget.options.iconColor ?? foregroundColor;
       }),
     );
 
@@ -223,10 +246,9 @@ class _FFButtonWidgetState extends State<FFButtonWidget> {
           width: widget.options.width,
           decoration: BoxDecoration(
             border: Border.fromBorderSide(
-              widget.options.borderSide ?? BorderSide.none,
+              borderSide,
             ),
-            borderRadius:
-                widget.options.borderRadius ?? BorderRadius.circular(8),
+            borderRadius: borderRadius,
           ),
           child: IconButton(
             splashRadius: 1.0,

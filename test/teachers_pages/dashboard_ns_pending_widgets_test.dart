@@ -146,7 +146,8 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('Понятно'), findsOneWidget);
+    expect(find.text('Заявка на проверке'), findsOneWidget);
+    expect(find.text('Понятно'), findsNothing);
   });
 
   testWidgets('pending availability switch uses blocker tap without toggling',

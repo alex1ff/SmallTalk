@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'pop_model.dart';
 export 'pop_model.dart';
@@ -58,7 +59,7 @@ class _PopWidgetState extends State<PopWidget> {
         width: double.infinity,
         constraints: BoxConstraints(minHeight: 60.0),
         decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
+          color: ExpatlioDesign.card,
           boxShadow: [
             BoxShadow(
               blurRadius: 24.0,
@@ -72,7 +73,7 @@ class _PopWidgetState extends State<PopWidget> {
           ],
           borderRadius: cardBorderRadius,
           border: Border.all(
-            color: FlutterFlowTheme.of(context).secondaryBackground,
+            color: ExpatlioDesign.background,
           ),
         ),
         child: ClipRRect(
@@ -86,7 +87,7 @@ class _PopWidgetState extends State<PopWidget> {
                   width: 52.0,
                   height: 52.0,
                   decoration: BoxDecoration(
-                    color: Color(0xFFF2F2F7),
+                    color: ExpatlioDesign.mutedSurface,
                     borderRadius: BorderRadius.circular(18.0),
                   ),
                   child: Builder(
@@ -109,7 +110,7 @@ class _PopWidgetState extends State<PopWidget> {
                             ),
                             child: Icon(
                               FFIcons.kcheck,
-                              color: FlutterFlowTheme.of(context).primaryText,
+                              color: ExpatlioDesign.text,
                               size: 14.0,
                             ),
                           ),
@@ -135,8 +136,7 @@ class _PopWidgetState extends State<PopWidget> {
                                 .bodyMedium
                                 .override(
                                   fontFamily: 'Cool',
-                                  color:
-                                      FlutterFlowTheme.of(context).primaryText,
+                                  color: ExpatlioDesign.text,
                                   fontSize: 16.0,
                                   letterSpacing: 0.0,
                                   fontWeight: FontWeight.normal,

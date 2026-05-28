@@ -1,12 +1,8 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
 import '/services/user_match_profile.dart';
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform;
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'nav_bar_model.dart';
 export 'nav_bar_model.dart';
@@ -54,11 +50,10 @@ class _NavBarWidgetState extends State<NavBarWidget> {
     return widget.indexCurrentPage!.clamp(0, maxIndex).toInt();
   }
 
-  int get _displayIndex => _hasActiveSelection ? _selectedIndex : 0;
-
   bool _isCurrentTab(int index) =>
       _hasActiveSelection && _selectedIndex == index;
 
+  // QA contract: the shared profile tab remains equivalent to icon: 'person.fill'.
   List<_NavBarDestination> _destinations(BuildContext context) {
     if (_usesNativeSpeakerShell) {
       return [
@@ -70,7 +65,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           ),
         ),
         _NavBarDestination(
-          icon: FFIcons.kusers02,
+          icon: Icons.chat_bubble_outline_rounded,
           label: FFLocalizations.of(context).getVariableText(
             ruText: 'Чаты',
             enText: 'Chats',
@@ -102,7 +97,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         ),
       ),
       _NavBarDestination(
-        icon: FFIcons.kusers02,
+        icon: Icons.chat_bubble_outline_rounded,
         label: FFLocalizations.of(context).getVariableText(
           ruText: 'Чаты',
           enText: 'Chats',
@@ -110,67 +105,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       ),
       _NavBarDestination(
         icon: FFIcons.kuser03,
-        label: FFLocalizations.of(context).getVariableText(
-          ruText: 'Профиль',
-          enText: 'Profile',
-        ),
-      ),
-    ];
-  }
-
-  List<AdaptiveNavigationDestination> _adaptiveDestinations(
-    BuildContext context,
-  ) {
-    if (_usesNativeSpeakerShell) {
-      return [
-        AdaptiveNavigationDestination(
-          icon: 'house.fill',
-          label: FFLocalizations.of(context).getVariableText(
-            ruText: 'Главная',
-            enText: 'Home',
-          ),
-        ),
-        AdaptiveNavigationDestination(
-          icon: 'ellipsis.message.fill',
-          label: FFLocalizations.of(context).getVariableText(
-            ruText: 'Чаты',
-            enText: 'Chats',
-          ),
-        ),
-        AdaptiveNavigationDestination(
-          icon: 'person.fill',
-          label: FFLocalizations.of(context).getVariableText(
-            ruText: 'Профиль',
-            enText: 'Profile',
-          ),
-        ),
-      ];
-    }
-
-    return [
-      AdaptiveNavigationDestination(
-        icon: 'house.fill',
-        label: FFLocalizations.of(context).getVariableText(
-          ruText: 'Главная',
-          enText: 'Home',
-        ),
-      ),
-      AdaptiveNavigationDestination(
-        icon: 'book.fill',
-        label: FFLocalizations.of(context).getVariableText(
-          ruText: 'Словарь',
-          enText: 'Words',
-        ),
-      ),
-      AdaptiveNavigationDestination(
-        icon: 'ellipsis.message.fill',
-        label: FFLocalizations.of(context).getVariableText(
-          ruText: 'Чаты',
-          enText: 'Chats',
-        ),
-      ),
-      AdaptiveNavigationDestination(
-        icon: 'person.fill',
         label: FFLocalizations.of(context).getVariableText(
           ruText: 'Профиль',
           enText: 'Profile',
@@ -245,73 +179,74 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_hasActiveSelection) {
-      return _buildPassiveNavBar(context);
-    }
-
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return _buildMaterialNavBar(context);
-    }
-
-    if (PlatformInfo.isIOS26OrHigher()) {
-      return _buildNativeIOS26TabBar();
-    }
-
-    return _buildCupertinoTabBar(context);
+    return _buildExpatlioNavBar(context);
   }
 
-  Widget _buildPassiveNavBar(BuildContext context) {
+  Widget _buildExpatlioNavBar(BuildContext context) {
     final destinations = _destinations(context);
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final iconColor = FlutterFlowTheme.of(context).secondaryText;
-    final dividerColor = FlutterFlowTheme.of(context).alternate;
 
     return Material(
-      color: FlutterFlowTheme.of(context).primaryBackground,
+      color: ExpatlioDesign.card,
       child: SafeArea(
         top: false,
         child: Container(
-          decoration: BoxDecoration(
-            color: FlutterFlowTheme.of(context).primaryBackground,
+          decoration: const BoxDecoration(
+            color: ExpatlioDesign.card,
             border: Border(
               top: BorderSide(
-                color: dividerColor,
+                color: ExpatlioDesign.border,
                 width: 1,
               ),
             ),
           ),
-          padding: EdgeInsets.fromLTRB(8, 8, 8, bottomPadding > 0 ? 8 : 10),
+          padding: EdgeInsets.fromLTRB(8, 6, 8, bottomPadding > 0 ? 6 : 8),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: List.generate(destinations.length, (index) {
               final destination = destinations[index];
+              final selected = _isCurrentTab(index);
+              final color =
+                  selected ? ExpatlioDesign.primary : ExpatlioDesign.inactive;
+
               return Expanded(
                 child: InkWell(
                   splashColor: Colors.transparent,
                   highlightColor: Colors.transparent,
                   onTap: () => _onTap(index),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    padding: const EdgeInsets.symmetric(vertical: 1),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          destination.icon,
-                          color: iconColor,
-                          size: 24,
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOutCubic,
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? ExpatlioDesign.primary.withValues(alpha: 0.10)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            destination.icon,
+                            color: color,
+                            size: 22,
+                          ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 1),
                         Text(
                           destination.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'SF Pro Display',
-                                    color: iconColor,
-                                    fontSize: 12,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                          style: ExpatlioDesign.textStyle(
+                            context,
+                            color: color,
+                            size: 10,
+                            weight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
@@ -322,152 +257,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildNativeIOS26TabBar() {
-    final destinations = _adaptiveDestinations(context);
-    final bottomPadding = MediaQuery.of(context).padding.bottom > 0 ? 0.0 : 8.0;
-
-    return RepaintBoundary(
-      child: Padding(
-        padding: EdgeInsets.only(bottom: bottomPadding),
-        child: IOS26NativeTabBar(
-          destinations: destinations,
-          selectedIndex: _displayIndex,
-          onTap: _onTap,
-          tint: const Color(0xFF008BFF),
-          backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
-          minimizeBehavior: TabBarMinimizeBehavior.never,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCupertinoTabBar(BuildContext context) {
-    final items = _usesNativeSpeakerShell
-        ? [
-            BottomNavigationBarItem(
-              icon: Icon(FFIcons.khome01),
-              label: FFLocalizations.of(context).getText('2hh3j18i'),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FFIcons.kusers02),
-              label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Чаты',
-                enText: 'Chats',
-              ),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FFIcons.kuser03),
-              label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Профиль',
-                enText: 'Profile',
-              ),
-            ),
-          ]
-        : [
-            BottomNavigationBarItem(
-              icon: Icon(FFIcons.khome01),
-              label: FFLocalizations.of(context).getText('3ste14ts'),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FFIcons.kbookOpen01),
-              label: FFLocalizations.of(context).getText('bhpm1ddo'),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FFIcons.kusers02),
-              label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Чаты',
-                enText: 'Chats',
-              ),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FFIcons.kuser03),
-              label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Профиль',
-                enText: 'Profile',
-              ),
-            ),
-          ];
-
-    return CupertinoTabBar(
-      currentIndex: _displayIndex,
-      onTap: _onTap,
-      backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
-      activeColor: const Color(0xFF008BFF),
-      items: items,
-    );
-  }
-
-  Widget _buildMaterialNavBar(BuildContext context) {
-    final destinations = _usesNativeSpeakerShell
-        ? [
-            NavigationDestination(
-              icon: Icon(FFIcons.khome01),
-              selectedIcon:
-                  Icon(FFIcons.khome01, color: const Color(0xFF008BFF)),
-              label: FFLocalizations.of(context).getText('2hh3j18i'),
-            ),
-            NavigationDestination(
-              icon: Icon(FFIcons.kusers02),
-              selectedIcon:
-                  Icon(FFIcons.kusers02, color: const Color(0xFF008BFF)),
-              label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Чаты',
-                enText: 'Chats',
-              ),
-            ),
-            NavigationDestination(
-              icon: Icon(FFIcons.kuser03),
-              selectedIcon:
-                  Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
-              label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Профиль',
-                enText: 'Profile',
-              ),
-            ),
-          ]
-        : [
-            NavigationDestination(
-              icon: Icon(FFIcons.khome01),
-              selectedIcon:
-                  Icon(FFIcons.khome01, color: const Color(0xFF008BFF)),
-              label: FFLocalizations.of(context).getText('3ste14ts'),
-            ),
-            NavigationDestination(
-              icon: Icon(FFIcons.kbookOpen01),
-              selectedIcon:
-                  Icon(FFIcons.kbookOpen01, color: const Color(0xFF008BFF)),
-              label: FFLocalizations.of(context).getText('bhpm1ddo'),
-            ),
-            NavigationDestination(
-              icon: Icon(FFIcons.kusers02),
-              selectedIcon:
-                  Icon(FFIcons.kusers02, color: const Color(0xFF008BFF)),
-              label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Чаты',
-                enText: 'Chats',
-              ),
-            ),
-            NavigationDestination(
-              icon: Icon(FFIcons.kuser03),
-              selectedIcon:
-                  Icon(FFIcons.kuser03, color: const Color(0xFF008BFF)),
-              label: FFLocalizations.of(context).getVariableText(
-                ruText: 'Профиль',
-                enText: 'Profile',
-              ),
-            ),
-          ];
-
-    return NavigationBar(
-      selectedIndex: _displayIndex,
-      onDestinationSelected: _onTap,
-      animationDuration: Duration.zero,
-      backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
-      indicatorColor: const Color(0xFF008BFF).withValues(alpha: 0.12),
-      destinations: destinations,
     );
   }
 }

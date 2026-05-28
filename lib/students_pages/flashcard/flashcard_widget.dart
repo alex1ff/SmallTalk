@@ -1,8 +1,9 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/components/empty/empty_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
@@ -63,11 +64,12 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: Stack(
           children: [
             Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(12.0, 115.0, 12.0, 24.0),
+              padding:
+                  const EdgeInsetsDirectional.fromSTEB(3.0, 115.0, 3.0, 24.0),
               child: FutureBuilder<List<FlashcardSessionEntry>>(
                 future: _model.sessionFuture,
                 builder: (context, snapshot) {
@@ -92,7 +94,9 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
                                     'Failed to load flashcards. Please check data access and try again.',
                               ),
                               textAlign: TextAlign.center,
-                              style: FlutterFlowTheme.of(context).bodyMedium.override(
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
                                     fontFamily: 'sf pro display',
                                     fontSize: 16.0,
                                     letterSpacing: 0.0,
@@ -109,8 +113,9 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
                                 enText: 'Retry',
                               ),
                               options: FFButtonOptions(
-                                height: 44.0,
-                                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                                height: ExpatlioDesign.buttonHeight,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 20.0),
                                 color: FlutterFlowTheme.of(context).secondary,
                                 textStyle: FlutterFlowTheme.of(context)
                                     .titleSmall
@@ -121,7 +126,7 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
                                       letterSpacing: 0.0,
                                       fontWeight: FontWeight.w600,
                                     ),
-                                borderRadius: BorderRadius.circular(14.0),
+                                borderRadius: BorderRadius.circular(10.0),
                               ),
                             ),
                           ],
@@ -143,10 +148,11 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
                     );
                   }
 
-                  final entries = snapshot.data ?? const <FlashcardSessionEntry>[];
+                  final entries =
+                      snapshot.data ?? const <FlashcardSessionEntry>[];
                   if (entries.isEmpty) {
                     return Center(
-                      child: Container(
+                      child: SizedBox(
                         height: 500.0,
                         child: EmptyWidget(
                           txt: FFLocalizations.of(context).getVariableText(
@@ -175,69 +181,10 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
                 },
               ),
             ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    FlutterFlowTheme.of(context).secondaryBackground,
-                    const Color(0xEFF2F2F7),
-                    const Color(0x00F2F2F7),
-                  ],
-                  stops: const [0.0, 0.8, 1.0],
-                  begin: const AlignmentDirectional(0.0, -1.0),
-                  end: const AlignmentDirectional(0.0, 1.0),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(12.0, 55.0, 12.0, 12.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 45.0,
-                      height: 45.0,
-                      decoration: const BoxDecoration(
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: 7.0,
-                            color: Color(0x0D2C2C2C),
-                            offset: Offset(0.0, 2.0),
-                          ),
-                        ],
-                        shape: BoxShape.circle,
-                      ),
-                      child: FlutterFlowIconButton(
-                        borderRadius: 70.0,
-                        buttonSize: 45.0,
-                        fillColor: Colors.white,
-                        icon: Icon(
-                          FFIcons.kchevronLeft,
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          size: 20.0,
-                        ),
-                        onPressed: () async {
-                          context.safePop();
-                        },
-                      ),
-                    ),
-                    Text(
-                      FFLocalizations.of(context).getVariableText(
-                        ruText: 'Flashcards',
-                        enText: 'Flashcards',
-                      ),
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'Cool',
-                            fontSize: 18.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.normal,
-                          ),
-                    ),
-                    const SizedBox(
-                      width: 45.0,
-                      height: 45.0,
-                    ),
-                  ],
-                ),
+            BasicPageHeader(
+              title: FFLocalizations.of(context).getVariableText(
+                ruText: 'Flashcards',
+                enText: 'Flashcards',
               ),
             ),
           ],

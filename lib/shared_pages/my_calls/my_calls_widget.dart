@@ -1,12 +1,13 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/user_match_profile.dart';
 import '/shared_pages/call_details/call_details_widget.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
+import '/shared_pages/design/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
@@ -56,70 +57,10 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            FlutterFlowTheme.of(context).secondaryBackground,
-            const Color(0xEFF2F2F7),
-            const Color(0x00F2F2F7),
-          ],
-          stops: const [0.0, 0.8, 1.0],
-          begin: const AlignmentDirectional(0.0, -1.0),
-          end: const AlignmentDirectional(0.0, 1.0),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(12.0, 55.0, 12.0, 12.0),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              width: 45.0,
-              height: 45.0,
-              decoration: BoxDecoration(
-                boxShadow: const [
-                  BoxShadow(
-                    blurRadius: 7.0,
-                    color: Color(0x0D2C2C2C),
-                    offset: Offset(
-                      0.0,
-                      2.0,
-                    ),
-                  )
-                ],
-                shape: BoxShape.circle,
-              ),
-              child: FlutterFlowIconButton(
-                borderRadius: 70.0,
-                buttonSize: 45.0,
-                fillColor: Colors.white,
-                icon: Icon(
-                  FFIcons.kchevronLeft,
-                  color: FlutterFlowTheme.of(context).primaryText,
-                  size: 20.0,
-                ),
-                onPressed: () async {
-                  context.safePop();
-                },
-              ),
-            ),
-            Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Мои звонки',
-                enText: 'My calls',
-              ),
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'Cool',
-                    fontSize: 18.0,
-                    letterSpacing: 0.0,
-                    fontWeight: FontWeight.normal,
-                  ),
-            ),
-            const SizedBox(width: 45.0),
-          ],
-        ),
+    return BasicPageHeader(
+      title: FFLocalizations.of(context).getVariableText(
+        ruText: 'Мои звонки',
+        enText: 'My calls',
       ),
     );
   }
@@ -133,7 +74,7 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: AuthUserStreamWidget(
           builder: (context) {
             if (currentUserUid.isEmpty || currentUserDocument == null) {
@@ -145,8 +86,12 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
             return Stack(
               children: [
                 Padding(
-                  padding:
-                      const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.pagePadding,
+                    0.0,
+                    ExpatlioDesign.pagePadding,
+                    0.0,
+                  ),
                   child: StreamBuilder<List<VideoSessionsRecord>>(
                     stream: queryVideoSessionsRecord(
                       queryBuilder: (videoSessionsRecord) =>
@@ -184,13 +129,14 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
                       return ListView.separated(
                         padding: const EdgeInsets.fromLTRB(
                           0.0,
-                          115.0,
+                          ExpatlioDesign.pageHeaderHeight +
+                              ExpatlioDesign.sectionSpacing,
                           0.0,
-                          120.0,
+                          ExpatlioDesign.pageBottomSpacing,
                         ),
                         itemCount: sessions.length,
                         separatorBuilder: (_, __) =>
-                            const SizedBox(height: 6.0),
+                            const SizedBox(height: 0.0),
                         itemBuilder: (context, index) {
                           return _CallHistoryCard(
                             session: sessions[index],
@@ -248,12 +194,11 @@ class _CallHistoryCard extends StatelessWidget {
       width: 52.0,
       height: 52.0,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).secondaryBackground,
-        borderRadius: BorderRadius.circular(22.0),
+        color: ExpatlioDesign.mutedSurface,
+        shape: BoxShape.circle,
       ),
       child: photoUrl.isNotEmpty
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(22.0),
+          ? ClipOval(
               child: CachedNetworkImage(
                 fadeInDuration: Duration.zero,
                 fadeOutDuration: Duration.zero,
@@ -268,11 +213,12 @@ class _CallHistoryCard extends StatelessWidget {
           : Center(
               child: Text(
                 displayName.characters.first.toUpperCase(),
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'Cool',
-                      fontSize: 20.0,
-                      letterSpacing: 0.0,
-                    ),
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 14.0,
+                  weight: FontWeight.w600,
+                ),
               ),
             ),
     );
@@ -304,21 +250,32 @@ class _CallHistoryCard extends StatelessWidget {
       },
       child: Container(
         width: double.infinity,
-        height: 60.0,
+        constraints: const BoxConstraints(minHeight: 72.0),
         decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
-          borderRadius: BorderRadius.circular(26.0),
+          color: Colors.transparent,
+          border: const Border(
+            bottom: BorderSide(color: ExpatlioDesign.border),
+          ),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(4.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            0.0,
+            ExpatlioDesign.itemSpacing,
+            0.0,
+            ExpatlioDesign.itemSpacing,
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.max,
             children: [
               _buildAvatar(context),
               Expanded(
                 child: Padding(
-                  padding:
-                      const EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 0.0, 0.0),
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.itemSpacing,
+                    0.0,
+                    0.0,
+                    0.0,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.max,
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -328,28 +285,29 @@ class _CallHistoryCard extends StatelessWidget {
                         _displayName(context),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'sf pro display',
-                              fontSize: 16.0,
-                              letterSpacing: 0.0,
-                            ),
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          size: 16.0,
+                          weight: FontWeight.w700,
+                        ),
                       ),
                       Padding(
                         padding: const EdgeInsetsDirectional.fromSTEB(
-                            0.0, 2.0, 0.0, 0.0),
+                          0.0,
+                          ExpatlioDesign.compactSpacing / 4,
+                          0.0,
+                          0.0,
+                        ),
                         child: Text(
                           '$startedAtLabel • $durationLabel',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: FlutterFlowTheme.of(context)
-                              .bodyMedium
-                              .override(
-                                fontFamily: 'sf pro display',
-                                color:
-                                    FlutterFlowTheme.of(context).secondaryText,
-                                fontSize: 12.0,
-                                letterSpacing: 0.0,
-                              ),
+                          style: ExpatlioDesign.textStyle(
+                            context,
+                            color: ExpatlioDesign.muted,
+                            size: 14.0,
+                            weight: FontWeight.w400,
+                          ),
                         ),
                       ),
                     ],
@@ -357,8 +315,12 @@ class _CallHistoryCard extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.compactSpacing,
+                  0.0,
+                  ExpatlioDesign.compactSpacing,
+                  0.0,
+                ),
                 child: Icon(
                   Icons.chevron_right_rounded,
                   color: FlutterFlowTheme.of(context).secondaryText,

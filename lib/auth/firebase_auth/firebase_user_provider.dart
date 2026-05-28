@@ -2,6 +2,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:rxdart/rxdart.dart';
 
 import '../base_auth_user_provider.dart';
+// ─── SUBSCRIPTION REWORK ───────────────────────────────────────────────
+// RevenueCat needs the Firebase uid as its App User ID. We hook the
+// auth stream so login/logout in RC happens transparently whenever
+// Firebase Auth state flips.
+import '/services/subscription_service.dart';
+// ──────────────────────────────────────────────────────────────────────
 
 export '../base_auth_user_provider.dart';
 
@@ -64,6 +70,16 @@ Stream<BaseAuthUser> smallTalkFirebaseUserStream() => FirebaseAuth.instance
         .map<BaseAuthUser>(
       (user) {
         currentUser = SmallTalkFirebaseUser(user);
+        // ─── SUBSCRIPTION REWORK ───────────────────────────────────────
+        // Mirror auth state into RevenueCat. Fire-and-forget so this map
+        // stays synchronous and the stream emits without delay. The
+        // service guards re-entry and logs its own errors.
+        if (user != null && user.uid.isNotEmpty) {
+          SubscriptionService.instance.logInUser(user.uid);
+        } else {
+          SubscriptionService.instance.logOutUser();
+        }
+        // ──────────────────────────────────────────────────────────────
         return currentUser!;
       },
     ).distinct(

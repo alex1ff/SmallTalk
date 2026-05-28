@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
@@ -34,7 +35,7 @@ class StudentOnboardingGenderStep extends StatelessWidget {
               maxLines: 2,
               style: FlutterFlowTheme.of(context).bodyMedium.override(
                     fontFamily: 'Cool',
-                    color: Colors.black,
+                    color: ExpatlioDesign.text,
                     fontSize: 43.0,
                     letterSpacing: 0.0,
                     fontWeight: FontWeight.normal,
@@ -241,8 +242,8 @@ class _StudentGenderSelector extends StatelessWidget {
       key: const ValueKey<String>('student_onboarding_gender_selector'),
       height: 58.0,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(100.0),
+        color: ExpatlioDesign.card,
+        borderRadius: BorderRadius.circular(18.0),
       ),
       padding: const EdgeInsets.all(2.0),
       child: LayoutBuilder(
@@ -266,7 +267,7 @@ class _StudentGenderSelector extends StatelessWidget {
                       'student_onboarding_gender_selector_indicator'),
                   width: selectedSegmentWidth,
                   decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).secondaryBackground,
+                    color: ExpatlioDesign.background,
                     borderRadius: BorderRadius.circular(24.0),
                   ),
                 ),
@@ -337,9 +338,7 @@ class _StudentGenderSelectorItem extends StatelessWidget {
           label,
           style: FlutterFlowTheme.of(context).bodyMedium.override(
                 fontFamily: 'sf pro display',
-                color: selected
-                    ? FlutterFlowTheme.of(context).primaryText
-                    : FlutterFlowTheme.of(context).secondaryText,
+                color: selected ? ExpatlioDesign.text : ExpatlioDesign.muted,
                 letterSpacing: 0.0,
               ),
         ),

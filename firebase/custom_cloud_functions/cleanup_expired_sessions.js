@@ -1,6 +1,11 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
-const { deleteDailyRoom } = require("./daily_room");
+const {
+  resolveDailyRoomName,
+} = require("./daily_room");
+const {
+  deleteDailyRoomForSession,
+} = require("./daily_room_cleanup");
 const {
   ensureConversationCallEventForSession,
 } = require("./chats_shared");
@@ -161,7 +166,7 @@ exports.cleanupExpiredSessions = functions
 
           return {
             cleaned: true,
-            dailyRoomName: freshData.dailyRoomName || null,
+            dailyRoomName: resolveDailyRoomName(freshData),
             sessionData: {
               ...freshData,
               ...cleanupPayload.sessionUpdate,
@@ -187,7 +192,12 @@ exports.cleanupExpiredSessions = functions
           console.error("⚠️ Failed to create expired call event:", error);
         }
         if (cleanupResult.dailyRoomName) {
-          deleteDailyRoom(cleanupResult.dailyRoomName);
+          await deleteDailyRoomForSession({
+            db,
+            sessionId: doc.id,
+            roomName: cleanupResult.dailyRoomName,
+            source: "cleanupExpiredSessions",
+          });
         }
       }
 

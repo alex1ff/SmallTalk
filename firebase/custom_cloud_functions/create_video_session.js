@@ -1,8 +1,10 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
+const { getUserVoipTokens } = require("./voip_tokens");
 const {
   createDailyRoom,
+  deleteDailyRoom,
   DAILY_ROOM_CONFIG_VERSION,
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
@@ -31,6 +33,17 @@ const {
   loadSameDayRepeatCandidateIds,
   loadSameDayRepeatCandidateIdsForTransaction,
 } = require("./match_repeat_prevention");
+const {
+  checkUsageLimits,
+  hasActiveSubscription,
+  readUsage,
+} = require("./subscription_usage_shared");
+const {
+  hasUsableGiftMinutes,
+} = require("./gift_minutes_shared");
+const {
+  createIncomingCallNotificationInTransaction,
+} = require("./call_notifications");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -252,6 +265,52 @@ exports.createVideoSession = functions
           "permission-denied",
           "This user role cannot create video sessions",
         );
+      }
+
+      // Server-side gate for students. Allow the call to start iff:
+      //   (a) the user has an active subscription, OR
+      //   (b) the user has unexpired gift minutes left.
+      // Subscribers also face anti-abuse limits (60 min/day, 8 h/week)
+      // to keep tutor payouts solvent. Gift minutes are inherently
+      // bounded by the small bucket size (10 min) so no daily cap.
+      if (requesterRole === "student") {
+        const requesterHasSubscription =
+            hasActiveSubscription(requesterData, Date.now());
+        const requesterHasGift =
+            hasUsableGiftMinutes(requesterData);
+
+        if (!requesterHasSubscription && !requesterHasGift) {
+          console.warn("🛑 createVideoSession blocked: no access right", {
+            requesterId,
+          });
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "Оформите подписку или дождитесь восстановления подарочных минут.",
+            { reason: "no_active_access" },
+          );
+        }
+
+        if (requesterHasSubscription) {
+          const usageData = await readUsage(admin.firestore(), requesterId);
+          const limitCheck = checkUsageLimits(usageData);
+          if (!limitCheck.allowed) {
+            console.warn("🛑 createVideoSession blocked by usage limit", {
+              requesterId,
+              reason: limitCheck.reason,
+              dayDurationSeconds: limitCheck.dayDurationSeconds,
+              weekDurationSeconds: limitCheck.weekDurationSeconds,
+            });
+            const userMessage = limitCheck.reason === "daily_limit_reached" ?
+              "Дневной лимит звонков по подписке исчерпан. " +
+                "Возвращайтесь завтра." :
+              "Недельный лимит звонков по подписке исчерпан.";
+            throw new functions.https.HttpsError(
+              "resource-exhausted",
+              userMessage,
+              { reason: limitCheck.reason },
+            );
+          }
+        }
       }
 
       const resolvedLanguage = resolveActiveConversationLanguage(
@@ -948,6 +1007,9 @@ exports.createVideoSession = functions
       });
 
       if (!creation.created) {
+        if (precreatedRoomName) {
+          await deleteDailyRoom(precreatedRoomName);
+        }
         const excludedCount = countExcludedRepeatCandidates(
           creation.repeatPreventionContext,
         );
@@ -1009,8 +1071,8 @@ async function sendVoipPushToTutor(tutorId, callData) {
     const voipTopic =
       process.env.IOS_VOIP_TOPIC ||
       (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
-    const voipPushToken = tutorData.voipPushToken;
-    const fcmToken = tutorData.voipToken;
+    const { voipPushToken, voipToken: fcmToken } =
+      await getUserVoipTokens(tutorId, tutorData);
 
     if (!voipPushToken && !fcmToken) {
       console.log("⚠️ Tutor has no push tokens saved");
@@ -1046,7 +1108,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
       return;
     }
 
-    console.log("📱 FCM token found:", fcmToken.substring(0, 20) + "...");
+    console.log("📱 FCM token found");
     console.log("📦 Using apns-topic for FCM fallback:", bundleId);
 
     const message = {
@@ -1101,8 +1163,8 @@ exports.__private__ = {
 
 async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) {
   try {
-    const sessionRef = admin
-      .firestore()
+    const db = admin.firestore();
+    const sessionRef = db
       .collection("videoSessions")
       .doc(sessionId);
 
@@ -1148,6 +1210,15 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
           };
         }
 
+        const notification = createIncomingCallNotificationInTransaction({
+          db,
+          transaction,
+          sessionId,
+          recipientId: nextTutor,
+          sessionData: freshSessionData,
+          studentNameFallback: "Student",
+        });
+
         transaction.update(sessionRef, {
           currentTutorId: nextTutor,
         });
@@ -1156,6 +1227,8 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
           shouldNotify: true,
           nextTutor,
           sessionData: freshSessionData,
+          notificationId: notification.notificationId,
+          pushPayload: notification.pushPayload,
         };
       },
     );
@@ -1171,12 +1244,7 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
     }
 
     const nextTutor = assignment.nextTutor;
-    const sessionData = assignment.sessionData || fallbackSessionData || {};
-    const studentInfo = sessionData.studentInfo || fallbackSessionData.studentInfo || {};
-    const studentName = studentInfo.name || "Student";
-    const studentPhoto = studentInfo.photo || null;
-    const studentId = sessionData.studentId || fallbackSessionData.studentId || "";
-    const language = sessionData.language || fallbackSessionData.language || "";
+    const pushPayload = assignment.pushPayload || {};
 
     const freshValidationSnap = await sessionRef.get();
     if (!freshValidationSnap.exists) {
@@ -1200,34 +1268,17 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
       return;
     }
 
-    // Создаём уведомление в Firestore
-    const expiresAt = new Date();
-    expiresAt.setSeconds(expiresAt.getSeconds() + 45);
-
-    const notificationData = {
-      recipientId: nextTutor,
-      sessionId,
-      type: "incoming_call",
-      status: "sent",
-      title: "Входящий звонок",
-      message: `${studentName} хочет попрактиковать ${language}`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-      studentInfo,
-    };
-
-    await admin.firestore().collection("notifications").add(notificationData);
     console.log("✅ Firestore notification created for tutor:", nextTutor);
 
     // 🔔 Отправляем VoIP push преподавателю
     console.log("📲 Sending VoIP push to tutor...");
     try {
       await sendVoipPushToTutor(nextTutor, {
-        sessionId: sessionId,
-        studentName: studentName,
-        studentId: studentId,
-        studentPhoto: studentPhoto,
-        language: language,
+        sessionId,
+        studentName: pushPayload.studentName || "Student",
+        studentId: pushPayload.studentId || "",
+        studentPhoto: pushPayload.studentPhoto,
+        language: pushPayload.language || "",
       });
       console.log("✅ VoIP push sent to tutor");
     } catch (pushError) {

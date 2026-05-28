@@ -3,6 +3,7 @@ const admin = require("firebase-admin");
 const {
   buildUnlockEventPayload,
   ensureConversationCallEventForSession,
+  getConnectedCallStartMillis,
   getUnlockEligibility,
 } = require("./chats_shared");
 const {
@@ -13,6 +14,20 @@ const {
   isSessionParticipant,
   normalizeRole,
 } = require("./video_sessions_shared");
+const {
+  incrementUsageInTransaction,
+} = require("./subscription_usage_shared");
+const {
+  remainingGiftMinutes,
+} = require("./gift_minutes_shared");
+const {
+  resolveDailyRoomName,
+} = require("./daily_room");
+const {
+  deleteDailyRoomForSession,
+} = require("./daily_room_cleanup");
+
+const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 
 // ─── Pricing ────────────────────────────────────────────────────────────────
 // Student pays ~45-50 RUB/min (10 SmallTalks = 4990₽, 20 SmallTalks = 8900₽)
@@ -59,37 +74,66 @@ function shouldProcessExpiredEndReason({
   return requestTimestamp + clockSkewGraceMs >= expiresAtMillis;
 }
 
+// Returns true if the user has a flat-rate subscription that is still active
+// at `nowMillis`. Subscribers are not debited from balanceST — billing flips
+// from per-minute to flat-rate for the duration of the subscription.
+function hasActiveSubscription(userData, nowMillis) {
+  const expiresAt = userData?.subscription?.expiresAt;
+  if (!expiresAt) {
+    return false;
+  }
+  const expiresMillis = toMillis(expiresAt);
+  return expiresMillis > nowMillis;
+}
+
 function buildStudentCallCharge({
   userId,
-  currentMinutes,
-  currentSmallTalks,
   duration,
   formattedDuration,
+  subscriptionActive = false,
+  giftRemainingMinutes = 0,
 }) {
-  const safeCurrentMinutes = Number(currentMinutes || 0);
-  const safeCurrentSmallTalks = Number(currentSmallTalks || 0);
-  const freeMinuteApplied = safeCurrentMinutes > 0 || safeCurrentSmallTalks > 0;
-  const billableDuration = freeMinuteApplied ?
-    Math.max(0, duration - 60) :
-    duration;
-  const billableMinutes = parseFloat((billableDuration / 60).toFixed(4));
-  const amountST = parseFloat((billableMinutes / 10).toFixed(4));
-  const newMinutes = parseFloat(
-    Math.max(0, safeCurrentMinutes - billableMinutes).toFixed(4),
+  // Active-subscription branch: produce a zero-charge record so downstream
+  // bookkeeping (chargedParticipantIds, teacher payout eligibility) still
+  // treats the participant as billable, but the gift minutes / balanceST
+  // and the `call_charge` transaction writes are skipped.
+  if (subscriptionActive) {
+    return {
+      userId,
+      duration,
+      billableMinutes: 0,
+      amountST: 0,
+      formattedDuration,
+      subscriptionActive: true,
+      giftMinutesUsed: 0,
+      newGiftMinutes: giftRemainingMinutes,
+      giftCovered: false,
+    };
+  }
+
+  // No subscription → fall back to gift minutes. The legacy
+  // "first minute free + balanceST debit" branch is gone; balanceST is
+  // zeroed by the migration script and is no longer credited.
+  const callMinutes = parseFloat((duration / 60).toFixed(4));
+  const safeGiftRemaining = Number(giftRemainingMinutes || 0);
+  const giftMinutesUsed = Math.min(
+      Math.max(safeGiftRemaining, 0),
+      callMinutes,
   );
-  const newSmallTalks = parseFloat((newMinutes / 10).toFixed(2));
+  const newGiftMinutes = parseFloat(
+      Math.max(0, safeGiftRemaining - callMinutes).toFixed(4),
+  );
 
   return {
     userId,
-    currentMinutes: safeCurrentMinutes,
-    currentSmallTalks: safeCurrentSmallTalks,
-    freeMinuteApplied,
-    billableDuration,
-    billableMinutes,
-    amountST,
-    newMinutes,
-    newSmallTalks,
+    duration,
+    billableMinutes: callMinutes,
+    amountST: 0,
     formattedDuration,
+    subscriptionActive: false,
+    giftMinutesUsed: parseFloat(giftMinutesUsed.toFixed(4)),
+    newGiftMinutes,
+    giftCovered: giftMinutesUsed > 0,
   };
 }
 
@@ -114,7 +158,9 @@ endSession
 начисляет заработок преподавателю, создаёт транзакции и обновляет статистику.
 */
 
-exports.endSession = functions.https.onCall(async (data, context) => {
+exports.endSession = functions
+  .runWith({ secrets: dailySecrets })
+  .https.onCall(async (data, context) => {
   console.log("🔚 Ending video session...");
 
   try {
@@ -171,6 +217,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         return {
           status: "already_ended",
           message: "Session was already ended",
+          dailyRoomName: resolveDailyRoomName(sessionData),
           endedAt:
             sessionData.endedAt?.toMillis?.() ||
             sessionData.sessionMetadata?.endedAtTimestamp ||
@@ -206,20 +253,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       const requesterId = getRequesterId(sessionData);
       const endedBy = userId;
       const endedByRole = requesterId === userId ? "requester" : "responder";
-      const callConnectedAt =
-        toMillis(sessionData.sessionMetadata?.callConnectedAt);
-      const legacyCallConnectedAt =
-        toMillis(sessionData.sessionMetadata?.callConnectedAtTimestamp);
-      const startedAt = toMillis(sessionData.startedAt);
-      const acceptedAt =
-        toMillis(sessionData.acceptedAt) ||
-        toMillis(sessionData.sessionMetadata?.acceptedAt);
-      const serverConnectedAt =
-        startedAt > 0 && (acceptedAt === 0 || startedAt - acceptedAt > 1000)
-          ? startedAt
-          : 0;
-      const startTime =
-        callConnectedAt || legacyCallConnectedAt || serverConnectedAt || 0;
+      const startTime = getConnectedCallStartMillis(sessionData);
       const duration = startTime > 0
         ? Math.max(0, Math.floor((requestTimestamp - startTime) / 1000))
         : 0;
@@ -254,14 +288,33 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         responderId: sessionData.tutorId || null,
         acceptedResponderRole,
       });
+      const requesterSubscriptionActive = hasActiveSubscription(
+        requesterData,
+        requestTimestamp,
+      );
+      const responderSubscriptionActive = hasActiveSubscription(
+        responderData,
+        requestTimestamp,
+      );
+      // ─── GIFT MINUTES ──────────────────────────────────────────────
+      // Read the unexpired remaining gift bucket for each participant.
+      // Subscribers get a zero passed in (subscriptionActive wins anyway).
+      const requesterGiftRemaining = requesterSubscriptionActive ?
+        0 :
+        remainingGiftMinutes(requesterData, requestTimestamp);
+      const responderGiftRemaining = responderSubscriptionActive ?
+        0 :
+        remainingGiftMinutes(responderData, requestTimestamp);
+      // ──────────────────────────────────────────────────────────────
+
       const chargeRecords = [];
       if (requesterRole === "student") {
         chargeRecords.push(buildStudentCallCharge({
           userId: sessionData.studentId,
-          currentMinutes: requesterData?.balanceST?.minutes,
-          currentSmallTalks: requesterData?.balanceST?.smallTalks,
           duration,
           formattedDuration,
+          subscriptionActive: requesterSubscriptionActive,
+          giftRemainingMinutes: requesterGiftRemaining,
         }));
       }
       if (
@@ -271,10 +324,10 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       ) {
         chargeRecords.push(buildStudentCallCharge({
           userId: sessionData.tutorId,
-          currentMinutes: responderData?.balanceST?.minutes,
-          currentSmallTalks: responderData?.balanceST?.smallTalks,
           duration,
           formattedDuration,
+          subscriptionActive: responderSubscriptionActive,
+          giftRemainingMinutes: responderGiftRemaining,
         }));
       }
       const teacherEligibleForPayout =
@@ -286,9 +339,10 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           .reduce((total, charge) => total + charge.amountST, 0)
           .toFixed(4),
       );
-      const freeMinuteApplied = chargeRecords.some(
-        (charge) => charge.freeMinuteApplied,
-      );
+      // Legacy field kept for back-compat with consumers of videoSession;
+      // the "first minute free" mechanic was removed in the gift-minutes
+      // refactor — the field is now always `false`.
+      const freeMinuteApplied = false;
 
       console.log(
         "⏱️ Session duration:",
@@ -308,11 +362,11 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         "📉 Student charges:",
         chargeRecords.map((charge) => ({
           userId: charge.userId,
-          currentMinutes: charge.currentMinutes,
-          newMinutes: charge.newMinutes,
           billableMinutes: charge.billableMinutes,
-          amountST: charge.amountST,
-          freeMinuteApplied: charge.freeMinuteApplied,
+          subscriptionActive: charge.subscriptionActive,
+          giftCovered: charge.giftCovered,
+          giftMinutesUsed: charge.giftMinutesUsed,
+          newGiftMinutes: charge.newGiftMinutes,
         })),
       );
 
@@ -329,7 +383,12 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         duration: duration,
         durationMinutes: tutorDurationMinutes,
         freeMinuteApplied: freeMinuteApplied,
-        chargedParticipantIds: chargeRecords.map((charge) => charge.userId),
+        chargedParticipantIds: chargeRecords
+            .filter((charge) => !charge.subscriptionActive)
+            .map((charge) => charge.userId),
+        subscriptionCoveredParticipantIds: chargeRecords
+            .filter((charge) => charge.subscriptionActive)
+            .map((charge) => charge.userId),
         tutorNavigationTriggered: false,
         studentNavigationTriggered: false,
         "matchContext.teacherEarningUserId": teacherEarningUserId,
@@ -365,10 +424,19 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       }
 
       chargeRecords.forEach((charge) => {
-        transaction.update(db.collection("users").doc(charge.userId), {
-          "balanceST.minutes": charge.newMinutes,
-          "balanceST.smallTalks": charge.newSmallTalks,
-        });
+        if (charge.subscriptionActive) {
+          // Active subscription — no debit. Subscription lifecycle is
+          // tracked by the RevenueCat webhook.
+          return;
+        }
+        if (charge.giftCovered) {
+          // Gift bucket covered (some of) the call — decrement the
+          // remaining minutes. balanceST is no longer touched (legacy
+          // pre-paid balance is being phased out by the migration).
+          transaction.update(db.collection("users").doc(charge.userId), {
+            "giftMinutes.minutes": charge.newGiftMinutes,
+          });
+        }
       });
 
       console.log(
@@ -392,6 +460,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         requesterRole,
         acceptedResponderRole,
         chargeRecords,
+        dailyRoomName: resolveDailyRoomName(sessionData),
         teacherEarningUserId,
         teacherEligibleForPayout,
         responderEligibleForPayout,
@@ -399,6 +468,14 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     });
 
     if (txResult.status === "already_ended") {
+      if (txResult.dailyRoomName) {
+        await deleteDailyRoomForSession({
+          db,
+          sessionId,
+          roomName: txResult.dailyRoomName,
+          source: "endSession_already_ended",
+        });
+      }
       return txResult;
     }
 
@@ -441,22 +518,25 @@ exports.endSession = functions.https.onCall(async (data, context) => {
 
     const backgroundTasks = [];
 
-    // a) Student transaction documents. Student-student sessions charge both
-    // participants but do not create any earning transaction.
+    // a) Student transaction documents.
+    // After the gift-minutes refactor, students NEVER incur a paid
+    // call_charge — they are either:
+    //   • subscribed (audit in subscription_* events from RC webhook), or
+    //   • on gift minutes (audit captured by giftMinutes.minutes diff).
+    // No call_charge transaction is written in either case. Block kept
+    // for structural parity; if a future model reintroduces per-call
+    // billing this is the place to add it.
     for (const charge of txResult.chargeRecords || []) {
-      const chargedUserRef = db.collection("users").doc(charge.userId);
-      backgroundTasks.push(
-        db.collection("transactions").add({
-          userId: chargedUserRef,
-          type: "call_charge",
-          status: "completed",
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          amount_ST: Number(charge.amountST),
-          callDuration: charge.formattedDuration,
-          sessionId: sessionId,
-          freeMinuteApplied: charge.freeMinuteApplied,
-        }).catch((e) => console.error("❌ Student transaction doc failed:", e))
-      );
+      if (charge.subscriptionActive || charge.giftCovered) {
+        continue;
+      }
+      // Defensive: an unsubscribed user with no gift minutes shouldn't
+      // have been able to start the call (gate in create_video_session).
+      // If we ever land here, just log — don't charge.
+      console.warn("⚠️ end_session: call with no subscription and no gift", {
+        userId: charge.userId,
+        sessionId,
+      });
     }
 
     // b) Teacher balance update + c) teacher transaction document
@@ -570,10 +650,40 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       );
     }
 
-    // g) Cancel notifications
+    // g) Subscription usage tracking — only for subscription-covered
+    // participants. The increment runs in its own Firestore transaction
+    // and auto-resets day/week counters when the corresponding window
+    // has rolled over. Awaited via Promise.all so the next call this
+    // user starts will see the updated counters.
+    for (const charge of txResult.chargeRecords || []) {
+      if (!charge.subscriptionActive) continue;
+      backgroundTasks.push(
+        db.runTransaction(async (t) => {
+          await incrementUsageInTransaction(
+            t,
+            db,
+            charge.userId,
+            txResult.duration,
+          );
+        }).catch((e) =>
+          console.error("❌ Subscription usage increment failed:", e)
+        )
+      );
+    }
+
+    // h) Cancel notifications
     backgroundTasks.push(
       cancelAllSessionNotifications(sessionId)
     );
+
+    if (txResult.dailyRoomName) {
+      backgroundTasks.push(deleteDailyRoomForSession({
+        db,
+        sessionId,
+        roomName: txResult.dailyRoomName,
+        source: "endSession",
+      }));
+    }
 
     await Promise.all(backgroundTasks);
     console.log("🎉 Session ended successfully with billing complete");
@@ -588,7 +698,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
 
     throw new functions.https.HttpsError("internal", error.message);
   }
-});
+  });
 
 function formatDuration(totalSeconds) {
   const mins = Math.floor(totalSeconds / 60);
@@ -686,6 +796,8 @@ async function cancelAllSessionNotifications(sessionId) {
 
 exports.__private__ = {
   buildStudentCallCharge,
+  hasActiveSubscription,
+  remainingGiftMinutes,
   resolveTeacherEarningUserId,
   shouldProcessExpiredEndReason,
   toMillis,

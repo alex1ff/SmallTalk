@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'report_model.dart';
 export 'report_model.dart';
@@ -43,7 +44,7 @@ class _ReportWidgetState extends State<ReportWidget> {
           Container(
             width: double.infinity,
             decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryBackground,
+              color: ExpatlioDesign.card,
               borderRadius: BorderRadius.circular(20.0),
             ),
             child: Column(
@@ -105,7 +106,7 @@ class _ReportWidgetState extends State<ReportWidget> {
               width: double.infinity,
               height: 60.0,
               decoration: BoxDecoration(
-                color: FlutterFlowTheme.of(context).primaryBackground,
+                color: ExpatlioDesign.card,
                 borderRadius: BorderRadius.circular(20.0),
               ),
               child: Align(

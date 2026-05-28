@@ -1,6 +1,7 @@
 import '/authorization/acquaintance_n_s/native_speaker_onboarding_logic.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 
 class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
@@ -85,7 +86,7 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
               ),
               style: FlutterFlowTheme.of(context).bodyMedium.override(
                     fontFamily: 'sf pro display',
-                    color: FlutterFlowTheme.of(context).secondaryText,
+                    color: ExpatlioDesign.muted,
                     fontSize: 16.0,
                     letterSpacing: 0.0,
                   ),
@@ -145,7 +146,7 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
               ),
               style: FlutterFlowTheme.of(context).bodyMedium.override(
                     fontFamily: 'sf pro display',
-                    color: FlutterFlowTheme.of(context).secondaryText,
+                    color: ExpatlioDesign.muted,
                     fontSize: 14.0,
                     letterSpacing: 0.0,
                   ),
@@ -199,7 +200,7 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
                 ),
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'sf pro display',
-                      color: FlutterFlowTheme.of(context).secondaryText,
+                      color: ExpatlioDesign.muted,
                       fontSize: 14.0,
                       letterSpacing: 0.0,
                     ),
@@ -219,7 +220,7 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
                   padding: const EdgeInsetsDirectional.fromSTEB(
                       16.0, 14.0, 16.0, 14.0),
                   decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primaryBackground,
+                    color: ExpatlioDesign.card,
                     borderRadius: BorderRadius.circular(24.0),
                     border: Border.all(
                       color: FlutterFlowTheme.of(context).alternate,
@@ -229,7 +230,7 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.attach_file_rounded,
-                        color: FlutterFlowTheme.of(context).primaryText,
+                        color: ExpatlioDesign.text,
                         size: 20.0,
                       ),
                       const SizedBox(width: 10.0),

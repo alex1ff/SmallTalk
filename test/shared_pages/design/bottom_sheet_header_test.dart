@@ -1,0 +1,91 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:small_talk/shared_pages/design/expatlio_design.dart';
+import 'package:small_talk/shared_pages/design/bottom_sheet_header.dart';
+
+void main() {
+  Widget buildHarness(Widget child) {
+    return MaterialApp(
+      theme: ExpatlioDesign.lightTheme(),
+      home: Scaffold(
+        body: Center(child: child),
+      ),
+    );
+  }
+
+  testWidgets('bottom sheet header action buttons are 48px', (tester) async {
+    await tester.pumpWidget(
+      buildHarness(
+        BottomSheetHeader(
+          title: 'Title',
+          onConfirm: () {},
+        ),
+      ),
+    );
+
+    final closeButton = find.ancestor(
+      of: find.byIcon(Icons.close_rounded),
+      matching: find.byType(InkWell),
+    );
+    final confirmButton = find.ancestor(
+      of: find.byIcon(Icons.check_rounded),
+      matching: find.byType(InkWell),
+    );
+
+    expect(closeButton, findsOneWidget);
+    expect(confirmButton, findsOneWidget);
+    expect(tester.getSize(closeButton), const Size(48.0, 48.0));
+    expect(tester.getSize(confirmButton), const Size(48.0, 48.0));
+  });
+
+  testWidgets('bottom sheet header close button dismisses modal sheet',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ExpatlioDesign.lightTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () {
+                showModalBottomSheet<void>(
+                  useRootNavigator: true,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  context: context,
+                  builder: (context) => BottomSheetHeader(
+                    title: 'Title',
+                    onConfirm: () {},
+                  ),
+                );
+              },
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheetHeader), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheetHeader), findsNothing);
+  });
+
+  test('modal bottom sheet theme uses rounded top corners', () {
+    final bottomSheetTheme = ExpatlioDesign.lightTheme().bottomSheetTheme;
+    final shape = bottomSheetTheme.shape as RoundedRectangleBorder;
+
+    expect(
+      shape.borderRadius,
+      const BorderRadius.vertical(
+        top: Radius.circular(ExpatlioDesign.sheetRadius),
+      ),
+    );
+    expect(bottomSheetTheme.clipBehavior, Clip.antiAlias);
+  });
+}
