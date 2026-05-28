@@ -57,6 +57,8 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomSafePadding = MediaQuery.of(context).viewPadding.bottom + 16.0;
+
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -68,8 +70,12 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
         body: Stack(
           children: [
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(3.0, 115.0, 3.0, 24.0),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                3.0,
+                115.0,
+                3.0,
+                bottomSafePadding,
+              ),
               child: FutureBuilder<List<FlashcardSessionEntry>>(
                 future: _model.sessionFuture,
                 builder: (context, snapshot) {

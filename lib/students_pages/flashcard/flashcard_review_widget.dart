@@ -396,48 +396,63 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                         _buildSourceMetadata(context, entry),
                       ],
                       const SizedBox(height: 28.0),
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 160),
-                        switchInCurve: Curves.easeOut,
-                        switchOutCurve: Curves.easeIn,
-                        child: _isAnswerVisible
-                            ? Text(
-                                key: const Key('flashcardAnswerText'),
-                                entry.answerText,
-                                textAlign: TextAlign.center,
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'sf pro display',
-                                      color: accentColor,
-                                      fontSize: 20.0,
-                                      letterSpacing: 0.0,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                              )
-                            : ConstrainedBox(
-                                key: const Key('flashcardAnswerHint'),
-                                constraints:
-                                    const BoxConstraints(maxWidth: 320.0),
-                                child: Text(
-                                  FFLocalizations.of(context).getVariableText(
-                                    ruText:
-                                        'Ответ можно открыть по иконке глаза, но это не обязательно.',
-                                    enText:
-                                        'You can open the answer with the eye icon, but it is optional.',
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: secondaryTextColor,
-                                        fontSize: 15.0,
-                                        letterSpacing: 0.0,
-                                        fontWeight: FontWeight.normal,
+                      SizedBox(
+                        height: 56.0,
+                        child: Center(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 160),
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeIn,
+                            layoutBuilder: (currentChild, previousChildren) {
+                              return Stack(
+                                alignment: Alignment.center,
+                                children: <Widget>[
+                                  ...previousChildren,
+                                  if (currentChild != null) currentChild,
+                                ],
+                              );
+                            },
+                            child: _isAnswerVisible
+                                ? Text(
+                                    key: const Key('flashcardAnswerText'),
+                                    entry.answerText,
+                                    textAlign: TextAlign.center,
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'sf pro display',
+                                          color: accentColor,
+                                          fontSize: 20.0,
+                                          letterSpacing: 0.0,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  )
+                                : ConstrainedBox(
+                                    key: const Key('flashcardAnswerHint'),
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 320.0),
+                                    child: Text(
+                                      FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText:
+                                            'Ответ можно открыть по иконке глаза, но это не обязательно.',
+                                        enText:
+                                            'You can open the answer with the eye icon, but it is optional.',
                                       ),
-                                ),
-                              ),
+                                      textAlign: TextAlign.center,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: secondaryTextColor,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                            fontWeight: FontWeight.normal,
+                                          ),
+                                    ),
+                                  ),
+                          ),
+                        ),
                       ),
                     ],
                   ),

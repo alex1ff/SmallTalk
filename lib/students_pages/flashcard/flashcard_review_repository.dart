@@ -58,9 +58,11 @@ class FlashcardReviewRepository {
     }
 
     final existingReviews = await queryWordReviewsRecordOnce(parent: userRef);
-    final reviewIds = existingReviews.map((review) => review.reference.id).toSet();
-    final missingWords =
-        userWords.where((word) => !reviewIds.contains(word.reference.id)).toList();
+    final reviewIds =
+        existingReviews.map((review) => review.reference.id).toSet();
+    final missingWords = userWords
+        .where((word) => !reviewIds.contains(word.reference.id))
+        .toList();
     if (missingWords.isEmpty) {
       return;
     }
@@ -123,7 +125,8 @@ class FlashcardReviewRepository {
         .toList()
       ..sort((left, right) {
         final leftDueAt = left.dueAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final rightDueAt = right.dueAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final rightDueAt =
+            right.dueAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         return leftDueAt.compareTo(rightDueAt);
       });
 
@@ -133,7 +136,7 @@ class FlashcardReviewRepository {
       final originalWord = wordsById[review.reference.id];
       final word = originalWord == null
           ? null
-          : await _maybeBackfillSourceSynonyms(originalWord);
+          : await _maybeBackfillSourceMetadata(originalWord);
       if (word == null) {
         continue;
       }
@@ -191,17 +194,22 @@ class FlashcardReviewRepository {
     );
   }
 
-  static Future<UserWordsRecord> _maybeBackfillSourceSynonyms(
+  static Future<UserWordsRecord> _maybeBackfillSourceMetadata(
     UserWordsRecord word,
   ) async {
     if (word.entry.isEmpty ||
-        !flashcardLanguageMatches(flashcardSourceLanguageCode(word), 'en') ||
-        word.entry.first.hasSyn()) {
+        !flashcardLanguageMatches(flashcardSourceLanguageCode(word), 'en')) {
+      return word;
+    }
+
+    if (word.entry.first.ts.trim().isNotEmpty &&
+        word.entry.first.syn.isNotEmpty) {
       return word;
     }
 
     try {
-      final updatedEntries = await FlashcardContentService.enrichWordWithSourceSynonyms(
+      final updatedEntries =
+          await FlashcardContentService.enrichWordWithSourceMetadata(
         wordRef: word.reference,
         entries: word.entry,
         sourceLanguageCode: flashcardSourceLanguageCode(word),
@@ -224,5 +232,4 @@ class FlashcardReviewRepository {
       return word;
     }
   }
-
 }

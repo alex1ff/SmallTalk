@@ -125,10 +125,15 @@ void main() {
     expect(
         find.byKey(const ValueKey<String>('sourceSynonym_hi')), findsOneWidget);
     expect(find.byKey(const Key('flashcardExampleBlock')), findsNothing);
+    final promptCenterBefore = tester.getCenter(find.text('hello')).dy;
 
     await tester.tap(find.byKey(const Key('answerVisibilityToggle')));
     await tester.pumpAndSettle();
 
+    expect(
+      tester.getCenter(find.text('hello')).dy,
+      moreOrLessEquals(promptCenterBefore, epsilon: 0.01),
+    );
     expect(find.byKey(const Key('flashcardAnswerText')), findsOneWidget);
     expect(find.text('привет'), findsOneWidget);
     expect(find.byKey(const Key('sourceMetadata')), findsOneWidget);
