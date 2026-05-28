@@ -212,10 +212,15 @@ class _PayWidgetState extends State<PayWidget> {
             _Header(onBack: () => context.safePop()),
             Expanded(
               child: SingleChildScrollView(
-                padding: EdgeInsetsDirectional.fromSTEB(10, 34, 10, 24),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.pagePadding,
+                  24,
+                  ExpatlioDesign.pagePadding,
+                  24,
+                ),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 680),
+                    constraints: const BoxConstraints(maxWidth: 520),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -227,12 +232,12 @@ class _PayWidgetState extends State<PayWidget> {
                               .override(
                                 fontFamily: 'sf pro display',
                                 color: ExpatlioDesign.text,
-                                fontSize: 31,
+                                fontSize: 26,
                                 letterSpacing: 0.0,
                                 fontWeight: FontWeight.w700,
                               ),
                         ),
-                        SizedBox(height: 12),
+                        const SizedBox(height: 8),
                         Text(
                           'Отмените или измените подписку в любой момент',
                           textAlign: TextAlign.center,
@@ -240,12 +245,13 @@ class _PayWidgetState extends State<PayWidget> {
                               FlutterFlowTheme.of(context).bodyMedium.override(
                                     fontFamily: 'sf pro display',
                                     color: ExpatlioDesign.muted,
-                                    fontSize: 20,
+                                    fontSize: 15,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.w400,
+                                    lineHeight: 1.25,
                                   ),
                         ),
-                        SizedBox(height: 36),
+                        const SizedBox(height: 22),
                         for (final plan in _plans) ...[
                           _PlanCard(
                             plan: plan,
@@ -257,7 +263,7 @@ class _PayWidgetState extends State<PayWidget> {
                               });
                             },
                           ),
-                          if (plan != _plans.last) SizedBox(height: 20),
+                          if (plan != _plans.last) const SizedBox(height: 12),
                         ],
                       ],
                     ),
@@ -309,7 +315,7 @@ class _PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
@@ -319,12 +325,12 @@ class _PlanCard extends StatelessWidget {
           color: selected
               ? _PayWidgetState._selectedBackground
               : ExpatlioDesign.card,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
           border: Border.all(
             color: selected
                 ? _PayWidgetState._blueBorder
                 : _PayWidgetState._cardBorder,
-            width: selected ? 2.5 : 1.5,
+            width: selected ? 2 : 1,
           ),
           boxShadow: [
             BoxShadow(
@@ -335,24 +341,25 @@ class _PlanCard extends StatelessWidget {
           ],
         ),
         child: Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(26, 24, 26, 24),
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 78,
-                height: 78,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   color: _PayWidgetState._iconBackground,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.controlRadius),
                 ),
                 child: Icon(
                   plan.icon,
                   color: _PayWidgetState._purple,
-                  size: 32,
+                  size: 25,
                 ),
               ),
-              SizedBox(width: 20),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,20 +376,20 @@ class _PlanCard extends StatelessWidget {
                                 .override(
                                   fontFamily: 'sf pro display',
                                   color: ExpatlioDesign.text,
-                                  fontSize: 27,
+                                  fontSize: 20,
                                   letterSpacing: 0.0,
                                   fontWeight: FontWeight.w700,
                                 ),
                           ),
                         ),
                         if (plan.badge != null) ...[
-                          SizedBox(width: 10),
+                          const SizedBox(width: 8),
                           Container(
-                            padding:
-                                EdgeInsetsDirectional.fromSTEB(12, 5, 12, 5),
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                                8, 4, 8, 4),
                             decoration: BoxDecoration(
                               color: _PayWidgetState._purple,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
                               plan.badge!,
@@ -391,7 +398,7 @@ class _PlanCard extends StatelessWidget {
                                   .override(
                                     fontFamily: 'sf pro display',
                                     color: ExpatlioDesign.card,
-                                    fontSize: 14,
+                                    fontSize: 10,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -400,18 +407,19 @@ class _PlanCard extends StatelessWidget {
                         ],
                       ],
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Text(
                       plan.subtitle,
                       style: FlutterFlowTheme.of(context).bodyMedium.override(
                             fontFamily: 'sf pro display',
                             color: ExpatlioDesign.muted,
-                            fontSize: 20,
+                            fontSize: 14,
                             letterSpacing: 0.0,
                             fontWeight: FontWeight.w400,
+                            lineHeight: 1.25,
                           ),
                     ),
-                    SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     RichText(
                       textScaler: MediaQuery.of(context).textScaler,
                       text: TextSpan(
@@ -423,7 +431,7 @@ class _PlanCard extends StatelessWidget {
                                 .override(
                                   fontFamily: 'sf pro display',
                                   color: _PayWidgetState._purple,
-                                  fontSize: 31,
+                                  fontSize: 24,
                                   letterSpacing: 0.0,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -435,7 +443,7 @@ class _PlanCard extends StatelessWidget {
                                 .override(
                                   fontFamily: 'sf pro display',
                                   color: ExpatlioDesign.muted,
-                                  fontSize: 24,
+                                  fontSize: 16,
                                   letterSpacing: 0.0,
                                   fontWeight: FontWeight.w400,
                                 ),
@@ -443,15 +451,16 @@ class _PlanCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    SizedBox(height: 18),
+                    const SizedBox(height: 14),
                     for (final feature in plan.features) ...[
                       _FeatureLine(text: feature),
-                      if (feature != plan.features.last) SizedBox(height: 13),
+                      if (feature != plan.features.last)
+                        const SizedBox(height: 8),
                     ],
                   ],
                 ),
               ),
-              SizedBox(width: 18),
+              const SizedBox(width: 12),
               _SelectionIndicator(selected: selected),
             ],
           ),
@@ -470,8 +479,8 @@ class _SelectionIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     if (selected) {
       return Container(
-        width: 42,
-        height: 42,
+        width: 28,
+        height: 28,
         decoration: const BoxDecoration(
           color: _PayWidgetState._purple,
           shape: BoxShape.circle,
@@ -479,20 +488,20 @@ class _SelectionIndicator extends StatelessWidget {
         child: const Icon(
           Icons.check_rounded,
           color: ExpatlioDesign.card,
-          size: 27,
+          size: 19,
         ),
       );
     }
 
     return Container(
-      width: 42,
-      height: 42,
+      width: 28,
+      height: 28,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
         shape: BoxShape.circle,
         border: Border.all(
           color: const Color(0xFFE6E6E6),
-          width: 2,
+          width: 1.5,
         ),
       ),
     );
@@ -512,16 +521,16 @@ class _FeatureLine extends StatelessWidget {
         Icon(
           Icons.check_rounded,
           color: _PayWidgetState._purple,
-          size: 23,
+          size: 18,
         ),
-        SizedBox(width: 12),
+        const SizedBox(width: 8),
         Expanded(
           child: Text(
             text,
             style: FlutterFlowTheme.of(context).bodyMedium.override(
                   fontFamily: 'sf pro display',
                   color: ExpatlioDesign.text,
-                  fontSize: 20,
+                  fontSize: 15,
                   letterSpacing: 0.0,
                   fontWeight: FontWeight.w400,
                   lineHeight: 1.25,
@@ -553,7 +562,12 @@ class _BottomBar extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Container(
-        padding: EdgeInsetsDirectional.fromSTEB(10, 20, 10, 12),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.pagePadding,
+          12,
+          ExpatlioDesign.pagePadding,
+          12,
+        ),
         decoration: const BoxDecoration(
           color: ExpatlioDesign.card,
           border: Border(
@@ -562,16 +576,17 @@ class _BottomBar extends StatelessWidget {
         ),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
+            constraints: const BoxConstraints(maxWidth: 520),
             child: InkWell(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
               onTap: isBusy ? null : onPressed,
               child: Container(
                 width: double.infinity,
-                height: 78,
+                height: ExpatlioDesign.buttonHeight,
                 decoration: BoxDecoration(
                   color: _PayWidgetState._purple,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.buttonRadius),
                 ),
                 alignment: Alignment.center,
                 child: isBusy || isLoading
@@ -591,7 +606,7 @@ class _BottomBar extends StatelessWidget {
                             FlutterFlowTheme.of(context).titleMedium.override(
                                   fontFamily: 'sf pro display',
                                   color: ExpatlioDesign.card,
-                                  fontSize: 24,
+                                  fontSize: 16,
                                   letterSpacing: 0.0,
                                   fontWeight: FontWeight.w700,
                                 ),
