@@ -1,13 +1,9 @@
-import '/auth/firebase_auth/auth_util.dart';
-import '/backend/api_requests/api_calls.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
-import '/services/user_match_profile.dart';
 import 'word_detail_content.dart';
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
@@ -72,236 +68,18 @@ class _WordDetailHeader extends StatelessWidget {
   }
 }
 
-class _WordDetailBody extends StatefulWidget {
+class _WordDetailBody extends StatelessWidget {
   const _WordDetailBody({
     required this.word,
   });
 
   final UserWordsRecord word;
 
-  @override
-  State<_WordDetailBody> createState() => _WordDetailBodyState();
-}
-
-class _WordDetailBodyState extends State<_WordDetailBody> {
-  List<EntryStruct> _apiEntries = const <EntryStruct>[];
-  List<SentenceStruct> _apiExamples = const <SentenceStruct>[];
-  int _loadSequence = 0;
-  bool _didStartInitialLoad = false;
-
   WordDetailContent get _content {
     return buildWordDetailContent(
-      savedEntries: widget.word.entry.toList(),
-      savedExamples: widget.word.sentence.toList(),
-      apiEntries: _apiEntries,
-      apiExamples: _apiExamples,
+      savedEntries: word.entry.toList(),
+      savedExamples: word.sentence.toList(),
     );
-  }
-
-  @override
-  void didUpdateWidget(covariant _WordDetailBody oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (_sourceWordForLookup(oldWidget.word) ==
-        _sourceWordForLookup(widget.word)) {
-      return;
-    }
-
-    _apiEntries = const <EntryStruct>[];
-    _apiExamples = const <SentenceStruct>[];
-    unawaited(_loadSupplementalContent());
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_didStartInitialLoad) {
-      return;
-    }
-
-    _didStartInitialLoad = true;
-    unawaited(_loadSupplementalContent());
-  }
-
-  String _sourceWordForLookup(UserWordsRecord word) {
-    final entryText = word.entry.firstOrNull?.text.trim();
-    return entryText ?? '';
-  }
-
-  String? _savedSourceLanguageCode() {
-    for (final sentence in widget.word.sentence) {
-      final normalized = _normalizeLanguageCode(sentence.lang);
-      if (normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return null;
-  }
-
-  String? _preferredProfileLanguageCode() {
-    final currentUser = currentUserDocument;
-    String? roleBasedLanguageCode;
-
-    if (canAccessTeacherSurfaces(currentUser)) {
-      roleBasedLanguageCode = currentUser?.nativeLanguageNS.code;
-    } else if (currentUser != null) {
-      roleBasedLanguageCode =
-          currentUser.preferences.preferredNativeLanguage.code;
-    }
-
-    final fallbackCodes = <String?>[
-      roleBasedLanguageCode,
-      currentUser?.nativeLanguageNS.code,
-      currentUser?.preferences.preferredNativeLanguage.code,
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = _normalizeLanguageCode(code);
-      if (normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return null;
-  }
-
-  String _preferredTatoebaTranslationLanguageCode(BuildContext context) {
-    final fallbackCodes = <String?>[
-      _preferredProfileLanguageCode(),
-      FFLocalizations.of(context).languageCode,
-      'eng',
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = TatoebaCall.normalizeLanguageCode(code);
-      if (normalized != null && normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return 'eng';
-  }
-
-  String _preferredYandexTranslationLanguageCode(BuildContext context) {
-    final fallbackCodes = <String?>[
-      _preferredProfileLanguageCode(),
-      FFLocalizations.of(context).languageCode,
-      'en',
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = YandexCall.normalizeLanguageCode(code);
-      if (normalized != null && normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return 'en';
-  }
-
-  String _resolvedYandexSourceLanguageCode() {
-    final fallbackCodes = <String?>[
-      _savedSourceLanguageCode(),
-      'en',
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = YandexCall.normalizeLanguageCode(code);
-      if (normalized != null && normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return 'en';
-  }
-
-  String _resolvedTatoebaSourceLanguageCode() {
-    final fallbackCodes = <String?>[
-      _savedSourceLanguageCode(),
-      'eng',
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = TatoebaCall.normalizeLanguageCode(code);
-      if (normalized != null && normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return 'eng';
-  }
-
-  String _normalizeLanguageCode(String? code) {
-    return (code ?? '').trim().toLowerCase().replaceAll('_', '-');
-  }
-
-  Future<void> _loadSupplementalContent() async {
-    final sourceWord = _sourceWordForLookup(widget.word);
-    if (sourceWord.isEmpty) {
-      return;
-    }
-
-    final sequence = ++_loadSequence;
-    final yandexSourceLanguageCode = _resolvedYandexSourceLanguageCode();
-    final yandexTranslationLanguageCode =
-        _preferredYandexTranslationLanguageCode(context);
-    final tatoebaSourceLanguageCode = _resolvedTatoebaSourceLanguageCode();
-    final tatoebaTranslationLanguageCode =
-        _preferredTatoebaTranslationLanguageCode(context);
-
-    var apiEntries = const <EntryStruct>[];
-    var apiExamples = const <SentenceStruct>[];
-
-    await Future.wait([
-      Future(() async {
-        try {
-          final response = await YandexCall.call(
-            text: sourceWord,
-            lang: '$yandexSourceLanguageCode-$yandexTranslationLanguageCode',
-          );
-          apiEntries = _entriesFromYandex(response.jsonBody);
-        } catch (_) {}
-      }),
-      Future(() async {
-        try {
-          final response = await TatoebaCall.call(
-            lang: tatoebaSourceLanguageCode,
-            q: sourceWord,
-            showTransLang: tatoebaTranslationLanguageCode,
-            transLang: tatoebaTranslationLanguageCode,
-          );
-          apiExamples = _examplesFromTatoeba(response.jsonBody);
-        } catch (_) {}
-      }),
-    ]);
-
-    if (!mounted || sequence != _loadSequence) {
-      return;
-    }
-
-    setState(() {
-      _apiEntries = apiEntries;
-      _apiExamples = apiExamples;
-    });
-  }
-
-  List<EntryStruct> _entriesFromYandex(dynamic jsonBody) {
-    if (jsonBody is! Map) {
-      return const <EntryStruct>[];
-    }
-
-    return YyStruct.maybeFromMap(jsonBody)?.def.toList() ??
-        const <EntryStruct>[];
-  }
-
-  List<SentenceStruct> _examplesFromTatoeba(dynamic jsonBody) {
-    if (jsonBody is! Map) {
-      return const <SentenceStruct>[];
-    }
-
-    return DataStruct.maybeFromMap(jsonBody)?.data.toList() ??
-        const <SentenceStruct>[];
   }
 
   @override

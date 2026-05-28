@@ -8,6 +8,7 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/services/user_match_profile.dart';
 import '/students_pages/flashcard/flashcard_content_service.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
+import '/students_pages/words/word_lookup_service.dart';
 import 'dart:async';
 import '/flutter_flow/custom_functions.dart' as functions;
 import 'package:cached_network_image/cached_network_image.dart';
@@ -39,10 +40,12 @@ class NewWordWidget extends StatefulWidget {
 
 class _NewWordWidgetState extends State<NewWordWidget> {
   late NewWordModel _model;
+  WordLookupResult? _lookupResult;
 
   bool get _canManageDictionary =>
       currentUserDocument != null &&
       !canAccessTeacherSurfaces(currentUserDocument);
+  bool get _lookupLoaded => _lookupResult != null;
 
   @override
   void setState(VoidCallback callback) {
@@ -60,29 +63,21 @@ class _NewWordWidgetState extends State<NewWordWidget> {
       final yandexSourceLanguageCode = _resolvedYandexSourceLanguageCode();
       final yandexTranslationLanguageCode =
           _preferredYandexTranslationLanguageCode(context);
+      final tatoebaSourceLanguageCode = _resolvedTatoebaSourceLanguageCode();
       final tatoebaTranslationLanguageCode =
           _preferredTatoebaTranslationLanguageCode(context);
 
-      await Future.wait([
-        Future(() async {
-          _model.worrd = await YandexCall.call(
-            text: widget.word,
-            lang: '$yandexSourceLanguageCode-$yandexTranslationLanguageCode',
-          );
-
-          safeSetState(() {});
-        }),
-        Future(() async {
-          _model.ssss = await TatoebaCall.call(
-            lang: widget.langCode,
-            q: widget.word,
-            showTransLang: tatoebaTranslationLanguageCode,
-            transLang: tatoebaTranslationLanguageCode,
-          );
-
-          safeSetState(() {});
-        }),
-      ]);
+      _lookupResult = await WordLookupService.resolve(
+        word: widget.word ?? '',
+        userRef: currentUserReference,
+        languageConfig: WordLookupLanguageConfig(
+          sourceLanguageCode: widget.langCode,
+          yandexSourceLanguageCode: yandexSourceLanguageCode,
+          yandexTranslationLanguageCode: yandexTranslationLanguageCode,
+          tatoebaSourceLanguageCode: tatoebaSourceLanguageCode,
+          tatoebaTranslationLanguageCode: tatoebaTranslationLanguageCode,
+        ),
+      );
 
       if (!mounted) {
         return;
@@ -95,8 +90,8 @@ class _NewWordWidgetState extends State<NewWordWidget> {
           : (hasContext ? 300.0 : 250.0);
       if (_model.size != collapsedSize) {
         _model.size = collapsedSize;
-        safeSetState(() {});
       }
+      safeSetState(() {});
     });
   }
 
@@ -107,14 +102,8 @@ class _NewWordWidgetState extends State<NewWordWidget> {
     super.dispose();
   }
 
-  YyStruct? _parsedWordResponse() {
-    final jsonBody = _model.worrd?.jsonBody;
-    if (jsonBody is! Map) return null;
-    return YyStruct.maybeFromMap(jsonBody);
-  }
-
   List<EntryStruct> _dictionaryEntries() {
-    return _parsedWordResponse()?.def.toList() ?? const <EntryStruct>[];
+    return _lookupResult?.entries ?? const <EntryStruct>[];
   }
 
   EntryStruct? _primaryEntry() {
@@ -334,6 +323,22 @@ class _NewWordWidgetState extends State<NewWordWidget> {
     return 'en';
   }
 
+  String _resolvedTatoebaSourceLanguageCode() {
+    final fallbackCodes = <String?>[
+      widget.langCode,
+      'eng',
+    ];
+
+    for (final code in fallbackCodes) {
+      final normalized = TatoebaCall.normalizeLanguageCode(code);
+      if (normalized != null && normalized.isNotEmpty) {
+        return normalized;
+      }
+    }
+
+    return 'eng';
+  }
+
   String _preferredDisplayTranslationLanguageCode(BuildContext context) {
     final fallbackCodes = <String?>[
       _preferredProfileLanguageCode(),
@@ -429,13 +434,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
   }
 
   List<SentenceStruct> _exampleSentences() {
-    final jsonBody = _model.ssss?.jsonBody;
-    if (jsonBody is! Map) {
-      return const <SentenceStruct>[];
-    }
-
-    return DataStruct.maybeFromMap(jsonBody)?.data.toList() ??
-        const <SentenceStruct>[];
+    return _lookupResult?.examples ?? const <SentenceStruct>[];
   }
 
   @override
@@ -610,8 +609,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                       ),
                                                       Builder(
                                                         builder: (context) {
-                                                          if (_model.worrd !=
-                                                              null) {
+                                                          if (_lookupLoaded) {
                                                             final translationText =
                                                                 _primaryTranslationText();
                                                             return Text(
@@ -674,9 +672,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                               child: _buildContextCard(context),
                                             ),
                                           AnimatedOpacity(
-                                            opacity: _model.worrd != null
-                                                ? 1.0
-                                                : 0.0,
+                                            opacity: _lookupLoaded ? 1.0 : 0.0,
                                             duration: 200.0.ms,
                                             curve: Curves.easeInOut,
                                             child: Padding(

@@ -10,6 +10,7 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/services/user_match_profile.dart';
 import '/students_pages/flashcard/flashcard_content_service.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
+import '/students_pages/words/word_lookup_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +34,7 @@ class _WoedWidgetState extends State<WoedWidget> {
   late WoedModel _model;
   DocumentReference? _savedWordReference;
   bool _isSaved = false;
+  WordLookupResult? _lookupResult;
 
   bool get _canManageDictionary =>
       currentUserDocument != null &&
@@ -66,40 +68,28 @@ class _WoedWidgetState extends State<WoedWidget> {
       final tatoebaTranslationLanguageCode =
           _preferredTatoebaTranslationLanguageCode(context);
 
-      await Future.wait([
-        Future(() async {
-          try {
-            _model.worrd = await YandexCall.call(
-              text: sourceWord,
-              lang: '$yandexSourceLanguageCode-$yandexTranslationLanguageCode',
-            );
-          } catch (_) {}
-
-          if (mounted) {
-            safeSetState(() {});
-          }
-        }),
-        Future(() async {
-          try {
-            _model.ssss = await TatoebaCall.call(
-              lang: tatoebaSourceLanguageCode,
-              q: sourceWord,
-              showTransLang: tatoebaTranslationLanguageCode,
-              transLang: tatoebaTranslationLanguageCode,
-            );
-          } catch (_) {}
-
-          if (mounted) {
-            safeSetState(() {});
-          }
-        }),
-      ]);
+      _lookupResult = await WordLookupService.resolve(
+        word: sourceWord,
+        userRef: currentUserReference,
+        savedContents: [
+          if (widget.word != null)
+            WordLookupSavedContent.fromRecord(widget.word!),
+        ],
+        languageConfig: WordLookupLanguageConfig(
+          sourceLanguageCode: _savedSourceLanguageCode(),
+          yandexSourceLanguageCode: yandexSourceLanguageCode,
+          yandexTranslationLanguageCode: yandexTranslationLanguageCode,
+          tatoebaSourceLanguageCode: tatoebaSourceLanguageCode,
+          tatoebaTranslationLanguageCode: tatoebaTranslationLanguageCode,
+        ),
+      );
 
       if (!mounted) {
         return;
       }
 
       _syncCollapsedSize();
+      safeSetState(() {});
     });
   }
 
@@ -134,79 +124,12 @@ class _WoedWidgetState extends State<WoedWidget> {
     return text ?? '';
   }
 
-  YyStruct? _parsedWordResponse() {
-    final jsonBody = _model.worrd?.jsonBody;
-    if (jsonBody is! Map) {
-      return null;
-    }
-
-    return YyStruct.maybeFromMap(jsonBody);
-  }
-
-  List<EntryStruct> _apiDictionaryEntries() {
-    return _parsedWordResponse()?.def.toList() ?? const <EntryStruct>[];
-  }
-
   List<EntryStruct> _dictionaryEntries() {
-    final apiEntries = _apiDictionaryEntries();
-    if (apiEntries.isNotEmpty) {
-      return apiEntries;
-    }
-
-    return _savedEntries();
-  }
-
-  List<SentenceStruct> _apiExampleSentences() {
-    final jsonBody = _model.ssss?.jsonBody;
-    if (jsonBody is! Map) {
-      return const <SentenceStruct>[];
-    }
-
-    return DataStruct.maybeFromMap(jsonBody)?.data.toList() ??
-        const <SentenceStruct>[];
+    return _lookupResult?.entries ?? _savedEntries();
   }
 
   List<SentenceStruct> _displaySentences() {
-    final merged = <SentenceStruct>[];
-    final indexByKey = <String, int>{};
-
-    void upsertSentence(
-      SentenceStruct? sentence, {
-      required bool preferNew,
-    }) {
-      if (sentence == null) {
-        return;
-      }
-
-      final text = sentence.text.trim();
-      if (text.isEmpty) {
-        return;
-      }
-
-      final language = _normalizeLanguageCode(sentence.lang);
-      final dedupeKey = '$language|${text.toLowerCase()}';
-      final existingIndex = indexByKey[dedupeKey];
-
-      if (existingIndex != null) {
-        if (preferNew) {
-          merged[existingIndex] = sentence;
-        }
-        return;
-      }
-
-      indexByKey[dedupeKey] = merged.length;
-      merged.add(sentence);
-    }
-
-    for (final sentence in _savedSentences()) {
-      upsertSentence(sentence, preferNew: false);
-    }
-
-    for (final sentence in _apiExampleSentences()) {
-      upsertSentence(sentence, preferNew: true);
-    }
-
-    return merged;
+    return _lookupResult?.examples ?? _savedSentences();
   }
 
   EntryStruct? _primaryEntry() {
