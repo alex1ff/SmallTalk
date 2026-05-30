@@ -45,23 +45,27 @@ String _sessionTimeLabel(BuildContext context, DateTime startedAtLocal) {
   return DateFormat.jm(locale).format(startedAtLocal);
 }
 
-int _sessionDifferenceInDays(DateTime startedAtLocal) {
-  final now = DateTime.now();
+int _sessionDifferenceInDays(
+  DateTime startedAtLocal, {
+  DateTime? now,
+}) {
+  final reference = (now ?? DateTime.now()).toLocal();
   final startedDay = DateTime(
     startedAtLocal.year,
     startedAtLocal.month,
     startedAtLocal.day,
   );
-  final today = DateTime(now.year, now.month, now.day);
+  final today = DateTime(reference.year, reference.month, reference.day);
   return today.difference(startedDay).inDays;
 }
 
 String _sessionRelativeDateLabel(
   BuildContext context,
-  DateTime startedAtLocal,
-) {
+  DateTime startedAtLocal, {
+  DateTime? now,
+}) {
   final locale = FFLocalizations.of(context).languageCode;
-  final differenceInDays = _sessionDifferenceInDays(startedAtLocal);
+  final differenceInDays = _sessionDifferenceInDays(startedAtLocal, now: now);
 
   if (differenceInDays == 0) {
     return FFLocalizations.of(context).getVariableText(
@@ -86,22 +90,25 @@ String _sessionRelativeDateLabel(
 
 String formatSessionStartedAt(
   BuildContext context,
-  VideoSessionsRecord session,
-) {
+  VideoSessionsRecord session, {
+  DateTime? now,
+}) {
   final startedAt = resolveSessionStartedAt(session);
-  return formatSessionStartedAtFromDateTime(context, startedAt);
+  return formatSessionStartedAtFromDateTime(context, startedAt, now: now);
 }
 
 String formatSessionStartedAtFromDateTime(
   BuildContext context,
-  DateTime? startedAt,
-) {
+  DateTime? startedAt, {
+  DateTime? now,
+}) {
   if (startedAt == null) {
     return '-';
   }
 
   final startedAtLocal = startedAt.toLocal();
-  final dateLabel = _sessionRelativeDateLabel(context, startedAtLocal);
+  final dateLabel =
+      _sessionRelativeDateLabel(context, startedAtLocal, now: now);
   final timeLabel = _sessionTimeLabel(context, startedAtLocal);
 
   return '$dateLabel, $timeLabel';
@@ -109,18 +116,20 @@ String formatSessionStartedAtFromDateTime(
 
 String formatSessionStartedAtForCard(
   BuildContext context,
-  VideoSessionsRecord session,
-) {
+  VideoSessionsRecord session, {
+  DateTime? now,
+}) {
   final startedAt = resolveSessionStartedAt(session);
   if (startedAt == null) {
     return '-';
   }
 
   final startedAtLocal = startedAt.toLocal();
-  final dateLabel = _sessionRelativeDateLabel(context, startedAtLocal);
+  final dateLabel =
+      _sessionRelativeDateLabel(context, startedAtLocal, now: now);
   final timeLabel = _sessionTimeLabel(context, startedAtLocal);
 
-  if (_sessionDifferenceInDays(startedAtLocal) == 0) {
+  if (_sessionDifferenceInDays(startedAtLocal, now: now) == 0) {
     return '$dateLabel, $timeLabel';
   }
 
