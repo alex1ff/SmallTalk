@@ -1,6 +1,7 @@
 import '/backend/schema/enums/enums.dart';
 import '/backend/schema/structs/index.dart';
 import '/backend/schema/users_record.dart';
+import '/authorization/shared/onboarding_selection_utils.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/uploaded_file.dart';
 
@@ -532,28 +533,11 @@ String? validateNativeSpeakerOnboardingPage({
 }
 
 bool hasNativeSpeakerLanguageSelection(LanguageStruct? language) {
-  if (language == null) {
-    return false;
-  }
-
-  return language.code.trim().isNotEmpty ||
-      language.nameEn.trim().isNotEmpty ||
-      language.nameRu.trim().isNotEmpty ||
-      language.model.trim().isNotEmpty ||
-      language.ss.trim().isNotEmpty ||
-      language.alternateCodes.isNotEmpty;
+  return hasOnboardingLanguageSelection(language);
 }
 
 bool hasNativeSpeakerCountrySelection(CountryStruct? country) {
-  if (country == null) {
-    return false;
-  }
-
-  return country.code.trim().isNotEmpty ||
-      country.nameEn.trim().isNotEmpty ||
-      country.nameRu.trim().isNotEmpty ||
-      country.flag.trim().isNotEmpty ||
-      country.languages.trim().isNotEmpty;
+  return hasOnboardingCountrySelection(country);
 }
 
 bool hasNativeSpeakerAccreditationAnswers(NativeSpeakerOnboardingDraft draft) {
@@ -794,36 +778,11 @@ String _nativeSpeakerEvidenceFileNameFromStoragePath(String storagePath) {
 }
 
 LanguageStruct? cloneNativeSpeakerLanguageSelection(LanguageStruct? language) {
-  if (!hasNativeSpeakerLanguageSelection(language)) {
-    return null;
-  }
-
-  return LanguageStruct(
-    code: language!.hasCode() ? language.code : null,
-    alternateCodes:
-        language.hasAlternateCodes() ? language.alternateCodes.toList() : null,
-    nameEn: language.hasNameEn() ? language.nameEn : null,
-    nameRu: language.hasNameRu() ? language.nameRu : null,
-    model: language.hasModel() ? language.model : null,
-    isPopular: language.hasIsPopular() ? language.isPopular : null,
-    ss: language.hasSs() ? language.ss : null,
-  );
+  return cloneOnboardingLanguageSelection(language);
 }
 
 CountryStruct? cloneNativeSpeakerCountrySelection(CountryStruct? country) {
-  if (!hasNativeSpeakerCountrySelection(country)) {
-    return null;
-  }
-
-  return CountryStruct(
-    code: country!.hasCode() ? country.code : null,
-    nameEn: country.hasNameEn() ? country.nameEn : null,
-    nameRu: country.hasNameRu() ? country.nameRu : null,
-    flag: country.hasFlag() ? country.flag : null,
-    languages: country.hasLanguages() ? country.languages : null,
-    isPopular: country.hasIsPopular() ? country.isPopular : null,
-    index: country.hasIndex() ? country.index : null,
-  );
+  return cloneOnboardingCountrySelection(country);
 }
 
 List<NativeSpeakerOnboardingPage> buildVisibleNativeSpeakerPages({

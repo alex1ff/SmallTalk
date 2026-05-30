@@ -1,6 +1,7 @@
 import '/backend/schema/enums/enums.dart';
 import '/backend/schema/structs/index.dart';
 import '/backend/schema/users_record.dart';
+import '/authorization/shared/onboarding_selection_utils.dart';
 
 const Object _studentOnboardingNoChange = Object();
 const List<String> allowedStudentLearningLanguageCodes = <String>['en', 'ru'];
@@ -271,61 +272,19 @@ String? validateStudentOnboardingPage({
 }
 
 bool hasLanguageSelection(LanguageStruct? language) {
-  if (language == null) {
-    return false;
-  }
-
-  return language.code.trim().isNotEmpty ||
-      language.nameEn.trim().isNotEmpty ||
-      language.nameRu.trim().isNotEmpty ||
-      language.model.trim().isNotEmpty ||
-      language.ss.trim().isNotEmpty ||
-      language.alternateCodes.isNotEmpty;
+  return hasOnboardingLanguageSelection(language);
 }
 
 bool hasCountrySelection(CountryStruct? country) {
-  if (country == null) {
-    return false;
-  }
-
-  return country.code.trim().isNotEmpty ||
-      country.nameEn.trim().isNotEmpty ||
-      country.nameRu.trim().isNotEmpty ||
-      country.flag.trim().isNotEmpty ||
-      country.languages.trim().isNotEmpty;
+  return hasOnboardingCountrySelection(country);
 }
 
 LanguageStruct? cloneLanguageSelection(LanguageStruct? language) {
-  if (!hasLanguageSelection(language)) {
-    return null;
-  }
-
-  return LanguageStruct(
-    code: language!.hasCode() ? language.code : null,
-    alternateCodes:
-        language.hasAlternateCodes() ? language.alternateCodes.toList() : null,
-    nameEn: language.hasNameEn() ? language.nameEn : null,
-    nameRu: language.hasNameRu() ? language.nameRu : null,
-    model: language.hasModel() ? language.model : null,
-    isPopular: language.hasIsPopular() ? language.isPopular : null,
-    ss: language.hasSs() ? language.ss : null,
-  );
+  return cloneOnboardingLanguageSelection(language);
 }
 
 CountryStruct? cloneCountrySelection(CountryStruct? country) {
-  if (!hasCountrySelection(country)) {
-    return null;
-  }
-
-  return CountryStruct(
-    code: country!.hasCode() ? country.code : null,
-    nameEn: country.hasNameEn() ? country.nameEn : null,
-    nameRu: country.hasNameRu() ? country.nameRu : null,
-    flag: country.hasFlag() ? country.flag : null,
-    languages: country.hasLanguages() ? country.languages : null,
-    isPopular: country.hasIsPopular() ? country.isPopular : null,
-    index: country.hasIndex() ? country.index : null,
-  );
+  return cloneOnboardingCountrySelection(country);
 }
 
 List<LanguageStruct> filterAllowedLearningLanguages({
