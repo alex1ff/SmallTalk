@@ -601,8 +601,8 @@ class _WaitingForTeacherPageWidgetState
 
     if (_createFailed && status == null) {
       title = _localizedText(
-        ruText: 'Не удалось начать Small Talk',
-        enText: 'Unable to start Small Talk',
+        ruText: 'Не удалось начать звонок в Expatlio',
+        enText: 'Unable to start an Expatlio call',
       );
       subtitle = _createMessage ??
           _localizedText(
@@ -611,10 +611,12 @@ class _WaitingForTeacherPageWidgetState
           );
     } else if (isLoading || status == null) {
       title = _localizedText(
-        ruText:
-            _isDirectTutorCall ? 'Звоним собеседнику' : 'Small Talk начинается',
-        enText:
-            _isDirectTutorCall ? 'Calling your partner' : 'Small Talk begins',
+        ruText: _isDirectTutorCall
+            ? 'Звоним собеседнику'
+            : 'Звонок в Expatlio начинается',
+        enText: _isDirectTutorCall
+            ? 'Calling your partner'
+            : 'Expatlio call begins',
       );
       subtitle = _localizedText(
         ruText: _isDirectTutorCall
@@ -685,8 +687,8 @@ class _WaitingForTeacherPageWidgetState
       );
     } else {
       title = FFLocalizations.of(context).getVariableText(
-        ruText: 'Small Talk начинается',
-        enText: 'Small Talk begins',
+        ruText: 'Звонок в Expatlio начинается',
+        enText: 'Expatlio call begins',
       );
       subtitle = FFLocalizations.of(context).getVariableText(
         ruText: 'Ищем идеального собеседника',

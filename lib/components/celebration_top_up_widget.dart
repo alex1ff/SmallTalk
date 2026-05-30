@@ -160,7 +160,7 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                                               },
                                             ),
                                             Text(
-                                              'можете начинать SmallTalk',
+                                              'можете начинать общение в Expatlio',
                                               textAlign: TextAlign.start,
                                               style:
                                                   FlutterFlowTheme.of(context)
@@ -201,7 +201,7 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                                         0.0, 12.0, 0.0, 0.0),
                                     child: _buildBullet(
                                       context,
-                                      'Минуты и SmallTalk уже доступны на балансе',
+                                      'Минуты в Expatlio уже доступны на балансе',
                                     ),
                                   ),
                                   Padding(

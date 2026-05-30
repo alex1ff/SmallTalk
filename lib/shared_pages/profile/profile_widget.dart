@@ -2021,7 +2021,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             const SizedBox(height: 1),
             Text(
               FFLocalizations.of(context).getText(
-                'l1x4xu81' /* © 2025 Small Talk. Версия 1.0.... */,
+                'l1x4xu81' /* © 2025 Expatlio. Версия 1.0.0 */,
               ),
               textAlign: TextAlign.center,
               style: ExpatlioDesign.textStyle(
@@ -3357,7 +3357,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                             16, 0, 0, 0),
                                         child: Text(
                                           FFLocalizations.of(context).getText(
-                                            'l1x4xu81' /* © 2025 Small Talk. Версия 1.0.... */,
+                                            'l1x4xu81' /* © 2025 Expatlio. Версия 1.0.0 */,
                                           ),
                                           style: FlutterFlowTheme.of(context)
                                               .bodyMedium

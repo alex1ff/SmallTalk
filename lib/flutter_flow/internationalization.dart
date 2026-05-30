@@ -458,9 +458,8 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Location of the interlocutor',
     },
     '4pay67d3': {
-      'ru':
-          'Находите новых друзей в интересующей \nвас стране мира со Small Talk',
-      'en': 'Find new friends in your chosen country with Small Talk.',
+      'ru': 'Находите новых друзей в интересующей \nвас стране мира с Expatlio',
+      'en': 'Find new friends in your chosen country with Expatlio.',
     },
     'tkv7vhn7': {
       'ru': 'Продолжить',
@@ -481,8 +480,8 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
   // Dashboard_NS
   {
     '1u9apwk3': {
-      'ru': 'Welcome to SmallTalk',
-      'en': 'Welcome to SmallTalk',
+      'ru': 'Welcome to Expatlio',
+      'en': 'Welcome to Expatlio',
     },
     'znnn9lq2': {
       'ru': 'Текущий баланс',
@@ -540,16 +539,16 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
   // Students_Dashboard
   {
     'xocrym2z': {
-      'ru': 'Welcome to SmallTalk',
-      'en': 'Welcome to SmallTalk',
+      'ru': 'Welcome to Expatlio',
+      'en': 'Welcome to Expatlio',
     },
     'o7w214bz': {
       'ru': 'Текущий баланс',
       'en': 'Current balance',
     },
     'et82m26d': {
-      'ru': '.small talks',
-      'en': '.small talks',
+      'ru': '.expatlio',
+      'en': '.expatlio',
     },
     'dyf7xj5v': {
       'ru': '\$1,200',
@@ -592,8 +591,9 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'There have been no calls yet.',
     },
     '0hw93aax': {
-      'ru': 'Самое время это исправить.\nНачните свой первый Small Talk!',
-      'en': 'It\'s time to fix that.\nStart your first Small Talk!',
+      'ru':
+          'Самое время это исправить.\nНачните свой первый звонок в Expatlio!',
+      'en': 'It\'s time to fix that.\nStart your first Expatlio call!',
     },
     'd4rmucwv': {
       'ru': 'Home',
@@ -647,8 +647,8 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Privacy Policy',
     },
     'l1x4xu81': {
-      'ru': '© 2025 Small Talk. Версия 1.0.0',
-      'en': '© 2025 Small Talk. Version 1.0.0',
+      'ru': '© 2025 Expatlio. Версия 1.0.0',
+      'en': '© 2025 Expatlio. Version 1.0.0',
     },
     'frjfmbx0': {
       'ru': 'Home',
@@ -983,8 +983,8 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Current balance',
     },
     'vni7lmge': {
-      'ru': '.small talks',
-      'en': '.small talks',
+      'ru': '.expatlio',
+      'en': '.expatlio',
     },
     'lrs28uyv': {
       'ru': '\$1,200',
@@ -1070,9 +1070,8 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
       'en': 'Where are you now?',
     },
     'h6cyori3': {
-      'ru':
-          'Находите новых друзей в интересующей \nвас стране мира со Small Talk',
-      'en': 'Find new friends in your chosen country with Small Talk.',
+      'ru': 'Находите новых друзей в интересующей \nвас стране мира с Expatlio',
+      'en': 'Find new friends in your chosen country with Expatlio.',
     },
     '24v6ef7s': {
       'ru': 'Расскажите \nо себе',
@@ -1161,9 +1160,9 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'ttebd0yi': {
       'ru':
-          'Small Talk (\"мы\", \"нас\", \"наше приложение\") уважает вашу конфиденциальность и обязуется защищать персональные данные пользователей. Настоящая Политика конфиденциальности описывает, какую информацию мы собираем, как мы её используем, храним и защищаем.\nИспользуя приложение Small Talk, вы соглашаетесь со сбором и использованием информации в соответствии с настоящей Политикой.',
+          'Expatlio (\"мы\", \"нас\", \"наше приложение\") уважает вашу конфиденциальность и обязуется защищать персональные данные пользователей. Настоящая Политика конфиденциальности описывает, какую информацию мы собираем, как мы её используем, храним и защищаем.\nИспользуя приложение Expatlio, вы соглашаетесь со сбором и использованием информации в соответствии с настоящей Политикой.',
       'en':
-          'Small Talk (\"we,\" \"us,\" or \"our app\") respects your privacy and is committed to protecting your personal information. This Privacy Policy describes what information we collect, how we use, store, and protect it.\nBy using the Small Talk app, you consent to the collection and use of information in accordance with this Policy.',
+          'Expatlio (\"we,\" \"us,\" or \"our app\") respects your privacy and is committed to protecting your personal information. This Privacy Policy describes what information we collect, how we use, store, and protect it.\nBy using the Expatlio app, you consent to the collection and use of information in accordance with this Policy.',
     },
     'l9d370gj': {
       'ru': '2. Какую информацию мы собираем',
@@ -1271,13 +1270,13 @@ final kTranslationsMap = <Map<String, Map<String, String>>>[
     },
     'cfh32zir': {
       'ru':
-          'Используя Small Talk, вы подтверждаете, что прочитали, поняли и согласны с условиями настоящей Политики конфиденциальности.',
+          'Используя Expatlio, вы подтверждаете, что прочитали, поняли и согласны с условиями настоящей Политики конфиденциальности.',
       'en':
-          'By using Small Talk, you acknowledge that you have read, understood, and agree to the terms of this Privacy Policy.',
+          'By using Expatlio, you acknowledge that you have read, understood, and agree to the terms of this Privacy Policy.',
     },
     'gcd5d56f': {
-      'ru': '© 2025 Small Talk. Все права защищены.',
-      'en': '© 2025 Small Talk. All rights reserved.',
+      'ru': '© 2025 Expatlio. Все права защищены.',
+      'en': '© 2025 Expatlio. All rights reserved.',
     },
     '3k5hrp8g': {
       'ru': 'Home',

@@ -1339,7 +1339,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                           ),
                                           Text(
                                             FFLocalizations.of(context).getText(
-                                              'xocrym2z' /* Welcome to SmallTalk */,
+                                              'xocrym2z' /* Welcome to Expatlio */,
                                             ),
                                             style: FlutterFlowTheme.of(context)
                                                 .bodyMedium
@@ -1481,7 +1481,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                       ),
                                       // ────────────────────────────────────
                                       // ─── SUBSCRIPTION REWORK ─────────
-                                      // Was: big SmallTalks counter.
+                                      // Was: big Expatlio counter.
                                       // Now: subscription expiry date or
                                       // "Нет активной подписки" copy.
                                       AuthUserStreamWidget(

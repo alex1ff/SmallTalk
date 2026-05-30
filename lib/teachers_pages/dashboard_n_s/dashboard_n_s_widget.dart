@@ -526,7 +526,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                     ),
                                     Text(
                                       FFLocalizations.of(context).getText(
-                                        '1u9apwk3' /* Welcome to SmallTalk */,
+                                        '1u9apwk3' /* Welcome to Expatlio */,
                                       ),
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium

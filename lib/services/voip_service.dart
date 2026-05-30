@@ -527,7 +527,7 @@ class VoIPService {
       final callKitParams = CallKitParams(
         id: callKitId,
         nameCaller: callerName,
-        appName: 'Small Talk',
+        appName: 'Expatlio',
         avatar: callerPhoto,
         handle: callerId,
         type: 1,

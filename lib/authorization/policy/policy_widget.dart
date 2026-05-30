@@ -130,7 +130,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                 0.0, 4.0, 0.0, 0.0),
                             child: Text(
                               FFLocalizations.of(context).getText(
-                                'ttebd0yi' /* Small Talk ("мы", "нас", "наше... */,
+                                'ttebd0yi' /* Expatlio ("мы", "нас", "наше ... */,
                               ),
                               style: FlutterFlowTheme.of(context)
                                   .bodyMedium
@@ -523,7 +523,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                 0.0, 4.0, 0.0, 0.0),
                             child: Text(
                               FFLocalizations.of(context).getText(
-                                'cfh32zir' /* Используя Small Talk, вы подтв... */,
+                                'cfh32zir' /* Используя Expatlio, вы подтве... */,
                               ),
                               style: FlutterFlowTheme.of(context)
                                   .bodyMedium
@@ -541,7 +541,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                 0.0, 35.0, 0.0, 0.0),
                             child: Text(
                               FFLocalizations.of(context).getText(
-                                'gcd5d56f' /* © 2025 Small Talk. Все права з... */,
+                                'gcd5d56f' /* © 2025 Expatlio. Все права за... */,
                               ),
                               style: FlutterFlowTheme.of(context)
                                   .bodyMedium

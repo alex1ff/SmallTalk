@@ -115,7 +115,7 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                                     ruText:
                                         'Оформите подписку, чтобы начать звонок',
                                     enText:
-                                        'Subscribe to start a Small Talk call',
+                                        'Subscribe to start an Expatlio call',
                                   ),
                                   textAlign: TextAlign.center,
                                   style: FlutterFlowTheme.of(context)
