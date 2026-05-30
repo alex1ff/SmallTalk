@@ -9,6 +9,7 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/shared_pages/call_history/call_language_utils.dart';
 import '/index.dart';
 import '/services/user_match_profile.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -76,50 +77,12 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     super.dispose();
   }
 
-  String _normalizeLanguageCode(String? code) {
-    return (code ?? '').trim().toLowerCase().replaceAll('_', '-');
-  }
-
-  LanguageStruct? _findLanguageByCode(String? code) {
-    final normalizedCode = _normalizeLanguageCode(code);
-    if (normalizedCode.isEmpty) {
-      return null;
-    }
-
-    final fallbackCodes = <String>{
-      normalizedCode,
-      normalizedCode.split('-').first,
-    };
-
-    for (final language in FFAppState().languagesList) {
-      final normalizedCandidates = <String>{
-        _normalizeLanguageCode(language.code),
-        ...language.alternateCodes.map(_normalizeLanguageCode),
-      }..removeWhere((value) => value.isEmpty);
-
-      if (normalizedCandidates.any(fallbackCodes.contains)) {
-        return language;
-      }
-    }
-
-    return null;
-  }
-
   String _resolvedSessionLanguageName(BuildContext context) {
-    final language = _findLanguageByCode(widget.lang);
-    if (language == null) {
-      return valueOrDefault<String>(widget.lang, '-');
-    }
-
-    final useRussian = FFLocalizations.of(context).languageCode == 'ru';
-    final localizedName = useRussian ? language.nameRu : language.nameEn;
-    if (localizedName.isNotEmpty) {
-      return localizedName;
-    }
-
-    return language.nameEn.isNotEmpty
-        ? language.nameEn
-        : valueOrDefault<String>(widget.lang, '-');
+    return resolveSessionLanguageName(
+      languages: FFAppState().languagesList,
+      code: widget.lang,
+      useRussian: FFLocalizations.of(context).languageCode == 'ru',
+    );
   }
 
   Future<UserPublicProfilesRecord?> _createUserFuture() {

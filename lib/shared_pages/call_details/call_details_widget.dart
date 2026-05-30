@@ -9,6 +9,7 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/shared_pages/call_history/call_language_utils.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
 import '/shared_pages/learning/caption_word_flow.dart';
 import '/components/interactive_caption_text.dart';
@@ -112,35 +113,6 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     }
 
     return _isTeacher;
-  }
-
-  String _normalizeLanguageCode(String? code) {
-    return (code ?? '').trim().toLowerCase().replaceAll('_', '-');
-  }
-
-  LanguageStruct? _findLanguageByCode(String? code) {
-    final normalizedCode = _normalizeLanguageCode(code);
-    if (normalizedCode.isEmpty) {
-      return null;
-    }
-
-    final fallbackCodes = <String>{
-      normalizedCode,
-      normalizedCode.split('-').first,
-    };
-
-    for (final language in FFAppState().languagesList) {
-      final normalizedCandidates = <String>{
-        _normalizeLanguageCode(language.code),
-        ...language.alternateCodes.map(_normalizeLanguageCode),
-      }..removeWhere((value) => value.isEmpty);
-
-      if (normalizedCandidates.any(fallbackCodes.contains)) {
-        return language;
-      }
-    }
-
-    return null;
   }
 
   void _showSnackBar(BuildContext context, String message) {
@@ -1492,7 +1464,10 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               final session = snapshot.data!;
               final counterpartName = _counterpartName(context, session);
               final counterpartPhotoUrl = _counterpartPhotoUrl(session);
-              final sessionLanguage = _findLanguageByCode(session.language);
+              final sessionLanguage = findSessionLanguageByCode(
+                languages: FFAppState().languagesList,
+                code: session.language,
+              );
               final durationLabel = formatDurationLabel(
                 context,
                 resolveSessionDurationSeconds(session),
