@@ -1,5 +1,4 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/backend/api_requests/api_calls.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_icon_button.dart';
@@ -168,7 +167,7 @@ class _WoedWidgetState extends State<WoedWidget> {
     ];
 
     for (final code in fallbackCodes) {
-      final normalized = _normalizeLanguageCode(code);
+      final normalized = normalizeWordLookupLanguageCode(code);
       if (normalized.isNotEmpty) {
         return normalized;
       }
@@ -179,7 +178,7 @@ class _WoedWidgetState extends State<WoedWidget> {
 
   String? _savedSourceLanguageCode() {
     for (final sentence in _savedSentences()) {
-      final normalized = _normalizeLanguageCode(sentence.lang);
+      final normalized = normalizeWordLookupLanguageCode(sentence.lang);
       if (normalized.isNotEmpty) {
         return normalized;
       }
@@ -189,140 +188,73 @@ class _WoedWidgetState extends State<WoedWidget> {
   }
 
   String _preferredTatoebaTranslationLanguageCode(BuildContext context) {
-    final fallbackCodes = <String?>[
-      _preferredProfileLanguageCode(),
-      FFLocalizations.of(context).languageCode,
-      'eng',
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = TatoebaCall.normalizeLanguageCode(code);
-      if (normalized != null && normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return 'eng';
+    return resolveTatoebaWordLookupLanguageCode(
+      <String?>[
+        _preferredProfileLanguageCode(),
+        FFLocalizations.of(context).languageCode,
+        'eng',
+      ],
+      fallback: 'eng',
+    );
   }
 
   String _preferredYandexTranslationLanguageCode(BuildContext context) {
-    final fallbackCodes = <String?>[
-      _preferredProfileLanguageCode(),
-      FFLocalizations.of(context).languageCode,
-      'en',
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = YandexCall.normalizeLanguageCode(code);
-      if (normalized != null && normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return 'en';
+    return resolveYandexWordLookupLanguageCode(
+      <String?>[
+        _preferredProfileLanguageCode(),
+        FFLocalizations.of(context).languageCode,
+        'en',
+      ],
+      fallback: 'en',
+    );
   }
 
   String _resolvedYandexSourceLanguageCode() {
-    final fallbackCodes = <String?>[
-      _savedSourceLanguageCode(),
-      'en',
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = YandexCall.normalizeLanguageCode(code);
-      if (normalized != null && normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return 'en';
+    return resolveYandexWordLookupLanguageCode(
+      <String?>[
+        _savedSourceLanguageCode(),
+        'en',
+      ],
+      fallback: 'en',
+    );
   }
 
   String _resolvedTatoebaSourceLanguageCode() {
-    final fallbackCodes = <String?>[
-      _savedSourceLanguageCode(),
-      'eng',
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = TatoebaCall.normalizeLanguageCode(code);
-      if (normalized != null && normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return 'eng';
+    return resolveTatoebaWordLookupLanguageCode(
+      <String?>[
+        _savedSourceLanguageCode(),
+        'eng',
+      ],
+      fallback: 'eng',
+    );
   }
 
   String _resolvedDisplaySourceLanguageCode() {
-    final fallbackCodes = <String?>[
-      _savedSourceLanguageCode(),
-      'en',
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = _normalizeLanguageCode(code);
-      if (normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return 'en';
+    return resolveNormalizedWordLookupLanguageCode(
+      <String?>[
+        _savedSourceLanguageCode(),
+        'en',
+      ],
+      fallback: 'en',
+    );
   }
 
   String _preferredDisplayTranslationLanguageCode(BuildContext context) {
-    final fallbackCodes = <String?>[
-      _preferredProfileLanguageCode(),
-      FFLocalizations.of(context).languageCode,
-      'en',
-    ];
-
-    for (final code in fallbackCodes) {
-      final normalized = _normalizeLanguageCode(code);
-      if (normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-
-    return 'en';
-  }
-
-  String _normalizeLanguageCode(String? code) {
-    return (code ?? '').trim().toLowerCase().replaceAll('_', '-');
-  }
-
-  LanguageStruct? _findLanguageByCode(String? code) {
-    final normalizedCode = _normalizeLanguageCode(code);
-    if (normalizedCode.isEmpty) {
-      return null;
-    }
-
-    final normalizedBaseCode = normalizedCode.split('-').first;
-
-    for (final language in FFAppState().languagesList) {
-      final candidateCodes = <String>[
-        language.code,
-        ...language.alternateCodes,
-      ].map(_normalizeLanguageCode).where((value) => value.isNotEmpty);
-
-      final matches = candidateCodes.any((candidateCode) {
-        final candidateBaseCode = candidateCode.split('-').first;
-        return candidateCode == normalizedCode ||
-            candidateCode == normalizedBaseCode ||
-            candidateBaseCode == normalizedCode ||
-            candidateBaseCode == normalizedBaseCode;
-      });
-
-      if (matches) {
-        return language;
-      }
-    }
-
-    return null;
+    return resolveNormalizedWordLookupLanguageCode(
+      <String?>[
+        _preferredProfileLanguageCode(),
+        FFLocalizations.of(context).languageCode,
+        'en',
+      ],
+      fallback: 'en',
+    );
   }
 
   Widget _buildLanguageFlag(String? code, {required String fallbackLabel}) {
-    final language = _findLanguageByCode(code);
+    final language = findWordLookupLanguageByCode(
+      languages: FFAppState().languagesList,
+      code: code,
+    );
     final imageUrl = language?.ss ?? '';
 
     return SizedBox(

@@ -38,6 +38,85 @@ class WordLookupLanguageConfig {
   }
 }
 
+String normalizeWordLookupLanguageCode(String? code) {
+  return _normalizeLanguageCode(code);
+}
+
+String resolveNormalizedWordLookupLanguageCode(
+  Iterable<String?> fallbackCodes, {
+  required String fallback,
+}) {
+  for (final code in fallbackCodes) {
+    final normalized = normalizeWordLookupLanguageCode(code);
+    if (normalized.isNotEmpty) {
+      return normalized;
+    }
+  }
+
+  return normalizeWordLookupLanguageCode(fallback);
+}
+
+String resolveYandexWordLookupLanguageCode(
+  Iterable<String?> fallbackCodes, {
+  required String fallback,
+}) {
+  for (final code in fallbackCodes) {
+    final normalized = YandexCall.normalizeLanguageCode(code);
+    if (normalized != null && normalized.isNotEmpty) {
+      return normalized;
+    }
+  }
+
+  return fallback;
+}
+
+String resolveTatoebaWordLookupLanguageCode(
+  Iterable<String?> fallbackCodes, {
+  required String fallback,
+}) {
+  for (final code in fallbackCodes) {
+    final normalized = TatoebaCall.normalizeLanguageCode(code);
+    if (normalized != null && normalized.isNotEmpty) {
+      return normalized;
+    }
+  }
+
+  return fallback;
+}
+
+LanguageStruct? findWordLookupLanguageByCode({
+  required Iterable<LanguageStruct> languages,
+  required String? code,
+}) {
+  final normalizedCode = normalizeWordLookupLanguageCode(code);
+  if (normalizedCode.isEmpty) {
+    return null;
+  }
+
+  final normalizedBaseCode = normalizedCode.split('-').first;
+
+  for (final language in languages) {
+    final candidateCodes = <String>[
+      language.code,
+      ...language.alternateCodes,
+    ].map(normalizeWordLookupLanguageCode).where((value) => value.isNotEmpty);
+
+    final matches = candidateCodes.any((candidateCode) {
+      final candidateBaseCode = candidateCode.split('-').first;
+      return candidateCode == normalizedCode ||
+          candidateCode == normalizedBaseCode ||
+          candidateBaseCode == normalizedCode ||
+          candidateBaseCode == normalizedBaseCode;
+    });
+
+    if (matches) {
+      return language;
+    }
+  }
+
+  return null;
+}
+
 class WordLookupRequest {
   const WordLookupRequest({
     required this.word,

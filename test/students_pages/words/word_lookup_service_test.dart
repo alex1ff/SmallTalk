@@ -144,4 +144,87 @@ void main() {
     expect(result.entries, isEmpty);
     expect(result.examples.single.text, 'Hello!');
   });
+
+  group('word lookup language helpers', () {
+    test('normalizes display codes and applies fallback order', () {
+      expect(normalizeWordLookupLanguageCode(' EN_us '), 'en-us');
+      expect(
+        resolveNormalizedWordLookupLanguageCode(
+          const <String?>[null, '', ' RU_ru '],
+          fallback: 'en',
+        ),
+        'ru-ru',
+      );
+      expect(
+        resolveNormalizedWordLookupLanguageCode(
+          const <String?>[null, ''],
+          fallback: 'en',
+        ),
+        'en',
+      );
+    });
+
+    test('resolves API-specific language fallbacks', () {
+      expect(
+        resolveYandexWordLookupLanguageCode(
+          const <String?>[' RUS '],
+          fallback: 'en',
+        ),
+        'ru',
+      );
+      expect(
+        resolveYandexWordLookupLanguageCode(
+          const <String?>[' pt_BR '],
+          fallback: 'en',
+        ),
+        'pt',
+      );
+      expect(
+        resolveTatoebaWordLookupLanguageCode(
+          const <String?>['pt_BR'],
+          fallback: 'eng',
+        ),
+        'por',
+      );
+      expect(
+        resolveTatoebaWordLookupLanguageCode(
+          const <String?>['zz'],
+          fallback: 'eng',
+        ),
+        'eng',
+      );
+    });
+
+    test('finds catalog language by exact, base, and alternate code', () {
+      final languages = <LanguageStruct>[
+        LanguageStruct(
+          code: 'en',
+          nameEn: 'English',
+        ),
+        LanguageStruct(
+          code: 'zh',
+          alternateCodes: <String>['cmn-Hans'],
+          nameEn: 'Chinese',
+        ),
+      ];
+
+      expect(
+        findWordLookupLanguageByCode(languages: languages, code: 'en-US')?.code,
+        'en',
+      );
+      expect(
+        findWordLookupLanguageByCode(languages: languages, code: 'cmn_hans')
+            ?.code,
+        'zh',
+      );
+      expect(
+        findWordLookupLanguageByCode(languages: languages, code: 'cmn')?.code,
+        'zh',
+      );
+      expect(
+        findWordLookupLanguageByCode(languages: languages, code: 'de'),
+        isNull,
+      );
+    });
+  });
 }
