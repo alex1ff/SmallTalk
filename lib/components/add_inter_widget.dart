@@ -3,16 +3,12 @@ import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/components/bottom_sheet_header.dart';
+import '/services/availability_interval_time.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'add_inter_model.dart';
 export 'add_inter_model.dart';
-
-enum _IntervalField {
-  start,
-  end,
-}
 
 class AddInterWidget extends StatefulWidget {
   const AddInterWidget({
@@ -24,13 +20,8 @@ class AddInterWidget extends StatefulWidget {
 }
 
 class _AddInterWidgetState extends State<AddInterWidget> {
-  static const int _minuteStep = 5;
-  static const int _defaultDurationMinutes = 60;
-  static const int _lastMinuteOfDay = (24 * 60) - _minuteStep;
-  static const int _latestStartMinute = _lastMinuteOfDay - _minuteStep;
-
   late AddInterModel _model;
-  _IntervalField _activeField = _IntervalField.start;
+  AvailabilityIntervalField _activeField = AvailabilityIntervalField.start;
 
   Map<String, dynamic> _buildTimezoneMetadataUpdate() {
     final now = DateTime.now();
@@ -63,86 +54,32 @@ class _AddInterWidgetState extends State<AddInterWidget> {
     super.dispose();
   }
 
-  DateTime get _startOfToday => DateUtils.dateOnly(DateTime.now());
+  DateTime get _startOfToday => availabilityIntervalDay(DateTime.now());
 
   DateTime _buildInitialStartTime() {
-    final now = DateTime.now();
-    final roundedMinutes = _roundUpToStep(now.hour * 60 + now.minute);
-    return _minutesToDateTime(
-      _clampMinutes(
-        roundedMinutes,
-        min: 0,
-        max: _latestStartMinute,
-      ),
-    );
+    return buildInitialAvailabilityIntervalStartTime(DateTime.now());
   }
 
   DateTime _buildInitialEndTime(DateTime start) {
-    final startMinutes = _minutesOfDay(start);
-    return _minutesToDateTime(
-      _clampMinutes(
-        startMinutes + _defaultDurationMinutes,
-        min: startMinutes + _minuteStep,
-        max: _lastMinuteOfDay,
-      ),
-    );
+    return buildInitialAvailabilityIntervalEndTime(start);
   }
 
-  int _minutesOfDay(DateTime value) => value.hour * 60 + value.minute;
+  int _minutesOfDay(DateTime value) => availabilityIntervalMinutesOfDay(value);
 
   DateTime _minutesToDateTime(int minutes) =>
-      _startOfToday.add(Duration(minutes: minutes));
-
-  int _roundUpToStep(int minutes) {
-    final remainder = minutes % _minuteStep;
-    if (remainder == 0) {
-      return minutes;
-    }
-    return minutes + (_minuteStep - remainder);
-  }
-
-  int _clampMinutes(
-    int value, {
-    required int min,
-    required int max,
-  }) {
-    if (value < min) {
-      return min;
-    }
-    if (value > max) {
-      return max;
-    }
-    return value;
-  }
+      availabilityIntervalDateTimeFromMinutes(
+        day: _startOfToday,
+        minutes: minutes,
+      );
 
   DateTime _parseTime(
     String? rawValue, {
     required DateTime fallback,
   }) {
-    final match = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(rawValue ?? '');
-    if (match == null) {
-      return fallback;
-    }
-
-    final hours = int.tryParse(match.group(1)!);
-    final minutes = int.tryParse(match.group(2)!);
-    if (hours == null ||
-        minutes == null ||
-        hours < 0 ||
-        hours > 23 ||
-        minutes < 0 ||
-        minutes > 59) {
-      return fallback;
-    }
-
-    return _minutesToDateTime(hours * 60 + minutes);
+    return parseAvailabilityIntervalTime(rawValue, fallback: fallback);
   }
 
-  String _formatTime(DateTime value) {
-    final hours = value.hour.toString().padLeft(2, '0');
-    final minutes = value.minute.toString().padLeft(2, '0');
-    return '$hours:$minutes';
-  }
+  String _formatTime(DateTime value) => formatAvailabilityIntervalTime(value);
 
   void _setInterval({
     required DateTime start,
@@ -167,20 +104,24 @@ class _AddInterWidgetState extends State<AddInterWidget> {
   int get _selectedEndMinutes => _minutesOfDay(_selectedEndTime);
 
   DateTime get _pickerMinimumTime {
-    if (_activeField == _IntervalField.end) {
-      return _minutesToDateTime(_selectedStartMinutes + _minuteStep);
+    if (_activeField == AvailabilityIntervalField.end) {
+      return _minutesToDateTime(
+        _selectedStartMinutes + kAvailabilityIntervalMinuteStep,
+      );
     }
     return _minutesToDateTime(0);
   }
 
   DateTime get _pickerMaximumTime {
-    if (_activeField == _IntervalField.start) {
-      return _minutesToDateTime(_selectedEndMinutes - _minuteStep);
+    if (_activeField == AvailabilityIntervalField.start) {
+      return _minutesToDateTime(
+        _selectedEndMinutes - kAvailabilityIntervalMinuteStep,
+      );
     }
-    return _minutesToDateTime(_lastMinuteOfDay);
+    return _minutesToDateTime(kAvailabilityIntervalLastMinuteOfDay);
   }
 
-  void _updateActiveField(_IntervalField field) {
+  void _updateActiveField(AvailabilityIntervalField field) {
     if (_activeField == field) {
       return;
     }
@@ -190,42 +131,16 @@ class _AddInterWidgetState extends State<AddInterWidget> {
   }
 
   void _updateSelectedTime(DateTime value) {
-    final newMinutes = _roundUpToStep(_minutesOfDay(value));
-    final startMinutes = _selectedStartMinutes;
-    final endMinutes = _selectedEndMinutes;
-
-    if (_activeField == _IntervalField.start) {
-      final validStartMinutes = _clampMinutes(
-        newMinutes,
-        min: 0,
-        max: _latestStartMinute,
-      );
-      final nextEndMinutes = endMinutes <= validStartMinutes
-          ? _clampMinutes(
-              validStartMinutes + _minuteStep,
-              min: validStartMinutes + _minuteStep,
-              max: _lastMinuteOfDay,
-            )
-          : endMinutes;
-      setState(() {
-        _setInterval(
-          start: _minutesToDateTime(validStartMinutes),
-          end: _minutesToDateTime(nextEndMinutes),
-        );
-      });
-      return;
-    }
-
-    final minEnd = startMinutes + _minuteStep;
-    final validEndMinutes = _clampMinutes(
-      newMinutes,
-      min: minEnd,
-      max: _lastMinuteOfDay,
+    final draft = updateAvailabilityIntervalDraft(
+      field: _activeField,
+      selectedMinutes: _minutesOfDay(value),
+      currentStartMinutes: _selectedStartMinutes,
+      currentEndMinutes: _selectedEndMinutes,
     );
     setState(() {
       _setInterval(
-        start: _minutesToDateTime(startMinutes),
-        end: _minutesToDateTime(validEndMinutes),
+        start: _minutesToDateTime(draft.startMinutes),
+        end: _minutesToDateTime(draft.endMinutes),
       );
     });
   }
@@ -426,15 +341,20 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                     _buildSelectionCard(
                       label: 'Начало',
                       value: _model.timeStart ?? '--:--',
-                      isSelected: _activeField == _IntervalField.start,
-                      onTap: () => _updateActiveField(_IntervalField.start),
+                      isSelected:
+                          _activeField == AvailabilityIntervalField.start,
+                      onTap: () => _updateActiveField(
+                        AvailabilityIntervalField.start,
+                      ),
                     ),
                     const SizedBox(width: 10.0),
                     _buildSelectionCard(
                       label: 'Конец',
                       value: _model.timeEnd ?? '--:--',
-                      isSelected: _activeField == _IntervalField.end,
-                      onTap: () => _updateActiveField(_IntervalField.end),
+                      isSelected: _activeField == AvailabilityIntervalField.end,
+                      onTap: () => _updateActiveField(
+                        AvailabilityIntervalField.end,
+                      ),
                     ),
                   ],
                 ),
@@ -457,7 +377,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                         child: Align(
                           alignment: AlignmentDirectional.centerStart,
                           child: Text(
-                            _activeField == _IntervalField.start
+                            _activeField == AvailabilityIntervalField.start
                                 ? 'Выбираем время начала'
                                 : 'Выбираем время окончания',
                             style: FlutterFlowTheme.of(context)
@@ -478,13 +398,14 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                           key: ValueKey(_activeField),
                           mode: CupertinoDatePickerMode.time,
                           use24hFormat: true,
-                          minuteInterval: _minuteStep,
+                          minuteInterval: kAvailabilityIntervalMinuteStep,
                           itemExtent: 34.0,
                           minimumDate: _pickerMinimumTime,
                           maximumDate: _pickerMaximumTime,
-                          initialDateTime: _activeField == _IntervalField.start
-                              ? _selectedStartTime
-                              : _selectedEndTime,
+                          initialDateTime:
+                              _activeField == AvailabilityIntervalField.start
+                                  ? _selectedStartTime
+                                  : _selectedEndTime,
                           onDateTimeChanged: _updateSelectedTime,
                         ),
                       ),
