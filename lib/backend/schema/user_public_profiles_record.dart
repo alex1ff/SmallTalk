@@ -101,6 +101,11 @@ class UserPublicProfilesRecord extends FirestoreRecord {
   DateTime? get updatedAt => _updatedAt;
   bool hasUpdatedAt() => _updatedAt != null;
 
+  // "lastSeenAt" field.
+  DateTime? _lastSeenAt;
+  DateTime? get lastSeenAt => _lastSeenAt;
+  bool hasLastSeenAt() => _lastSeenAt != null;
+
   void _initializeFields() {
     _userId = snapshotData['userId'] as String?;
     _displayName = snapshotData['display_name'] as String? ??
@@ -137,6 +142,7 @@ class UserPublicProfilesRecord extends FirestoreRecord {
     );
     _approvedTeacher = snapshotData['approvedTeacher'] as bool?;
     _updatedAt = snapshotData['updatedAt'] as DateTime?;
+    _lastSeenAt = snapshotData['lastSeenAt'] as DateTime?;
   }
 
   static CollectionReference get collection =>
@@ -215,7 +221,8 @@ class UserPublicProfilesRecordDocumentEquality
         e1?.ratingAverage == e2?.ratingAverage &&
         e1?.ratingCount == e2?.ratingCount &&
         e1?.approvedTeacher == e2?.approvedTeacher &&
-        e1?.updatedAt == e2?.updatedAt;
+        e1?.updatedAt == e2?.updatedAt &&
+        e1?.lastSeenAt == e2?.lastSeenAt;
   }
 
   @override
@@ -236,6 +243,7 @@ class UserPublicProfilesRecordDocumentEquality
         e?.ratingCount,
         e?.approvedTeacher,
         e?.updatedAt,
+        e?.lastSeenAt,
       ]);
 
   @override

@@ -8,7 +8,7 @@ import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
-import '/shared_pages/chat_thread/chat_thread_widget.dart';
+import '/shared_pages/chat_thread/open_chat_thread.dart';
 
 import 'favorite_model.dart';
 export 'favorite_model.dart';
@@ -197,11 +197,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   }
 
   Future<void> _openConversation(ConversationsRecord conversation) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) =>
-            ChatThreadWidget(conversationRef: conversation.reference),
-      ),
+    await openChatThread(
+      context,
+      conversationRef: conversation.reference,
     );
   }
 

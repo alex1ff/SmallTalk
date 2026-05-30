@@ -201,6 +201,31 @@ test("user cannot directly mutate live lifecycle fields", async () => {
   }
 });
 
+test("user can update own lastSeenAt only to request time", async () => {
+  const user = testEnv.authenticatedContext("student-a");
+  const db = user.firestore();
+
+  await assertSucceeds(
+    db.doc("users/student-a").update({
+      lastSeenAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }),
+  );
+
+  await assertFails(
+    db.doc("users/student-a").update({
+      lastSeenAt: new Date("2026-05-30T09:41:00.000Z"),
+    }),
+  );
+
+  await assertFails(
+    testEnv.authenticatedContext("student-b").firestore()
+      .doc("users/student-a")
+      .update({
+        lastSeenAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+      }),
+  );
+});
+
 test("user cannot create server-owned trial or balance fields", async () => {
   const user = testEnv.authenticatedContext("student-b");
 

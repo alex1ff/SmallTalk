@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
@@ -9,8 +11,8 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/call_details/call_details_widget.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
-import '/components/basic_page_header.dart';
 import '/components/chat_call_event_card.dart';
+import 'chat_thread_formatters.dart';
 import 'chat_thread_model.dart';
 export 'chat_thread_model.dart';
 
@@ -33,24 +35,15 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   late ChatThreadModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _messagesScrollController = ScrollController();
-  final _publicProfileFutureCache =
-      <String, Future<UserPublicProfilesRecord?>>{};
   DateTime? _lastReadMarkerTarget;
   int _lastRenderedMessageCount = -1;
   bool _isSending = false;
 
-  Future<UserPublicProfilesRecord?> _getPublicProfileFuture(
-      DocumentReference ref) {
-    return _publicProfileFutureCache.putIfAbsent(
-      ref.path,
-      () => UserPublicProfilesRecord.maybeGetDocumentOnce(
+  Stream<UserPublicProfilesRecord?> _watchPublicProfile(
+          DocumentReference ref) =>
+      UserPublicProfilesRecord.maybeGetDocument(
         UserPublicProfilesRecord.collection.doc(ref.id),
-      ).catchError((Object error, StackTrace stackTrace) {
-        _publicProfileFutureCache.remove(ref.path);
-        throw error;
-      }),
-    );
-  }
+      );
 
   DocumentReference? _otherParticipantRef(ConversationsRecord conversation) {
     final currentRef = currentUserReference;
@@ -90,6 +83,21 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   ) {
     final info = _conversationParticipantInfo(conversation, participantRef);
     for (final key in const ['displayName', 'display_name', 'name']) {
+      final value = info[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+
+    return '';
+  }
+
+  String _conversationParticipantPhotoUrl(
+    ConversationsRecord conversation,
+    DocumentReference participantRef,
+  ) {
+    final info = _conversationParticipantInfo(conversation, participantRef);
+    for (final key in const ['photoUrl', 'photo_url', 'photo']) {
       final value = info[key];
       if (value is String && value.trim().isNotEmpty) {
         return value.trim();
@@ -228,6 +236,54 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     }
     final locale = FFLocalizations.of(context).languageCode;
     return DateFormat.jm(locale).format(timestamp.toLocal());
+  }
+
+  bool _isSameMessageDay(DateTime? left, DateTime? right) {
+    if (left == null || right == null) {
+      return false;
+    }
+
+    final leftLocal = left.toLocal();
+    final rightLocal = right.toLocal();
+    return leftLocal.year == rightLocal.year &&
+        leftLocal.month == rightLocal.month &&
+        leftLocal.day == rightLocal.day;
+  }
+
+  bool _shouldShowDateDivider(List<MessagesRecord> messages, int index) {
+    final messageTimestamp = messages[index].createdAt;
+    if (messageTimestamp == null) {
+      return false;
+    }
+
+    if (index == 0) {
+      return true;
+    }
+
+    return !_isSameMessageDay(messageTimestamp, messages[index - 1].createdAt);
+  }
+
+  Widget _buildDateDivider(BuildContext context, DateTime timestamp) {
+    final locale = FFLocalizations.of(context).languageCode;
+    return Center(
+      child: Container(
+        margin: const EdgeInsetsDirectional.only(bottom: 12.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(12.0, 6.0, 12.0, 6.0),
+        decoration: BoxDecoration(
+          color: ExpatlioDesign.card.withValues(alpha: 0.86),
+          borderRadius: BorderRadius.circular(14.0),
+        ),
+        child: Text(
+          formatChatDateDividerLabel(timestamp, locale: locale),
+          style: ExpatlioDesign.textStyle(
+            context,
+            color: ExpatlioDesign.muted,
+            size: 12.0,
+            weight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildLoadingState(BuildContext context) {
@@ -447,55 +503,88 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     BuildContext context, {
     required MessagesRecord message,
     required bool isCurrentUser,
+    required bool isReadByPartner,
   }) {
     final bubbleColor =
-        isCurrentUser ? ExpatlioDesign.primary : ExpatlioDesign.card;
-    final textColor = isCurrentUser ? Colors.white : ExpatlioDesign.text;
+        isCurrentUser ? const Color(0xFFEDE3FF) : ExpatlioDesign.card;
+    const textColor = ExpatlioDesign.text;
 
-    return Align(
-      alignment: isCurrentUser
-          ? AlignmentDirectional.centerEnd
-          : AlignmentDirectional.centerStart,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 300.0),
-        margin: const EdgeInsetsDirectional.only(bottom: 8.0),
-        decoration: BoxDecoration(
-          color: bubbleColor,
-          borderRadius: BorderRadius.circular(18.0),
-          border:
-              isCurrentUser ? null : Border.all(color: ExpatlioDesign.border),
-        ),
-        padding: const EdgeInsetsDirectional.fromSTEB(14.0, 10.0, 14.0, 10.0),
-        child: Column(
-          crossAxisAlignment:
-              isCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              message.text,
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'sf pro display',
-                    color: textColor,
-                    fontSize: 15.0,
-                    letterSpacing: 0.0,
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxBubbleWidth = math.min(
+          320.0,
+          constraints.maxWidth * 0.76,
+        );
+
+        return Align(
+          alignment: isCurrentUser
+              ? AlignmentDirectional.centerEnd
+              : AlignmentDirectional.centerStart,
+          child: Container(
+            constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+            margin: const EdgeInsetsDirectional.only(bottom: 8.0),
+            decoration: BoxDecoration(
+              color: bubbleColor,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16.0),
+                topRight: const Radius.circular(16.0),
+                bottomLeft: Radius.circular(isCurrentUser ? 16.0 : 4.0),
+                bottomRight: Radius.circular(isCurrentUser ? 4.0 : 16.0),
+              ),
             ),
-            if (message.createdAt != null)
-              Padding(
-                padding: const EdgeInsetsDirectional.only(top: 4.0),
-                child: Text(
-                  _formatMessageTimestamp(message.createdAt),
+            padding:
+                const EdgeInsetsDirectional.fromSTEB(14.0, 10.0, 14.0, 8.0),
+            child: Column(
+              crossAxisAlignment: isCurrentUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  message.text,
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'sf pro display',
-                        color: textColor.withValues(alpha: 0.72),
-                        fontSize: 11.0,
+                        color: textColor,
+                        fontSize: 15.0,
                         letterSpacing: 0.0,
                       ),
                 ),
-              ),
-          ],
-        ),
-      ),
+                if (message.createdAt != null)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(top: 4.0),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _formatMessageTimestamp(message.createdAt),
+                          style:
+                              FlutterFlowTheme.of(context).bodyMedium.override(
+                                    fontFamily: 'sf pro display',
+                                    color: textColor.withValues(alpha: 0.58),
+                                    fontSize: 11.0,
+                                    letterSpacing: 0.0,
+                                  ),
+                        ),
+                        if (isCurrentUser) ...[
+                          const SizedBox(width: 4.0),
+                          Icon(
+                            isReadByPartner
+                                ? Icons.done_all_rounded
+                                : Icons.done_rounded,
+                            color: isReadByPartner
+                                ? ExpatlioDesign.primary
+                                : textColor.withValues(alpha: 0.45),
+                            size: 14.0,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -506,6 +595,163 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required DocumentReference partnerRef,
     required bool isFriend,
   }) {
+    final partnerName = _partnerDisplayName(
+      context,
+      conversation: conversation,
+      partnerProfile: partnerProfile,
+      partnerRef: partnerRef,
+    );
+    final partnerPhotoUrl = _partnerPhotoUrl(
+      conversation: conversation,
+      partnerProfile: partnerProfile,
+      partnerRef: partnerRef,
+    );
+    final locale = FFLocalizations.of(context).languageCode;
+    final presenceLabel = formatChatPresenceLabel(
+      partnerProfile?.lastSeenAt,
+      locale: locale,
+    );
+    final isOnline = chatPartnerIsOnline(partnerProfile?.lastSeenAt);
+
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: ExpatlioDesign.background,
+        border: Border(
+          bottom: BorderSide(color: ExpatlioDesign.border, width: 1.0),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: 58.0,
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(2.0, 6.0, 8.0, 6.0),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => context.safePop(),
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: ExpatlioDesign.text,
+                    size: 24.0,
+                  ),
+                  splashRadius: 22.0,
+                ),
+                _buildPartnerAvatar(
+                  context,
+                  displayName: partnerName,
+                  photoUrl: partnerPhotoUrl,
+                  size: 40.0,
+                ),
+                const SizedBox(width: 10.0),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              partnerName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                size: 16.0,
+                                weight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          if (isFriend)
+                            const Padding(
+                              padding: EdgeInsetsDirectional.only(start: 4.0),
+                              child: Icon(
+                                Icons.star_rounded,
+                                color: Color(0xFFFFC107),
+                                size: 17.0,
+                              ),
+                            ),
+                        ],
+                      ),
+                      if (presenceLabel.isNotEmpty) ...[
+                        const SizedBox(height: 2.0),
+                        Text(
+                          presenceLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ExpatlioDesign.textStyle(
+                            context,
+                            color: isOnline
+                                ? ExpatlioDesign.primary
+                                : ExpatlioDesign.muted,
+                            size: 12.0,
+                            weight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8.0),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minWidth: isFriend ? 142.0 : 98.0,
+                    maxWidth: isFriend ? 164.0 : 112.0,
+                    minHeight: 36.0,
+                  ),
+                  child: OutlinedButton.icon(
+                    onPressed: () => _toggleFriend(partnerRef, isFriend),
+                    icon: Icon(
+                      isFriend
+                          ? Icons.person_remove_alt_1_rounded
+                          : Icons.person_add_alt_1_rounded,
+                      size: 16.0,
+                    ),
+                    label: Text(
+                      isFriend
+                          ? FFLocalizations.of(context).getVariableText(
+                              ruText: 'Убрать из друзей',
+                              enText: 'Remove',
+                            )
+                          : FFLocalizations.of(context).getVariableText(
+                              ruText: 'В друзья',
+                              enText: 'Add',
+                            ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: ExpatlioDesign.primary,
+                      side: const BorderSide(color: ExpatlioDesign.primary),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.0),
+                      ),
+                      padding: const EdgeInsetsDirectional.symmetric(
+                        horizontal: 10.0,
+                      ),
+                      textStyle: ExpatlioDesign.textStyle(
+                        context,
+                        size: 13.0,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _partnerDisplayName(
+    BuildContext context, {
+    required ConversationsRecord conversation,
+    required UserPublicProfilesRecord? partnerProfile,
+    required DocumentReference partnerRef,
+  }) {
     var partnerName = partnerProfile?.displayName.trim() ?? '';
     if (partnerName.isEmpty) {
       partnerName = _conversationParticipantDisplayName(
@@ -514,21 +760,70 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       );
     }
 
-    return BasicPageHeader(
-      title: partnerName.isNotEmpty
-          ? partnerName
-          : FFLocalizations.of(context).getVariableText(
-              ruText: 'Собеседник',
-              enText: 'Conversation partner',
-            ),
-      trailing: IconButton(
-        onPressed: () => _toggleFriend(partnerRef, isFriend),
-        icon: Icon(
-          isFriend
-              ? Icons.person_remove_alt_1_rounded
-              : Icons.person_add_alt_1_rounded,
-          color: ExpatlioDesign.text,
-          size: 22.0,
+    return partnerName.isNotEmpty
+        ? partnerName
+        : FFLocalizations.of(context).getVariableText(
+            ruText: 'Собеседник',
+            enText: 'Conversation partner',
+          );
+  }
+
+  String _partnerPhotoUrl({
+    required ConversationsRecord conversation,
+    required UserPublicProfilesRecord? partnerProfile,
+    required DocumentReference partnerRef,
+  }) {
+    final profilePhotoUrl = partnerProfile?.photoUrl.trim() ?? '';
+    if (profilePhotoUrl.isNotEmpty) {
+      return profilePhotoUrl;
+    }
+
+    return _conversationParticipantPhotoUrl(conversation, partnerRef);
+  }
+
+  Widget _buildPartnerAvatar(
+    BuildContext context, {
+    required String displayName,
+    required String photoUrl,
+    required double size,
+  }) {
+    final normalizedPhotoUrl = photoUrl.trim();
+    final normalizedName = displayName.trim();
+    final fallbackText = normalizedName.isEmpty
+        ? '?'
+        : normalizedName.characters.take(2).toString().toUpperCase();
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+        shape: BoxShape.circle,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: normalizedPhotoUrl.isNotEmpty
+          ? Image.network(
+              normalizedPhotoUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _buildAvatarFallback(
+                context,
+                fallbackText,
+              ),
+            )
+          : _buildAvatarFallback(context, fallbackText),
+    );
+  }
+
+  Widget _buildAvatarFallback(BuildContext context, String fallbackText) {
+    return Center(
+      child: Text(
+        fallbackText,
+        maxLines: 1,
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: ExpatlioDesign.primary,
+          size: 13.0,
+          weight: FontWeight.w700,
         ),
       ),
     );
@@ -593,16 +888,17 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
           _markConversationRead(conversation);
 
-          return FutureBuilder<UserPublicProfilesRecord?>(
-            future: _getPublicProfileFuture(partnerRef),
+          return StreamBuilder<UserPublicProfilesRecord?>(
+            stream: _watchPublicProfile(partnerRef),
             builder: (context, partnerSnapshot) {
               if (partnerSnapshot.hasError) {
                 debugPrint(
-                  'ChatThreadWidget: partner public profile load failed for ${partnerRef.path}: ${partnerSnapshot.error}',
+                  'ChatThreadWidget: partner public profile stream failed for ${partnerRef.path}: ${partnerSnapshot.error}',
                 );
               }
 
-              if (partnerSnapshot.connectionState == ConnectionState.waiting &&
+              if (!partnerSnapshot.hasData &&
+                  partnerSnapshot.connectionState == ConnectionState.waiting &&
                   !partnerSnapshot.hasError) {
                 return _buildLoadingState(context);
               }
@@ -711,18 +1007,55 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                   itemCount: messages.length,
                                   itemBuilder: (context, index) {
                                     final message = messages[index];
-                                    if (messageIsCallEvent(message)) {
-                                      return _buildCallEventMessageCard(
-                                        context,
-                                        message: message,
+                                    final itemChildren = <Widget>[];
+                                    if (_shouldShowDateDivider(
+                                      messages,
+                                      index,
+                                    )) {
+                                      itemChildren.add(
+                                        _buildDateDivider(
+                                          context,
+                                          message.createdAt!,
+                                        ),
                                       );
                                     }
 
-                                    return _buildMessageBubble(
-                                      context,
-                                      message: message,
-                                      isCurrentUser:
-                                          message.senderId == currentUserUid,
+                                    if (messageIsCallEvent(message)) {
+                                      itemChildren.add(
+                                        _buildCallEventMessageCard(
+                                          context,
+                                          message: message,
+                                        ),
+                                      );
+                                      return Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: itemChildren,
+                                      );
+                                    }
+
+                                    final isCurrentUser =
+                                        message.senderId == currentUserUid;
+                                    final partnerReadAt = conversation
+                                        .lastReadAtByUserId[partnerRef.id];
+                                    final isReadByPartner = isCurrentUser &&
+                                        message.createdAt != null &&
+                                        partnerReadAt != null &&
+                                        !partnerReadAt
+                                            .isBefore(message.createdAt!);
+                                    itemChildren.add(
+                                      _buildMessageBubble(
+                                        context,
+                                        message: message,
+                                        isCurrentUser: isCurrentUser,
+                                        isReadByPartner: isReadByPartner,
+                                      ),
+                                    );
+
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: itemChildren,
                                     );
                                   },
                                 );

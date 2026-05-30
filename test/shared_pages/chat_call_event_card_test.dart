@@ -58,6 +58,7 @@ void main() {
     expect(find.text('Видео-звонок'), findsOneWidget);
     expect(find.text('Сегодня, 18:30 • 12 мин'), findsOneWidget);
     expect(find.byIcon(Icons.phone_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
 
     await tester.tap(find.byType(ChatCallEventCard));
     await tester.pump();
@@ -67,10 +68,10 @@ void main() {
 
   test('chat call event card does not expose icon color overrides', () {
     final source =
-        File('lib/components/chat_call_event_card.dart')
-            .readAsStringSync();
+        File('lib/components/chat_call_event_card.dart').readAsStringSync();
 
     expect(source, contains('ChatCallEventTone'));
     expect(source, isNot(contains('iconColor')));
+    expect(source, contains('boxShadow'));
   });
 }

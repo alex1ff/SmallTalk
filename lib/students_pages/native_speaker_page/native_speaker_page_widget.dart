@@ -14,6 +14,7 @@ import '/flutter_flow/custom_functions.dart' as functions;
 import '/components/no_balance_widget.dart';
 import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/shared_pages/chat_thread/open_chat_thread.dart';
 import '/services/user_match_profile.dart';
 // ─── SUBSCRIPTION REWORK ─ gating helper. Replaces balanceST < 0 check.
 import '/utils/subscription_utils.dart';
@@ -707,13 +708,9 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                     ),
                                     busyStyle: ButtonBusyStyle.spinner,
                                     action: () async {
-                                      await Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              ChatThreadWidget(
-                                            conversationRef: conversationRef,
-                                          ),
-                                        ),
+                                      await openChatThread(
+                                        context,
+                                        conversationRef: conversationRef,
                                       );
                                     },
                                   ),

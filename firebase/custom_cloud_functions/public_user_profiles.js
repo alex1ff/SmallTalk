@@ -114,6 +114,7 @@ function buildPublicUserProfile(userId, userData = {}, options = {}) {
     ratingAverage: readMatchRatingAverage(userData),
     ratingCount: readMatchRatingCount(userData),
     approvedTeacher: teacherAccreditationStatus === "approved",
+    lastSeenAt: userData.lastSeenAt,
     updatedAt: options.updatedAt ?? FieldValue.serverTimestamp(),
   });
 

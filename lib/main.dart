@@ -17,6 +17,7 @@ import 'shared_pages/design/expatlio_design.dart';
 // 🔔 VoIP imports
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/voip_service.dart';
+import 'services/user_presence_service.dart';
 
 // 💳 Subscription (RevenueCat) imports
 import 'services/subscription_service.dart';
@@ -164,10 +165,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final wasLoggedIn = _appStateNotifier.loggedIn;
       if (!user.loggedIn) {
         FFAppState().clearPendingSocialAuthContext();
+        UserPresenceService.instance.stop();
         if (wasLoggedIn) {
           unawaited(_deinitializeVoipService());
         }
       } else if (!wasLoggedIn) {
+        UserPresenceService.instance.start();
         unawaited(_initializeVoipService());
       }
       _appStateNotifier.update(user);
@@ -180,6 +183,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshAuthUserOnResume());
+      unawaited(UserPresenceService.instance.markSeen(force: true));
     }
   }
 
@@ -189,6 +193,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     authUserSub.cancel();
     _userStreamSub?.cancel();
     _jwtTokenSub?.cancel();
+    UserPresenceService.instance.stop();
 
     super.dispose();
   }

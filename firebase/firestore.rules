@@ -406,6 +406,7 @@ service cloud.firestore {
       return isSelf(userId) &&
         ownUserUidIsValid(userId) &&
         ownUserRoleCreateIsValid() &&
+        ownUserLastSeenAtCreateIsValid() &&
         !request.resource.data.keys().hasAny(protectedTeacherAccreditationFields()) &&
         !request.resource.data.keys().hasAny(privateUserTokenFields()) &&
         !request.resource.data.keys().hasAny(privateUserLifecycleFields()) &&
@@ -417,6 +418,7 @@ service cloud.firestore {
       return isSelf(userId) &&
         ownUserUidUpdateIsValid(userId) &&
         ownUserRoleUpdateIsValid() &&
+        ownUserLastSeenAtUpdateIsValid(changedKeys) &&
         !changedKeys.hasAny(privateUserTokenFields()) &&
         !changedKeys.hasAny(privateUserLifecycleFields()) &&
         !changedKeys.hasAny(serverOwnedUserFields()) &&
@@ -424,6 +426,16 @@ service cloud.firestore {
           !changedKeys.hasAny(protectedTeacherAccreditationFields()) ||
           canSetOwnTeacherAccreditationPending()
         );
+    }
+
+    function ownUserLastSeenAtCreateIsValid() {
+      return !request.resource.data.keys().hasAny(['lastSeenAt']) ||
+        request.resource.data.lastSeenAt == request.time;
+    }
+
+    function ownUserLastSeenAtUpdateIsValid(changedKeys) {
+      return !changedKeys.hasAny(['lastSeenAt']) ||
+        request.resource.data.lastSeenAt == request.time;
     }
 
     function canReadUserDocument(userId) {

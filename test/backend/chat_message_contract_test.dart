@@ -135,5 +135,21 @@ void main() {
       expect(message.callStartedAt, DateTime.parse('2026-04-19T09:00:00Z'));
       expect(message.callEndedAt, DateTime.parse('2026-04-19T09:12:30Z'));
     });
+
+    test('UserPublicProfilesRecord parses lastSeenAt presence timestamp', () {
+      final lastSeenAt = DateTime.parse('2026-05-30T09:41:00Z');
+
+      final profile = UserPublicProfilesRecord.getDocumentFromData(
+        {
+          'userId': 'teacher',
+          'display_name': 'Teacher',
+          'lastSeenAt': lastSeenAt,
+        },
+        UserPublicProfilesRecord.collection.doc('teacher'),
+      );
+
+      expect(profile.lastSeenAt, lastSeenAt);
+      expect(profile.hasLastSeenAt(), isTrue);
+    });
   });
 }

@@ -11,10 +11,11 @@ void main() {
           _source('lib/students_pages/favorite/favorite_widget.dart');
 
       expect(source, contains('conversation.isUnlocked'));
+      expect(source, contains('openChatThread('));
       expect(
-          source,
-          contains(
-              'ChatThreadWidget(conversationRef: conversation.reference)'));
+        _source('lib/shared_pages/chat_thread/open_chat_thread.dart'),
+        contains('Navigator.of(context, rootNavigator: true).push'),
+      );
       expect(source, contains("FieldPath(['participantMap', currentUid])"));
       expect(source, contains('resolveFriendsForUser(currentUserDocument)'));
       expect(source, contains('kConversationMessageTypeCallEvent'));
@@ -66,8 +67,7 @@ void main() {
         () {
       final source =
           _source('lib/shared_pages/chat_thread/chat_thread_widget.dart');
-      final callEventCard =
-          _source('lib/components/chat_call_event_card.dart');
+      final callEventCard = _source('lib/components/chat_call_event_card.dart');
 
       expect(source,
           contains('!conversation.participantIds.contains(currentUserUid)'));
@@ -351,8 +351,10 @@ void main() {
           'lib/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart');
 
       expect(studentDashboard, contains('AddInterWidget()'));
-      expect(studentDashboard,
-          contains("import '/components/student_availability_switch_control.dart';"));
+      expect(
+          studentDashboard,
+          contains(
+              "import '/components/student_availability_switch_control.dart';"));
       expect(studentDashboard, contains('StudentAvailabilitySwitchControl('));
       expect(studentDashboard, contains('availabilityToday:'));
       expect(studentDashboard, isNot(contains('isInCall: false')));

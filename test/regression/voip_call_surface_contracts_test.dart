@@ -335,14 +335,14 @@ void main() {
           'lib/students_pages/native_speaker_page/native_speaker_page_widget.dart');
       final rulesSource = _source('firebase/firestore.rules');
 
-      expect(chatThreadSource, contains('_getPublicProfileFuture'));
+      expect(chatThreadSource, contains('_watchPublicProfile'));
       expect(
         chatThreadSource,
         contains('UserPublicProfilesRecord.collection.doc(ref.id)'),
       );
       expect(
         chatThreadSource,
-        contains('FutureBuilder<UserPublicProfilesRecord?>'),
+        contains('StreamBuilder<UserPublicProfilesRecord?>'),
       );
       expect(
         chatThreadSource,
@@ -495,8 +495,7 @@ void main() {
     });
 
     test('favorite and blacklist tiles read public profile projection', () {
-      final favSource =
-          _source('lib/components/fav_widget.dart');
+      final favSource = _source('lib/components/fav_widget.dart');
       final favoriteSource =
           _source('lib/students_pages/favorite/favorite_widget.dart');
       final blackListSource =

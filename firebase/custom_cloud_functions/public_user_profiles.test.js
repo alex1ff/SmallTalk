@@ -64,6 +64,7 @@ test("public profile projection exposes only non-private matching fields", () =>
       timezoneOffsetMinutes: -300,
       friends: ["users/student-a"],
       blockedUsers: ["users/bad"],
+      lastSeenAt: "last-seen",
     },
     {updatedAt: "fixed"},
   );
@@ -97,6 +98,7 @@ test("public profile projection exposes only non-private matching fields", () =>
     ratingAverage: 4.7,
     ratingCount: 11,
     approvedTeacher: true,
+    lastSeenAt: "last-seen",
     updatedAt: "fixed",
   });
 
@@ -257,7 +259,7 @@ test("student dashboard partner count reads public profiles", () => {
     "lib/components/review_card/review_card_widget.dart",
   );
   const favSource = readSource(
-    "lib/students_pages/components/fav/fav_widget.dart",
+    "lib/components/fav_widget.dart",
   );
   const favoriteSource = readSource(
     "lib/students_pages/favorite/favorite_widget.dart",
@@ -279,7 +281,7 @@ test("student dashboard partner count reads public profiles", () => {
     dashboardSource,
     /UsersRecord\.collection\s*\.where\('role'/,
   );
-  assert.match(chatThreadSource, /UserPublicProfilesRecord\.maybeGetDocumentOnce/);
+  assert.match(chatThreadSource, /UserPublicProfilesRecord\.maybeGetDocument/);
   assert.match(callDetailsSource, /UserPublicProfilesRecord\.collection/);
   assert.match(callSummarySource, /FutureBuilder<UserPublicProfilesRecord\?>/);
   assert.match(callSummarySource, /Future\.value\(null\)/);

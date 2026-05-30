@@ -10,6 +10,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/call_history/call_language_utils.dart';
+import '/shared_pages/chat_thread/open_chat_thread.dart';
 import '/index.dart';
 import '/services/user_match_profile.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -275,11 +276,9 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
             ),
             busyStyle: ButtonBusyStyle.spinner,
             action: () async {
-              await Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) =>
-                      ChatThreadWidget(conversationRef: conversationRef),
-                ),
+              await openChatThread(
+                context,
+                conversationRef: conversationRef,
               );
             },
           ),
