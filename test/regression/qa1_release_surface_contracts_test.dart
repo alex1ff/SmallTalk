@@ -67,7 +67,7 @@ void main() {
       final source =
           _source('lib/shared_pages/chat_thread/chat_thread_widget.dart');
       final callEventCard =
-          _source('lib/shared_pages/chat_thread/chat_call_event_card.dart');
+          _source('lib/components/chat_call_event_card.dart');
 
       expect(source,
           contains('!conversation.participantIds.contains(currentUserUid)'));
@@ -170,6 +170,8 @@ void main() {
         () {
       final dashboard =
           _source('lib/teachers_pages/dashboard_n_s/dashboard_n_s_widget.dart');
+      final availabilitySwitch =
+          _source('lib/components/teacher_availability_switch_control.dart');
       final userMatchProfile = _source('lib/services/user_match_profile.dart');
       final loadingRoute = _source(
         'lib/authorization/loading/loading_route_logic.dart',
@@ -188,6 +190,18 @@ void main() {
         tabShell,
         contains(
             '!isAwaitingUserDocument && _pathsWithNavBar.contains(currentPath)'),
+      );
+      expect(
+        dashboard,
+        contains("'/components/teacher_availability_switch_control.dart'"),
+      );
+      expect(
+        dashboard,
+        contains("'/components/pending_teacher_review_card.dart'"),
+      );
+      expect(
+        dashboard,
+        contains("'/components/pending_teacher_review_bottom_sheet.dart'"),
       );
       expect(
         dashboard,
@@ -211,8 +225,8 @@ void main() {
       );
       expect(dashboard, contains('PendingTeacherReviewCard'));
       expect(dashboard, contains('PendingTeacherReviewBottomSheet'));
-      expect(dashboard, contains('IgnorePointer('));
-      expect(dashboard, contains('HitTestBehavior.opaque'));
+      expect(availabilitySwitch, contains('IgnorePointer('));
+      expect(availabilitySwitch, contains('HitTestBehavior.opaque'));
       expect(dashboard, contains('_handlePendingAvailabilitySwitchTap'));
       expect(
         dashboard,
@@ -249,7 +263,7 @@ void main() {
       final profile = _source('lib/shared_pages/profile/profile_widget.dart');
       final userMatchProfile = _source('lib/services/user_match_profile.dart');
       final celebration = _source(
-        'lib/authorization/components/celebration_n_s/celebration_n_s_widget.dart',
+        'lib/components/celebration_n_s_widget.dart',
       );
 
       expect(
@@ -283,10 +297,10 @@ void main() {
 
     test('celebration confetti does not intercept bottom sheet actions', () {
       final studentCelebration = _source(
-        'lib/authorization/components/celebration_s_t/celebration_s_t_widget.dart',
+        'lib/components/celebration_s_t_widget.dart',
       );
       final teacherCelebration = _source(
-        'lib/authorization/components/celebration_n_s/celebration_n_s_widget.dart',
+        'lib/components/celebration_n_s_widget.dart',
       );
 
       expect(studentCelebration, contains('IgnorePointer('));
@@ -298,7 +312,7 @@ void main() {
     test('tab shell and nav bar keep profile as a shared tab', () {
       final tabShell =
           _source('lib/shared_pages/tab_shell/tab_shell_page.dart');
-      final navBar = _source('lib/shared_pages/nav_bar/nav_bar_widget.dart');
+      final navBar = _source('lib/components/nav_bar_widget.dart');
 
       expect(tabShell, contains('DashboardNSWidget.routePath,'));
       expect(tabShell, contains('StudentsDashboardWidget.routePath,'));
@@ -337,7 +351,9 @@ void main() {
           'lib/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart');
 
       expect(studentDashboard, contains('AddInterWidget()'));
-      expect(studentDashboard, contains('_StudentAvailabilitySwitchControl'));
+      expect(studentDashboard,
+          contains("import '/components/student_availability_switch_control.dart';"));
+      expect(studentDashboard, contains('StudentAvailabilitySwitchControl('));
       expect(studentDashboard, contains('availabilityToday:'));
       expect(studentDashboard, isNot(contains('isInCall: false')));
       expect(studentDashboard, contains('FieldValue.arrayRemove'));

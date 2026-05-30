@@ -26,7 +26,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '/services/voip_service.dart';
-import '/shared_pages/learning/interactive_caption_text.dart';
+import '/components/interactive_caption_text.dart';
 import 'session_limit_ui.dart' as session_limit_ui;
 
 // VideoQuality enum simplified - only auto mode needed
@@ -4398,20 +4398,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         : const Color(0xFFDACBFF).withValues(alpha: 0.26);
     final displayText = _truncateCaptionForOverlay(caption.text);
     final fullText = _normalizeCaptionText(caption.text);
-    final textStyle = TextStyle(
-      color: isLocal ? Colors.white : const Color(0xFFF9F3FF),
-      fontSize: 18,
-      height: 1.18,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0.1,
-      shadows: [
-        Shadow(
-          offset: const Offset(0, 1),
-          blurRadius: 4,
-          color: Colors.black.withValues(alpha: 0.52),
-        ),
-      ],
-    );
 
     final panel = Container(
       width: double.infinity,
@@ -4431,7 +4417,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       child: _buildCaptionPanelText(
         displayText: displayText,
         fullText: fullText,
-        textStyle: textStyle,
+        isLocal: isLocal,
       ),
     );
 
@@ -4472,29 +4458,23 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildCaptionPanelText({
     required String displayText,
     required String fullText,
-    required TextStyle textStyle,
+    required bool isLocal,
   }) {
-    if (widget.actionCallback == null) {
-      return Text(
-        displayText,
-        maxLines: 2,
-        overflow: TextOverflow.fade,
-        softWrap: true,
-        style: textStyle,
-      );
-    }
-
     return InteractiveCaptionText(
       text: displayText,
-      style: textStyle,
+      tone: isLocal
+          ? InteractiveCaptionTextTone.overlayLocal
+          : InteractiveCaptionTextTone.overlayRemote,
       mode: InteractiveCaptionTextMode.tokenSplit,
-      onWordTap: (word) {
-        return widget.actionCallback!.call(
-          word,
-          fullText,
-          fullText,
-        );
-      },
+      onWordTap: widget.actionCallback == null
+          ? null
+          : (word) {
+              return widget.actionCallback!.call(
+                word,
+                fullText,
+                fullText,
+              );
+            },
       maxLines: 2,
       overflow: TextOverflow.fade,
       softWrap: true,

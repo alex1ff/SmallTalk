@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/components/button/button_widget.dart';
+import 'package:small_talk/components/wrapper.dart';
 
 const _footerIgnoreKey = ValueKey<String>('call_summary_footer_ignore');
 const _footerOpacityKey = ValueKey<String>('call_summary_footer_opacity');
@@ -72,12 +73,17 @@ class _CallSummaryFooterHarnessState extends State<_CallSummaryFooterHarness> {
                       offset: isComposerActive
                           ? const Offset(0.0, 0.24)
                           : Offset.zero,
-                      child: ButtonWidget(
-                        text: 'Done',
-                        keyboardAwarePadding: false,
+                      child: Wrapper(
                         padding: const EdgeInsetsDirectional.fromSTEB(
-                            6.0, 0.0, 6.0, 35.0),
-                        action: widget.onTap,
+                          6.0,
+                          0.0,
+                          6.0,
+                          35.0,
+                        ),
+                        child: ButtonWidget(
+                          text: 'Done',
+                          action: widget.onTap,
+                        ),
                       ),
                     ),
                   ),
@@ -119,8 +125,6 @@ void main() {
           text: 'Submit',
           loadingText: 'Sending...',
           busyStyle: ButtonBusyStyle.spinner,
-          keyboardAwarePadding: false,
-          padding: EdgeInsets.zero,
           action: () async {
             tapCount++;
             await completer.future;
@@ -159,8 +163,6 @@ void main() {
         ButtonWidget(
           text: 'Next',
           busyStyle: ButtonBusyStyle.debounceOnly,
-          keyboardAwarePadding: false,
-          padding: EdgeInsets.zero,
           action: () async {
             tapCount++;
             await completer.future;
@@ -189,13 +191,15 @@ void main() {
   });
 
   testWidgets(
-      'keyboard-aware padding reacts to MediaQuery viewInsets immediately',
+      'keyboard-aware wrapper padding reacts to MediaQuery viewInsets immediately',
       (tester) async {
     await tester.pumpWidget(
       buildHarness(
-        ButtonWidget(
-          text: 'Continue',
-          action: () async {},
+        Wrapper.keyboardAware(
+          child: ButtonWidget(
+            text: 'Continue',
+            action: () async {},
+          ),
         ),
       ),
     );
@@ -209,9 +213,11 @@ void main() {
 
     await tester.pumpWidget(
       buildHarness(
-        ButtonWidget(
-          text: 'Continue',
-          action: () async {},
+        Wrapper.keyboardAware(
+          child: ButtonWidget(
+            text: 'Continue',
+            action: () async {},
+          ),
         ),
         bottomInset: 280.0,
       ),

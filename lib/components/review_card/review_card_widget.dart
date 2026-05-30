@@ -13,17 +13,19 @@ class ReviewCardWidget extends StatefulWidget {
   const ReviewCardWidget({
     super.key,
     required this.rewDoc,
-    this.width = 325.0,
+    this.fullWidth = false,
   });
 
   final ReviewsRecord? rewDoc;
-  final double width;
+  final bool fullWidth;
 
   @override
   State<ReviewCardWidget> createState() => _ReviewCardWidgetState();
 }
 
 class _ReviewCardWidgetState extends State<ReviewCardWidget> {
+  static const _compactWidth = 325.0;
+
   late ReviewCardModel _model;
   late Future<UserPublicProfilesRecord?> _userFuture;
 
@@ -97,7 +99,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
     final reviewComment = _normalizedComment();
 
     return Container(
-      width: widget.width,
+      width: widget.fullWidth ? double.infinity : _compactWidth,
       decoration: ExpatlioDesign.cardDecoration(radius: 20.0),
       child: Padding(
         padding: EdgeInsets.all(16.0),

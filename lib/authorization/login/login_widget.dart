@@ -1,5 +1,5 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/components/native_speaker_entry_toggle.dart';
+import '/components/native_speaker_entry_toggle.dart';
 import '/authorization/shared/social_auth_entry_logic.dart';
 import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -406,8 +406,6 @@ class _LoginWidgetState extends State<LoginWidget> {
                                 enText: 'Signing in...',
                               ),
                               busyStyle: ButtonBusyStyle.spinner,
-                              keyboardAwarePadding: false,
-                              padding: EdgeInsets.zero,
                               action: _submitEmailLogin,
                             ),
                           ],

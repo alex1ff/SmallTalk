@@ -2,7 +2,9 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
+import '/components/pair_review_content.dart';
 import '/components/review_card/review_card_widget.dart';
+import '/components/wrapper.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -297,8 +299,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
           return const SizedBox.shrink();
         }
 
-        return Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(0.0, 28.0, 0.0, 0.0),
+        return Wrapper(
+          padding: const EdgeInsetsDirectional.fromSTEB(6.0, 28.0, 6.0, 0.0),
           child: ButtonWidget(
             text: FFLocalizations.of(context).getVariableText(
               ruText: 'Открыть чат',
@@ -309,8 +311,6 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
               enText: 'Opening...',
             ),
             busyStyle: ButtonBusyStyle.spinner,
-            keyboardAwarePadding: false,
-            padding: const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
             action: () async {
               await Navigator.of(context).push(
                 MaterialPageRoute<void>(
@@ -908,111 +908,117 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                       constraints: const BoxConstraints(
                                         maxWidth: 360.0,
                                       ),
-                                      child: ButtonWidget(
-                                        text:
-                                            FFLocalizations.of(context).getText(
-                                          'duynuhus' /* Готово */,
-                                        ),
-                                        loadingText: FFLocalizations.of(context)
-                                            .getVariableText(
-                                          ruText: 'Сохраняем...',
-                                          enText: 'Saving...',
-                                        ),
-                                        busyStyle: ButtonBusyStyle.spinner,
-                                        keyboardAwarePadding: false,
+                                      child: Wrapper(
                                         padding: const EdgeInsetsDirectional
                                             .fromSTEB(6.0, 0.0, 6.0, 35.0),
-                                        action: () async {
-                                          if (_model.rait != 0) {
-                                            final sessionRef = widget.sessionID;
-                                            final toUserRef = widget.userRef;
-                                            if (sessionRef == null ||
-                                                toUserRef == null) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    FFLocalizations.of(context)
-                                                        .getVariableText(
-                                                      ruText:
-                                                          'Не удалось отправить отзыв: отсутствуют данные сессии.',
-                                                      enText:
-                                                          'Unable to submit review: missing session data.',
+                                        child: ButtonWidget(
+                                          text: FFLocalizations.of(context)
+                                              .getText(
+                                            'duynuhus' /* Готово */,
+                                          ),
+                                          loadingText:
+                                              FFLocalizations.of(context)
+                                                  .getVariableText(
+                                            ruText: 'Сохраняем...',
+                                            enText: 'Saving...',
+                                          ),
+                                          busyStyle: ButtonBusyStyle.spinner,
+                                          action: () async {
+                                            if (_model.rait != 0) {
+                                              final sessionRef =
+                                                  widget.sessionID;
+                                              final toUserRef = widget.userRef;
+                                              if (sessionRef == null ||
+                                                  toUserRef == null) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      FFLocalizations.of(
+                                                              context)
+                                                          .getVariableText(
+                                                        ruText:
+                                                            'Не удалось отправить отзыв: отсутствуют данные сессии.',
+                                                        enText:
+                                                            'Unable to submit review: missing session data.',
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                              );
-                                              return;
+                                                );
+                                                return;
+                                              }
+
+                                              try {
+                                                final result =
+                                                    await submitSessionReview(
+                                                  sessionRef: sessionRef,
+                                                  toUserRef: toUserRef,
+                                                  rating: _model.rait,
+                                                  isTeacher: currentUserDocument
+                                                          ?.role ==
+                                                      UserRole.native_speaker,
+                                                  comment: _model
+                                                      .aboutMeTextController
+                                                      .text,
+                                                );
+                                                _model.reviewRefOverride =
+                                                    result.reviewRef;
+                                                _model.rait = 0;
+                                                _model.aboutMeTextController
+                                                    ?.clear();
+                                                FocusScope.of(context)
+                                                    .unfocus();
+                                                safeSetState(() {});
+                                              } on FirebaseFunctionsException catch (e) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      reviewErrorMessage(
+                                                          context, e),
+                                                    ),
+                                                  ),
+                                                );
+                                                return;
+                                              } catch (_) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      unexpectedReviewErrorMessage(
+                                                          context),
+                                                    ),
+                                                  ),
+                                                );
+                                                return;
+                                              }
+                                            }
+                                            if (targetUserRef != null &&
+                                                signedInUserRef != null) {
+                                              if (effectiveBlack) {
+                                                await signedInUserRef.update({
+                                                  ...buildBlockAndRemoveFriendUpdateData(
+                                                    targetUserRef,
+                                                  ),
+                                                });
+                                              } else if (effectiveFav) {
+                                                await signedInUserRef.update({
+                                                  ...buildAddFriendUpdateData(
+                                                    targetUserRef,
+                                                  ),
+                                                });
+                                              } else if (initiallyFavorite) {
+                                                await signedInUserRef.update({
+                                                  ...buildRemoveFriendUpdateData(
+                                                    targetUserRef,
+                                                  ),
+                                                });
+                                              }
                                             }
 
-                                            try {
-                                              final result =
-                                                  await submitSessionReview(
-                                                sessionRef: sessionRef,
-                                                toUserRef: toUserRef,
-                                                rating: _model.rait,
-                                                isTeacher:
-                                                    currentUserDocument?.role ==
-                                                        UserRole.native_speaker,
-                                                comment: _model
-                                                    .aboutMeTextController.text,
-                                              );
-                                              _model.reviewRefOverride =
-                                                  result.reviewRef;
-                                              _model.rait = 0;
-                                              _model.aboutMeTextController
-                                                  ?.clear();
-                                              FocusScope.of(context).unfocus();
-                                              safeSetState(() {});
-                                            } on FirebaseFunctionsException catch (e) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    reviewErrorMessage(
-                                                        context, e),
-                                                  ),
-                                                ),
-                                              );
-                                              return;
-                                            } catch (_) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    unexpectedReviewErrorMessage(
-                                                        context),
-                                                  ),
-                                                ),
-                                              );
-                                              return;
-                                            }
-                                          }
-                                          if (targetUserRef != null &&
-                                              signedInUserRef != null) {
-                                            if (effectiveBlack) {
-                                              await signedInUserRef.update({
-                                                ...buildBlockAndRemoveFriendUpdateData(
-                                                  targetUserRef,
-                                                ),
-                                              });
-                                            } else if (effectiveFav) {
-                                              await signedInUserRef.update({
-                                                ...buildAddFriendUpdateData(
-                                                  targetUserRef,
-                                                ),
-                                              });
-                                            } else if (initiallyFavorite) {
-                                              await signedInUserRef.update({
-                                                ...buildRemoveFriendUpdateData(
-                                                  targetUserRef,
-                                                ),
-                                              });
-                                            }
-                                          }
-
-                                          _navigateToHome();
-                                        },
+                                            _navigateToHome();
+                                          },
+                                        ),
                                       ),
                                     ),
                                   ),

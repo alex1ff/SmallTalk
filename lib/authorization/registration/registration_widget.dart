@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/components/native_speaker_entry_toggle.dart';
+import '/components/native_speaker_entry_toggle.dart';
 import '/authorization/shared/social_auth_entry_logic.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
@@ -504,8 +504,6 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                 enText: 'Creating account...',
                               ),
                               busyStyle: ButtonBusyStyle.spinner,
-                              keyboardAwarePadding: false,
-                              padding: EdgeInsets.zero,
                               action: _handleEmailRegistration,
                             ),
                           ],

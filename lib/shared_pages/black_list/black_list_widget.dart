@@ -5,7 +5,7 @@ import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/design/basic_page_header.dart';
+import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/index.dart';
 import 'package:cached_network_image/cached_network_image.dart';

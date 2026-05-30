@@ -2,19 +2,20 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/firebase_storage/storage.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/profile_avatar_picker.dart';
+import '/components/profile_dropdown_menu_item.dart';
+import '/components/profile_edit_fields.dart';
+import '/components/profile_save_bar.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/flutter_flow/flutter_flow_widgets.dart';
 import '/flutter_flow/upload_data.dart';
-import '/shared_pages/edit_components/edit_about/edit_about_widget.dart';
-import '/shared_pages/design/basic_page_header.dart';
+import '/components/edit_about_widget.dart';
+import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/custom_functions.dart' as functions;
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'profile_edit_model.dart';
 export 'profile_edit_model.dart';
 
@@ -388,7 +389,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
             value: option.value,
             height: 42.0,
             padding: EdgeInsets.zero,
-            child: _ProfileEditDropdownMenuItem(
+            child: ProfileDropdownMenuItem(
               label: option.label,
               selected: option.selected,
             ),
@@ -815,7 +816,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         key: scaffoldKey,
         backgroundColor: const Color(0xFFFBFBFB),
         bottomNavigationBar: _hasUnsavedNameChange
-            ? _ProfileSaveBar(onSave: _saveAndClose)
+            ? ProfileSaveBar(onSave: _saveAndClose)
             : null,
         body: AuthUserStreamWidget(
           builder: (context) {
@@ -831,7 +832,12 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
             final contentBottomPadding = _hasUnsavedNameChange ? 104.0 : 24.0;
             return Column(
               children: [
-                const _ProfileHeader(),
+                BasicPageHeader(
+                  title: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Редактировать профиль',
+                    enText: 'Edit profile',
+                  ),
+                ),
                 Expanded(
                   child: SingleChildScrollView(
                     primary: false,
@@ -848,7 +854,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              _ProfileAvatar(onTap: _pickPhoto),
+                              ProfileAvatarPicker(onTap: _pickPhoto),
                               const SizedBox(height: 34.0),
                               Text(
                                 FFLocalizations.of(context).getVariableText(
@@ -899,28 +905,28 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
 
   List<Widget> _studentFields(BuildContext context) {
     return [
-      _ProfileNameField(
+      ProfileNameField(
         controller: _model.nameTextController1,
         focusNode: _model.nameFocusNode1,
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: 'Email',
         value: currentUserEmail,
         enabled: false,
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText('qupouufi' /* Пол */),
         value: _model.genderTextController1?.text ?? '',
         menuOpen: _isGenderMenuOpen,
         onTap: (fieldContext) => _editGender(fieldContext, true),
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText('kem0gdl9' /* Страна */),
         value: _model.countryNSTextController?.text ?? '',
         menuOpen: _isCountryMenuOpen,
         onTap: _editCountry,
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText(
           'ro4cvtou' /* Язык изучения */,
         ),
@@ -928,13 +934,13 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         menuOpen: _isLearningLanguageMenuOpen,
         onTap: _editLearningLanguage,
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText('bo9k12fd' /* Уровень */),
         value: _model.levelLTextController?.text ?? '',
         menuOpen: _isLevelMenuOpen,
         onTap: _editLevel,
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText(
           '3um2nt3q' /* Цели изучения */,
         ),
@@ -947,29 +953,29 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
 
   List<Widget> _nativeSpeakerFields(BuildContext context) {
     return [
-      _ProfileNameField(
+      ProfileNameField(
         controller: _model.nameTextController2,
         focusNode: _model.nameFocusNode2,
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: 'Email',
         value: currentUserEmail,
         enabled: false,
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText('qupouufi' /* Пол */),
         value: _model.genderTextController2?.text ?? '',
         menuOpen: _isGenderMenuOpen,
         onTap: (fieldContext) => _editGender(fieldContext, false),
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText('53sloz8g' /* О себе */),
         value: _model.aboutTextController?.text ?? '',
         onTap: (_) => _editAbout(),
         showDropdownIcon: false,
         maxLines: 2,
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText(
           '5s3nn50b' /* Язык, которому обучаю */,
         ),
@@ -977,13 +983,13 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         menuOpen: _isInstructionLanguageMenuOpen,
         onTap: _editInstructionLanguage,
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText('vi9zv6jp' /* Мой язык */),
         value: _model.nSLang2TextController?.text ?? '',
         menuOpen: _isNativeLanguageMenuOpen,
         onTap: _editNativeLanguage,
       ),
-      _ProfileReadOnlyField(
+      ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText('kem0gdl9' /* Страна */),
         value: _model.countryNSTextController?.text ?? '',
         menuOpen: _isCountryMenuOpen,
@@ -1015,382 +1021,4 @@ class _ProfilePurposeOption {
   final String value;
   final String ruLabel;
   final String enLabel;
-}
-
-class _ProfileEditDropdownMenuItem extends StatelessWidget {
-  const _ProfileEditDropdownMenuItem({
-    required this.label,
-    required this.selected,
-  });
-
-  final String label;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsetsDirectional.fromSTEB(8.0, 3.0, 8.0, 3.0),
-      padding: const EdgeInsetsDirectional.fromSTEB(12.0, 7.0, 10.0, 7.0),
-      decoration: BoxDecoration(
-        color: selected
-            ? ExpatlioDesign.primary.withValues(alpha: 0.12)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(10.0),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: ExpatlioDesign.text,
-                size: 14.0,
-                weight: FontWeight.w500,
-              ),
-            ),
-          ),
-          if (selected) ...[
-            const SizedBox(width: 10.0),
-            const Icon(
-              Icons.check_rounded,
-              color: ExpatlioDesign.primary,
-              size: 18.0,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    return BasicPageHeader(
-      title: FFLocalizations.of(context).getVariableText(
-        ruText: 'Редактировать профиль',
-        enText: 'Edit profile',
-      ),
-    );
-  }
-}
-
-class _ProfileSaveBar extends StatelessWidget {
-  const _ProfileSaveBar({required this.onSave});
-
-  final VoidCallback onSave;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: Color(0xFFFBFBFB),
-        border: Border(
-          top: BorderSide(color: Color(0xFFEDEDED), width: 1.0),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.fromLTRB(24.0, 12.0, 24.0, 12.0),
-        child: FFButtonWidget(
-          onPressed: onSave,
-          text: FFLocalizations.of(context).getVariableText(
-            ruText: 'Сохранить',
-            enText: 'Save',
-          ),
-          options: FFButtonOptions(
-            width: double.infinity,
-            height: ExpatlioDesign.buttonHeight,
-            color: ExpatlioDesign.primary,
-            elevation: 0.0,
-            borderRadius: BorderRadius.circular(10.0),
-            textStyle: ExpatlioDesign.textStyle(
-              context,
-              color: Colors.white,
-              size: 17.0,
-              weight: FontWeight.w700,
-            ),
-          ),
-          showLoadingIndicator: false,
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(78.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 112.0,
-              height: 112.0,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    child: AuthUserStreamWidget(
-                      builder: (context) {
-                        if (currentUserPhoto.isEmpty) {
-                          return const _AvatarPlaceholder();
-                        }
-                        return ClipOval(
-                          child: CachedNetworkImage(
-                            imageUrl: currentUserPhoto,
-                            fit: BoxFit.cover,
-                            memCacheWidth: 224,
-                            memCacheHeight: 224,
-                            placeholder: (context, url) =>
-                                const _AvatarPlaceholder(),
-                            errorWidget: (context, url, error) =>
-                                const _AvatarPlaceholder(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  PositionedDirectional(
-                    end: 0.0,
-                    bottom: 4.0,
-                    child: Container(
-                      width: 40.0,
-                      height: 40.0,
-                      decoration: BoxDecoration(
-                        color: ExpatlioDesign.primary,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2.5),
-                        boxShadow: const [
-                          BoxShadow(
-                            blurRadius: 7.0,
-                            color: Color(0x26000000),
-                            offset: Offset(0.0, 3.0),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        FFIcons.kcameraPlus,
-                        color: Colors.white,
-                        size: 19.0,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12.0),
-            Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Изменить фото',
-                enText: 'Change photo',
-              ),
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: ExpatlioDesign.primary,
-                size: 15.0,
-                weight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AvatarPlaceholder extends StatelessWidget {
-  const _AvatarPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    final displayName = currentUserDisplayName.trim();
-    final firstLetter =
-        displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
-
-    return Container(
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.mutedSurface,
-        shape: BoxShape.circle,
-        border: Border.all(color: ExpatlioDesign.border),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        firstLetter,
-        textAlign: TextAlign.center,
-        style: ExpatlioDesign.textStyle(
-          context,
-          size: 28.0,
-          weight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileNameField extends StatelessWidget {
-  const _ProfileNameField({
-    required this.controller,
-    required this.focusNode,
-  });
-
-  final TextEditingController? controller;
-  final FocusNode? focusNode;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _FieldLabel(
-          text: FFLocalizations.of(context).getVariableText(
-            ruText: 'Имя',
-            enText: 'Name',
-          ),
-        ),
-        const SizedBox(height: 8.0),
-        TextFormField(
-          controller: controller,
-          focusNode: focusNode,
-          autofocus: false,
-          textCapitalization: TextCapitalization.sentences,
-          textInputAction: TextInputAction.done,
-          textAlignVertical: TextAlignVertical.center,
-          obscureText: false,
-          decoration: _fieldDecoration(context),
-          style: _fieldTextStyle(context),
-          cursorColor: const Color(0xFF1F1F1F),
-          inputFormatters: [
-            if (!isAndroid && !isiOS)
-              TextInputFormatter.withFunction((oldValue, newValue) {
-                return TextEditingValue(
-                  selection: newValue.selection,
-                  text: newValue.text.toCapitalization(
-                    TextCapitalization.sentences,
-                  ),
-                );
-              }),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _ProfileReadOnlyField extends StatelessWidget {
-  const _ProfileReadOnlyField({
-    required this.label,
-    required this.value,
-    this.enabled = true,
-    this.onTap,
-    this.maxLines = 1,
-    this.menuOpen = false,
-    this.showDropdownIcon = true,
-  });
-
-  final String label;
-  final String value;
-  final bool enabled;
-  final Future<void> Function(BuildContext context)? onTap;
-  final int maxLines;
-  final bool menuOpen;
-  final bool showDropdownIcon;
-
-  @override
-  Widget build(BuildContext context) {
-    final valueStyle = _fieldTextStyle(context).copyWith(
-      color: enabled ? const Color(0xFF1F1F1F) : const Color(0xFFD0D0D0),
-    );
-
-    return Builder(
-      builder: (fieldContext) {
-        final interactive = enabled && onTap != null;
-        return InkWell(
-          onTap: interactive ? () => unawaited(onTap!(fieldContext)) : null,
-          borderRadius: BorderRadius.circular(14.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _FieldLabel(text: label),
-              const SizedBox(height: 8.0),
-              Container(
-                width: double.infinity,
-                constraints: BoxConstraints(
-                  minHeight:
-                      maxLines > 1 ? 60.0 : ExpatlioDesign.formFieldHeight,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFBFBFB),
-                  borderRadius: BorderRadius.circular(14.0),
-                  border:
-                      Border.all(color: const Color(0xFFE7E7E7), width: 1.0),
-                ),
-                alignment: AlignmentDirectional.centerStart,
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(16.0, 7.0, 12.0, 7.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        value,
-                        maxLines: maxLines,
-                        overflow: TextOverflow.ellipsis,
-                        style: valueStyle,
-                      ),
-                    ),
-                    if (interactive && showDropdownIcon) ...[
-                      const SizedBox(width: 8.0),
-                      Icon(
-                        menuOpen
-                            ? Icons.keyboard_arrow_up_rounded
-                            : Icons.keyboard_arrow_down_rounded,
-                        color: const Color(0xFFC5C5C6),
-                        size: 20.0,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: ExpatlioDesign.formLabelStyle(context),
-    );
-  }
-}
-
-InputDecoration _fieldDecoration(BuildContext context) {
-  return ExpatlioDesign.formFieldDecoration(context);
-}
-
-TextStyle _fieldTextStyle(BuildContext context) {
-  return ExpatlioDesign.formTextStyle(context);
 }

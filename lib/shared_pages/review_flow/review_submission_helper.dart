@@ -1,5 +1,4 @@
 import '/backend/backend.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -475,89 +474,4 @@ Future<ReviewSubmissionResult> submitSessionReview({
     reviewId: reviewId,
     reviewRef: reviewRef,
   );
-}
-
-class PairReviewContent extends StatelessWidget {
-  const PairReviewContent({
-    super.key,
-    required this.hasReviewed,
-    required this.formContent,
-    this.reviewContent,
-    this.reviewNoteText,
-    this.reviewFallbackText,
-  });
-
-  final bool hasReviewed;
-  final Widget formContent;
-  final Widget? reviewContent;
-  final String? reviewNoteText;
-  final String? reviewFallbackText;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!hasReviewed) {
-      return formContent;
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (reviewNoteText != null && reviewNoteText!.trim().isNotEmpty) ...[
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryBackground,
-              borderRadius: BorderRadius.circular(26.0),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                reviewNoteText!,
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'sf pro display',
-                      fontSize: 15.0,
-                      letterSpacing: 0.0,
-                    ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12.0),
-        ],
-        reviewContent ??
-            _PairReviewFallbackCard(
-              message: reviewFallbackText ?? reviewAlreadyLeftMessage(context),
-            ),
-      ],
-    );
-  }
-}
-
-class _PairReviewFallbackCard extends StatelessWidget {
-  const _PairReviewFallbackCard({
-    required this.message,
-  });
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Text(
-          message,
-          style: FlutterFlowTheme.of(context).bodyMedium.override(
-                fontFamily: 'sf pro display',
-                fontSize: 15.0,
-                letterSpacing: 0.0,
-              ),
-        ),
-      ),
-    );
-  }
 }

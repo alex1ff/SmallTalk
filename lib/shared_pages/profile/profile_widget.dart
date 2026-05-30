@@ -3,17 +3,19 @@ import 'dart:math' as math;
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/services/subscription_service.dart';
-import '/authorization/components/acquaintance_n_s_s_t_a_r_t/acquaintance_n_s_s_t_a_r_t_widget.dart';
+import '/components/acquaintance_n_s_s_t_a_r_t_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/profile_dropdown_menu_item.dart';
+import '/components/support_contact_menu.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/profile_components/lang_app/lang_app_widget.dart';
-import '/shared_pages/profile_components/delete/delete_widget.dart';
-import '/shared_pages/profile_components/logout/logout_widget.dart';
-import '/shared_pages/profile_components/rate_app/rate_app_widget.dart';
-import '/shared_pages/profile_components/report/report_widget.dart';
-import '/shared_pages/profile_components/stats/stats_widget.dart';
+import '/components/lang_app_widget.dart';
+import '/components/delete_widget.dart';
+import '/components/logout_widget.dart';
+import '/components/rate_app_widget.dart';
+import '/components/report_widget.dart';
+import '/components/stats_widget.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
@@ -53,6 +55,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   bool _emailVerificationRefreshing = false;
   bool _isAppLanguageMenuOpen = false;
   bool _isSupportMenuOpen = false;
+  OverlayEntry? _supportOverlayEntry;
   static const _supportEmail = 'support@expatlio.com';
   static const _supportTelegram = '@expatlio_support';
 
@@ -68,6 +71,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   void dispose() {
     _giftExpiryTimer?.cancel();
     _stopEmailVerificationPolling();
+    _supportOverlayEntry?.remove();
     _model.dispose();
 
     super.dispose();
@@ -850,33 +854,70 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       return;
     }
 
-    safeSetState(() => _isSupportMenuOpen = true);
-    final selectedContact = await _showProfileOptionsMenu<String>(
-      anchorContext,
-      options: const [
-        _ProfileMenuOption<String>(
-          value: 'email',
-          label: 'Email - $_supportEmail',
-        ),
-        _ProfileMenuOption<String>(
-          value: 'telegram',
-          label: 'Telegram - $_supportTelegram',
-        ),
-      ],
-    );
-
-    if (mounted) {
-      safeSetState(() => _isSupportMenuOpen = false);
-    }
-    if (!mounted || selectedContact == null) {
+    if (_supportOverlayEntry != null) {
+      _closeSupportContactPicker();
       return;
     }
 
-    switch (selectedContact) {
-      case 'email':
-        unawaited(launchURL('mailto:$_supportEmail'));
-      case 'telegram':
-        unawaited(launchURL('https://t.me/expatlio_support'));
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    final overlay = Overlay.of(anchorContext);
+    final overlayBox = overlay.context.findRenderObject() as RenderBox?;
+    if (anchorBox == null || overlayBox == null || !anchorBox.attached) {
+      return;
+    }
+
+    final anchorOffset =
+        anchorBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+    const viewportMargin = ExpatlioDesign.pagePadding;
+    final menuWidth = math.min(
+      292.0,
+      overlayBox.size.width - (viewportMargin * 2),
+    );
+    final maxMenuLeft = math.max(
+        viewportMargin, overlayBox.size.width - menuWidth - viewportMargin);
+    final menuLeft = (anchorOffset.dx + anchorBox.size.width - menuWidth)
+        .clamp(viewportMargin, maxMenuLeft)
+        .toDouble();
+    final menuTop = anchorOffset.dy + anchorBox.size.height + 8.0;
+
+    safeSetState(() => _isSupportMenuOpen = true);
+    _supportOverlayEntry = OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _closeSupportContactPicker,
+            ),
+          ),
+          PositionedDirectional(
+            start: menuLeft,
+            top: menuTop,
+            width: menuWidth,
+            child: SupportContactMenu(
+              email: _supportEmail,
+              telegram: _supportTelegram,
+              onEmailTap: () {
+                _closeSupportContactPicker();
+                unawaited(launchURL('mailto:$_supportEmail'));
+              },
+              onTelegramTap: () {
+                _closeSupportContactPicker();
+                unawaited(launchURL('https://t.me/expatlio_support'));
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+    overlay.insert(_supportOverlayEntry!);
+  }
+
+  void _closeSupportContactPicker() {
+    _supportOverlayEntry?.remove();
+    _supportOverlayEntry = null;
+    if (mounted) {
+      safeSetState(() => _isSupportMenuOpen = false);
     }
   }
 
@@ -939,7 +980,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             value: option.value,
             height: 42.0,
             padding: EdgeInsets.zero,
-            child: _ProfileDropdownMenuItem(
+            child: ProfileDropdownMenuItem(
               label: option.label,
               selected: option.selected,
             ),
@@ -2000,7 +2041,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     return SafeArea(
       bottom: false,
       child: SingleChildScrollView(
-        padding: ExpatlioDesign.pageScrollPadding,
+        padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.pagePadding,
+          0.0,
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.pageBottomSpacing,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -2016,7 +2062,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 weight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: ExpatlioDesign.sectionGap),
+            const SizedBox(height: ExpatlioDesign.itemSpacing),
             _profileHeaderCard(context),
             _progressSection(context),
             const SizedBox(height: ExpatlioDesign.sectionGap),
@@ -2059,7 +2105,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             body: SafeArea(
               bottom: false,
               child: SingleChildScrollView(
-                padding: ExpatlioDesign.pageScrollPadding,
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.pagePadding,
+                  0.0,
+                  ExpatlioDesign.pagePadding,
+                  ExpatlioDesign.pageBottomSpacing,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2075,14 +2126,17 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: ExpatlioDesign.itemSpacing),
                     _profileHeaderCard(context),
-                    _progressSection(context),
-                    _tariffSection(context),
-                    _settingsSection(context),
-                    _profileFooter(context),
-                  ].divide(
                     const SizedBox(height: ExpatlioDesign.sectionGap),
-                  ),
+                    _progressSection(context),
+                    const SizedBox(height: ExpatlioDesign.sectionGap),
+                    _tariffSection(context),
+                    const SizedBox(height: ExpatlioDesign.sectionGap),
+                    _settingsSection(context),
+                    const SizedBox(height: ExpatlioDesign.sectionGap),
+                    _profileFooter(context),
+                  ],
                 ),
               ),
             ),
@@ -3351,54 +3405,4 @@ class _ProfileMenuOption<T> {
   final T value;
   final String label;
   final bool selected;
-}
-
-class _ProfileDropdownMenuItem extends StatelessWidget {
-  const _ProfileDropdownMenuItem({
-    required this.label,
-    required this.selected,
-  });
-
-  final String label;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsetsDirectional.fromSTEB(8.0, 3.0, 8.0, 3.0),
-      padding: const EdgeInsetsDirectional.fromSTEB(12.0, 7.0, 10.0, 7.0),
-      decoration: BoxDecoration(
-        color: selected
-            ? ExpatlioDesign.primary.withValues(alpha: 0.12)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(10.0),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: ExpatlioDesign.text,
-                size: 14.0,
-                weight: FontWeight.w500,
-              ),
-            ),
-          ),
-          if (selected) ...[
-            const SizedBox(width: 10.0),
-            const Icon(
-              Icons.check_rounded,
-              color: ExpatlioDesign.primary,
-              size: 18.0,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 }

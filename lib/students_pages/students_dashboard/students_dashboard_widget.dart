@@ -1,8 +1,12 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/components/celebration_s_t/celebration_s_t_widget.dart';
-import '/authorization/components/celebration_top_up/celebration_top_up_widget.dart';
+import '/components/celebration_s_t_widget.dart';
+import '/components/celebration_top_up_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/dashboard_floating_avatar.dart';
+import '/components/dashboard_inline_filter_button.dart';
+import '/components/profile_dropdown_menu_item.dart';
+import '/components/student_availability_switch_control.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
@@ -10,17 +14,16 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/services/user_match_profile.dart';
 import '/shared_pages/design/expatlio_design.dart';
-import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
-import '/shared_pages/profile_components/promo_redeem/promo_redeem_widget.dart';
-import '/students_pages/components/fav/fav_widget.dart';
+import '/components/no_balance_widget.dart';
+import '/components/promo_redeem_widget.dart';
+import '/components/fav_widget.dart';
 // ─── SUBSCRIPTION REWORK ─ subscription state helpers (hasActiveSubscription,
 // formatExpiryDate). Replaces gating by balanceST.
 import '/utils/subscription_utils.dart';
-import '/teachers_pages/components/add_inter/add_inter_widget.dart';
+import '/components/add_inter_widget.dart';
 import '/index.dart';
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -191,7 +194,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   }
 
   Widget _buildAvailabilitySwitch() {
-    return _StudentAvailabilitySwitchControl(
+    return StudentAvailabilitySwitchControl(
       value: _effectiveSwitchValue,
       onChanged: (newValue) async {
         await _handleAvailabilitySwitchChanged(newValue);
@@ -524,7 +527,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
             value: option.value,
             height: 42.0,
             padding: EdgeInsets.zero,
-            child: _DashboardDropdownMenuItem(
+            child: ProfileDropdownMenuItem(
               label: option.label,
               selected: option.selected,
             ),
@@ -886,7 +889,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
             Row(
               children: [
                 Expanded(
-                  child: _DashboardInlineFilterButton(
+                  child: DashboardInlineFilterButton(
                     title: preferredLocation == null
                         ? _localizedText(
                             context: context,
@@ -914,7 +917,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                 ),
                 const SizedBox(width: ExpatlioDesign.itemSpacing),
                 Expanded(
-                  child: _DashboardInlineFilterButton(
+                  child: DashboardInlineFilterButton(
                     title: _localizedText(
                       context: context,
                       ruText: 'Уровень',
@@ -945,56 +948,56 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                   const Positioned(
                     left: 74.0,
                     top: 116.0,
-                    child: _DashboardFloatingAvatar(
+                    child: DashboardFloatingAvatar(
                       initials: 'AK',
-                      size: 34.0,
-                      muted: true,
+                      scale: DashboardFloatingAvatarScale.tiny,
+                      tone: DashboardFloatingAvatarTone.muted,
                     ),
                   ),
                   const Positioned(
                     right: 68.0,
                     top: 102.0,
-                    child: _DashboardFloatingAvatar(
+                    child: DashboardFloatingAvatar(
                       initials: 'MR',
-                      size: 36.0,
-                      muted: true,
+                      scale: DashboardFloatingAvatarScale.small,
+                      tone: DashboardFloatingAvatarTone.muted,
                     ),
                   ),
                   const Positioned(
                     left: -8.0,
                     top: 204.0,
-                    child: _DashboardFloatingAvatar(
+                    child: DashboardFloatingAvatar(
                       initials: 'JL',
-                      size: 54.0,
+                      scale: DashboardFloatingAvatarScale.large,
                     ),
                   ),
                   Positioned(
                     right: -4.0,
                     top: 196.0,
-                    child: _DashboardFloatingAvatar(
+                    child: DashboardFloatingAvatar(
                       initials: currentUserDisplayName.trim().isNotEmpty
                           ? currentUserDisplayName.trim()[0].toUpperCase()
                           : 'ST',
                       photoUrl: currentUserPhoto,
-                      size: 62.0,
+                      scale: DashboardFloatingAvatarScale.current,
                     ),
                   ),
                   const Positioned(
                     left: 74.0,
                     bottom: 116.0,
-                    child: _DashboardFloatingAvatar(
+                    child: DashboardFloatingAvatar(
                       initials: 'EL',
-                      size: 38.0,
-                      muted: true,
+                      scale: DashboardFloatingAvatarScale.compact,
+                      tone: DashboardFloatingAvatarTone.muted,
                     ),
                   ),
                   const Positioned(
                     right: 78.0,
                     bottom: 104.0,
-                    child: _DashboardFloatingAvatar(
+                    child: DashboardFloatingAvatar(
                       initials: 'KT',
-                      size: 40.0,
-                      muted: true,
+                      scale: DashboardFloatingAvatarScale.regular,
+                      tone: DashboardFloatingAvatarTone.muted,
                     ),
                   ),
                   Column(
@@ -1733,7 +1736,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               return Row(
                                 children: [
                                   Expanded(
-                                    child: _DashboardInlineFilterButton(
+                                    child: DashboardInlineFilterButton(
                                       title: preferredLocation == null
                                           ? _localizedText(
                                               context: context,
@@ -1760,7 +1763,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   ),
                                   const SizedBox(width: 8.0),
                                   Expanded(
-                                    child: _DashboardInlineFilterButton(
+                                    child: DashboardInlineFilterButton(
                                       title: _localizedText(
                                         context: context,
                                         ruText: 'Уровень',
@@ -2381,38 +2384,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   }
 }
 
-class _StudentAvailabilitySwitchControl extends StatelessWidget {
-  const _StudentAvailabilitySwitchControl({
-    required this.value,
-    required this.onChanged,
-  });
-
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        IgnorePointer(
-          child: AdaptiveSwitch(
-            value: value,
-            onChanged: null,
-            activeColor: FlutterFlowTheme.of(context).success,
-          ),
-        ),
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => onChanged(!value),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _DashboardMenuOption<T> {
   const _DashboardMenuOption({
     required this.value,
@@ -2423,265 +2394,4 @@ class _DashboardMenuOption<T> {
   final T value;
   final String label;
   final bool selected;
-}
-
-class _DashboardDropdownMenuItem extends StatelessWidget {
-  const _DashboardDropdownMenuItem({
-    required this.label,
-    required this.selected,
-  });
-
-  final String label;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsetsDirectional.fromSTEB(8.0, 3.0, 8.0, 3.0),
-      padding: const EdgeInsetsDirectional.fromSTEB(12.0, 7.0, 10.0, 7.0),
-      decoration: BoxDecoration(
-        color: selected
-            ? ExpatlioDesign.primary.withValues(alpha: 0.12)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(10.0),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: ExpatlioDesign.text,
-                size: 14.0,
-                weight: FontWeight.w500,
-              ),
-            ),
-          ),
-          if (selected) ...[
-            const SizedBox(width: 10.0),
-            const Icon(
-              Icons.check_rounded,
-              color: ExpatlioDesign.primary,
-              size: 18.0,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _DashboardInlineFilterButton extends StatelessWidget {
-  const _DashboardInlineFilterButton({
-    required this.title,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    required this.icon,
-    this.menuOpen = false,
-    this.onClear,
-  });
-
-  final String title;
-  final String label;
-  final bool selected;
-  final bool menuOpen;
-  final IconData icon;
-  final Future<void> Function(BuildContext context) onTap;
-  final VoidCallback? onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final clearVisible = selected && onClear != null && !menuOpen;
-    final active = selected || menuOpen;
-    final hasTitle = title.trim().isNotEmpty;
-    final hasLabel = label.trim().isNotEmpty;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999.0),
-        onTap: () async => onTap(context),
-        child: Container(
-          height: 45.0,
-          padding: const EdgeInsetsDirectional.fromSTEB(
-            ExpatlioDesign.itemSpacing,
-            0.0,
-            ExpatlioDesign.itemSpacing,
-            0.0,
-          ),
-          decoration: BoxDecoration(
-            color: ExpatlioDesign.card,
-            borderRadius: BorderRadius.circular(999.0),
-            border: Border.all(
-              color: active
-                  ? ExpatlioDesign.primary.withValues(alpha: 0.22)
-                  : ExpatlioDesign.border,
-            ),
-          ),
-          child: Row(
-            children: [
-              const SizedBox(width: ExpatlioDesign.sectionSpacing),
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      icon,
-                      size: 16.0,
-                      color: selected
-                          ? ExpatlioDesign.primary
-                          : ExpatlioDesign.muted,
-                    ),
-                    const SizedBox(width: ExpatlioDesign.compactSpacing),
-                    Flexible(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (hasTitle)
-                            Text(
-                              title,
-                              maxLines: 1,
-                              style: ExpatlioDesign.textStyle(
-                                context,
-                                color: selected
-                                    ? ExpatlioDesign.primary
-                                    : ExpatlioDesign.muted,
-                                size: 15.0,
-                                weight: FontWeight.w500,
-                              ),
-                            ),
-                          if (hasTitle && hasLabel)
-                            Text(
-                              ' · ',
-                              maxLines: 1,
-                              style: ExpatlioDesign.textStyle(
-                                context,
-                                color: selected
-                                    ? ExpatlioDesign.primary
-                                    : ExpatlioDesign.muted,
-                                size: 15.0,
-                                weight: FontWeight.w500,
-                              ),
-                            ),
-                          if (hasLabel)
-                            Flexible(
-                              child: Text(
-                                label,
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                                textAlign: TextAlign.center,
-                                style: ExpatlioDesign.textStyle(
-                                  context,
-                                  color: selected
-                                      ? ExpatlioDesign.primary
-                                      : ExpatlioDesign.text,
-                                  size: 15.0,
-                                  weight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: 18.0,
-                child: clearVisible
-                    ? InkWell(
-                        borderRadius: BorderRadius.circular(999.0),
-                        onTap: onClear,
-                        child: Icon(
-                          Icons.close_rounded,
-                          size: 16.0,
-                          color: selected
-                              ? ExpatlioDesign.primary
-                              : ExpatlioDesign.muted,
-                        ),
-                      )
-                    : Icon(
-                        menuOpen
-                            ? Icons.keyboard_arrow_up_rounded
-                            : Icons.keyboard_arrow_down_rounded,
-                        size: 18.0,
-                        color: selected
-                            ? ExpatlioDesign.primary
-                            : ExpatlioDesign.muted,
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DashboardFloatingAvatar extends StatelessWidget {
-  const _DashboardFloatingAvatar({
-    required this.initials,
-    required this.size,
-    this.photoUrl = '',
-    this.muted = false,
-  });
-
-  final String initials;
-  final String photoUrl;
-  final double size;
-  final bool muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final hasPhoto = photoUrl.trim().isNotEmpty;
-
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: muted ? ExpatlioDesign.mutedSurface : ExpatlioDesign.card,
-        shape: BoxShape.circle,
-        border: Border.all(color: ExpatlioDesign.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x16000000),
-            blurRadius: 12.0,
-            offset: Offset(0.0, 5.0),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: hasPhoto
-          ? CachedNetworkImage(
-              imageUrl: photoUrl,
-              fit: BoxFit.cover,
-              memCacheWidth: (size * 2).round(),
-              memCacheHeight: (size * 2).round(),
-              placeholder: (context, url) => const SizedBox.shrink(),
-              errorWidget: (context, url, error) => _buildInitials(context),
-            )
-          : _buildInitials(context),
-    );
-  }
-
-  Widget _buildInitials(BuildContext context) {
-    return Center(
-      child: Text(
-        initials,
-        maxLines: 1,
-        style: ExpatlioDesign.textStyle(
-          context,
-          color: muted ? ExpatlioDesign.muted : ExpatlioDesign.text,
-          size: size <= 38.0 ? 11.0 : 13.0,
-          weight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
 }

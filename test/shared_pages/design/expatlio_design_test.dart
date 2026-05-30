@@ -1,7 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/flutter_flow/flutter_flow_theme.dart';
-import 'package:small_talk/shared_pages/design/basic_page_header.dart';
+import 'package:small_talk/components/basic_page_header.dart';
 import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 
 void main() {
@@ -19,6 +21,13 @@ void main() {
 
   test('basic page header uses shared title bar height', () {
     expect(BasicPageHeader.height, ExpatlioDesign.pageHeaderHeight);
+  });
+
+  test('basic page header does not expose visual color overrides', () {
+    final source = File('lib/components/basic_page_header.dart')
+        .readAsStringSync();
+
+    expect(source, isNot(contains('backgroundColor')));
   });
 
   test('design spacing tokens define one app layout rhythm', () {

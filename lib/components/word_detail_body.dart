@@ -1,0 +1,378 @@
+import '/backend/backend.dart';
+import '/components/word_detail_content.dart';
+import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
+import 'package:collection/collection.dart';
+import 'package:flutter/material.dart';
+
+class WordDetailBody extends StatelessWidget {
+  const WordDetailBody({
+    super.key,
+    required this.content,
+  });
+
+  final WordDetailContent content;
+
+  @override
+  Widget build(BuildContext context) {
+    final examples = content.examples;
+    final sourceSynonyms = content.sourceSynonyms;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsetsDirectional.fromSTEB(20.0, 30.0, 20.0, 40.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  content.sourceText,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    size: 36.0,
+                    weight: FontWeight.w800,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16.0),
+              const _PronunciationButton(),
+            ],
+          ),
+          if (content.transcription.isNotEmpty)
+            Padding(
+              padding:
+                  const EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+              child: Text(
+                content.transcription,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 20.0,
+                  weight: FontWeight.w500,
+                ),
+              ),
+            ),
+          if (sourceSynonyms.isNotEmpty)
+            Padding(
+              padding:
+                  const EdgeInsetsDirectional.fromSTEB(0.0, 14.0, 0.0, 0.0),
+              child: _SynonymWrap(synonyms: sourceSynonyms),
+            ),
+          const SizedBox(height: 32.0),
+          _InfoCard(
+            label: FFLocalizations.of(context).getVariableText(
+              ruText: 'ПЕРЕВОД',
+              enText: 'TRANSLATION',
+            ),
+            child: _TranslationDetails(content: content),
+          ),
+          if (examples.isNotEmpty) ...[
+            const SizedBox(height: 32.0),
+            Text(
+              FFLocalizations.of(context).getVariableText(
+                ruText: 'ПРИМЕРЫ',
+                enText: 'EXAMPLES',
+              ),
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.muted,
+                size: 16.0,
+                weight: FontWeight.w500,
+                height: 1.2,
+              ).copyWith(letterSpacing: 1.2),
+            ),
+            const SizedBox(height: 18.0),
+            ...examples.map(
+              (example) => Padding(
+                padding:
+                    const EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 16.0),
+                child: _ExampleCard(sentence: example),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TranslationDetails extends StatelessWidget {
+  const _TranslationDetails({
+    required this.content,
+  });
+
+  final WordDetailContent content;
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = content.translationGroups;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          content.translationText,
+          style: ExpatlioDesign.textStyle(
+            context,
+            size: 22.0,
+            weight: FontWeight.w700,
+            height: 1.2,
+          ),
+        ),
+        if (groups.isNotEmpty) ...[
+          const SizedBox(height: 18.0),
+          ...groups.map(
+            (group) => Padding(
+              padding:
+                  const EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 14.0),
+              child: _TranslationGroupView(group: group),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _TranslationGroupView extends StatelessWidget {
+  const _TranslationGroupView({
+    required this.group,
+  });
+
+  final WordDetailTranslationGroup group;
+
+  String get _meaningsText {
+    final meanings = group.meanings
+        .map((meaning) => meaning.text.trim())
+        .where((text) => text.isNotEmpty)
+        .toList();
+    if (meanings.isEmpty) {
+      return '';
+    }
+    return meanings.map((meaning) => '$meaning.').join(' ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final meaningsText = _meaningsText;
+    final hasSynonyms = group.synonyms.isNotEmpty;
+    final hasMeanings = meaningsText.isNotEmpty;
+
+    if (!hasSynonyms && !hasMeanings) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (hasSynonyms) _SynonymWrap(synonyms: group.synonyms),
+        if (hasMeanings)
+          Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              0.0,
+              hasSynonyms ? 8.0 : 0.0,
+              0.0,
+              0.0,
+            ),
+            child: Text(
+              meaningsText,
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.muted,
+                size: 15.0,
+                weight: FontWeight.w500,
+                height: 1.25,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SynonymWrap extends StatelessWidget {
+  const _SynonymWrap({
+    required this.synonyms,
+  });
+
+  final List<SynonymStruct> synonyms;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8.0,
+      runSpacing: 8.0,
+      children: synonyms
+          .map(
+            (synonym) => _SynonymChip(synonym: synonym),
+          )
+          .toList(growable: false),
+    );
+  }
+}
+
+class _SynonymChip extends StatelessWidget {
+  const _SynonymChip({
+    required this.synonym,
+  });
+
+  final SynonymStruct synonym;
+
+  @override
+  Widget build(BuildContext context) {
+    final gen = synonym.gen.trim();
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 34.0),
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.mutedSurface,
+        borderRadius: BorderRadius.circular(18.0),
+      ),
+      padding: const EdgeInsetsDirectional.fromSTEB(12.0, 7.0, 12.0, 7.0),
+      child: RichText(
+        textScaler: MediaQuery.of(context).textScaler,
+        text: TextSpan(
+          children: [
+            TextSpan(text: synonym.text),
+            if (gen.isNotEmpty) ...[
+              const TextSpan(text: '  '),
+              TextSpan(
+                text: gen,
+                style: const TextStyle(
+                  color: Color(0xFF727272),
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+            ],
+          ],
+          style: ExpatlioDesign.textStyle(
+            context,
+            size: 15.0,
+            weight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PronunciationButton extends StatelessWidget {
+  const _PronunciationButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 46.0,
+      height: 46.0,
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.volume_up_rounded,
+        color: ExpatlioDesign.primary,
+        size: 26.0,
+      ),
+    );
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({
+    required this.label,
+    required this.child,
+  });
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.card,
+        borderRadius: BorderRadius.circular(20.0),
+        border: Border.all(color: ExpatlioDesign.border),
+      ),
+      padding: const EdgeInsetsDirectional.fromSTEB(18.0, 18.0, 18.0, 20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.muted,
+              size: 14.0,
+              weight: FontWeight.w500,
+              height: 1.2,
+            ).copyWith(letterSpacing: 1.2),
+          ),
+          const SizedBox(height: 18.0),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _ExampleCard extends StatelessWidget {
+  const _ExampleCard({
+    required this.sentence,
+  });
+
+  final SentenceStruct sentence;
+
+  String get _translation {
+    return sentence.translations.firstOrNull?.text.trim() ?? '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.card,
+        borderRadius: BorderRadius.circular(18.0),
+        border: Border.all(color: ExpatlioDesign.border),
+      ),
+      padding: const EdgeInsetsDirectional.all(18.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            sentence.text,
+            style: ExpatlioDesign.textStyle(
+              context,
+              size: 18.0,
+              weight: FontWeight.w500,
+              height: 1.25,
+            ),
+          ),
+          if (_translation.isNotEmpty)
+            Padding(
+              padding:
+                  const EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+              child: Text(
+                _translation,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 17.0,
+                  weight: FontWeight.w500,
+                  height: 1.25,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

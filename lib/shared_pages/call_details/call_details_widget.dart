@@ -1,21 +1,19 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/components/language_card/language_card_widget.dart';
 import '/backend/backend.dart';
-import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
+import '/components/pair_review_content.dart';
+import '/components/participant_avatar.dart';
 import '/components/review_card/review_card_widget.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/design/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
 import '/shared_pages/learning/caption_word_flow.dart';
-import '/shared_pages/learning/interactive_caption_text.dart';
+import '/components/interactive_caption_text.dart';
 import '/shared_pages/review_flow/review_submission_helper.dart';
 import '/services/user_match_profile.dart';
-import '/students_pages/native_speaker_page/native_speaker_page_widget.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
@@ -42,11 +40,11 @@ class CallDetailsWidget extends StatefulWidget {
 class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   static const int _collapsedCaptionLogsVisibleCount = 5;
   static const double _collapsedCaptionLogPeekFactor = 0.6;
+  static const double _headerHeight = 58.0;
 
   late CallDetailsModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
-  Future<List<TransactionsRecord>>? _transactionsFuture;
 
   bool get _isTeacher => canAccessTeacherSurfaces(currentUserDocument);
 
@@ -114,19 +112,6 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     }
 
     return _isTeacher;
-  }
-
-  Future<List<TransactionsRecord>>? _ensureTransactionsFuture() {
-    if (currentUserReference == null) {
-      return null;
-    }
-
-    return _transactionsFuture ??= queryTransactionsRecordOnce(
-      queryBuilder: (transactionsRecord) => transactionsRecord.where(
-        'userId',
-        isEqualTo: currentUserReference,
-      ),
-    );
   }
 
   String _normalizeLanguageCode(String? code) {
@@ -312,24 +297,26 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     return _captionLogSpeakerFallback(context, log);
   }
 
-  Color _captionLogSpeakerColor(BuildContext context, CaptionLogsRecord log) {
-    switch (log.speakerRole.trim().toLowerCase()) {
-      case 'student':
-        return const Color(0xFFE2EDFF);
-      case 'tutor':
-        return const Color(0xFFFFE4F3);
-      default:
-        return FlutterFlowTheme.of(context).secondaryBackground;
-    }
-  }
+  bool _isCurrentUserCaptionLog(CaptionLogsRecord log) =>
+      log.speakerId.trim().isNotEmpty && log.speakerId.trim() == currentUserUid;
 
   String _captionLogTimestampLabel(
     BuildContext context,
+    VideoSessionsRecord session,
     CaptionLogsRecord log,
   ) {
     final timestamp = _captionLogTimestamp(log);
     if (timestamp == null) {
       return '';
+    }
+
+    final startedAt = resolveSessionStartedAt(session);
+    if (startedAt != null && !timestamp.isBefore(startedAt)) {
+      final elapsedSeconds = timestamp.difference(startedAt).inSeconds;
+      final minutes = elapsedSeconds ~/ 60;
+      final seconds = elapsedSeconds % 60;
+      return '${minutes.toString().padLeft(2, '0')}:'
+          '${seconds.toString().padLeft(2, '0')}';
     }
 
     return dateTimeFormat(
@@ -414,91 +401,84 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     VideoSessionsRecord session,
     CaptionLogsRecord log,
   ) {
-    final timestampLabel = _captionLogTimestampLabel(context, log);
-    final textStyle = FlutterFlowTheme.of(context)
-        .bodyMedium
-        .override(
-          fontFamily: 'sf pro display',
-          fontSize: 15.0,
-          letterSpacing: 0.0,
-        )
-        .copyWith(height: 1.35);
+    final timestampLabel = _captionLogTimestampLabel(context, session, log);
+    final isCurrentUser = _isCurrentUserCaptionLog(log);
+    final speakerLabel = _captionLogSpeakerLabel(context, log);
+    final bubbleColor = isCurrentUser
+        ? ExpatlioDesign.primary.withValues(alpha: 0.12)
+        : ExpatlioDesign.card;
+    final speakerColor =
+        isCurrentUser ? ExpatlioDesign.primary : ExpatlioDesign.text;
 
-    return Container(
+    return Align(
       key: ValueKey(log.reference.path),
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.background,
-        borderRadius: BorderRadius.circular(20.0),
-        border: Border.all(
-          color: ExpatlioDesign.text.withValues(
-            alpha: 0.06,
+      alignment: isCurrentUser
+          ? AlignmentDirectional.centerEnd
+          : AlignmentDirectional.centerStart,
+      child: FractionallySizedBox(
+        widthFactor: 0.82,
+        child: Container(
+          decoration: BoxDecoration(
+            color: bubbleColor,
+            borderRadius: BorderRadiusDirectional.only(
+              topStart: const Radius.circular(14.0),
+              topEnd: const Radius.circular(14.0),
+              bottomStart: Radius.circular(isCurrentUser ? 14.0 : 4.0),
+              bottomEnd: Radius.circular(isCurrentUser ? 4.0 : 14.0),
+            ),
           ),
-          width: 1.0,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+          child: Padding(
+            padding:
+                const EdgeInsetsDirectional.fromSTEB(14.0, 10.0, 14.0, 12.0),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: _captionLogSpeakerColor(context, log),
-                    borderRadius: BorderRadius.circular(999.0),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10.0,
-                      vertical: 6.0,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        speakerLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: FlutterFlowTheme.of(context).bodyMedium.override(
+                              fontFamily: 'sf pro display',
+                              color: speakerColor,
+                              fontSize: 12.0,
+                              letterSpacing: 0.0,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
                     ),
-                    child: Text(
-                      _captionLogSpeakerLabel(context, log),
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'sf pro display',
-                            fontSize: 12.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                  ),
+                    if (timestampLabel.isNotEmpty) ...[
+                      const SizedBox(width: 8.0),
+                      Text(
+                        timestampLabel,
+                        style: FlutterFlowTheme.of(context).bodyMedium.override(
+                              fontFamily: 'sf pro display',
+                              color: ExpatlioDesign.muted,
+                              fontSize: 12.0,
+                              letterSpacing: 0.0,
+                            ),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(width: 10.0),
-                Expanded(
-                  child: Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: Text(
-                      timestampLabel,
-                      textAlign: TextAlign.end,
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'sf pro display',
-                            color: FlutterFlowTheme.of(context)
-                                .secondaryText
-                                .withValues(alpha: 0.85),
-                            fontSize: 12.0,
-                            letterSpacing: 0.0,
-                          ),
-                    ),
+                const SizedBox(height: 6.0),
+                InteractiveCaptionText(
+                  text: log.text,
+                  mode: InteractiveCaptionTextMode.wordScan,
+                  onWordTap: (word) => _openCaptionLogWordSheet(
+                    context,
+                    session: session,
+                    log: log,
+                    word: word,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10.0),
-            InteractiveCaptionText(
-              text: log.text,
-              style: textStyle,
-              mode: InteractiveCaptionTextMode.wordScan,
-              onWordTap: (word) => _openCaptionLogWordSheet(
-                context,
-                session: session,
-                log: log,
-                word: word,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -595,7 +575,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     VideoSessionsRecord session,
     CaptionLogsRecord log,
   ) {
-    final backgroundColor = FlutterFlowTheme.of(context).primaryBackground;
+    const backgroundColor = ExpatlioDesign.background;
 
     return Stack(
       alignment: Alignment.bottomCenter,
@@ -691,72 +671,138 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         final canCollapse = logs.length > _collapsedCaptionLogsVisibleCount;
         final isExpanded = canCollapse && _model.areCaptionLogsExpanded;
 
-        return _buildCaptionLogsCardShell(
-          context,
-          child: logs.isEmpty
-              ? _buildCaptionLogsMessage(
-                  context,
-                  message: FFLocalizations.of(context).getVariableText(
-                    ruText: 'Логи субтитров для этого звонка пока недоступны.',
-                    enText:
-                        'Subtitle logs for this call are not available yet.',
+        if (logs.isEmpty) {
+          return _buildCaptionLogsCardShell(
+            context,
+            child: _buildCaptionLogsMessage(
+              context,
+              message: FFLocalizations.of(context).getVariableText(
+                ruText: 'Логи субтитров для этого звонка пока недоступны.',
+                enText: 'Subtitle logs for this call are not available yet.',
+              ),
+            ),
+          );
+        }
+
+        if (isExpanded) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildCaptionLogsItemsColumn(
+                context,
+                session,
+                logs,
+              ),
+              if (canCollapse) ...[
+                const SizedBox(height: 12.0),
+                Align(
+                  alignment: Alignment.center,
+                  child: _buildCaptionLogsToggleButton(
+                    context,
+                    isExpanded: true,
                   ),
-                )
-              : isExpanded
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildCaptionLogsItemsColumn(
-                          context,
-                          session,
-                          logs,
-                        ),
-                        if (canCollapse) ...[
-                          const SizedBox(height: 12.0),
-                          Align(
-                            alignment: Alignment.center,
-                            child: _buildCaptionLogsToggleButton(
-                              context,
-                              isExpanded: true,
-                            ),
-                          ),
-                        ],
-                      ],
-                    )
-                  : Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildCaptionLogsItemsColumn(
-                          context,
-                          session,
-                          canCollapse
-                              ? logs
-                                  .take(_collapsedCaptionLogsVisibleCount)
-                                  .toList()
-                              : logs,
-                        ),
-                        if (canCollapse) ...[
-                          const SizedBox(height: 12.0),
-                          _buildCollapsedCaptionLogPeek(
-                            context,
-                            session,
-                            logs[_collapsedCaptionLogsVisibleCount],
-                          ),
-                        ],
-                      ],
-                    ),
+                ),
+              ],
+            ],
+          );
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildCaptionLogsItemsColumn(
+              context,
+              session,
+              canCollapse
+                  ? logs.take(_collapsedCaptionLogsVisibleCount).toList()
+                  : logs,
+            ),
+            if (canCollapse) ...[
+              const SizedBox(height: 12.0),
+              _buildCollapsedCaptionLogPeek(
+                context,
+                session,
+                logs[_collapsedCaptionLogsVisibleCount],
+              ),
+            ],
+          ],
         );
       },
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return BasicPageHeader(
-      title: FFLocalizations.of(context).getVariableText(
-        ruText: 'Детали звонка',
-        enText: 'Call details',
+  Widget _buildHeader(BuildContext context, {required String subtitle}) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: ExpatlioDesign.background,
+        border: Border(
+          bottom: BorderSide(color: ExpatlioDesign.border, width: 1.0),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: _headerHeight,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(
+                    start: ExpatlioDesign.compactSpacing,
+                  ),
+                  child: IconButton(
+                    onPressed: () => context.safePop(),
+                    icon: const Icon(
+                      Icons.arrow_back,
+                      color: ExpatlioDesign.text,
+                      size: 24.0,
+                    ),
+                    splashRadius: 22.0,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  72.0,
+                  0.0,
+                  72.0,
+                  0.0,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      FFLocalizations.of(context).getVariableText(
+                        ruText: 'Информация о звонке',
+                        enText: 'Call information',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: ExpatlioDesign.pageHeaderTitleStyle(context),
+                    ),
+                    const SizedBox(height: 2.0),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.muted,
+                        size: 12.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -837,208 +883,111 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     return '';
   }
 
-  bool _transactionMatchesCurrentSession(
-    TransactionsRecord transaction, {
-    required bool preferReferenceMatch,
-  }) {
-    final sessionRef = widget.videoDocRef;
-    if (sessionRef == null) {
-      return false;
+  String _callDateLabel(BuildContext context, VideoSessionsRecord session) {
+    final startedAt = resolveSessionStartedAt(session);
+    if (startedAt == null) {
+      return '-';
     }
 
-    if (preferReferenceMatch) {
-      return transaction.sessionDocRef?.path == sessionRef.path;
+    final localStartedAt = startedAt.toLocal();
+    final today = DateTime.now();
+    final startedDay = DateTime(
+      localStartedAt.year,
+      localStartedAt.month,
+      localStartedAt.day,
+    );
+    final todayDay = DateTime(today.year, today.month, today.day);
+    final differenceInDays = todayDay.difference(startedDay).inDays;
+
+    if (differenceInDays == 0) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Сегодня',
+        enText: 'Today',
+      );
+    }
+    if (differenceInDays == 1) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Вчера',
+        enText: 'Yesterday',
+      );
     }
 
-    final transactionSessionId =
-        (transaction.snapshotData['sessionId']?.toString() ?? '').trim();
-    return transactionSessionId.isNotEmpty &&
-        transactionSessionId == sessionRef.id;
+    return DateFormat('d MMM', FFLocalizations.of(context).languageCode)
+        .format(localStartedAt);
   }
 
-  TransactionsRecord? _callTransactionForSession(
-    List<TransactionsRecord> transactions, {
-    required bool isTeacher,
-  }) {
-    final targetType =
-        isTeacher ? TypeTransactions.earning : TypeTransactions.call_charge;
-    TransactionsRecord? fallbackMatch;
-
-    for (final transaction in transactions) {
-      if (transaction.type != targetType) {
-        continue;
-      }
-
-      if (_transactionMatchesCurrentSession(
-        transaction,
-        preferReferenceMatch: true,
-      )) {
-        return transaction;
-      }
-
-      if (fallbackMatch == null &&
-          _transactionMatchesCurrentSession(
-            transaction,
-            preferReferenceMatch: false,
-          )) {
-        fallbackMatch = transaction;
-      }
+  String _callTimeLabel(BuildContext context, VideoSessionsRecord session) {
+    final startedAt = resolveSessionStartedAt(session);
+    if (startedAt == null) {
+      return '-';
     }
 
-    return fallbackMatch;
+    return dateTimeFormat(
+      'Hm',
+      startedAt,
+      locale: FFLocalizations.of(context).languageCode,
+    );
   }
 
-  Widget _buildInfoRow(
+  String _callDirectionLabel(
+      BuildContext context, VideoSessionsRecord session) {
+    final isOutgoing = session.studentId.trim() == currentUserUid;
+    return FFLocalizations.of(context).getVariableText(
+      ruText: isOutgoing ? 'Исходящий звонок' : 'Входящий звонок',
+      enText: isOutgoing ? 'Outgoing call' : 'Incoming call',
+    );
+  }
+
+  String _transcriptLanguageLabel(LanguageStruct? language) {
+    final code = language?.code.trim();
+    if (code != null && code.isNotEmpty) {
+      return code.toUpperCase();
+    }
+    return 'EN';
+  }
+
+  Widget _buildCallMetricCard(
     BuildContext context, {
+    required IconData icon,
     required String label,
-    required Widget value,
+    required String value,
   }) {
-    return Column(
-      mainAxisSize: MainAxisSize.max,
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          softWrap: false,
-          style: FlutterFlowTheme.of(context).bodyMedium.override(
-                fontFamily: 'sf pro display',
-                color: ExpatlioDesign.muted,
-                fontSize: 14.0,
-                letterSpacing: 0.0,
-              ),
+    return Expanded(
+      child: Container(
+        height: 74.0,
+        decoration: BoxDecoration(
+          color: ExpatlioDesign.card,
+          borderRadius: BorderRadius.circular(10.0),
         ),
-        const SizedBox(height: 4.0),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: value,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildValueText(BuildContext context, String value) {
-    return Text(
-      value,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      softWrap: true,
-      textAlign: TextAlign.start,
-      style: FlutterFlowTheme.of(context).bodyMedium.override(
-            fontFamily: 'sf pro display',
-            fontSize: 15.0,
-            letterSpacing: 0.0,
-            fontWeight: FontWeight.w500,
-          ),
-    );
-  }
-
-  String _formatRubTransactionAmount(double? amount) {
-    if (amount == null) {
-      return '-';
-    }
-
-    return '${NumberFormat('0.##').format(amount)} ₽';
-  }
-
-  String _amountLabelForTransaction(
-    TransactionsRecord? transaction, {
-    required bool isTeacher,
-  }) {
-    if (transaction == null) {
-      return '-';
-    }
-
-    if (isTeacher) {
-      return transaction.hasAmount()
-          ? _formatRubTransactionAmount(transaction.amount)
-          : '-';
-    }
-
-    return transaction.hasAmountST()
-        ? formatStAmount(transaction.amountST)
-        : '-';
-  }
-
-  Widget _buildAmountValue(BuildContext context, VideoSessionsRecord session) {
-    final isTeacher = _isTeacherForSession(session);
-    final transactionsFuture = _ensureTransactionsFuture();
-    if (transactionsFuture == null) {
-      return _buildValueText(context, '-');
-    }
-
-    return FutureBuilder<List<TransactionsRecord>>(
-      future: transactionsFuture,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return _buildValueText(context, '...');
-        }
-
-        return _buildValueText(
-          context,
-          _amountLabelForTransaction(
-            _callTransactionForSession(
-              snapshot.data!,
-              isTeacher: isTeacher,
-            ),
-            isTeacher: isTeacher,
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildCallInfoCard(
-    BuildContext context,
-    VideoSessionsRecord session, {
-    required String startedAtLabel,
-    required String durationLabel,
-  }) {
-    final isTeacher = _isTeacherForSession(session);
-
-    return Container(
-      height: 177.5,
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(16.0),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(8.0, 8.0, 8.0, 8.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Expanded(
-              child: _buildInfoRow(
+            Icon(
+              icon,
+              size: 16.0,
+              color: ExpatlioDesign.muted,
+            ),
+            const SizedBox(height: 4.0),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ExpatlioDesign.textStyle(
                 context,
-                label: FFLocalizations.of(context).getVariableText(
-                  ruText: 'Дата и время',
-                  enText: 'Date and time',
-                ),
-                value: _buildValueText(context, startedAtLabel),
+                color: ExpatlioDesign.muted,
+                size: 11.0,
               ),
             ),
-            const Divider(height: 1.0),
-            Expanded(
-              child: _buildInfoRow(
+            const SizedBox(height: 2.0),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ExpatlioDesign.textStyle(
                 context,
-                label: FFLocalizations.of(context).getVariableText(
-                  ruText: 'Длительность',
-                  enText: 'Duration',
-                ),
-                value: _buildValueText(context, durationLabel),
-              ),
-            ),
-            const Divider(height: 1.0),
-            Expanded(
-              child: _buildInfoRow(
-                context,
-                label: FFLocalizations.of(context).getVariableText(
-                  ruText: isTeacher ? 'Заработок' : 'Стоимость',
-                  enText: isTeacher ? 'Earnings' : 'Cost',
-                ),
-                value: _buildAmountValue(context, session),
+                size: 13.0,
+                weight: FontWeight.w600,
               ),
             ),
           ],
@@ -1047,35 +996,160 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     );
   }
 
-  Widget _buildLanguageSection(
-    BuildContext context, {
-    required LanguageStruct language,
+  Widget _buildCallHero(
+    BuildContext context,
+    VideoSessionsRecord session, {
+    required String counterpartName,
+    required String counterpartPhotoUrl,
+    required String durationLabel,
+    required bool hasReviews,
+    double? ratingAverage,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
-          child: Text(
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'Язык',
-              enText: 'Language',
-            ),
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'Cool',
-                  fontSize: 24.0,
-                  letterSpacing: 0.0,
-                  fontWeight: FontWeight.normal,
-                ),
+    final semanticLabel = hasReviews && ratingAverage != null
+        ? '$counterpartName, ${formatNumber(
+            ratingAverage,
+            formatType: FormatType.custom,
+            format: '0.0',
+            locale: '',
+          )}'
+        : counterpartName;
+
+    return Semantics(
+      label: semanticLabel,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ParticipantAvatar(
+            photoUrl: counterpartPhotoUrl,
+            displayName: counterpartName,
           ),
-        ),
-        const SizedBox(height: 10.0),
-        LanguageCardWidget(
-          lang: language,
-          currentSelected: null,
-          callbackAction: (_) async {},
-        ),
-      ],
+          const SizedBox(height: 14.0),
+          Padding(
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: 30.0),
+            child: Text(
+              counterpartName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: ExpatlioDesign.textStyle(
+                context,
+                size: 20.0,
+                weight: FontWeight.w700,
+                height: 1.1,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10.0),
+          Container(
+            decoration: BoxDecoration(
+              color: ExpatlioDesign.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999.0),
+            ),
+            padding: const EdgeInsetsDirectional.fromSTEB(10.0, 5.0, 12.0, 5.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.phone_in_talk_outlined,
+                  color: ExpatlioDesign.primary,
+                  size: 14.0,
+                ),
+                const SizedBox(width: 5.0),
+                Text(
+                  _callDirectionLabel(context, session),
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: ExpatlioDesign.primary,
+                    size: 12.0,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22.0),
+          Row(
+            children: [
+              _buildCallMetricCard(
+                context,
+                icon: Icons.calendar_today_outlined,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Дата',
+                  enText: 'Date',
+                ),
+                value: _callDateLabel(context, session),
+              ),
+              const SizedBox(width: 12.0),
+              _buildCallMetricCard(
+                context,
+                icon: Icons.access_time_rounded,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Время',
+                  enText: 'Time',
+                ),
+                value: _callTimeLabel(context, session),
+              ),
+              const SizedBox(width: 12.0),
+              _buildCallMetricCard(
+                context,
+                icon: Icons.schedule_rounded,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Длит.',
+                  enText: 'Dur.',
+                ),
+                value: durationLabel,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCallHeroWithProfile(
+    BuildContext context,
+    VideoSessionsRecord session, {
+    required String fallbackName,
+    required String fallbackPhotoUrl,
+    required String durationLabel,
+  }) {
+    final participantRef = _counterpartReference(session);
+    if (participantRef == null) {
+      return _buildCallHero(
+        context,
+        session,
+        counterpartName: fallbackName,
+        counterpartPhotoUrl: fallbackPhotoUrl,
+        durationLabel: durationLabel,
+        hasReviews: false,
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot<Object?>>(
+      stream: UserPublicProfilesRecord.collection
+          .doc(participantRef.id)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final participantSnapshot = snapshot.data;
+        final participant = participantSnapshot != null &&
+                participantSnapshot.exists &&
+                participantSnapshot.data() != null
+            ? UserPublicProfilesRecord.fromSnapshot(participantSnapshot)
+            : null;
+        final profileName = participant?.displayName.trim() ?? '';
+        final profilePhotoUrl = participant?.photoUrl.trim() ?? '';
+
+        return _buildCallHero(
+          context,
+          session,
+          counterpartName: profileName.isNotEmpty ? profileName : fallbackName,
+          counterpartPhotoUrl:
+              profilePhotoUrl.isNotEmpty ? profilePhotoUrl : fallbackPhotoUrl,
+          durationLabel: durationLabel,
+          hasReviews: (participant?.ratingCount ?? 0) > 0,
+          ratingAverage: participant?.ratingAverage,
+        );
+      },
     );
   }
 
@@ -1212,8 +1286,6 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         enText: 'Sending review...',
       ),
       busyStyle: ButtonBusyStyle.spinner,
-      keyboardAwarePadding: false,
-      padding: EdgeInsets.zero,
       action: () async {
         await _submitReview(context, session);
       },
@@ -1315,7 +1387,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
             alignment: Alignment.centerLeft,
             child: ReviewCardWidget(
               rewDoc: reviewRecord,
-              width: double.infinity,
+              fullWidth: true,
             ),
           ),
         );
@@ -1418,345 +1490,88 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               }
 
               final session = snapshot.data!;
-              final counterpartReference = _counterpartReference(session);
               final counterpartName = _counterpartName(context, session);
               final counterpartPhotoUrl = _counterpartPhotoUrl(session);
               final sessionLanguage = _findLanguageByCode(session.language);
-              final startedAtLabel = formatSessionStartedAt(context, session);
               final durationLabel = formatDurationLabel(
                 context,
                 resolveSessionDurationSeconds(session),
               );
+              final contentTopPadding = MediaQuery.paddingOf(context).top +
+                  _headerHeight +
+                  ExpatlioDesign.sectionGap;
 
               return Stack(
                 children: [
                   Padding(
                     padding: const EdgeInsetsDirectional.fromSTEB(
-                        6.0, 0.0, 6.0, 0.0),
+                      ExpatlioDesign.pagePadding,
+                      0.0,
+                      ExpatlioDesign.pagePadding,
+                      0.0,
+                    ),
                     child: SingleChildScrollView(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SizedBox(height: 115.0),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                height: 177.5,
-                                child: _CallParticipantCard(
-                                  participantRef: counterpartReference,
-                                  fallbackName: counterpartName,
-                                  fallbackPhotoUrl: counterpartPhotoUrl,
-                                ),
-                              ),
-                              const SizedBox(width: 6.0),
-                              Expanded(
-                                child: _buildCallInfoCard(
-                                  context,
-                                  session,
-                                  startedAtLabel: startedAtLabel,
-                                  durationLabel: durationLabel,
-                                ),
-                              ),
-                            ],
+                          SizedBox(height: contentTopPadding),
+                          _buildCallHeroWithProfile(
+                            context,
+                            session,
+                            fallbackName: counterpartName,
+                            fallbackPhotoUrl: counterpartPhotoUrl,
+                            durationLabel: durationLabel,
                           ),
-                          if (sessionLanguage != null) ...[
-                            const SizedBox(height: 24.0),
-                            _buildLanguageSection(
-                              context,
-                              language: sessionLanguage,
-                            ),
-                          ],
-                          const SizedBox(height: 24.0),
+                          const SizedBox(height: 28.0),
                           Padding(
-                            padding: const EdgeInsetsDirectional.fromSTEB(
-                                10.0, 0.0, 10.0, 0.0),
-                            child: Text(
-                              FFLocalizations.of(context).getVariableText(
-                                ruText: 'Логи',
-                                enText: 'Logs',
-                              ),
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 24.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.normal,
+                            padding:
+                                const EdgeInsetsDirectional.only(bottom: 14.0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    FFLocalizations.of(context).getVariableText(
+                                      ruText: 'Расшифровка разговора',
+                                      enText: 'Conversation transcript',
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: ExpatlioDesign.textStyle(
+                                      context,
+                                      size: 16.0,
+                                      weight: FontWeight.w700,
+                                    ),
                                   ),
+                                ),
+                                Text(
+                                  _transcriptLanguageLabel(sessionLanguage),
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: ExpatlioDesign.muted,
+                                    size: 12.0,
+                                    weight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 12.0),
                           _buildCaptionLogsSection(context, session),
-                          const SizedBox(height: 20.0),
+                          const SizedBox(height: 22.0),
                           _buildReviewSection(context, session),
                           const SizedBox(height: 120.0),
                         ],
                       ),
                     ),
                   ),
-                  _buildHeader(context),
+                  _buildHeader(
+                    context,
+                    subtitle: counterpartName,
+                  ),
                 ],
               );
             },
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _CallParticipantCard extends StatelessWidget {
-  const _CallParticipantCard({
-    required this.participantRef,
-    required this.fallbackName,
-    required this.fallbackPhotoUrl,
-  });
-
-  final DocumentReference? participantRef;
-  final String fallbackName;
-  final String fallbackPhotoUrl;
-
-  String _resolvedDisplayName(UserPublicProfilesRecord? user) {
-    final displayName = user?.displayName.trim() ?? '';
-    return displayName.isNotEmpty ? displayName : fallbackName;
-  }
-
-  String _resolvedPhotoUrl(UserPublicProfilesRecord? user) {
-    final photoUrl = user?.photoUrl.trim() ?? '';
-    return photoUrl.isNotEmpty ? photoUrl : fallbackPhotoUrl;
-  }
-
-  Future<void> _openParticipant(
-    BuildContext context,
-    UserPublicProfilesRecord? participant,
-  ) async {
-    final targetRef = participantRef;
-    if (targetRef == null || participant?.role != UserRole.native_speaker) {
-      return;
-    }
-
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => NativeSpeakerPageWidget(nsUserDocRef: targetRef),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (participantRef == null) {
-      return _CallParticipantCardBody(
-        displayName: fallbackName,
-        photoUrl: fallbackPhotoUrl,
-      );
-    }
-
-    return StreamBuilder<DocumentSnapshot<Object?>>(
-      stream: UserPublicProfilesRecord.collection
-          .doc(participantRef!.id)
-          .snapshots(),
-      builder: (context, snapshot) {
-        final participantSnapshot = snapshot.data;
-        final participant = participantSnapshot != null &&
-                participantSnapshot.exists &&
-                participantSnapshot.data() != null
-            ? UserPublicProfilesRecord.fromSnapshot(participantSnapshot)
-            : null;
-
-        return _CallParticipantCardBody(
-          displayName: _resolvedDisplayName(participant),
-          photoUrl: _resolvedPhotoUrl(participant),
-          ratingAverage: participant?.ratingAverage,
-          hasReviews: (participant?.ratingCount ?? 0) > 0,
-          onTap: participant?.role == UserRole.native_speaker
-              ? () => _openParticipant(context, participant)
-              : null,
-        );
-      },
-    );
-  }
-}
-
-class _CallParticipantCardBody extends StatelessWidget {
-  const _CallParticipantCardBody({
-    required this.displayName,
-    required this.photoUrl,
-    this.ratingAverage,
-    this.hasReviews = false,
-    this.onTap,
-  });
-
-  final String displayName;
-  final String photoUrl;
-  final double? ratingAverage;
-  final bool hasReviews;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      splashColor: Colors.transparent,
-      focusColor: Colors.transparent,
-      hoverColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      onTap: onTap,
-      child: Container(
-        width: 140.0,
-        decoration: BoxDecoration(
-          color: ExpatlioDesign.card,
-          borderRadius: BorderRadius.circular(16.0),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                alignment: const AlignmentDirectional(0.0, 1.0),
-                children: [
-                  _ParticipantAvatar(
-                    photoUrl: photoUrl,
-                    displayName: displayName,
-                    size: 125.0,
-                    borderWidth: 3.0,
-                  ),
-                  if (hasReviews)
-                    Container(
-                      width: 55.0,
-                      height: 25.0,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24.0),
-                      ),
-                      child: Padding(
-                        padding:
-                            const EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              FFIcons.kstar012,
-                              color: Color(0xFFFFC100),
-                              size: 13.0,
-                            ),
-                            Text(
-                              formatNumber(
-                                ratingAverage ?? 0.0,
-                                formatType: FormatType.custom,
-                                format: '0.0',
-                                locale: '',
-                              ),
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'sf pro display',
-                                    letterSpacing: 0.0,
-                                  ),
-                            ),
-                          ].divide(const SizedBox(width: 3.0)),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(0, 10, 0, 0),
-                child: Text(
-                  displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'sf pro display',
-                        fontSize: 15.0,
-                        letterSpacing: 0.0,
-                        fontWeight: FontWeight.w500,
-                      ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ParticipantAvatar extends StatelessWidget {
-  const _ParticipantAvatar({
-    required this.photoUrl,
-    required this.displayName,
-    required this.size,
-    required this.borderWidth,
-  });
-
-  final String photoUrl;
-  final String displayName;
-  final double size;
-  final double borderWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    final borderRadius = BorderRadius.circular(size / 2);
-
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.background,
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: ExpatlioDesign.background,
-          width: borderWidth,
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: borderRadius,
-        child: photoUrl.trim().isNotEmpty
-            ? Image.network(
-                photoUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _ParticipantAvatarFallback(
-                  displayName: displayName,
-                ),
-              )
-            : _ParticipantAvatarFallback(
-                displayName: displayName,
-              ),
-      ),
-    );
-  }
-}
-
-class _ParticipantAvatarFallback extends StatelessWidget {
-  const _ParticipantAvatarFallback({
-    required this.displayName,
-  });
-
-  final String displayName;
-
-  String _initial() {
-    final normalizedName = displayName.trim();
-    if (normalizedName.isEmpty) {
-      return '?';
-    }
-
-    return normalizedName.characters.first.toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: ExpatlioDesign.background,
-      alignment: Alignment.center,
-      child: Text(
-        _initial(),
-        textAlign: TextAlign.center,
-        style: FlutterFlowTheme.of(context).bodyMedium.override(
-              fontFamily: 'Cool',
-              fontSize: 28.0,
-              letterSpacing: 0.0,
-            ),
       ),
     );
   }

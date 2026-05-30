@@ -1,4 +1,5 @@
 import '/components/button/button_widget.dart';
+import '/components/onboarding_card.dart';
 import '/flutter_flow/flutter_flow_swipeable_stack.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -172,13 +173,13 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                     onDownSwipe: (swipeableStackIndex) {},
                     itemBuilder: (context, index) {
                       return [
-                        () => _OnboardingCard(
+                        () => OnboardingCard(
                               assetPath: 'assets/images/group_1171275328.webp',
                             ),
-                        () => _OnboardingCard(
+                        () => OnboardingCard(
                               assetPath: 'assets/images/frame_1321318905.webp',
                             ),
-                        () => _OnboardingCard(
+                        () => OnboardingCard(
                               assetPath: 'assets/images/frame_1321318906.webp',
                             ),
                       ][index]();
@@ -201,8 +202,6 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                       ruText: 'Далее',
                       enText: 'Next',
                     ),
-                    keyboardAwarePadding: false,
-                    padding: EdgeInsets.zero,
                     action: () async {
                       if (_model.index <= 2) {
                         _model.swipeableStackController.swipeLeft();
@@ -215,28 +214,6 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _OnboardingCard extends StatelessWidget {
-  const _OnboardingCard({required this.assetPath});
-
-  final String assetPath;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
-      child: ColoredBox(
-        color: ExpatlioDesign.card,
-        child: Image.asset(
-          assetPath,
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.cover,
         ),
       ),
     );

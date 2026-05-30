@@ -1,6 +1,10 @@
-import '/flutter_flow/flutter_flow_theme.dart';
+import '/components/student_pay_bottom_bar.dart';
+import '/components/student_pay_intro.dart';
+import '/components/student_pay_plan.dart';
+import '/components/student_pay_plan_card.dart';
+import '/components/student_pay_restore_purchases_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/design/basic_page_header.dart';
+import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/subscription_service.dart';
 import 'package:flutter/material.dart';
@@ -19,39 +23,12 @@ class PayWidget extends StatefulWidget {
   State<PayWidget> createState() => _PayWidgetState();
 }
 
-enum _PlanKind { monthly, quarterly }
-
-class _PlanData {
-  const _PlanData({
-    required this.kind,
-    required this.productId,
-    required this.title,
-    required this.subtitle,
-    required this.fallbackPrice,
-    required this.periodLabel,
-    required this.icon,
-    required this.features,
-    this.badge,
-  });
-
-  final _PlanKind kind;
-  final String productId;
-  final String title;
-  final String subtitle;
-  final String fallbackPrice;
-  final String periodLabel;
-  final IconData icon;
-  final List<String> features;
-  final String? badge;
-}
-
 const _plans = [
-  _PlanData(
-    kind: _PlanKind.monthly,
+  StudentPayPlan(
+    kind: StudentPayPlanKind.monthly,
     productId: SubscriptionProductIds.monthly,
     title: 'Basic',
     subtitle: 'Для старта изучения языка',
-    fallbackPrice: r'$10',
     periodLabel: 'мес',
     icon: FFIcons.kwallet02,
     features: [
@@ -60,12 +37,11 @@ const _plans = [
       'Субтитры в звонках',
     ],
   ),
-  _PlanData(
-    kind: _PlanKind.quarterly,
+  StudentPayPlan(
+    kind: StudentPayPlanKind.quarterly,
     productId: SubscriptionProductIds.quarterly,
     title: 'Pro',
     subtitle: 'Полный доступ ко всем возможностям',
-    fallbackPrice: r'$20',
     periodLabel: '3 мес',
     icon: Icons.auto_awesome_rounded,
     badge: 'ПОПУЛЯРНЫЙ',
@@ -79,19 +55,14 @@ const _plans = [
 ];
 
 class _PayWidgetState extends State<PayWidget> {
-  static const _purple = Color(0xFF7430E8);
-  static const _blueBorder = Color(0xFF7430E8);
-  static const _cardBorder = Color(0xFFEBEBEB);
-  static const _selectedBackground = Color(0xFFF3EEFF);
-  static const _iconBackground = Color(0xFFF3EEFF);
-
   late PayModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
-  _PlanKind _selected = _PlanKind.quarterly;
+  StudentPayPlanKind _selected = StudentPayPlanKind.quarterly;
   Map<String, Package> _packagesByProductId = const {};
   bool _isLoadingPackages = true;
   bool _isPurchasing = false;
+  bool _isRestoringPurchases = false;
 
   @override
   void initState() {
@@ -108,7 +79,7 @@ class _PayWidgetState extends State<PayWidget> {
     super.dispose();
   }
 
-  _PlanData get _selectedPlan =>
+  StudentPayPlan get _selectedPlan =>
       _plans.firstWhere((plan) => plan.kind == _selected);
 
   Package? get _selectedPackage =>
@@ -121,9 +92,18 @@ class _PayWidgetState extends State<PayWidget> {
       });
     }
 
-    final packages = await SubscriptionService.instance
-        .fetchSubscriptionPackages()
-        .timeout(const Duration(seconds: 20), onTimeout: () => const []);
+    List<Package> packages;
+    try {
+      packages = await SubscriptionService.instance
+          .fetchSubscriptionPackages()
+          .timeout(const Duration(seconds: 20), onTimeout: () => const []);
+    } catch (e, st) {
+      debugPrint('⚠️ PayWidget._loadPackages failed: $e\n$st');
+      packages = const [];
+      if (mounted) {
+        _showSnackBar('Не удалось загрузить тарифы. Попробуйте еще раз.');
+      }
+    }
 
     if (!mounted) {
       return;
@@ -138,13 +118,19 @@ class _PayWidgetState extends State<PayWidget> {
     });
   }
 
-  String _priceFor(_PlanData plan) {
+  String _priceFor(StudentPayPlan plan) {
     final package = _packagesByProductId[plan.productId];
-    return package?.storeProduct.priceString ?? plan.fallbackPrice;
+    if (package != null) {
+      return package.storeProduct.priceString;
+    }
+    return _isLoadingPackages ? 'Загрузка...' : 'Недоступно';
   }
 
+  bool _hasPackageFor(StudentPayPlan plan) =>
+      _packagesByProductId.containsKey(plan.productId);
+
   Future<void> _purchaseSelectedPlan() async {
-    if (_isPurchasing) {
+    if (_isPurchasing || _isLoadingPackages) {
       return;
     }
 
@@ -191,6 +177,43 @@ class _PayWidgetState extends State<PayWidget> {
     }
   }
 
+  Future<void> _restorePurchases() async {
+    if (_isRestoringPurchases || _isPurchasing) {
+      return;
+    }
+
+    safeSetState(() {
+      _isRestoringPurchases = true;
+    });
+
+    try {
+      final info = await SubscriptionService.instance.restorePurchases();
+      if (!mounted) {
+        return;
+      }
+      final hasPro =
+          info.entitlements.active.containsKey(kSubscriptionProEntitlementId);
+      _showSnackBar(
+        hasPro
+            ? 'Покупки восстановлены.'
+            : 'Активных покупок для восстановления не найдено.',
+      );
+      if (hasPro) {
+        context.safePop();
+      }
+    } catch (_) {
+      if (mounted) {
+        _showSnackBar('Не удалось восстановить покупки. Попробуйте еще раз.');
+      }
+    } finally {
+      if (mounted) {
+        safeSetState(() {
+          _isRestoringPurchases = false;
+        });
+      }
+    }
+  }
+
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
@@ -209,7 +232,10 @@ class _PayWidgetState extends State<PayWidget> {
         backgroundColor: ExpatlioDesign.background,
         body: Column(
           children: [
-            _Header(onBack: () => context.safePop()),
+            BasicPageHeader(
+              title: 'Тарифы',
+              onBack: () => context.safePop(),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsetsDirectional.fromSTEB(
@@ -224,39 +250,14 @@ class _PayWidgetState extends State<PayWidget> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text(
-                          'Выберите свой тариф',
-                          textAlign: TextAlign.center,
-                          style: FlutterFlowTheme.of(context)
-                              .headlineMedium
-                              .override(
-                                fontFamily: 'sf pro display',
-                                color: ExpatlioDesign.text,
-                                fontSize: 26,
-                                letterSpacing: 0.0,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Отмените или измените подписку в любой момент',
-                          textAlign: TextAlign.center,
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'sf pro display',
-                                    color: ExpatlioDesign.muted,
-                                    fontSize: 15,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.w400,
-                                    lineHeight: 1.25,
-                                  ),
-                        ),
+                        const StudentPayIntro(),
                         const SizedBox(height: 22),
                         for (final plan in _plans) ...[
-                          _PlanCard(
+                          StudentPayPlanCard(
                             plan: plan,
                             selected: _selected == plan.kind,
                             price: _priceFor(plan),
+                            priceAvailable: _hasPackageFor(plan),
                             onTap: () {
                               safeSetState(() {
                                 _selected = plan.kind;
@@ -265,355 +266,28 @@ class _PayWidgetState extends State<PayWidget> {
                           ),
                           if (plan != _plans.last) const SizedBox(height: 12),
                         ],
+                        const SizedBox(height: 14),
+                        StudentPayRestorePurchasesButton(
+                          isBusy: _isRestoringPurchases,
+                          onPressed: _restorePurchases,
+                        ),
                       ],
                     ),
                   ),
                 ),
               ),
             ),
-            _BottomBar(
+            StudentPayBottomBar(
               plan: _selectedPlan,
               price: _priceFor(_selectedPlan),
+              canPurchase: _hasPackageFor(_selectedPlan),
               isBusy: _isPurchasing,
               isLoading: _isLoadingPackages,
-              onPressed: _purchaseSelectedPlan,
+              onPressed: _hasPackageFor(_selectedPlan)
+                  ? _purchaseSelectedPlan
+                  : _loadPackages,
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  const _Header({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return BasicPageHeader(
-      title: 'Тарифы',
-      onBack: onBack,
-    );
-  }
-}
-
-class _PlanCard extends StatelessWidget {
-  const _PlanCard({
-    required this.plan,
-    required this.selected,
-    required this.price,
-    required this.onTap,
-  });
-
-  final _PlanData plan;
-  final bool selected;
-  final String price;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOut,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: selected
-              ? _PayWidgetState._selectedBackground
-              : ExpatlioDesign.card,
-          borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
-          border: Border.all(
-            color: selected
-                ? _PayWidgetState._blueBorder
-                : _PayWidgetState._cardBorder,
-            width: selected ? 2 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: _PayWidgetState._iconBackground,
-                  borderRadius:
-                      BorderRadius.circular(ExpatlioDesign.controlRadius),
-                ),
-                child: Icon(
-                  plan.icon,
-                  color: _PayWidgetState._purple,
-                  size: 25,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            plan.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: FlutterFlowTheme.of(context)
-                                .titleMedium
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color: ExpatlioDesign.text,
-                                  fontSize: 20,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                        ),
-                        if (plan.badge != null) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsetsDirectional.fromSTEB(
-                                8, 4, 8, 4),
-                            decoration: BoxDecoration(
-                              color: _PayWidgetState._purple,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              plan.badge!,
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'sf pro display',
-                                    color: ExpatlioDesign.card,
-                                    fontSize: 10,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      plan.subtitle,
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'sf pro display',
-                            color: ExpatlioDesign.muted,
-                            fontSize: 14,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.w400,
-                            lineHeight: 1.25,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    RichText(
-                      textScaler: MediaQuery.of(context).textScaler,
-                      text: TextSpan(
-                        children: [
-                          TextSpan(
-                            text: price,
-                            style: FlutterFlowTheme.of(context)
-                                .titleLarge
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color: _PayWidgetState._purple,
-                                  fontSize: 24,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                          TextSpan(
-                            text: ' / ${plan.periodLabel}',
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color: ExpatlioDesign.muted,
-                                  fontSize: 16,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    for (final feature in plan.features) ...[
-                      _FeatureLine(text: feature),
-                      if (feature != plan.features.last)
-                        const SizedBox(height: 8),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              _SelectionIndicator(selected: selected),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SelectionIndicator extends StatelessWidget {
-  const _SelectionIndicator({required this.selected});
-
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    if (selected) {
-      return Container(
-        width: 28,
-        height: 28,
-        decoration: const BoxDecoration(
-          color: _PayWidgetState._purple,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          Icons.check_rounded,
-          color: ExpatlioDesign.card,
-          size: 19,
-        ),
-      );
-    }
-
-    return Container(
-      width: 28,
-      height: 28,
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.card,
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: const Color(0xFFE6E6E6),
-          width: 1.5,
-        ),
-      ),
-    );
-  }
-}
-
-class _FeatureLine extends StatelessWidget {
-  const _FeatureLine({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          Icons.check_rounded,
-          color: _PayWidgetState._purple,
-          size: 18,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'sf pro display',
-                  color: ExpatlioDesign.text,
-                  fontSize: 15,
-                  letterSpacing: 0.0,
-                  fontWeight: FontWeight.w400,
-                  lineHeight: 1.25,
-                ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _BottomBar extends StatelessWidget {
-  const _BottomBar({
-    required this.plan,
-    required this.price,
-    required this.isBusy,
-    required this.isLoading,
-    required this.onPressed,
-  });
-
-  final _PlanData plan;
-  final String price;
-  final bool isBusy;
-  final bool isLoading;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.pagePadding,
-          12,
-          ExpatlioDesign.pagePadding,
-          12,
-        ),
-        decoration: const BoxDecoration(
-          color: ExpatlioDesign.card,
-          border: Border(
-            top: BorderSide(color: ExpatlioDesign.border),
-          ),
-        ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
-              onTap: isBusy ? null : onPressed,
-              child: Container(
-                width: double.infinity,
-                height: ExpatlioDesign.buttonHeight,
-                decoration: BoxDecoration(
-                  color: _PayWidgetState._purple,
-                  borderRadius:
-                      BorderRadius.circular(ExpatlioDesign.buttonRadius),
-                ),
-                alignment: Alignment.center,
-                child: isBusy || isLoading
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : Text(
-                        'Выбрать ${plan.title} · $price/${plan.periodLabel}',
-                        textAlign: TextAlign.center,
-                        style:
-                            FlutterFlowTheme.of(context).titleMedium.override(
-                                  fontFamily: 'sf pro display',
-                                  color: ExpatlioDesign.card,
-                                  fontSize: 16,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                      ),
-              ),
-            ),
-          ),
         ),
       ),
     );

@@ -9,9 +9,8 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/call_details/call_details_widget.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
-import '/shared_pages/design/basic_page_header.dart';
-
-import 'chat_call_event_card.dart';
+import '/components/basic_page_header.dart';
+import '/components/chat_call_event_card.dart';
 import 'chat_thread_model.dart';
 export 'chat_thread_model.dart';
 
@@ -46,7 +45,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       ref.path,
       () => UserPublicProfilesRecord.maybeGetDocumentOnce(
         UserPublicProfilesRecord.collection.doc(ref.id),
-      ),
+      ).catchError((Object error, StackTrace stackTrace) {
+        _publicProfileFutureCache.remove(ref.path);
+        throw error;
+      }),
     );
   }
 
@@ -63,6 +65,38 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     }
 
     return null;
+  }
+
+  Map<String, dynamic> _conversationParticipantInfo(
+    ConversationsRecord conversation,
+    DocumentReference participantRef,
+  ) {
+    final rawInfoByUserId =
+        conversation.snapshotData['participantInfoByUserId'];
+    if (rawInfoByUserId is Map) {
+      final rawInfo = rawInfoByUserId[participantRef.id] ??
+          rawInfoByUserId[participantRef.path];
+      if (rawInfo is Map) {
+        return rawInfo.map((key, value) => MapEntry(key.toString(), value));
+      }
+    }
+
+    return const <String, dynamic>{};
+  }
+
+  String _conversationParticipantDisplayName(
+    ConversationsRecord conversation,
+    DocumentReference participantRef,
+  ) {
+    final info = _conversationParticipantInfo(conversation, participantRef);
+    for (final key in const ['displayName', 'display_name', 'name']) {
+      final value = info[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+
+    return '';
   }
 
   Future<void> _markConversationRead(ConversationsRecord conversation) async {
@@ -388,12 +422,12 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         : Icons.call_received_rounded;
   }
 
-  Color _callEventIconColor(MessagesRecord message) {
+  ChatCallEventTone _callEventTone(MessagesRecord message) {
     if (message.callOutcome == kConversationCallOutcomeCancelled ||
         message.callOutcome == kConversationCallOutcomeMissed) {
-      return FlutterFlowTheme.of(context).error;
+      return ChatCallEventTone.alert;
     }
-    return FlutterFlowTheme.of(context).primary;
+    return ChatCallEventTone.normal;
   }
 
   Widget _buildCallEventMessageCard(
@@ -404,7 +438,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       title: _callEventTitle(message),
       details: _formatCallEventDetails(message),
       icon: _callEventIcon(message),
-      iconColor: _callEventIconColor(message),
+      tone: _callEventTone(message),
       onTap: () => _openCallEvent(message),
     );
   }
@@ -467,11 +501,19 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
   Widget _buildHeader(
     BuildContext context, {
+    required ConversationsRecord conversation,
     required UserPublicProfilesRecord? partnerProfile,
     required DocumentReference partnerRef,
     required bool isFriend,
   }) {
-    final partnerName = partnerProfile?.displayName.trim() ?? '';
+    var partnerName = partnerProfile?.displayName.trim() ?? '';
+    if (partnerName.isEmpty) {
+      partnerName = _conversationParticipantDisplayName(
+        conversation,
+        partnerRef,
+      );
+    }
+
     return BasicPageHeader(
       title: partnerName.isNotEmpty
           ? partnerName
@@ -558,13 +600,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                 debugPrint(
                   'ChatThreadWidget: partner public profile load failed for ${partnerRef.path}: ${partnerSnapshot.error}',
                 );
-                return _buildChatUnavailableState(
-                  context,
-                  error: partnerSnapshot.error,
-                );
               }
 
-              if (partnerSnapshot.connectionState == ConnectionState.waiting) {
+              if (partnerSnapshot.connectionState == ConnectionState.waiting &&
+                  !partnerSnapshot.hasError) {
                 return _buildLoadingState(context);
               }
 
@@ -585,7 +624,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                         children: [
                           _buildHeader(
                             context,
-                            partnerProfile: partnerSnapshot.data,
+                            conversation: conversation,
+                            partnerProfile: partnerSnapshot.hasError
+                                ? null
+                                : partnerSnapshot.data,
                             partnerRef: partnerRef,
                             isFriend: isFriend,
                           ),

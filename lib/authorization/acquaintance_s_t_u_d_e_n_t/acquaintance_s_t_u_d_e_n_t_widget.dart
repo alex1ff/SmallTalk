@@ -4,6 +4,10 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
+import '/components/onboarding_dropdown_field.dart';
+import '/components/onboarding_form_section.dart';
+import '/components/onboarding_gender_chips.dart';
+import '/components/profile_dropdown_menu_item.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_util.dart';
@@ -348,7 +352,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
             value: option.value,
             height: 42.0,
             padding: EdgeInsets.zero,
-            child: _OnboardingDropdownMenuItem(
+            child: ProfileDropdownMenuItem(
               label: option.label,
               selected: option.selected,
             ),
@@ -572,7 +576,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _FormSection(
+                      OnboardingFormSection(
                         key: const ValueKey<String>(
                           'student_onboarding_step_name',
                         ),
@@ -605,7 +609,8 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                       const SizedBox(height: ExpatlioDesign.sectionSpacing),
                       ValueListenableBuilder<bool>(
                         valueListenable: _genderMaleNotifier,
-                        builder: (context, genderMale, _) => _FormSection(
+                        builder: (context, genderMale, _) =>
+                            OnboardingFormSection(
                           key: const ValueKey<String>(
                             'student_onboarding_step_gender',
                           ),
@@ -613,7 +618,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                             ruText: 'Пол',
                             enText: 'Gender',
                           ),
-                          child: _GenderChips(
+                          child: OnboardingGenderChips(
                             genderMale: genderMale,
                             onChanged: (nextValue) {
                               if (_genderMaleNotifier.value == nextValue) {
@@ -628,7 +633,8 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                       const SizedBox(height: ExpatlioDesign.sectionSpacing),
                       ValueListenableBuilder<LanguageStruct?>(
                         valueListenable: _selectedLanguageNotifier,
-                        builder: (context, selectedLanguage, _) => _FormSection(
+                        builder: (context, selectedLanguage, _) =>
+                            OnboardingFormSection(
                           key: const ValueKey<String>(
                             'student_onboarding_step_language',
                           ),
@@ -636,7 +642,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                             ruText: 'Язык изучения',
                             enText: 'Learning language',
                           ),
-                          child: _DropdownField(
+                          child: OnboardingDropdownField(
                             key: const ValueKey<String>(
                               'student_onboarding_language_picker',
                             ),
@@ -651,7 +657,8 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                       const SizedBox(height: ExpatlioDesign.sectionSpacing),
                       ValueListenableBuilder<CountryStruct?>(
                         valueListenable: _countryNotifier,
-                        builder: (context, selectedCountry, _) => _FormSection(
+                        builder: (context, selectedCountry, _) =>
+                            OnboardingFormSection(
                           key: const ValueKey<String>(
                             'student_onboarding_step_country',
                           ),
@@ -659,7 +666,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                             ruText: 'Ваша страна',
                             enText: 'Your country',
                           ),
-                          child: _DropdownField(
+                          child: OnboardingDropdownField(
                             key: const ValueKey<String>(
                               'student_onboarding_country_picker',
                             ),
@@ -674,7 +681,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                       const SizedBox(height: ExpatlioDesign.sectionSpacing),
                       ValueListenableBuilder<Level>(
                         valueListenable: _levelNotifier,
-                        builder: (context, level, _) => _FormSection(
+                        builder: (context, level, _) => OnboardingFormSection(
                           key: const ValueKey<String>(
                             'student_onboarding_step_level',
                           ),
@@ -682,7 +689,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                             ruText: 'Уровень',
                             enText: 'Level',
                           ),
-                          child: _DropdownField(
+                          child: OnboardingDropdownField(
                             key: const ValueKey<String>(
                               'student_onboarding_level_picker',
                             ),
@@ -713,8 +720,6 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                       enText: 'Saving...',
                     ),
                     busyStyle: ButtonBusyStyle.spinner,
-                    keyboardAwarePadding: false,
-                    padding: EdgeInsets.zero,
                     enabled: !_isSubmitting && isFormComplete,
                     action: _handleSubmit,
                   ),
@@ -735,217 +740,6 @@ const _availableLevels = <Level>[
   Level.Fluent,
 ];
 
-class _FormSection extends StatelessWidget {
-  const _FormSection({
-    super.key,
-    required this.title,
-    required this.child,
-  });
-
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsetsDirectional.only(start: 2.0, bottom: 8.0),
-          child: Text(
-            title,
-            style: ExpatlioDesign.formLabelStyle(context),
-          ),
-        ),
-        child,
-      ],
-    );
-  }
-}
-
-class _GenderChips extends StatelessWidget {
-  const _GenderChips({
-    required this.genderMale,
-    required this.onChanged,
-  });
-
-  final bool genderMale;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      key: const ValueKey<String>('student_onboarding_gender_selector'),
-      children: [
-        Expanded(
-          child: _GenderChip(
-            key: const ValueKey<String>('student_onboarding_gender_male'),
-            title: FFLocalizations.of(context).getVariableText(
-              ruText: 'Мужчина',
-              enText: 'Male',
-            ),
-            icon: Icons.male_rounded,
-            selected: genderMale,
-            onTap: () => onChanged(true),
-          ),
-        ),
-        const SizedBox(width: 8.0),
-        Expanded(
-          child: _GenderChip(
-            key: const ValueKey<String>('student_onboarding_gender_female'),
-            title: FFLocalizations.of(context).getVariableText(
-              ruText: 'Женщина',
-              enText: 'Female',
-            ),
-            icon: Icons.female_rounded,
-            selected: !genderMale,
-            onTap: () => onChanged(false),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _GenderChip extends StatelessWidget {
-  const _GenderChip({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String title;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final foreground = selected ? Colors.white : ExpatlioDesign.text;
-    final decoration = selected
-        ? BoxDecoration(
-            color: ExpatlioDesign.primary,
-            borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-          )
-        : ExpatlioDesign.cardDecoration(
-            color: ExpatlioDesign.mutedSurface,
-            radius: ExpatlioDesign.controlRadius,
-          );
-
-    return InkWell(
-      splashColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-      onTap: onTap,
-      child: Container(
-        height: ExpatlioDesign.formFieldHeight,
-        decoration: decoration,
-        padding: const EdgeInsetsDirectional.symmetric(horizontal: 12.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: foreground, size: 19.0),
-            const SizedBox(width: 6.0),
-            Flexible(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: foreground,
-                  size: 15.0,
-                  weight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DropdownField extends StatelessWidget {
-  const _DropdownField({
-    super.key,
-    required this.value,
-    required this.icon,
-    required this.onTap,
-    this.placeholder = false,
-    this.menuOpen = false,
-  });
-
-  final String value;
-  final IconData icon;
-  final Future<void> Function(BuildContext context) onTap;
-  final bool placeholder;
-  final bool menuOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = !placeholder || menuOpen;
-    final foreground = placeholder ? ExpatlioDesign.muted : ExpatlioDesign.text;
-    final accent = active ? ExpatlioDesign.primary : ExpatlioDesign.muted;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        splashColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-        borderRadius: BorderRadius.circular(999.0),
-        onTap: () async => onTap(context),
-        child: Container(
-          height: ExpatlioDesign.formFieldHeight,
-          decoration: BoxDecoration(
-            color: menuOpen
-                ? ExpatlioDesign.card
-                : active
-                    ? ExpatlioDesign.primary.withValues(alpha: 0.08)
-                    : ExpatlioDesign.mutedSurface,
-            borderRadius: BorderRadius.circular(999.0),
-            border: Border.all(
-              color: active
-                  ? ExpatlioDesign.primary.withValues(alpha: 0.22)
-                  : ExpatlioDesign.mutedSurface,
-            ),
-          ),
-          padding: const EdgeInsetsDirectional.fromSTEB(14.0, 0.0, 12.0, 0.0),
-          child: Row(
-            children: [
-              Icon(icon, size: 17.0, color: accent),
-              const SizedBox(width: 8.0),
-              Expanded(
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    color: foreground,
-                    size: 15.0,
-                    weight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8.0),
-              Icon(
-                menuOpen
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-                color: accent,
-                size: 20.0,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _OnboardingMenuOption<T> {
   const _OnboardingMenuOption({
     required this.value,
@@ -956,54 +750,4 @@ class _OnboardingMenuOption<T> {
   final T value;
   final String label;
   final bool selected;
-}
-
-class _OnboardingDropdownMenuItem extends StatelessWidget {
-  const _OnboardingDropdownMenuItem({
-    required this.label,
-    required this.selected,
-  });
-
-  final String label;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsetsDirectional.fromSTEB(8.0, 3.0, 8.0, 3.0),
-      padding: const EdgeInsetsDirectional.fromSTEB(12.0, 7.0, 10.0, 7.0),
-      decoration: BoxDecoration(
-        color: selected
-            ? ExpatlioDesign.primary.withValues(alpha: 0.12)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(10.0),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: ExpatlioDesign.text,
-                size: 14.0,
-                weight: FontWeight.w500,
-              ),
-            ),
-          ),
-          if (selected) ...[
-            const SizedBox(width: 10.0),
-            const Icon(
-              Icons.check_rounded,
-              color: ExpatlioDesign.primary,
-              size: 18.0,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 }

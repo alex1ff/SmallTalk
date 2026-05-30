@@ -4,16 +4,17 @@ import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/trans/trans_widget.dart';
+import '/components/wrapper.dart';
 import '/flutter_flow/flutter_flow_animations.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/design/basic_page_header.dart';
+import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/index.dart';
 import '/services/user_match_profile.dart';
-import '/teachers_pages/components/add_card/add_card_widget.dart';
-import '/teachers_pages/components/edit_card/edit_card_widget.dart';
+import '/components/add_card_widget.dart';
+import '/components/edit_card_widget.dart';
 import '/custom_code/actions/index.dart' as actions;
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -857,8 +858,9 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                             end: AlignmentDirectional(0, 1),
                           ),
                         ),
-                        child: Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(6, 12, 6, 35),
+                        child: Wrapper(
+                          padding: const EdgeInsetsDirectional.fromSTEB(
+                              6, 12, 6, 35),
                           child: ButtonWidget(
                             text: FFLocalizations.of(context).getText(
                               'djp5cokc' /* Вывести */,
@@ -869,9 +871,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                               enText: 'Submitting request...',
                             ),
                             busyStyle: ButtonBusyStyle.spinner,
-                            keyboardAwarePadding: false,
                             enabled: canSubmitWithdrawal,
-                            padding: EdgeInsets.zero,
                             trailingContent: RichText(
                               textScaler: MediaQuery.of(context).textScaler,
                               text: TextSpan(

@@ -10,8 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/base_auth_user_provider.dart';
 import 'package:small_talk/authorization/acquaintance_n_s/acquaintance_n_s_widget.dart';
 import 'package:small_talk/authorization/acquaintance_n_s/native_speaker_onboarding_logic.dart';
-import 'package:small_talk/authorization/acquaintance_n_s/widgets/native_speaker_onboarding_accreditation_step.dart';
-import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_bottom_bar.dart';
+import 'package:small_talk/components/native_speaker_onboarding_accreditation_step.dart';
+import 'package:small_talk/components/student_onboarding_bottom_bar.dart';
 import 'package:small_talk/backend/schema/structs/index.dart';
 import 'package:small_talk/flutter_flow/flutter_flow_util.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
@@ -323,9 +323,9 @@ void main() {
     final bottomBar = find.byType(StudentOnboardingBottomBar);
 
     expect(bottomBar, findsOneWidget);
-    expect(find.text('1/8'), findsOneWidget);
+    expect(find.text('1/3'), findsOneWidget);
     expect(
-      find.descendant(of: bottomBar, matching: find.text('1/8')),
+      find.descendant(of: bottomBar, matching: find.text('1/3')),
       findsOneWidget,
     );
     expect(
@@ -418,7 +418,7 @@ void main() {
     );
   });
 
-  testWidgets('last page hides the progress badge in the bottom bar',
+  testWidgets('last grouped page hides the progress badge in the bottom bar',
       (tester) async {
     final appState = await _buildTestAppState(
       languages: _languagesCatalog(),
@@ -428,7 +428,7 @@ void main() {
       _buildTestApp(
         appState: appState,
         child: const AcquaintanceNSWidget(
-          index: 7,
+          index: 6,
         ),
       ),
     );
@@ -437,7 +437,8 @@ void main() {
 
     expect(
       find.byKey(
-          const ValueKey<String>('native_speaker_onboarding_step_photo')),
+        const ValueKey<String>('native_speaker_onboarding_step_accreditation'),
+      ),
       findsOneWidget,
     );
     expect(
@@ -450,7 +451,7 @@ void main() {
           .hitTestable(),
       findsNothing,
     );
-    expect(find.text('8/8').hitTestable(), findsNothing);
+    expect(find.text('3/3').hitTestable(), findsNothing);
   });
 
   testWidgets('system back returns to the previous visible onboarding page',

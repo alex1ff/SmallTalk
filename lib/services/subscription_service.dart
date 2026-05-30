@@ -96,7 +96,7 @@ class SubscriptionService {
   static SubscriptionService get instance => _instance;
 
   bool _configured = false;
-  bool _configuring = false;
+  Future<void>? _configureFuture;
 
   /// Last known CustomerInfo from RevenueCat. `null` until first event.
   CustomerInfo? _customerInfo;
@@ -121,8 +121,18 @@ class SubscriptionService {
   /// Initialise RevenueCat. Call this once from `main.dart` AFTER Firebase
   /// initialisation. Safe to call multiple times — guards re-entry.
   Future<void> configure() async {
-    if (_configured || _configuring) return;
-    _configuring = true;
+    if (_configured) return;
+    final existingConfigure = _configureFuture;
+    if (existingConfigure != null) {
+      return existingConfigure;
+    }
+
+    final configureFuture = _configure();
+    _configureFuture = configureFuture;
+    return configureFuture;
+  }
+
+  Future<void> _configure() async {
     try {
       await Purchases.setLogLevel(
         kDebugMode ? LogLevel.debug : LogLevel.warn,
@@ -153,7 +163,7 @@ class SubscriptionService {
       debugPrint('❌ SubscriptionService.configure failed: $e\n$st');
       rethrow;
     } finally {
-      _configuring = false;
+      _configureFuture = null;
     }
   }
 
@@ -212,16 +222,15 @@ class SubscriptionService {
     }
   }
 
-  /// Fetch the current Offering and return its monthly + quarterly
-  /// packages, in the order the UI expects (monthly first, quarterly
-  /// second — quarterly is marked "popular" client-side).
-  /// Returns an empty list if RC has no current offering or the offering
-  /// doesn't expose either of our expected products.
+  /// Fetch RevenueCat current offering and return monthly + quarterly packages,
+  /// in the order the UI expects (monthly first, quarterly second).
+  /// Returns an empty list if RC doesn't expose either expected product.
   Future<List<Package>> fetchSubscriptionPackages() async {
-    if (!_configured) {
-      await configure();
-    }
     try {
+      if (!_configured) {
+        await configure();
+      }
+
       final offerings = await Purchases.getOfferings();
       final current = offerings.current;
       if (current == null) return const [];
@@ -234,6 +243,7 @@ class SubscriptionService {
           result.add(pkg);
         }
       }
+
       // Sort: monthly first, then quarterly.
       result.sort((a, b) {
         final aIsMonthly =
@@ -291,8 +301,9 @@ class SubscriptionService {
   }
 
   /// Restore prior purchases (e.g. after reinstall). Returns updated
-  /// CustomerInfo or `null` on failure.
-  Future<CustomerInfo?> restorePurchases() async {
+  /// CustomerInfo. Throws on RevenueCat/network failure so UI can distinguish
+  /// an outage from a successful restore with no active purchases.
+  Future<CustomerInfo> restorePurchases() async {
     if (!_configured) {
       await configure();
     }
@@ -303,7 +314,7 @@ class SubscriptionService {
       return info;
     } catch (e, st) {
       debugPrint('⚠️ SubscriptionService.restorePurchases failed: $e\n$st');
-      return null;
+      rethrow;
     }
   }
 }

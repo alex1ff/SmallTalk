@@ -1,10 +1,11 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/acquaintance_s_t_u_d_e_n_t/student_onboarding_logic.dart';
-import '/authorization/components/native_speaker_entry_toggle.dart';
+import '/components/native_speaker_entry_toggle.dart';
 import '/authorization/shared/social_auth_entry_logic.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
+import '/components/wrapper.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
@@ -434,13 +435,14 @@ class _LoadingWidgetState extends State<LoadingWidget> {
                     },
                   ),
                 ),
-                ButtonWidget(
-                  text: 'Продолжить',
-                  loadingText: 'Сохраняем...',
-                  busyStyle: ButtonBusyStyle.spinner,
-                  keyboardAwarePadding: false,
+                Wrapper(
                   padding: const EdgeInsets.fromLTRB(20.0, 12.0, 20.0, 0.0),
-                  action: _continueManualRoleRecovery,
+                  child: ButtonWidget(
+                    text: 'Продолжить',
+                    loadingText: 'Сохраняем...',
+                    busyStyle: ButtonBusyStyle.spinner,
+                    action: _continueManualRoleRecovery,
+                  ),
                 ),
               ],
             ],

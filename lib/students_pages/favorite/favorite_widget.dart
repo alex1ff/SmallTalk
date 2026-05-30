@@ -34,7 +34,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       ref.path,
       () => UserPublicProfilesRecord.maybeGetDocumentOnce(
         UserPublicProfilesRecord.collection.doc(ref.id),
-      ),
+      ).catchError((Object error, StackTrace stackTrace) {
+        _userFutureCache.remove(ref.path);
+        throw error;
+      }),
     );
   }
 
@@ -55,6 +58,86 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
   String _publicProfilePhotoUrl(UserPublicProfilesRecord? profile) =>
       profile?.photoUrl.trim() ?? '';
+
+  Map<String, dynamic> _conversationParticipantInfo(
+    ConversationsRecord conversation,
+    DocumentReference participantRef,
+  ) {
+    final rawInfoByUserId =
+        conversation.snapshotData['participantInfoByUserId'];
+    if (rawInfoByUserId is Map) {
+      final rawInfo = rawInfoByUserId[participantRef.id] ??
+          rawInfoByUserId[participantRef.path];
+      if (rawInfo is Map) {
+        return rawInfo.map((key, value) => MapEntry(key.toString(), value));
+      }
+    }
+
+    return const <String, dynamic>{};
+  }
+
+  String _conversationParticipantDisplayName(
+    ConversationsRecord conversation,
+    DocumentReference participantRef,
+  ) {
+    final info = _conversationParticipantInfo(conversation, participantRef);
+    for (final key in const ['displayName', 'display_name', 'name']) {
+      final value = info[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+
+    return '';
+  }
+
+  String _conversationParticipantPhotoUrl(
+    ConversationsRecord conversation,
+    DocumentReference participantRef,
+  ) {
+    final info = _conversationParticipantInfo(conversation, participantRef);
+    for (final key in const ['photoUrl', 'photo_url', 'photo']) {
+      final value = info[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+
+    return '';
+  }
+
+  String _partnerDisplayName(
+    BuildContext context,
+    ConversationsRecord conversation,
+    DocumentReference partnerRef,
+    UserPublicProfilesRecord? profile,
+  ) {
+    final profileDisplayName = profile?.displayName.trim();
+    if (profileDisplayName != null && profileDisplayName.isNotEmpty) {
+      return profileDisplayName;
+    }
+
+    final conversationDisplayName =
+        _conversationParticipantDisplayName(conversation, partnerRef);
+    if (conversationDisplayName.isNotEmpty) {
+      return conversationDisplayName;
+    }
+
+    return _publicProfileDisplayName(context, profile);
+  }
+
+  String _partnerPhotoUrl(
+    ConversationsRecord conversation,
+    DocumentReference partnerRef,
+    UserPublicProfilesRecord? profile,
+  ) {
+    final profilePhotoUrl = _publicProfilePhotoUrl(profile);
+    if (profilePhotoUrl.isNotEmpty) {
+      return profilePhotoUrl;
+    }
+
+    return _conversationParticipantPhotoUrl(conversation, partnerRef);
+  }
 
   Stream<_ConversationsLoadState> _watchConversationsForUser(
       String currentUid) {
@@ -172,43 +255,42 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   Widget _buildHeader(BuildContext context) {
     return Container(
       color: ExpatlioDesign.background,
-      child: Padding(
-        padding: EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.itemSpacing,
-          MediaQuery.paddingOf(context).top,
-          ExpatlioDesign.itemSpacing,
-          0.0,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              width: 45.0,
-              height: 45.0,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-              ),
+      child: SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: ExpatlioDesign.pageHeaderHeight,
+          child: Padding(
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: ExpatlioDesign.itemSpacing,
             ),
-            Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Чаты',
-                enText: 'Chats',
-              ),
-              style: ExpatlioDesign.textStyle(
-                context,
-                size: 17.0,
-                weight: FontWeight.w700,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  width: 45.0,
+                  height: 45.0,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Чаты',
+                    enText: 'Chats',
+                  ),
+                  style: ExpatlioDesign.pageHeaderTitleStyle(context),
+                ),
+                Container(
+                  width: 45.0,
+                  height: 45.0,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
             ),
-            Container(
-              width: 45.0,
-              height: 45.0,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -318,22 +400,25 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           debugPrint(
             'FavoriteWidget: failed to load partner ${partnerRef.path}: ${partnerSnapshot.error}',
           );
-          return _buildInlineNotice(
-            context,
-            text: FFLocalizations.of(context).getVariableText(
-              ruText: 'Не удалось загрузить этот чат.',
-              enText: 'Could not load this chat.',
-            ),
-          );
         }
 
-        if (partnerSnapshot.connectionState == ConnectionState.waiting) {
+        if (partnerSnapshot.connectionState == ConnectionState.waiting &&
+            !partnerSnapshot.hasError) {
           return _conversationLoadingCard(context);
         }
 
-        final partner = partnerSnapshot.data;
-        final partnerDisplayName = _publicProfileDisplayName(context, partner);
-        final partnerPhotoUrl = _publicProfilePhotoUrl(partner);
+        final partner = partnerSnapshot.hasError ? null : partnerSnapshot.data;
+        final partnerDisplayName = _partnerDisplayName(
+          context,
+          conversation,
+          partnerRef,
+          partner,
+        );
+        final partnerPhotoUrl = _partnerPhotoUrl(
+          conversation,
+          partnerRef,
+          partner,
+        );
         final unread =
             conversationIsUnreadForUser(conversation, currentUserUid);
         final subtitle = _conversationSubtitle(context, conversation);

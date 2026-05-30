@@ -1,11 +1,11 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/components/send/send_widget.dart';
+import '/components/send_widget.dart';
 import '/components/button/button_widget.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
-import '/shared_pages/design/basic_page_header.dart';
+import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'recover_pass_model.dart';
@@ -189,8 +189,6 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                           enText: 'Sending...',
                         ),
                         busyStyle: ButtonBusyStyle.spinner,
-                        keyboardAwarePadding: false,
-                        padding: EdgeInsets.zero,
                         action: _submitPasswordReset,
                       ),
                     ),

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/backend/schema/structs/index.dart';
-import 'package:small_talk/students_pages/words/word_detail_content.dart';
+import 'package:small_talk/components/word_detail_content.dart';
 
 void main() {
   group('buildWordDetailContent', () {

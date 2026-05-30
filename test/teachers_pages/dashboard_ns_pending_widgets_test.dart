@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
+import 'package:small_talk/components/pending_teacher_review_bottom_sheet.dart';
+import 'package:small_talk/components/pending_teacher_review_card.dart';
+import 'package:small_talk/components/teacher_availability_switch_control.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/teachers_pages/dashboard_n_s/dashboard_n_s_widget.dart';
 

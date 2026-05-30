@@ -1,4 +1,4 @@
-import '/authorization/components/language_card/language_card_widget.dart';
+import '/components/language_card_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'native_speaker_page_widget.dart' show NativeSpeakerPageWidget;
 import 'package:flutter/material.dart';

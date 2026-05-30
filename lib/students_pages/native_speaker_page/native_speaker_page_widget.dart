@@ -1,17 +1,18 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/components/language_card/language_card_widget.dart';
+import '/components/language_card_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_card/review_card_widget.dart';
+import '/components/wrapper.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
-import '/shared_pages/profile_components/no_balance/no_balance_widget.dart';
-import '/shared_pages/design/basic_page_header.dart';
+import '/components/no_balance_widget.dart';
+import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/user_match_profile.dart';
 // ─── SUBSCRIPTION REWORK ─ gating helper. Replaces balanceST < 0 check.
@@ -686,9 +687,13 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                     end: AlignmentDirectional(0, 1.0),
                                   ),
                                 ),
-                                child: Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      6.0, 12.0, 6.0, 12.0),
+                                child: Wrapper(
+                                  padding: const EdgeInsetsDirectional.fromSTEB(
+                                    6.0,
+                                    12.0,
+                                    6.0,
+                                    12.0,
+                                  ),
                                   child: ButtonWidget(
                                     text: FFLocalizations.of(context)
                                         .getVariableText(
@@ -701,8 +706,6 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                       enText: 'Opening...',
                                     ),
                                     busyStyle: ButtonBusyStyle.spinner,
-                                    keyboardAwarePadding: false,
-                                    padding: EdgeInsets.zero,
                                     action: () async {
                                       await Navigator.of(context).push(
                                         MaterialPageRoute(
@@ -795,8 +798,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
             end: AlignmentDirectional(0, 1.0),
           ),
         ),
-        child: Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(6.0, 12.0, 6.0, 35.0),
+        child: Wrapper(
+          padding: const EdgeInsetsDirectional.fromSTEB(6.0, 12.0, 6.0, 35.0),
           child: ButtonWidget(
             text: FFLocalizations.of(context).getText(
               '2sabsnp2' /* Начать разговор */,
@@ -806,8 +809,6 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
               enText: 'Connecting...',
             ),
             busyStyle: ButtonBusyStyle.spinner,
-            keyboardAwarePadding: false,
-            padding: EdgeInsets.zero,
             action: () async {
               final targetTutorId = widget.nsUserDocRef?.id;
               if (targetTutorId == null || targetTutorId.isEmpty) {

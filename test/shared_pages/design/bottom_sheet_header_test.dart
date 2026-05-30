@@ -1,7 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/shared_pages/design/expatlio_design.dart';
-import 'package:small_talk/shared_pages/design/bottom_sheet_header.dart';
+import 'package:small_talk/components/bottom_sheet_header.dart';
 
 void main() {
   Widget buildHarness(Widget child) {
@@ -87,5 +89,13 @@ void main() {
       ),
     );
     expect(bottomSheetTheme.clipBehavior, Clip.antiAlias);
+  });
+
+  test('header circle button does not receive visual color overrides', () {
+    final source = File('lib/components/bottom_sheet_header.dart')
+        .readAsStringSync();
+
+    expect(source, isNot(contains('fillColor')));
+    expect(source, isNot(contains('iconColor')));
   });
 }

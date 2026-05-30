@@ -1,7 +1,9 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/app_loading_indicator.dart';
+import '/components/dictionary_word_row.dart';
 import '/components/empty/empty_widget.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
+import '/components/review_words_bar.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
 import '/shared_pages/design/expatlio_design.dart';
@@ -9,7 +11,6 @@ import '/students_pages/flashcard/flashcard_review_repository.dart';
 import '/students_pages/words/word_detail_widget.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'words_model.dart';
 export 'words_model.dart';
 
@@ -165,15 +166,8 @@ class _WordsWidgetState extends State<WordsWidget> {
                         stream: _model.wordsStream,
                         builder: (context, snapshot) {
                           if (!snapshot.hasData) {
-                            return Center(
-                              child: SizedBox(
-                                width: 50.0,
-                                height: 50.0,
-                                child: SpinKitCircle(
-                                  color: FlutterFlowTheme.of(context).secondary,
-                                  size: 50.0,
-                                ),
-                              ),
+                            return const Center(
+                              child: AppLoadingIndicator(),
                             );
                           }
 
@@ -206,8 +200,14 @@ class _WordsWidgetState extends State<WordsWidget> {
                                 const SizedBox(height: 0.0),
                             itemBuilder: (context, index) {
                               final word = words[index];
-                              return _DictionaryWordRow(
-                                wordDoc: word,
+                              final entry = word.entry.firstOrNull;
+                              return DictionaryWordRow(
+                                sourceText:
+                                    valueOrDefault<String>(entry?.text, '-'),
+                                translationText: valueOrDefault<String>(
+                                  entry?.tr.firstOrNull?.text,
+                                  '-',
+                                ),
                                 onTap: () async => _openWordPage(word),
                               );
                             },
@@ -243,7 +243,7 @@ class _WordsWidgetState extends State<WordsWidget> {
                   start: ExpatlioDesign.pagePadding,
                   end: ExpatlioDesign.pagePadding,
                   bottom: _reviewBarBottomOffset(context),
-                  child: _ReviewWordsBar(
+                  child: ReviewWordsBar(
                     text: _reviewCountText(context, dueCount),
                     onTap: hasDueWords
                         ? () {
@@ -255,178 +255,6 @@ class _WordsWidgetState extends State<WordsWidget> {
               ],
             );
           },
-        ),
-      ),
-    );
-  }
-}
-
-class _DictionaryWordRow extends StatelessWidget {
-  const _DictionaryWordRow({
-    required this.wordDoc,
-    required this.onTap,
-  });
-
-  final UserWordsRecord wordDoc;
-  final Future<void> Function() onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final entry = wordDoc.entry.firstOrNull;
-    final sourceText = valueOrDefault<String>(entry?.text, '-');
-    final translationText =
-        valueOrDefault<String>(entry?.tr.firstOrNull?.text, '-');
-    final textStyle = FlutterFlowTheme.of(context).bodyMedium.override(
-          fontFamily: 'sf pro display',
-          color: ExpatlioDesign.text,
-          fontSize: 16.0,
-          letterSpacing: 0.0,
-          fontWeight: FontWeight.w500,
-          lineHeight: 1.2,
-        );
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12.0),
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 49.0),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12.0),
-            border: Border.all(
-              color: ExpatlioDesign.border,
-              width: 1.0,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(16.0, 8.0, 16.0, 8.0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: Text(
-                    sourceText,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: textStyle,
-                  ),
-                ),
-                const SizedBox(width: 24.0),
-                Expanded(
-                  flex: 7,
-                  child: Text(
-                    translationText,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: textStyle,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ReviewWordsBar extends StatelessWidget {
-  const _ReviewWordsBar({
-    required this.text,
-    required this.onTap,
-  });
-
-  final String text;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onTap != null;
-    final decoration = enabled
-        ? BoxDecoration(
-            gradient: ExpatlioDesign.primaryGradient,
-            borderRadius: BorderRadius.circular(16.0),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x302B0B63),
-                blurRadius: 20.0,
-                offset: Offset(0.0, 8.0),
-              ),
-            ],
-          )
-        : BoxDecoration(
-            color: ExpatlioDesign.mutedSurface,
-            borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(color: ExpatlioDesign.border),
-          );
-    final foregroundColor = enabled ? Colors.white : ExpatlioDesign.muted;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16.0),
-        onTap: onTap,
-        child: Ink(
-          height: 60.0,
-          decoration: decoration,
-          child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(18.0, 0.0, 13.0, 0.0),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.auto_awesome_outlined,
-                  color: foregroundColor,
-                  size: 21.0,
-                ),
-                const SizedBox(width: 14.0),
-                Expanded(
-                  child: Text(
-                    text,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          color: foregroundColor,
-                          fontSize: 16.0,
-                          letterSpacing: 0.0,
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                ),
-                if (enabled) ...[
-                  const SizedBox(width: 12.0),
-                  Container(
-                    height: 44.0,
-                    constraints: const BoxConstraints(minWidth: 96.0),
-                    decoration: BoxDecoration(
-                      color: const Color(0x33FFFFFF),
-                      borderRadius: BorderRadius.circular(16.0),
-                    ),
-                    padding: const EdgeInsetsDirectional.fromSTEB(
-                        20.0, 0.0, 20.0, 0.0),
-                    alignment: Alignment.center,
-                    child: Text(
-                      FFLocalizations.of(context).getVariableText(
-                        ruText: 'Повторить',
-                        enText: 'Review',
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'sf pro display',
-                            color: Colors.white,
-                            fontSize: 16.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
         ),
       ),
     );

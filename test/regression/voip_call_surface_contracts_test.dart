@@ -475,15 +475,28 @@ void main() {
         reviewCardSource,
         contains('UserPublicProfilesRecord.maybeGetDocumentOnce'),
       );
+      expect(reviewCardSource, contains('this.fullWidth = false'));
+      expect(reviewCardSource, isNot(contains('this.width')));
+      expect(reviewCardSource, isNot(contains('final double width')));
       expect(
         reviewCardSource,
         isNot(contains('UsersRecord.getDocumentOnce(authorRef)')),
       );
     });
 
+    test('call details delegates participant avatar visuals to component', () {
+      final source =
+          _source('lib/shared_pages/call_details/call_details_widget.dart');
+
+      expect(source, contains("'/components/participant_avatar.dart'"));
+      expect(source, contains('ParticipantAvatar('));
+      expect(source, isNot(contains('class _ParticipantAvatar')));
+      expect(source, isNot(contains('borderWidth:')));
+    });
+
     test('favorite and blacklist tiles read public profile projection', () {
       final favSource =
-          _source('lib/students_pages/components/fav/fav_widget.dart');
+          _source('lib/components/fav_widget.dart');
       final favoriteSource =
           _source('lib/students_pages/favorite/favorite_widget.dart');
       final blackListSource =
