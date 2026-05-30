@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
@@ -8,9 +9,9 @@ import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/call_details/call_details_widget.dart';
-import '/shared_pages/call_history/call_history_utils.dart';
+import '/shared_pages/chat_call_event_presentation.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/components/chat_call_event_card.dart';
 import 'chat_thread_formatters.dart';
 import 'chat_thread_model.dart';
@@ -20,9 +21,11 @@ class ChatThreadWidget extends StatefulWidget {
   const ChatThreadWidget({
     super.key,
     required this.conversationRef,
+    this.initialConversation,
   });
 
   final DocumentReference? conversationRef;
+  final ConversationsRecord? initialConversation;
 
   static String routeName = 'chatThread';
   static String routePath = '/chatThread';
@@ -32,18 +35,68 @@ class ChatThreadWidget extends StatefulWidget {
 }
 
 class _ChatThreadWidgetState extends State<ChatThreadWidget> {
+  static const int _messagePageSize = 60;
+
   late ChatThreadModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _messagesScrollController = ScrollController();
+  Stream<ConversationsRecord?>? _conversationStream;
+  String? _conversationStreamPath;
+  final _publicProfileStreams = <String, Stream<UserPublicProfilesRecord?>>{};
+  final _messageStreams = <String, Stream<List<MessagesRecord>>>{};
   DateTime? _lastReadMarkerTarget;
-  int _lastRenderedMessageCount = -1;
+  DateTime? _scheduledReadMarkerTarget;
+  int _messageLimit = _messagePageSize;
+  bool _canLoadOlderMessages = true;
+  bool _messageLimitIncreaseScheduled = false;
   bool _isSending = false;
 
-  Stream<UserPublicProfilesRecord?> _watchPublicProfile(
-          DocumentReference ref) =>
-      UserPublicProfilesRecord.maybeGetDocument(
+  void _bindConversationRef() {
+    final conversationRef = widget.conversationRef;
+    final path = conversationRef?.path;
+    if (_conversationStreamPath == path) {
+      return;
+    }
+
+    _conversationStreamPath = path;
+    _conversationStream = conversationRef?.snapshots().map(
+      (snapshot) {
+        if (!snapshot.exists || snapshot.data() == null) {
+          return null;
+        }
+        return ConversationsRecord.fromSnapshot(snapshot);
+      },
+    );
+    _lastReadMarkerTarget = null;
+    _scheduledReadMarkerTarget = null;
+    _messageLimit = _messagePageSize;
+    _canLoadOlderMessages = true;
+    _messageLimitIncreaseScheduled = false;
+  }
+
+  Stream<UserPublicProfilesRecord?> _watchPublicProfile(DocumentReference ref) {
+    return _publicProfileStreams.putIfAbsent(
+      ref.path,
+      () => UserPublicProfilesRecord.maybeGetDocument(
         UserPublicProfilesRecord.collection.doc(ref.id),
-      );
+      ),
+    );
+  }
+
+  Stream<List<MessagesRecord>> _watchMessages(DocumentReference conversation) {
+    final streamKey = '${conversation.path}:$_messageLimit';
+    return _messageStreams.putIfAbsent(
+      streamKey,
+      () => queryMessagesRecord(
+        parent: conversation,
+        queryBuilder: (messagesRecord) => messagesRecord.orderBy(
+          'createdAt',
+          descending: true,
+        ),
+        limit: _messageLimit,
+      ),
+    );
+  }
 
   DocumentReference? _otherParticipantRef(ConversationsRecord conversation) {
     final currentRef = currentUserReference;
@@ -112,8 +165,17 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       return;
     }
 
+    if (!conversationIsUnreadForUser(conversation, currentUserUid)) {
+      return;
+    }
+
     final target = conversation.lastMessageAt ?? conversation.unlockedAt;
     if (target == null) {
+      return;
+    }
+
+    final currentReadAt = conversation.lastReadAtByUserId[currentUserUid];
+    if (currentReadAt != null && !currentReadAt.isBefore(target)) {
       return;
     }
 
@@ -134,13 +196,60 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     }
   }
 
-  void _scheduleScrollToBottom() {
+  void _scheduleMarkConversationRead(ConversationsRecord conversation) {
+    if (!conversationIsUnreadForUser(conversation, currentUserUid)) {
+      return;
+    }
+
+    final target = conversation.lastMessageAt ?? conversation.unlockedAt;
+    if (target == null) {
+      return;
+    }
+
+    final currentReadAt = conversation.lastReadAtByUserId[currentUserUid];
+    if (currentReadAt != null && !currentReadAt.isBefore(target)) {
+      return;
+    }
+
+    if (_lastReadMarkerTarget != null &&
+        _lastReadMarkerTarget!.isAtSameMomentAs(target)) {
+      return;
+    }
+
+    if (_scheduledReadMarkerTarget != null &&
+        _scheduledReadMarkerTarget!.isAtSameMomentAs(target)) {
+      return;
+    }
+
+    _scheduledReadMarkerTarget = target;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_messagesScrollController.hasClients) {
+      if (!mounted) {
         return;
       }
-      final position = _messagesScrollController.position;
-      _messagesScrollController.jumpTo(position.maxScrollExtent);
+      _scheduledReadMarkerTarget = null;
+      _markConversationRead(conversation);
+    });
+  }
+
+  void _handleMessagesScroll() {
+    if (!_messagesScrollController.hasClients ||
+        !_canLoadOlderMessages ||
+        _messageLimitIncreaseScheduled) {
+      return;
+    }
+
+    final position = _messagesScrollController.position;
+    final distanceToOldest = position.maxScrollExtent - position.pixels;
+    if (distanceToOldest > 260.0) {
+      return;
+    }
+
+    _messageLimitIncreaseScheduled = true;
+    setState(() {
+      _messageLimit += _messagePageSize;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _messageLimitIncreaseScheduled = false;
     });
   }
 
@@ -256,11 +365,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       return false;
     }
 
-    if (index == 0) {
+    if (index == messages.length - 1) {
       return true;
     }
 
-    return !_isSameMessageDay(messageTimestamp, messages[index - 1].createdAt);
+    return !_isSameMessageDay(messageTimestamp, messages[index + 1].createdAt);
   }
 
   Widget _buildDateDivider(BuildContext context, DateTime timestamp) {
@@ -379,32 +488,14 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       return;
     }
 
-    try {
-      final sessionSnap = await sessionRef.get();
-      if (!sessionSnap.exists) {
-        _showUnavailableCallDetailsSnackBar();
-        return;
-      }
-    } catch (error) {
-      debugPrint(
-        'Failed to resolve call event session ${sessionRef.path}: $error',
-      );
-      _showUnavailableCallDetailsSnackBar();
-      return;
-    }
-
     if (!mounted) {
       return;
     }
 
-    context.pushNamed(
-      CallDetailsWidget.routeName,
-      queryParameters: {
-        'videoDocRef': serializeParam(
-          sessionRef,
-          ParamType.DocumentReference,
-        ),
-      }.withoutNulls,
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        builder: (context) => CallDetailsWidget(videoDocRef: sessionRef),
+      ),
     );
   }
 
@@ -421,80 +512,21 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     );
   }
 
-  String _formatCallEventDetails(MessagesRecord message) {
-    final eventAt = message.callEndedAt ?? message.createdAt;
-    final startedAtLabel = formatSessionStartedAtFromDateTime(
-      context,
-      eventAt ?? message.callStartedAt,
-    );
-    final isMissed = message.callOutcome == kConversationCallOutcomeMissed;
-    final isCancelled =
-        message.callOutcome == kConversationCallOutcomeCancelled;
-    final durationLabel = isMissed
-        ? '—'
-        : isCancelled && message.callDurationSeconds <= 0
-            ? FFLocalizations.of(context).getVariableText(
-                ruText: '0 сек.',
-                enText: '0 sec.',
-              )
-            : formatDurationLabel(context, message.callDurationSeconds);
-
-    return '$startedAtLabel • $durationLabel';
-  }
-
-  String _callEventTitle(MessagesRecord message) {
-    final outcome = message.callOutcome;
-    if (outcome == kConversationCallOutcomeCancelled) {
-      return FFLocalizations.of(context).getVariableText(
-        ruText: 'Отменённый звонок',
-        enText: 'Cancelled call',
-      );
-    }
-
-    if (outcome == kConversationCallOutcomeMissed) {
-      final currentUserWasCaller = message.callerId == currentUserUid;
-      return FFLocalizations.of(context).getVariableText(
-        ruText: currentUserWasCaller ? 'Без ответа' : 'Пропущенный звонок',
-        enText: currentUserWasCaller ? 'No answer' : 'Missed call',
-      );
-    }
-
-    final currentUserWasCaller = message.callerId == currentUserUid;
-    return FFLocalizations.of(context).getVariableText(
-      ruText: currentUserWasCaller ? 'Исходящий звонок' : 'Входящий звонок',
-      enText: currentUserWasCaller ? 'Outgoing call' : 'Incoming call',
-    );
-  }
-
-  IconData _callEventIcon(MessagesRecord message) {
-    if (message.callOutcome == kConversationCallOutcomeCancelled) {
-      return Icons.phone_callback_rounded;
-    }
-    if (message.callOutcome == kConversationCallOutcomeMissed) {
-      return Icons.phone_missed_rounded;
-    }
-    return message.callerId == currentUserUid
-        ? Icons.call_made_rounded
-        : Icons.call_received_rounded;
-  }
-
-  ChatCallEventTone _callEventTone(MessagesRecord message) {
-    if (message.callOutcome == kConversationCallOutcomeCancelled ||
-        message.callOutcome == kConversationCallOutcomeMissed) {
-      return ChatCallEventTone.alert;
-    }
-    return ChatCallEventTone.normal;
-  }
-
   Widget _buildCallEventMessageCard(
     BuildContext context, {
     required MessagesRecord message,
   }) {
+    final presentation = buildChatCallEventPresentation(
+      context,
+      message: message,
+      currentUserUid: currentUserUid,
+    );
+
     return ChatCallEventCard(
-      title: _callEventTitle(message),
-      details: _formatCallEventDetails(message),
-      icon: _callEventIcon(message),
-      tone: _callEventTone(message),
+      title: presentation.title,
+      details: presentation.details,
+      icon: presentation.icon,
+      tone: presentation.tone,
       onTap: () => _openCallEvent(message),
     );
   }
@@ -612,6 +644,16 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       locale: locale,
     );
     final isOnline = chatPartnerIsOnline(partnerProfile?.lastSeenAt);
+    final friendButtonLabel = isFriend
+        ? FFLocalizations.of(context).getVariableText(
+            ruText: 'Убрать из друзей',
+            enText: 'Remove',
+          )
+        : FFLocalizations.of(context).getVariableText(
+            ruText: 'В друзья',
+            enText: 'Add',
+          );
+    final friendButtonWidth = isFriend ? 148.0 : 104.0;
 
     return DecoratedBox(
       decoration: const BoxDecoration(
@@ -629,7 +671,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
             child: Row(
               children: [
                 IconButton(
-                  onPressed: () => context.safePop(),
+                  onPressed: () => Navigator.of(context).maybePop(),
                   icon: const Icon(
                     Icons.arrow_back,
                     color: ExpatlioDesign.text,
@@ -694,46 +736,61 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                   ),
                 ),
                 const SizedBox(width: 8.0),
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minWidth: isFriend ? 142.0 : 98.0,
-                    maxWidth: isFriend ? 164.0 : 112.0,
-                    minHeight: 36.0,
-                  ),
-                  child: OutlinedButton.icon(
-                    onPressed: () => _toggleFriend(partnerRef, isFriend),
-                    icon: Icon(
-                      isFriend
-                          ? Icons.person_remove_alt_1_rounded
-                          : Icons.person_add_alt_1_rounded,
-                      size: 16.0,
-                    ),
-                    label: Text(
-                      isFriend
-                          ? FFLocalizations.of(context).getVariableText(
-                              ruText: 'Убрать из друзей',
-                              enText: 'Remove',
-                            )
-                          : FFLocalizations.of(context).getVariableText(
-                              ruText: 'В друзья',
-                              enText: 'Add',
+                Semantics(
+                  button: true,
+                  label: friendButtonLabel,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _toggleFriend(partnerRef, isFriend),
+                    child: SizedBox(
+                      width: friendButtonWidth,
+                      height: 44.0,
+                      child: Center(
+                        child: SizedBox(
+                          width: friendButtonWidth,
+                          height: 35.0,
+                          child: ExcludeSemantics(
+                            child: IgnorePointer(
+                              child: OutlinedButton.icon(
+                                onPressed: () {},
+                                icon: Icon(
+                                  isFriend
+                                      ? Icons.person_remove_alt_1_rounded
+                                      : Icons.person_add_alt_1_rounded,
+                                  size: 16.0,
+                                ),
+                                label: Text(
+                                  friendButtonLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: ExpatlioDesign.primary,
+                                  side: const BorderSide(
+                                    color: ExpatlioDesign.primary,
+                                  ),
+                                  minimumSize: Size.zero,
+                                  fixedSize: Size.fromHeight(35.0),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10.0),
+                                  ),
+                                  padding:
+                                      const EdgeInsetsDirectional.symmetric(
+                                    horizontal: 8.0,
+                                  ),
+                                  textStyle: ExpatlioDesign.textStyle(
+                                    context,
+                                    size: 12.0,
+                                    weight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
                             ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: ExpatlioDesign.primary,
-                      side: const BorderSide(color: ExpatlioDesign.primary),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.0),
-                      ),
-                      padding: const EdgeInsetsDirectional.symmetric(
-                        horizontal: 10.0,
-                      ),
-                      textStyle: ExpatlioDesign.textStyle(
-                        context,
-                        size: 13.0,
-                        weight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -802,10 +859,20 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       ),
       clipBehavior: Clip.antiAlias,
       child: normalizedPhotoUrl.isNotEmpty
-          ? Image.network(
-              normalizedPhotoUrl,
+          ? CachedNetworkImage(
+              imageUrl: normalizedPhotoUrl,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _buildAvatarFallback(
+              memCacheWidth:
+                  (size * MediaQuery.devicePixelRatioOf(context)).round(),
+              memCacheHeight:
+                  (size * MediaQuery.devicePixelRatioOf(context)).round(),
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
+              errorWidget: (_, __, ___) => _buildAvatarFallback(
+                context,
+                fallbackText,
+              ),
+              placeholder: (_, __) => _buildAvatarFallback(
                 context,
                 fallbackText,
               ),
@@ -833,10 +900,19 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => ChatThreadModel());
+    _messagesScrollController.addListener(_handleMessagesScroll);
+    _bindConversationRef();
+  }
+
+  @override
+  void didUpdateWidget(ChatThreadWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _bindConversationRef();
   }
 
   @override
   void dispose() {
+    _messagesScrollController.removeListener(_handleMessagesScroll);
     _messagesScrollController.dispose();
     _model.dispose();
     super.dispose();
@@ -849,306 +925,286 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       return _buildEmptyState(context);
     }
 
-    return AuthUserStreamWidget(
-      builder: (context) => StreamBuilder<DocumentSnapshot<Object?>>(
-        stream: conversationRef.snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            debugPrint(
-              'ChatThreadWidget: conversation stream error for ${conversationRef.path}: ${snapshot.error}',
-            );
-            return _buildChatUnavailableState(
-              context,
-              error: snapshot.error,
-            );
-          }
+    return StreamBuilder<ConversationsRecord?>(
+      stream: _conversationStream,
+      initialData: widget.initialConversation,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          debugPrint(
+            'ChatThreadWidget: conversation stream error for ${conversationRef.path}: ${snapshot.error}',
+          );
+          return _buildChatUnavailableState(
+            context,
+            error: snapshot.error,
+          );
+        }
 
-          if (!snapshot.hasData) {
-            return _buildLoadingState(context);
-          }
+        if (!snapshot.hasData &&
+            snapshot.connectionState == ConnectionState.waiting) {
+          return _buildLoadingState(context);
+        }
 
-          final conversationDoc = snapshot.data!;
-          if (!conversationDoc.exists || conversationDoc.data() == null) {
-            return _buildEmptyState(context);
-          }
+        final conversation = snapshot.data;
+        if (conversation == null) {
+          return _buildEmptyState(context);
+        }
 
-          final conversation =
-              ConversationsRecord.fromSnapshot(conversationDoc);
-          final currentRef = currentUserReference;
-          if (currentRef == null ||
-              !conversation.participantIds.contains(currentUserUid) ||
-              !conversation.isUnlocked) {
-            return _buildEmptyState(context);
-          }
+        final currentRef = currentUserReference;
+        if (currentRef == null ||
+            !conversation.participantIds.contains(currentUserUid) ||
+            !conversation.isUnlocked) {
+          return _buildEmptyState(context);
+        }
 
-          final partnerRef = _otherParticipantRef(conversation);
-          if (partnerRef == null) {
-            return _buildEmptyState(context);
-          }
+        final partnerRef = _otherParticipantRef(conversation);
+        if (partnerRef == null) {
+          return _buildEmptyState(context);
+        }
 
-          _markConversationRead(conversation);
+        _scheduleMarkConversationRead(conversation);
 
-          return StreamBuilder<UserPublicProfilesRecord?>(
-            stream: _watchPublicProfile(partnerRef),
-            builder: (context, partnerSnapshot) {
-              if (partnerSnapshot.hasError) {
-                debugPrint(
-                  'ChatThreadWidget: partner public profile stream failed for ${partnerRef.path}: ${partnerSnapshot.error}',
-                );
-              }
-
-              if (!partnerSnapshot.hasData &&
-                  partnerSnapshot.connectionState == ConnectionState.waiting &&
-                  !partnerSnapshot.hasError) {
-                return _buildLoadingState(context);
-              }
-
-              final isFriend = userHasFriend(
-                currentUserDocument,
-                partnerRef,
-              );
-
-              return Scaffold(
-                key: scaffoldKey,
-                backgroundColor: ExpatlioDesign.background,
-                body: Stack(
+        return Scaffold(
+          key: scaffoldKey,
+          backgroundColor: ExpatlioDesign.background,
+          body: Stack(
+            children: [
+              Padding(
+                padding:
+                    const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                child: Column(
                   children: [
-                    Padding(
-                      padding: const EdgeInsetsDirectional.fromSTEB(
-                          6.0, 0.0, 6.0, 0.0),
-                      child: Column(
-                        children: [
-                          _buildHeader(
-                            context,
-                            conversation: conversation,
-                            partnerProfile: partnerSnapshot.hasError
-                                ? null
-                                : partnerSnapshot.data,
-                            partnerRef: partnerRef,
-                            isFriend: isFriend,
-                          ),
-                          Expanded(
-                            child: StreamBuilder<List<MessagesRecord>>(
-                              stream: queryMessagesRecord(
-                                parent: conversation.reference,
-                                queryBuilder: (messagesRecord) =>
-                                    messagesRecord.orderBy('createdAt'),
-                              ),
-                              builder: (context, messagesSnapshot) {
-                                if (messagesSnapshot.hasError) {
-                                  debugPrint(
-                                    'ChatThreadWidget: messages stream error for ${conversation.reference.path}: ${messagesSnapshot.error}',
-                                  );
-                                  return _buildMessagesUnavailableState(
-                                    context,
-                                    error: messagesSnapshot.error,
-                                  );
-                                }
+                    StreamBuilder<UserPublicProfilesRecord?>(
+                      stream: _watchPublicProfile(partnerRef),
+                      builder: (context, partnerSnapshot) {
+                        if (partnerSnapshot.hasError) {
+                          debugPrint(
+                            'ChatThreadWidget: partner public profile stream failed for ${partnerRef.path}: ${partnerSnapshot.error}',
+                          );
+                        }
 
-                                if (!messagesSnapshot.hasData) {
-                                  return Center(
-                                    child: SizedBox(
-                                      width: 50.0,
-                                      height: 50.0,
-                                      child: SpinKitCircle(
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondary,
-                                        size: 50.0,
-                                      ),
-                                    ),
-                                  );
-                                }
+                        return AuthUserStreamWidget(
+                          builder: (context) {
+                            final isFriend = userHasFriend(
+                              currentUserDocument,
+                              partnerRef,
+                            );
 
-                                final messages = messagesSnapshot.data!.toList()
-                                  ..sort(compareMessagesForThread);
-
-                                if (_lastRenderedMessageCount !=
-                                    messages.length) {
-                                  _lastRenderedMessageCount = messages.length;
-                                  _scheduleScrollToBottom();
-                                }
-
-                                if (messages.isEmpty) {
-                                  return Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(24.0),
-                                      child: Text(
-                                        FFLocalizations.of(context)
-                                            .getVariableText(
-                                          ruText:
-                                              'Чат открыт. Напишите первое сообщение.',
-                                          enText:
-                                              'The chat is open. Send the first message.',
-                                        ),
-                                        textAlign: TextAlign.center,
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .secondaryText,
-                                              fontSize: 15.0,
-                                              letterSpacing: 0.0,
-                                            ),
-                                      ),
-                                    ),
-                                  );
-                                }
-
-                                return ListView.builder(
-                                  controller: _messagesScrollController,
-                                  padding: const EdgeInsetsDirectional.fromSTEB(
-                                    12.0,
-                                    12.0,
-                                    12.0,
-                                    120.0,
-                                  ),
-                                  itemCount: messages.length,
-                                  itemBuilder: (context, index) {
-                                    final message = messages[index];
-                                    final itemChildren = <Widget>[];
-                                    if (_shouldShowDateDivider(
-                                      messages,
-                                      index,
-                                    )) {
-                                      itemChildren.add(
-                                        _buildDateDivider(
-                                          context,
-                                          message.createdAt!,
-                                        ),
-                                      );
-                                    }
-
-                                    if (messageIsCallEvent(message)) {
-                                      itemChildren.add(
-                                        _buildCallEventMessageCard(
-                                          context,
-                                          message: message,
-                                        ),
-                                      );
-                                      return Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: itemChildren,
-                                      );
-                                    }
-
-                                    final isCurrentUser =
-                                        message.senderId == currentUserUid;
-                                    final partnerReadAt = conversation
-                                        .lastReadAtByUserId[partnerRef.id];
-                                    final isReadByPartner = isCurrentUser &&
-                                        message.createdAt != null &&
-                                        partnerReadAt != null &&
-                                        !partnerReadAt
-                                            .isBefore(message.createdAt!);
-                                    itemChildren.add(
-                                      _buildMessageBubble(
-                                        context,
-                                        message: message,
-                                        isCurrentUser: isCurrentUser,
-                                        isReadByPartner: isReadByPartner,
-                                      ),
-                                    );
-
-                                    return Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: itemChildren,
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
+                            return _buildHeader(
+                              context,
+                              conversation: conversation,
+                              partnerProfile: partnerSnapshot.hasError
+                                  ? null
+                                  : partnerSnapshot.data,
+                              partnerRef: partnerRef,
+                              isFriend: isFriend,
+                            );
+                          },
+                        );
+                      },
                     ),
-                    Align(
-                      alignment: AlignmentDirectional.bottomCenter,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              ExpatlioDesign.background.withValues(alpha: 0.0),
-                              ExpatlioDesign.background.withValues(alpha: 0.84),
-                              ExpatlioDesign.background,
-                            ],
-                            stops: const [0.0, 0.2, 1.0],
-                            begin: const AlignmentDirectional(0.0, -1.0),
-                            end: const AlignmentDirectional(0.0, 1.0),
-                          ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsetsDirectional.fromSTEB(
-                            6.0,
-                            12.0,
-                            6.0,
-                            35.0,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.max,
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _model.messageTextController,
-                                  focusNode: _model.messageFocusNode,
-                                  textCapitalization:
-                                      TextCapitalization.sentences,
-                                  textInputAction: TextInputAction.send,
-                                  textAlignVertical: TextAlignVertical.center,
-                                  maxLines: 4,
-                                  minLines: 1,
-                                  decoration:
-                                      ExpatlioDesign.formFieldDecoration(
+                    Expanded(
+                      child: StreamBuilder<List<MessagesRecord>>(
+                        stream: _watchMessages(conversation.reference),
+                        builder: (context, messagesSnapshot) {
+                          if (messagesSnapshot.hasError) {
+                            debugPrint(
+                              'ChatThreadWidget: messages stream error for ${conversation.reference.path}: ${messagesSnapshot.error}',
+                            );
+                            return _buildMessagesUnavailableState(
+                              context,
+                              error: messagesSnapshot.error,
+                            );
+                          }
+
+                          if (!messagesSnapshot.hasData) {
+                            return Center(
+                              child: SizedBox(
+                                width: 50.0,
+                                height: 50.0,
+                                child: SpinKitCircle(
+                                  color: FlutterFlowTheme.of(context).secondary,
+                                  size: 50.0,
+                                ),
+                              ),
+                            );
+                          }
+
+                          final messages = messagesSnapshot.data!;
+                          _canLoadOlderMessages =
+                              messages.length >= _messageLimit;
+
+                          if (messages.isEmpty) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24.0),
+                                child: Text(
+                                  FFLocalizations.of(context).getVariableText(
+                                    ruText:
+                                        'Чат открыт. Напишите первое сообщение.',
+                                    enText:
+                                        'The chat is open. Send the first message.',
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        color: FlutterFlowTheme.of(context)
+                                            .secondaryText,
+                                        fontSize: 15.0,
+                                        letterSpacing: 0.0,
+                                      ),
+                                ),
+                              ),
+                            );
+                          }
+
+                          return ListView.builder(
+                            controller: _messagesScrollController,
+                            reverse: true,
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              12.0,
+                              12.0,
+                              12.0,
+                              120.0,
+                            ),
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final message = messages[index];
+                              final itemChildren = <Widget>[];
+                              if (_shouldShowDateDivider(
+                                messages,
+                                index,
+                              )) {
+                                itemChildren.add(
+                                  _buildDateDivider(
                                     context,
-                                    hintText: FFLocalizations.of(context)
-                                        .getVariableText(
-                                      ruText: 'Написать сообщение',
-                                      enText: 'Write a message',
-                                    ),
+                                    message.createdAt!,
                                   ),
-                                  style: ExpatlioDesign.formTextStyle(context),
-                                  onFieldSubmitted: (_) =>
-                                      _sendMessage(conversation),
-                                ),
-                              ),
-                              const SizedBox(width: 8.0),
-                              SizedBox(
-                                width: ExpatlioDesign.buttonHeight,
-                                height: ExpatlioDesign.buttonHeight,
-                                child: Material(
-                                  color: ExpatlioDesign.primary,
-                                  borderRadius: BorderRadius.circular(14.0),
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(14.0),
-                                    onTap: _isSending
-                                        ? null
-                                        : () => _sendMessage(conversation),
-                                    child: Icon(
-                                      _isSending
-                                          ? Icons.hourglass_top_rounded
-                                          : Icons.send_rounded,
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryBackground,
-                                      size: 22.0,
-                                    ),
+                                );
+                              }
+
+                              if (messageIsCallEvent(message)) {
+                                itemChildren.add(
+                                  _buildCallEventMessageCard(
+                                    context,
+                                    message: message,
                                   ),
+                                );
+                                return Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: itemChildren,
+                                );
+                              }
+
+                              final isCurrentUser =
+                                  message.senderId == currentUserUid;
+                              final partnerReadAt = conversation
+                                  .lastReadAtByUserId[partnerRef.id];
+                              final isReadByPartner = isCurrentUser &&
+                                  message.createdAt != null &&
+                                  partnerReadAt != null &&
+                                  !partnerReadAt.isBefore(message.createdAt!);
+                              itemChildren.add(
+                                _buildMessageBubble(
+                                  context,
+                                  message: message,
+                                  isCurrentUser: isCurrentUser,
+                                  isReadByPartner: isReadByPartner,
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
+                              );
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: itemChildren,
+                              );
+                            },
+                          );
+                        },
                       ),
                     ),
                   ],
                 ),
-              );
-            },
-          );
-        },
-      ),
+              ),
+              Align(
+                alignment: AlignmentDirectional.bottomCenter,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        ExpatlioDesign.background.withValues(alpha: 0.0),
+                        ExpatlioDesign.background.withValues(alpha: 0.84),
+                        ExpatlioDesign.background,
+                      ],
+                      stops: const [0.0, 0.2, 1.0],
+                      begin: const AlignmentDirectional(0.0, -1.0),
+                      end: const AlignmentDirectional(0.0, 1.0),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                      6.0,
+                      12.0,
+                      6.0,
+                      35.0,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _model.messageTextController,
+                            focusNode: _model.messageFocusNode,
+                            textCapitalization: TextCapitalization.sentences,
+                            textInputAction: TextInputAction.send,
+                            textAlignVertical: TextAlignVertical.center,
+                            maxLines: 4,
+                            minLines: 1,
+                            decoration: ExpatlioDesign.formFieldDecoration(
+                              context,
+                              hintText:
+                                  FFLocalizations.of(context).getVariableText(
+                                ruText: 'Написать сообщение',
+                                enText: 'Write a message',
+                              ),
+                            ),
+                            style: ExpatlioDesign.formTextStyle(context),
+                            onFieldSubmitted: (_) => _sendMessage(conversation),
+                          ),
+                        ),
+                        const SizedBox(width: 8.0),
+                        SizedBox(
+                          width: ExpatlioDesign.formFieldHeight,
+                          height: ExpatlioDesign.formFieldHeight,
+                          child: Material(
+                            color: ExpatlioDesign.primary,
+                            borderRadius: BorderRadius.circular(14.0),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(14.0),
+                              onTap: _isSending
+                                  ? null
+                                  : () => _sendMessage(conversation),
+                              child: Icon(
+                                _isSending
+                                    ? Icons.hourglass_top_rounded
+                                    : Icons.send_rounded,
+                                color: FlutterFlowTheme.of(context)
+                                    .primaryBackground,
+                                size: 22.0,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

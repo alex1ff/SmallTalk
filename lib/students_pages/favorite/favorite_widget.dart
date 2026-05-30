@@ -7,6 +7,7 @@ import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/chat_call_event_presentation.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/chat_thread/open_chat_thread.dart';
 
@@ -27,6 +28,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   late FavoriteModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final _userFutureCache = <String, Future<UserPublicProfilesRecord?>>{};
+  String? _conversationsStreamUid;
+  Stream<_ConversationsLoadState>? _conversationsStream;
   int _selectedChatTabIndex = 0;
 
   Future<UserPublicProfilesRecord?> _getUserFuture(DocumentReference ref) {
@@ -145,14 +148,24 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       return Stream.value(const _ConversationsLoadState());
     }
 
-    return queryConversationsRecord(
+    if (_conversationsStreamUid == currentUid && _conversationsStream != null) {
+      return _conversationsStream!;
+    }
+
+    _conversationsStreamUid = currentUid;
+    _conversationsStream = queryConversationsRecord(
       queryBuilder: (query) => query.where(
         FieldPath(['participantMap', currentUid]),
         isEqualTo: true,
       ),
-    ).map(
-      (conversations) => _ConversationsLoadState(conversations: conversations),
-    );
+    ).map((conversations) {
+      final loadedConversations = conversations
+          .where((conversation) => conversation.isUnlocked)
+          .toList();
+      loadedConversations.sort(compareConversationsForInbox);
+      return _ConversationsLoadState(conversations: loadedConversations);
+    });
+    return _conversationsStream!;
   }
 
   DocumentReference? _otherParticipantRef(ConversationsRecord conversation) {
@@ -168,6 +181,19 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     }
 
     return null;
+  }
+
+  bool _conversationPartnerIsFriendPathSet(
+    ConversationsRecord conversation,
+    Set<String> friendPaths,
+  ) {
+    for (final participantRef in conversation.participantRefs) {
+      if (participantRef.id != currentUserUid &&
+          friendPaths.contains(participantRef.path)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   String _formatInboxTimestamp(DateTime? timestamp) {
@@ -200,29 +226,18 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     await openChatThread(
       context,
       conversationRef: conversation.reference,
+      initialConversation: conversation,
     );
   }
 
   String _conversationSubtitle(
       BuildContext context, ConversationsRecord conversation) {
     if (conversation.lastMessageType == kConversationMessageTypeCallEvent) {
-      final currentUserWasCaller =
-          conversation.lastCallCallerId == currentUserUid;
-      if (conversation.lastCallOutcome == kConversationCallOutcomeCancelled) {
-        return FFLocalizations.of(context).getVariableText(
-          ruText: 'Отменённый звонок',
-          enText: 'Cancelled call',
-        );
-      }
-      if (conversation.lastCallOutcome == kConversationCallOutcomeMissed) {
-        return FFLocalizations.of(context).getVariableText(
-          ruText: currentUserWasCaller ? 'Без ответа' : 'Пропущенный звонок',
-          enText: currentUserWasCaller ? 'No answer' : 'Missed call',
-        );
-      }
-      return FFLocalizations.of(context).getVariableText(
-        ruText: currentUserWasCaller ? 'Исходящий звонок' : 'Входящий звонок',
-        enText: currentUserWasCaller ? 'Outgoing call' : 'Incoming call',
+      return formatChatCallEventTitle(
+        context,
+        outcome: conversation.lastCallOutcome,
+        callerId: conversation.lastCallCallerId,
+        currentUserUid: currentUserUid,
       );
     }
 
@@ -398,11 +413,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           debugPrint(
             'FavoriteWidget: failed to load partner ${partnerRef.path}: ${partnerSnapshot.error}',
           );
-        }
-
-        if (partnerSnapshot.connectionState == ConnectionState.waiting &&
-            !partnerSnapshot.hasError) {
-          return _conversationLoadingCard(context);
         }
 
         final partner = partnerSnapshot.hasError ? null : partnerSnapshot.data;
@@ -604,6 +614,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     required List<ConversationsRecord> conversations,
     required List<DocumentReference> friends,
   }) {
+    final friendPaths = friends.map((reference) => reference.path).toSet();
+
     if (conversationsLoading) {
       return _buildMessagesLoadingList(context);
     }
@@ -633,30 +645,28 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: conversations
-          .map(
-            (conversation) => _conversationCard(
-              context,
-              conversation: conversation,
-              isFriend: conversationPartnerIsFriend(
-                conversation,
-                friends,
-                currentUserUid,
-              ),
-            ),
-          )
-          .toList(),
+    return ListView.builder(
+      padding: const EdgeInsetsDirectional.only(bottom: 120.0),
+      itemCount: conversations.length,
+      itemBuilder: (context, index) {
+        final conversation = conversations[index];
+        return _conversationCard(
+          context,
+          conversation: conversation,
+          isFriend: _conversationPartnerIsFriendPathSet(
+            conversation,
+            friendPaths,
+          ),
+        );
+      },
     );
   }
 
   Widget _buildMessagesLoadingList(BuildContext context) {
-    return Column(
-      children: List.generate(
-        4,
-        (_) => _conversationLoadingCard(context),
-      ),
+    return ListView.builder(
+      padding: const EdgeInsetsDirectional.only(bottom: 120.0),
+      itemCount: 4,
+      itemBuilder: (context, index) => _conversationLoadingCard(context),
     );
   }
 
@@ -749,12 +759,12 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     required List<DocumentReference> friends,
     required List<ConversationsRecord> conversations,
   }) {
+    final friendPaths = friends.map((reference) => reference.path).toSet();
     final friendConversations = conversations
         .where(
-          (conversation) => conversationPartnerIsFriend(
+          (conversation) => _conversationPartnerIsFriendPathSet(
             conversation,
-            friends,
-            currentUserUid,
+            friendPaths,
           ),
         )
         .toList();
@@ -769,17 +779,14 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: friendConversations
-          .map(
-            (conversation) => _conversationCard(
-              context,
-              conversation: conversation,
-              isFriend: true,
-            ),
-          )
-          .toList(),
+    return ListView.builder(
+      padding: const EdgeInsetsDirectional.only(bottom: 120.0),
+      itemCount: friendConversations.length,
+      itemBuilder: (context, index) => _conversationCard(
+        context,
+        conversation: friendConversations[index],
+        isFriend: true,
+      ),
     );
   }
 
@@ -856,7 +863,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
                 return StreamBuilder<_ConversationsLoadState>(
                   stream: _watchConversationsForUser(currentUserUid),
-                  initialData: const _ConversationsLoadState(),
                   builder: (context, conversationsSnapshot) {
                     if (conversationsSnapshot.hasError) {
                       debugPrint(
@@ -876,52 +882,40 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     final conversationsAccessDenied =
                         _isPermissionDenied(conversationsError);
 
-                    final conversations = conversationsState != null
-                        ? (() {
-                            final loadedConversations = conversationsState
-                                .conversations
-                                .where(
-                                    (conversation) => conversation.isUnlocked)
-                                .toList();
-                            loadedConversations.sort(
-                              compareConversationsForInbox,
-                            );
-                            return loadedConversations;
-                          })()
-                        : <ConversationsRecord>[];
+                    final conversations = conversationsState?.conversations ??
+                        <ConversationsRecord>[];
 
                     final showFriendsTab = _selectedChatTabIndex == 1;
 
                     return Stack(
                       children: [
-                        SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                height: MediaQuery.paddingOf(context).top + 56,
-                              ),
-                              _buildChatsTabBar(context),
-                              if (showFriendsTab)
-                                _buildFriendsTabContent(
-                                  context,
-                                  friends: friends,
-                                  conversations: conversations,
-                                )
-                              else
-                                _buildMessagesTabContent(
-                                  context,
-                                  conversationsLoading: conversationsLoading,
-                                  conversationsLoadFailed:
-                                      conversationsLoadFailed,
-                                  conversationsAccessDenied:
-                                      conversationsAccessDenied,
-                                  conversations: conversations,
-                                  friends: friends,
-                                ),
-                              const SizedBox(height: 120.0),
-                            ],
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              height: MediaQuery.paddingOf(context).top + 56,
+                            ),
+                            _buildChatsTabBar(context),
+                            Expanded(
+                              child: showFriendsTab
+                                  ? _buildFriendsTabContent(
+                                      context,
+                                      friends: friends,
+                                      conversations: conversations,
+                                    )
+                                  : _buildMessagesTabContent(
+                                      context,
+                                      conversationsLoading:
+                                          conversationsLoading,
+                                      conversationsLoadFailed:
+                                          conversationsLoadFailed,
+                                      conversationsAccessDenied:
+                                          conversationsAccessDenied,
+                                      conversations: conversations,
+                                      friends: friends,
+                                    ),
+                            ),
+                          ],
                         ),
                         _buildHeader(context),
                       ],

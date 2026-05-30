@@ -136,6 +136,29 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     );
   }
 
+  Widget _buildUnavailableCallContent(BuildContext context) {
+    return Center(
+      child: Text(
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Не удалось открыть звонок',
+          enText: 'Unable to open call',
+        ),
+        style: FlutterFlowTheme.of(context).bodyMedium.override(
+              fontFamily: 'sf pro display',
+              fontSize: 16.0,
+              letterSpacing: 0.0,
+            ),
+      ),
+    );
+  }
+
+  Widget _buildUnavailableCallState(BuildContext context) {
+    return Scaffold(
+      backgroundColor: ExpatlioDesign.background,
+      body: _buildUnavailableCallContent(context),
+    );
+  }
+
   List<CaptionLogsRecord> _sortedCaptionLogs(List<CaptionLogsRecord> logs) {
     final sortedLogs = List<CaptionLogsRecord>.from(logs);
     sortedLogs.sort((left, right) {
@@ -1427,22 +1450,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
   @override
   Widget build(BuildContext context) {
     if (widget.videoDocRef == null) {
-      return Scaffold(
-        backgroundColor: ExpatlioDesign.background,
-        body: Center(
-          child: Text(
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'Не удалось открыть звонок',
-              enText: 'Unable to open call',
-            ),
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'sf pro display',
-                  fontSize: 16.0,
-                  letterSpacing: 0.0,
-                ),
-          ),
-        ),
-      );
+      return _buildUnavailableCallState(context);
     }
 
     return GestureDetector(
@@ -1454,14 +1462,26 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         key: scaffoldKey,
         backgroundColor: ExpatlioDesign.background,
         body: AuthUserStreamWidget(
-          builder: (context) => StreamBuilder<VideoSessionsRecord>(
-            stream: VideoSessionsRecord.getDocument(widget.videoDocRef!),
+          builder: (context) => StreamBuilder<DocumentSnapshot<Object?>>(
+            stream: widget.videoDocRef!.snapshots(),
             builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                debugPrint(
+                  'CallDetailsWidget: failed to load ${widget.videoDocRef!.path}: ${snapshot.error}',
+                );
+                return _buildUnavailableCallContent(context);
+              }
+
               if (!snapshot.hasData) {
                 return _buildLoadingState(context);
               }
 
-              final session = snapshot.data!;
+              final sessionDoc = snapshot.data!;
+              if (!sessionDoc.exists || sessionDoc.data() == null) {
+                return _buildUnavailableCallContent(context);
+              }
+
+              final session = VideoSessionsRecord.fromSnapshot(sessionDoc);
               final counterpartName = _counterpartName(context, session);
               final counterpartPhotoUrl = _counterpartPhotoUrl(session);
               final sessionLanguage = findSessionLanguageByCode(

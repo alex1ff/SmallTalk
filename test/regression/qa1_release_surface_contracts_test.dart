@@ -28,7 +28,14 @@ void main() {
         source,
         contains('FutureBuilder<UserPublicProfilesRecord?>'),
       );
-      expect(source, contains('initialData: const _ConversationsLoadState()'));
+      expect(source, isNot(contains('partnerSnapshot.connectionState')));
+      expect(source,
+          isNot(contains('initialData: const _ConversationsLoadState()')));
+      expect(source, contains('_conversationsStreamUid'));
+      expect(source,
+          contains('loadedConversations.sort(compareConversationsForInbox)'));
+      expect(source, contains('ListView.builder'));
+      expect(source, isNot(contains('SingleChildScrollView(')));
       expect(source, contains('You do not have messages yet.'));
       expect(source, contains('You do not have chats with friends yet.'));
       expect(source, isNot(contains('UsersRecord.getDocumentOnce(ref)')));
@@ -78,7 +85,33 @@ void main() {
       expect(source, contains('messageIsCallEvent(message)'));
       expect(source, contains('buildAddFriendUpdateData'));
       expect(source, contains('buildRemoveFriendUpdateData'));
-      expect(source, contains("CallDetailsWidget.routeName"));
+      expect(source, contains('CallDetailsWidget(videoDocRef: sessionRef)'));
+      expect(source, contains('Navigator.of(context, rootNavigator: true)'));
+      expect(
+        _source('lib/shared_pages/chat_thread/open_chat_thread.dart'),
+        contains('initialConversation: initialConversation'),
+      );
+      expect(source, isNot(contains('!partnerSnapshot.hasData')));
+      expect(source, contains('CachedNetworkImage('));
+      expect(source, contains('memCacheWidth:'));
+      expect(source, contains('reverse: true'));
+      expect(source, contains("descending: true"));
+      expect(source, contains('limit: _messageLimit'));
+      expect(source, contains('_messagePageSize'));
+      expect(
+          source,
+          contains(
+              'conversationIsUnreadForUser(conversation, currentUserUid)'));
+      expect(source, contains('_scheduleMarkConversationRead(conversation)'));
+      expect(source, isNot(contains('jumpTo(position.maxScrollExtent)')));
+      expect(source, isNot(contains('..sort(compareMessagesForThread)')));
+      expect(source, contains('height: 44.0'));
+      expect(source, contains('height: 35.0'));
+      expect(source, contains('ExcludeSemantics('));
+      expect(
+        _source('lib/shared_pages/call_details/call_details_widget.dart'),
+        contains('!sessionDoc.exists || sessionDoc.data() == null'),
+      );
       expect(callEventCard, contains('Icons.phone_rounded'));
     });
 

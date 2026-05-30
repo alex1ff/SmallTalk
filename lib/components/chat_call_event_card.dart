@@ -24,6 +24,14 @@ class ChatCallEventCard extends StatelessWidget {
   final ChatCallEventTone tone;
   final VoidCallback? onTap;
 
+  static const List<BoxShadow> _shadow = [
+    BoxShadow(
+      color: Color(0x0A000000),
+      blurRadius: 8.0,
+      offset: Offset(0.0, 2.0),
+    ),
+  ];
+
   Color _resolvedIconColor(BuildContext context) {
     return switch (tone) {
       ChatCallEventTone.normal => FlutterFlowTheme.of(context).primary,
@@ -44,7 +52,7 @@ class ChatCallEventCard extends StatelessWidget {
               color: ExpatlioDesign.card,
               borderRadius: BorderRadius.circular(14.0),
               border: Border.all(color: ExpatlioDesign.border),
-              boxShadow: ExpatlioDesign.cardShadow,
+              boxShadow: _shadow,
             ),
             child: Material(
               color: Colors.transparent,

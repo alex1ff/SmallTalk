@@ -73,5 +73,6 @@ void main() {
     expect(source, contains('ChatCallEventTone'));
     expect(source, isNot(contains('iconColor')));
     expect(source, contains('boxShadow'));
+    expect(source, isNot(contains('ExpatlioDesign.cardShadow')));
   });
 }
