@@ -3,8 +3,8 @@ import '/components/celebration_s_t_widget.dart';
 import '/components/celebration_top_up_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
-import '/components/dashboard_floating_avatar.dart';
 import '/components/dashboard_inline_filter_button.dart';
+import '/components/orbiting_avatars_cta.dart';
 import '/components/profile_dropdown_menu_item.dart';
 import '/components/student_availability_switch_control.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
@@ -59,10 +59,109 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   final scaffoldKey = GlobalKey<ScaffoldState>();
   String? _partnerCountCacheKey;
   Future<int?>? _partnerCountFuture;
+  String? _partnerPreviewCacheKey;
+  Future<List<OrbitingAvatarData>>? _partnerPreviewFuture;
   bool _isLocationMenuOpen = false;
   bool _isLevelMenuOpen = false;
 
   bool get _showLegacyDashboard => false;
+
+  static const _searchAvatarMotion0 = OrbitingAvatarMotionSpec(
+    radiusX: 122.0,
+    radiusY: 88.0,
+    phase: 3.85,
+    speed: 1.0,
+    drift: 0.16,
+    scalePulse: 0.22,
+  );
+  static const _searchAvatarMotion1 = OrbitingAvatarMotionSpec(
+    radiusX: 116.0,
+    radiusY: 98.0,
+    phase: 5.45,
+    speed: -1.0,
+    drift: 0.18,
+    scalePulse: 0.24,
+  );
+  static const _searchAvatarMotion2 = OrbitingAvatarMotionSpec(
+    radiusX: 142.0,
+    radiusY: 86.0,
+    phase: 0.14,
+    speed: -2.0,
+    drift: 0.14,
+    scalePulse: 0.18,
+  );
+  static const _searchAvatarMotion3 = OrbitingAvatarMotionSpec(
+    radiusX: 138.0,
+    radiusY: 104.0,
+    phase: 0.95,
+    speed: 1.0,
+    drift: 0.17,
+    scalePulse: 0.22,
+  );
+  static const _searchAvatarMotion4 = OrbitingAvatarMotionSpec(
+    radiusX: 118.0,
+    radiusY: 110.0,
+    phase: 2.15,
+    speed: 2.0,
+    drift: 0.15,
+    scalePulse: 0.26,
+  );
+  static const _searchAvatarMotion5 = OrbitingAvatarMotionSpec(
+    radiusX: 110.0,
+    radiusY: 106.0,
+    phase: 2.95,
+    speed: -1.0,
+    drift: 0.2,
+    scalePulse: 0.24,
+  );
+
+  static const _searchAvatarMotions = <OrbitingAvatarMotionSpec>[
+    _searchAvatarMotion0,
+    _searchAvatarMotion1,
+    _searchAvatarMotion2,
+    _searchAvatarMotion3,
+    _searchAvatarMotion4,
+    _searchAvatarMotion5,
+  ];
+
+  static const _fallbackSearchAvatars = <OrbitingAvatarData>[
+    OrbitingAvatarData(
+      initials: 'AK',
+      assetPath: 'assets/images/orbiting_avatar_1.jpg',
+      size: 40.0,
+      motion: _searchAvatarMotion0,
+    ),
+    OrbitingAvatarData(
+      initials: 'MR',
+      assetPath: 'assets/images/orbiting_avatar_2.jpg',
+      size: 42.0,
+      motion: _searchAvatarMotion1,
+    ),
+    OrbitingAvatarData(
+      initials: 'JL',
+      assetPath: 'assets/images/orbiting_avatar_3.jpg',
+      size: 52.0,
+      motion: _searchAvatarMotion2,
+    ),
+    OrbitingAvatarData(
+      initials: 'EL',
+      assetPath: 'assets/images/orbiting_avatar_4.jpg',
+      size: 44.0,
+      motion: _searchAvatarMotion3,
+    ),
+    OrbitingAvatarData(
+      initials: 'KT',
+      assetPath: 'assets/images/orbiting_avatar_5.jpg',
+      size: 44.0,
+      motion: _searchAvatarMotion4,
+    ),
+    OrbitingAvatarData(
+      initials: 'ST',
+      assetPath: 'assets/images/orbiting_avatar_6.jpg',
+      size: 48.0,
+      motion: _searchAvatarMotion5,
+    ),
+  ];
 
   bool get _effectiveAvailabilityEnabled =>
       currentUserDocument?.availabilityToday.enabled ?? false;
@@ -536,44 +635,76 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     );
   }
 
+  Query<Map<String, dynamic>> _filteredPartnerProfilesQuery({
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) {
+    final activeLanguage =
+        resolveUserActiveConversationLanguage(currentUserDocument);
+    final preferredCountryCode = preferredLocation?.code.trim();
+
+    var query = FirebaseFirestore.instance
+        .collection('userPublicProfiles')
+        .where('role', isEqualTo: UserRole.native_speaker.serialize())
+        .where('isProfileComplete', isEqualTo: true);
+
+    if (activeLanguage != null && activeLanguage.isNotEmpty) {
+      query = query.where(
+        'language_instruction_NS.code',
+        isEqualTo: activeLanguage,
+      );
+    }
+    if (preferredCountryCode != null && preferredCountryCode.isNotEmpty) {
+      query = query.where(
+        'Country_NS.code',
+        isEqualTo: preferredCountryCode,
+      );
+    }
+    if (preferredPartnerLevel != null) {
+      query = query.where(
+        'level',
+        isEqualTo: preferredPartnerLevel.serialize(),
+      );
+    }
+
+    return query;
+  }
+
   Future<int?> _loadFilteredPartnerCount({
     required CountryStruct? preferredLocation,
     required Level? preferredPartnerLevel,
   }) async {
     try {
-      final activeLanguage =
-          resolveUserActiveConversationLanguage(currentUserDocument);
-      final preferredCountryCode = preferredLocation?.code.trim();
-
-      var query = FirebaseFirestore.instance
-          .collection('userPublicProfiles')
-          .where('role', isEqualTo: UserRole.native_speaker.serialize())
-          .where('isProfileComplete', isEqualTo: true);
-
-      if (activeLanguage != null && activeLanguage.isNotEmpty) {
-        query = query.where(
-          'language_instruction_NS.code',
-          isEqualTo: activeLanguage,
-        );
-      }
-      if (preferredCountryCode != null && preferredCountryCode.isNotEmpty) {
-        query = query.where(
-          'Country_NS.code',
-          isEqualTo: preferredCountryCode,
-        );
-      }
-      if (preferredPartnerLevel != null) {
-        query = query.where(
-          'level',
-          isEqualTo: preferredPartnerLevel.serialize(),
-        );
-      }
-
+      final query = _filteredPartnerProfilesQuery(
+        preferredLocation: preferredLocation,
+        preferredPartnerLevel: preferredPartnerLevel,
+      );
       final countSnapshot = await query.count().get();
       return countSnapshot.count;
     } catch (error) {
       debugPrint('StudentsDashboard: failed to load partner count: $error');
       return null;
+    }
+  }
+
+  Future<List<OrbitingAvatarData>> _loadFilteredPartnerPreviewAvatars({
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) async {
+    try {
+      final snapshot = await _filteredPartnerProfilesQuery(
+        preferredLocation: preferredLocation,
+        preferredPartnerLevel: preferredPartnerLevel,
+      ).limit(_searchAvatarMotions.length).get();
+
+      final profiles = snapshot.docs
+          .map(UserPublicProfilesRecord.fromSnapshot)
+          .toList(growable: false);
+
+      return _buildPartnerPreviewAvatars(profiles);
+    } catch (error) {
+      debugPrint('StudentsDashboard: failed to load partner avatars: $error');
+      return _fallbackSearchAvatars;
     }
   }
 
@@ -598,6 +729,77 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     }
 
     return _partnerCountFuture!;
+  }
+
+  Future<List<OrbitingAvatarData>> _partnerPreviewFutureFor({
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) {
+    final activeLanguage =
+        resolveUserActiveConversationLanguage(currentUserDocument) ?? '';
+    final cacheKey = [
+      activeLanguage,
+      preferredLocation?.code ?? '',
+      preferredPartnerLevel?.name ?? '',
+    ].join('|');
+
+    if (_partnerPreviewCacheKey != cacheKey || _partnerPreviewFuture == null) {
+      _partnerPreviewCacheKey = cacheKey;
+      _partnerPreviewFuture = _loadFilteredPartnerPreviewAvatars(
+        preferredLocation: preferredLocation,
+        preferredPartnerLevel: preferredPartnerLevel,
+      );
+    }
+
+    return _partnerPreviewFuture!;
+  }
+
+  List<OrbitingAvatarData> _buildPartnerPreviewAvatars(
+    List<UserPublicProfilesRecord> profiles,
+  ) {
+    final avatars = <OrbitingAvatarData>[];
+    final maxCount = math.min(profiles.length, _searchAvatarMotions.length);
+
+    for (var i = 0; i < maxCount; i++) {
+      final profile = profiles[i];
+      final photoUrl = profile.photoUrl.trim();
+      avatars.add(
+        OrbitingAvatarData(
+          initials: _avatarInitials(profile.displayName, i),
+          assetPath:
+              photoUrl.isEmpty ? _fallbackSearchAvatars[i].assetPath : '',
+          photoUrl: photoUrl,
+          size: _fallbackSearchAvatars[i].size,
+          motion: _searchAvatarMotions[i],
+        ),
+      );
+    }
+
+    for (var i = avatars.length; i < _fallbackSearchAvatars.length; i++) {
+      avatars.add(_fallbackSearchAvatars[i]);
+    }
+
+    return avatars;
+  }
+
+  String _avatarInitials(String displayName, int index) {
+    final nameParts = displayName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    if (nameParts.length >= 2) {
+      return '${nameParts[0][0]}${nameParts[1][0]}'.toUpperCase();
+    }
+    if (nameParts.isNotEmpty) {
+      final name = nameParts.first;
+      return name.length >= 2
+          ? name.substring(0, 2).toUpperCase()
+          : name[0].toUpperCase();
+    }
+
+    return _fallbackSearchAvatars[index % _fallbackSearchAvatars.length]
+        .initials;
   }
 
   String _partnerCountNoun(BuildContext context, int count) {
@@ -859,6 +1061,172 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     context.pushNamed(WaitingForTeacherPageWidget.routeName);
   }
 
+  Widget _buildSearchCtaContent({
+    required BuildContext context,
+    required List<OrbitingAvatarData> avatars,
+    required CountryStruct? preferredLocation,
+    required Level? selectedPartnerLevel,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final orbitHeight =
+            (constraints.maxHeight - 50.0).clamp(250.0, 320.0).toDouble();
+
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: double.infinity,
+              height: orbitHeight,
+              child: OrbitingAvatarsCta(
+                avatars: avatars,
+                action: _buildStartSearchButton(context),
+              ),
+            ),
+            const SizedBox(height: ExpatlioDesign.itemSpacing),
+            _buildPartnerCountText(
+              context: context,
+              preferredLocation: preferredLocation,
+              selectedPartnerLevel: selectedPartnerLevel,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStartSearchButton(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20.0),
+        onTap: _handleStartConversation,
+        child: Container(
+          width: 240.0,
+          height: 60.0,
+          decoration: BoxDecoration(
+            gradient: ExpatlioDesign.primaryGradient,
+            borderRadius: BorderRadius.circular(20.0),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x267430E8),
+                blurRadius: 22.0,
+                offset: Offset(0.0, 10.0),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.auto_awesome_rounded,
+                color: Colors.white,
+                size: 22.0,
+              ),
+              const SizedBox(width: ExpatlioDesign.itemSpacing),
+              Text(
+                FFLocalizations.of(context).getVariableText(
+                  ruText: 'Начать поиск',
+                  enText: 'Start search',
+                ),
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: Colors.white,
+                  size: 18.0,
+                  weight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPartnerCountText({
+    required BuildContext context,
+    required CountryStruct? preferredLocation,
+    required Level? selectedPartnerLevel,
+  }) {
+    return FutureBuilder<int?>(
+      future: _partnerCountFutureFor(
+        preferredLocation: preferredLocation,
+        preferredPartnerLevel: selectedPartnerLevel,
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done &&
+            !snapshot.hasData) {
+          return Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'считаем людей рядом',
+              enText: 'counting nearby people',
+            ),
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.muted,
+              size: 13.0,
+              weight: FontWeight.w400,
+            ),
+          );
+        }
+
+        final count = snapshot.data;
+        if (count == null) {
+          return Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'количество людей недоступно',
+              enText: 'people count unavailable',
+            ),
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.muted,
+              size: 13.0,
+              weight: FontWeight.w400,
+            ),
+          );
+        }
+
+        return RichText(
+          textScaler: MediaQuery.of(context).textScaler,
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: FFLocalizations.of(context).getVariableText(
+                  ruText: 'рядом с вами ',
+                  enText: 'near you ',
+                ),
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 13.0,
+                  weight: FontWeight.w400,
+                ),
+              ),
+              TextSpan(
+                text: count.toString(),
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.success,
+                  size: 13.0,
+                  weight: FontWeight.w700,
+                ),
+              ),
+              TextSpan(
+                text: ' ${_partnerCountNoun(context, count)}',
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 13.0,
+                  weight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildReferenceSearchHero(BuildContext context) {
     final selectedPartnerLevel =
         currentUserDocument?.preferences.preferredPartnerLevel;
@@ -941,197 +1309,24 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
               ],
             ),
             Expanded(
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  const Positioned(
-                    left: 74.0,
-                    top: 116.0,
-                    child: DashboardFloatingAvatar(
-                      initials: 'AK',
-                      scale: DashboardFloatingAvatarScale.tiny,
-                      tone: DashboardFloatingAvatarTone.muted,
-                    ),
-                  ),
-                  const Positioned(
-                    right: 68.0,
-                    top: 102.0,
-                    child: DashboardFloatingAvatar(
-                      initials: 'MR',
-                      scale: DashboardFloatingAvatarScale.small,
-                      tone: DashboardFloatingAvatarTone.muted,
-                    ),
-                  ),
-                  const Positioned(
-                    left: -8.0,
-                    top: 204.0,
-                    child: DashboardFloatingAvatar(
-                      initials: 'JL',
-                      scale: DashboardFloatingAvatarScale.large,
-                    ),
-                  ),
-                  Positioned(
-                    right: -4.0,
-                    top: 196.0,
-                    child: DashboardFloatingAvatar(
-                      initials: currentUserDisplayName.trim().isNotEmpty
-                          ? currentUserDisplayName.trim()[0].toUpperCase()
-                          : 'ST',
-                      photoUrl: currentUserPhoto,
-                      scale: DashboardFloatingAvatarScale.current,
-                    ),
-                  ),
-                  const Positioned(
-                    left: 74.0,
-                    bottom: 116.0,
-                    child: DashboardFloatingAvatar(
-                      initials: 'EL',
-                      scale: DashboardFloatingAvatarScale.compact,
-                      tone: DashboardFloatingAvatarTone.muted,
-                    ),
-                  ),
-                  const Positioned(
-                    right: 78.0,
-                    bottom: 104.0,
-                    child: DashboardFloatingAvatar(
-                      initials: 'KT',
-                      scale: DashboardFloatingAvatarScale.regular,
-                      tone: DashboardFloatingAvatarTone.muted,
-                    ),
-                  ),
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(20.0),
-                          onTap: _handleStartConversation,
-                          child: Container(
-                            width: 240.0,
-                            height: 60.0,
-                            decoration: BoxDecoration(
-                              gradient: ExpatlioDesign.primaryGradient,
-                              borderRadius: BorderRadius.circular(20.0),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x267430E8),
-                                  blurRadius: 22.0,
-                                  offset: Offset(0.0, 10.0),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.auto_awesome_rounded,
-                                  color: Colors.white,
-                                  size: 22.0,
-                                ),
-                                const SizedBox(
-                                    width: ExpatlioDesign.itemSpacing),
-                                Text(
-                                  FFLocalizations.of(context).getVariableText(
-                                    ruText: 'Начать поиск',
-                                    enText: 'Start search',
-                                  ),
-                                  style: ExpatlioDesign.textStyle(
-                                    context,
-                                    color: Colors.white,
-                                    size: 18.0,
-                                    weight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: ExpatlioDesign.itemSpacing),
-                      FutureBuilder<int?>(
-                        future: _partnerCountFutureFor(
-                          preferredLocation: preferredLocation,
-                          preferredPartnerLevel: selectedPartnerLevel,
-                        ),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState !=
-                                  ConnectionState.done &&
-                              !snapshot.hasData) {
-                            return Text(
-                              FFLocalizations.of(context).getVariableText(
-                                ruText: 'считаем людей рядом',
-                                enText: 'counting nearby people',
-                              ),
-                              style: ExpatlioDesign.textStyle(
-                                context,
-                                color: ExpatlioDesign.muted,
-                                size: 13.0,
-                                weight: FontWeight.w400,
-                              ),
-                            );
-                          }
+              child: FutureBuilder<List<OrbitingAvatarData>>(
+                future: _partnerPreviewFutureFor(
+                  preferredLocation: preferredLocation,
+                  preferredPartnerLevel: selectedPartnerLevel,
+                ),
+                initialData: _fallbackSearchAvatars,
+                builder: (context, snapshot) {
+                  final avatars = snapshot.data?.isNotEmpty == true
+                      ? snapshot.data!
+                      : _fallbackSearchAvatars;
 
-                          final count = snapshot.data;
-                          if (count == null) {
-                            return Text(
-                              FFLocalizations.of(context).getVariableText(
-                                ruText: 'количество людей недоступно',
-                                enText: 'people count unavailable',
-                              ),
-                              style: ExpatlioDesign.textStyle(
-                                context,
-                                color: ExpatlioDesign.muted,
-                                size: 13.0,
-                                weight: FontWeight.w400,
-                              ),
-                            );
-                          }
-
-                          return RichText(
-                            textScaler: MediaQuery.of(context).textScaler,
-                            text: TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: FFLocalizations.of(context)
-                                      .getVariableText(
-                                    ruText: 'рядом с вами ',
-                                    enText: 'near you ',
-                                  ),
-                                  style: ExpatlioDesign.textStyle(
-                                    context,
-                                    color: ExpatlioDesign.muted,
-                                    size: 13.0,
-                                    weight: FontWeight.w400,
-                                  ),
-                                ),
-                                TextSpan(
-                                  text: count.toString(),
-                                  style: ExpatlioDesign.textStyle(
-                                    context,
-                                    color: ExpatlioDesign.success,
-                                    size: 13.0,
-                                    weight: FontWeight.w700,
-                                  ),
-                                ),
-                                TextSpan(
-                                  text: ' ${_partnerCountNoun(context, count)}',
-                                  style: ExpatlioDesign.textStyle(
-                                    context,
-                                    color: ExpatlioDesign.muted,
-                                    size: 13.0,
-                                    weight: FontWeight.w400,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ],
+                  return _buildSearchCtaContent(
+                    context: context,
+                    avatars: avatars,
+                    preferredLocation: preferredLocation,
+                    selectedPartnerLevel: selectedPartnerLevel,
+                  );
+                },
               ),
             ),
           ],
