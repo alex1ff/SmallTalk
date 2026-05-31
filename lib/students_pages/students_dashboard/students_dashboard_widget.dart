@@ -1069,27 +1069,28 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final orbitHeight =
-            (constraints.maxHeight - 50.0).clamp(250.0, 320.0).toDouble();
+        final orbitHeight = constraints.maxHeight.clamp(250.0, 320.0);
 
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: double.infinity,
-              height: orbitHeight,
-              child: OrbitingAvatarsCta(
-                avatars: avatars,
-                action: _buildStartSearchButton(context),
+        return Center(
+          child: SizedBox(
+            width: double.infinity,
+            height: orbitHeight,
+            child: OrbitingAvatarsCta(
+              avatars: avatars,
+              action: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildStartSearchButton(context),
+                  const SizedBox(height: ExpatlioDesign.itemSpacing),
+                  _buildPartnerCountText(
+                    context: context,
+                    preferredLocation: preferredLocation,
+                    selectedPartnerLevel: selectedPartnerLevel,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: ExpatlioDesign.itemSpacing),
-            _buildPartnerCountText(
-              context: context,
-              preferredLocation: preferredLocation,
-              selectedPartnerLevel: selectedPartnerLevel,
-            ),
-          ],
+          ),
         );
       },
     );
