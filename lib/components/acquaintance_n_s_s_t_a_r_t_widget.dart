@@ -108,7 +108,7 @@ class _AcquaintanceNSSTARTWidgetState extends State<AcquaintanceNSSTARTWidget> {
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
                               borderRadius: BorderRadius.circular(
-                                  ExpatlioDesign.radiusCapsule),
+                                  ExpatlioDesign.radiusExtraLarge),
                             ),
                             child: Padding(
                               padding: EdgeInsets.all(ExpatlioDesign.space24),
