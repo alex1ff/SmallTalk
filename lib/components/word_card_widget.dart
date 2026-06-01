@@ -66,17 +66,17 @@ class _WordCardWidgetState extends State<WordCardWidget> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
         onTap: _openWordSheet,
         child: Container(
           width: double.infinity,
           height: 169.0,
           decoration: BoxDecoration(
             color: ExpatlioDesign.card,
-            borderRadius: BorderRadius.circular(16.0),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
           ),
           child: Padding(
-            padding: EdgeInsets.all(16.0),
+            padding: EdgeInsets.all(ExpatlioDesign.space16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,7 +94,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
                               fontFamily: 'Cool',
                               color: ExpatlioDesign.text,
-                              fontSize: 21.0,
+                              fontSize: 22.0,
                               letterSpacing: 0.0,
                               fontWeight: FontWeight.normal,
                             ),
@@ -105,7 +105,8 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                       height: 40.0,
                       decoration: BoxDecoration(
                         color: ExpatlioDesign.background,
-                        borderRadius: BorderRadius.circular(32.0),
+                        borderRadius:
+                            BorderRadius.circular(ExpatlioDesign.radiusCapsule),
                       ),
                       child: Icon(
                         FFIcons.kexpand01,
@@ -116,7 +117,11 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                   ],
                 ),
                 Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(20.0, 2.0, 0.0, 2.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space20,
+                      ExpatlioDesign.space4,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space4),
                   child: Container(
                     width: 1.0,
                     height: 12.0,
@@ -133,20 +138,24 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'Cool',
                         color: ExpatlioDesign.text,
-                        fontSize: 21.0,
+                        fontSize: 22.0,
                         letterSpacing: 0.0,
                         fontWeight: FontWeight.normal,
                       ),
                 ),
                 Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(0.0, 16.0, 0.0, 0.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space16,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0),
                   child: Row(
                     mainAxisSize: MainAxisSize.max,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       FlutterFlowIconButton(
-                        borderRadius: 40.0,
+                        borderRadius: ExpatlioDesign.radiusCapsule,
                         buttonSize: 40.0,
                         fillColor: ExpatlioDesign.background,
                         icon: Icon(
@@ -169,7 +178,8 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                       Container(
                         height: 24.0,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8.0),
+                          borderRadius:
+                              BorderRadius.circular(ExpatlioDesign.radiusSmall),
                           border: Border.all(
                             color: ExpatlioDesign.muted,
                             width: 1.0,
@@ -179,7 +189,10 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                           alignment: AlignmentDirectional(0.0, 0.0),
                           child: Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                8.0, 0.0, 8.0, 0.0),
+                                ExpatlioDesign.space8,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space8,
+                                ExpatlioDesign.space0),
                             child: Text(
                               valueOrDefault<String>(
                                 widget.wordDoc?.entry.firstOrNull?.pos,
@@ -200,7 +213,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                           ),
                         ),
                       ),
-                    ].divide(SizedBox(width: 12.0)),
+                    ].divide(SizedBox(width: ExpatlioDesign.space12)),
                   ),
                 ),
               ],

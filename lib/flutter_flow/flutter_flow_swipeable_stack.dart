@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
+import '/shared_pages/design/expatlio_design.dart';
 
 class FlutterFlowSwipeableStack extends StatefulWidget {
   const FlutterFlowSwipeableStack({
@@ -73,7 +74,9 @@ class _FFSwipeableStackState extends State<FlutterFlowSwipeableStack> {
           widget.threshold != null ? (100 * widget.threshold!).round() : 50,
       scale: widget.scale,
       padding: widget.cardPadding ??
-          const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
+          const EdgeInsets.symmetric(
+              horizontal: ExpatlioDesign.space20,
+              vertical: ExpatlioDesign.space24),
       backCardOffset: widget.backCardOffset ?? const Offset(0, 40),
       numberOfCardsDisplayed: min(widget.cardDisplayCount, widget.itemCount),
       allowedSwipeDirection: widget.allowedSwipeDirection == null

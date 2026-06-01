@@ -333,7 +333,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           height: 36.0,
           decoration: BoxDecoration(
             color: selected ? ExpatlioDesign.card : Colors.transparent,
-            borderRadius: BorderRadius.circular(10.0),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
             shape: BoxShape.rectangle,
           ),
           child: Align(
@@ -366,10 +366,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
         height: 38.0,
         decoration: BoxDecoration(
           color: ExpatlioDesign.mutedSurface,
-          borderRadius: BorderRadius.circular(12.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(2.0),
+          padding: const EdgeInsets.all(ExpatlioDesign.space4),
           child: Row(
             mainAxisSize: MainAxisSize.max,
             children: [
@@ -490,9 +490,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     child: Padding(
                       padding: const EdgeInsetsDirectional.fromSTEB(
                         ExpatlioDesign.itemSpacing,
-                        0.0,
-                        0.0,
-                        0.0,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space0,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,7 +519,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                     if (isFriend)
                                       const Padding(
                                         padding: EdgeInsetsDirectional.only(
-                                            start: 5),
+                                            start: ExpatlioDesign.space8),
                                         child: Icon(
                                           Icons.star_rounded,
                                           color: Color(0xFFFFC107),
@@ -540,7 +540,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 4.0),
+                          const SizedBox(height: ExpatlioDesign.space4),
                           Text(
                             subtitle,
                             maxLines: 1,
@@ -557,7 +557,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsetsDirectional.only(start: 10.0),
+                    padding: const EdgeInsetsDirectional.only(
+                        start: ExpatlioDesign.space12),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -574,7 +575,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                             weight: FontWeight.w400,
                           ),
                         ),
-                        const SizedBox(height: 8.0),
+                        const SizedBox(height: ExpatlioDesign.space8),
                         Icon(
                           Icons.chevron_right_rounded,
                           color: FlutterFlowTheme.of(context).secondaryText,
@@ -646,7 +647,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsetsDirectional.only(bottom: 120.0),
+      padding:
+          const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space112),
       itemCount: conversations.length,
       itemBuilder: (context, index) {
         final conversation = conversations[index];
@@ -664,7 +666,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
   Widget _buildMessagesLoadingList(BuildContext context) {
     return ListView.builder(
-      padding: const EdgeInsetsDirectional.only(bottom: 120.0),
+      padding:
+          const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space112),
       itemCount: 4,
       itemBuilder: (context, index) => _conversationLoadingCard(context),
     );
@@ -715,9 +718,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
               child: Padding(
                 padding: const EdgeInsetsDirectional.fromSTEB(
                   ExpatlioDesign.itemSpacing,
-                  0.0,
-                  0.0,
-                  0.0,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -780,7 +783,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsetsDirectional.only(bottom: 120.0),
+      padding:
+          const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space112),
       itemCount: friendConversations.length,
       itemBuilder: (context, index) => _conversationCard(
         context,
@@ -801,7 +805,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       width: double.infinity,
       margin: const EdgeInsetsDirectional.fromSTEB(
         ExpatlioDesign.pagePadding,
-        0.0,
+        ExpatlioDesign.space0,
         ExpatlioDesign.pagePadding,
         ExpatlioDesign.itemSpacing,
       ),
@@ -813,7 +817,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       ),
       decoration: BoxDecoration(
         color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(16.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
         border: Border.all(color: ExpatlioDesign.border),
       ),
       child: Text(

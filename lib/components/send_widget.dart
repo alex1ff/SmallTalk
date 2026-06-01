@@ -42,7 +42,11 @@ class _SendWidgetState extends State<SendWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
@@ -63,8 +67,11 @@ class _SendWidgetState extends State<SendWidget> {
                       onConfirm: () => Navigator.pop(context),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space16,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space16,
+                          ExpatlioDesign.space0),
                       child: AutoSizeText(
                         FFLocalizations.of(context).getText(
                           '72up7lns' /* Письм с инструкцей по восстано... */,
@@ -80,8 +87,8 @@ class _SendWidgetState extends State<SendWidget> {
                             ),
                       ),
                     ),
-                    const SizedBox(height: 35.0),
-                  ].divide(SizedBox(height: 24.0)),
+                    const SizedBox(height: ExpatlioDesign.space32),
+                  ].divide(SizedBox(height: ExpatlioDesign.space24)),
                 ),
               ),
             ],

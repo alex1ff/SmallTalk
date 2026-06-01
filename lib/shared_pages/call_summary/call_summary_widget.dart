@@ -9,7 +9,6 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
-import '/shared_pages/call_history/call_language_utils.dart';
 import '/shared_pages/chat_thread/open_chat_thread.dart';
 import '/index.dart';
 import '/services/user_match_profile.dart';
@@ -78,14 +77,6 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     super.dispose();
   }
 
-  String _resolvedSessionLanguageName(BuildContext context) {
-    return resolveSessionLanguageName(
-      languages: FFAppState().languagesList,
-      code: widget.lang,
-      useRussian: FFLocalizations.of(context).languageCode == 'ru',
-    );
-  }
-
   Future<UserPublicProfilesRecord?> _createUserFuture() {
     final userRef = widget.userRef;
     if (userRef == null) {
@@ -114,6 +105,42 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
   String _summaryUserPhotoUrl(UserPublicProfilesRecord? user) =>
       user?.photoUrl.trim() ?? '';
+
+  String _formattedCallDuration() {
+    final totalSeconds = widget.dur < 0 ? 0 : widget.dur;
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return [
+        hours.toString().padLeft(2, '0'),
+        minutes.toString().padLeft(2, '0'),
+        seconds.toString().padLeft(2, '0'),
+      ].join(':');
+    }
+
+    return [
+      minutes.toString().padLeft(2, '0'),
+      seconds.toString().padLeft(2, '0'),
+    ].join(':');
+  }
+
+  TextStyle _summaryTextStyle(
+    BuildContext context, {
+    required double fontSize,
+    required Color color,
+    FontWeight fontWeight = FontWeight.w400,
+    double lineHeight = 1.2,
+  }) =>
+      FlutterFlowTheme.of(context).bodyMedium.override(
+            fontFamily: 'sf pro display',
+            color: color,
+            fontSize: fontSize,
+            letterSpacing: 0.0,
+            fontWeight: fontWeight,
+            lineHeight: lineHeight,
+          );
 
   bool _referenceListContains(
     Iterable<DocumentReference>? references,
@@ -179,11 +206,11 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(16.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
       ),
       alignment: Alignment.center,
       child: const Padding(
-        padding: EdgeInsets.symmetric(vertical: 32.0),
+        padding: EdgeInsets.symmetric(vertical: ExpatlioDesign.space32),
         child: CircularProgressIndicator(),
       ),
     );
@@ -264,7 +291,11 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
         }
 
         return Wrapper(
-          padding: const EdgeInsetsDirectional.fromSTEB(6.0, 28.0, 6.0, 0.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space8,
+              ExpatlioDesign.space32,
+              ExpatlioDesign.space8,
+              ExpatlioDesign.space0),
           child: ButtonWidget(
             text: FFLocalizations.of(context).getVariableText(
               ruText: 'Открыть чат',
@@ -287,177 +318,93 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     );
   }
 
+  Color _ratingColor(BuildContext context) {
+    if (_model.rait <= 0) {
+      return const Color(0xFFD8D8DE);
+    }
+    if (_model.rait <= 2) {
+      return FlutterFlowTheme.of(context).error;
+    }
+    if (_model.rait == 3) {
+      return const Color(0xFFFF8A00);
+    }
+    return const Color(0xFFFFC600);
+  }
+
+  Widget _buildRatingStar(BuildContext context, int rating) {
+    final isSelected = _model.rait >= rating;
+    return Expanded(
+      child: FlutterFlowIconButton(
+        borderColor: Colors.transparent,
+        borderRadius: ExpatlioDesign.radiusMedium,
+        buttonSize: 48.0,
+        icon: Icon(
+          Icons.star_rounded,
+          color: isSelected ? _ratingColor(context) : const Color(0xFFD8D8DE),
+          size: 38.0,
+        ),
+        onPressed: () async {
+          _model.rait = rating;
+          safeSetState(() {});
+        },
+      ),
+    );
+  }
+
   Widget _buildReviewForm(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: ExpatlioDesign.card,
-            borderRadius: BorderRadius.circular(16.0),
-          ),
-          alignment: const AlignmentDirectional(0.0, 0.0),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(8.0, 35.0, 8.0, 35.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.max,
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).primaryBackground,
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+        border: Border.all(
+          color: const Color(0xFFE7E7EC),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              FFLocalizations.of(context).getVariableText(
+                ruText: 'Оставить отзыв',
+                enText: 'Leave feedback',
+              ),
+              style: _summaryTextStyle(
+                context,
+                fontSize: 17.0,
+                color: ExpatlioDesign.text,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: ExpatlioDesign.space4),
+            Text(
+              FFLocalizations.of(context).getVariableText(
+                ruText: 'Оцените разговор и напишите пару слов о собеседнике.',
+                enText:
+                    'Rate the call and write a few words about your partner.',
+              ),
+              style: _summaryTextStyle(
+                context,
+                fontSize: 13.0,
+                color: ExpatlioDesign.muted,
+              ),
+            ),
+            const SizedBox(height: ExpatlioDesign.space16),
+            Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Expanded(
-                  child: FlutterFlowIconButton(
-                    borderColor: Colors.transparent,
-                    borderRadius: 8,
-                    buttonSize: 55,
-                    icon: Icon(
-                      FFIcons.kstar012,
-                      color: valueOrDefault<Color>(
-                        () {
-                          if (_model.rait == 1) {
-                            return Color(0xFF850000);
-                          } else if (_model.rait == 2) {
-                            return Color(0xFFFF0000);
-                          } else if (_model.rait == 3) {
-                            return Color(0xFFFF3D00);
-                          } else if (_model.rait == 4) {
-                            return Color(0xFFFF7000);
-                          } else if (_model.rait == 5) {
-                            return Color(0xFFFFC600);
-                          } else {
-                            return FlutterFlowTheme.of(context)
-                                .secondaryBackground;
-                          }
-                        }(),
-                        FlutterFlowTheme.of(context).secondaryBackground,
-                      ),
-                      size: 40,
-                    ),
-                    onPressed: () async {
-                      _model.rait = 1;
-                      safeSetState(() {});
-                    },
-                  ),
-                ),
-                Expanded(
-                  child: FlutterFlowIconButton(
-                    borderColor: Colors.transparent,
-                    borderRadius: 8,
-                    buttonSize: 55,
-                    icon: Icon(
-                      FFIcons.kstar012,
-                      color: valueOrDefault<Color>(
-                        () {
-                          if (_model.rait == 2) {
-                            return Color(0xFFFF0000);
-                          } else if (_model.rait == 3) {
-                            return Color(0xFFFF3D00);
-                          } else if (_model.rait == 4) {
-                            return Color(0xFFFF7000);
-                          } else if (_model.rait == 5) {
-                            return Color(0xFFFFC600);
-                          } else {
-                            return FlutterFlowTheme.of(context)
-                                .secondaryBackground;
-                          }
-                        }(),
-                        FlutterFlowTheme.of(context).secondaryBackground,
-                      ),
-                      size: 40,
-                    ),
-                    onPressed: () async {
-                      _model.rait = 2;
-                      safeSetState(() {});
-                    },
-                  ),
-                ),
-                Expanded(
-                  child: FlutterFlowIconButton(
-                    borderColor: Colors.transparent,
-                    borderRadius: 8,
-                    buttonSize: 55,
-                    icon: Icon(
-                      FFIcons.kstar012,
-                      color: valueOrDefault<Color>(
-                        () {
-                          if (_model.rait == 3) {
-                            return Color(0xFFFF3D00);
-                          } else if (_model.rait == 4) {
-                            return Color(0xFFFF7000);
-                          } else if (_model.rait == 5) {
-                            return Color(0xFFFFC600);
-                          } else {
-                            return FlutterFlowTheme.of(context)
-                                .secondaryBackground;
-                          }
-                        }(),
-                        FlutterFlowTheme.of(context).secondaryBackground,
-                      ),
-                      size: 40,
-                    ),
-                    onPressed: () async {
-                      _model.rait = 3;
-                      safeSetState(() {});
-                    },
-                  ),
-                ),
-                Expanded(
-                  child: FlutterFlowIconButton(
-                    borderColor: Colors.transparent,
-                    borderRadius: 8,
-                    buttonSize: 55,
-                    icon: Icon(
-                      FFIcons.kstar012,
-                      color: valueOrDefault<Color>(
-                        () {
-                          if (_model.rait == 4) {
-                            return Color(0xFFFF7000);
-                          } else if (_model.rait == 5) {
-                            return Color(0xFFFFC600);
-                          } else {
-                            return FlutterFlowTheme.of(context)
-                                .secondaryBackground;
-                          }
-                        }(),
-                        FlutterFlowTheme.of(context).secondaryBackground,
-                      ),
-                      size: 40,
-                    ),
-                    onPressed: () async {
-                      _model.rait = 4;
-                      safeSetState(() {});
-                    },
-                  ),
-                ),
-                Expanded(
-                  child: FlutterFlowIconButton(
-                    borderColor: Colors.transparent,
-                    borderRadius: 8,
-                    buttonSize: 55,
-                    icon: Icon(
-                      FFIcons.kstar012,
-                      color: valueOrDefault<Color>(
-                        _model.rait == 5
-                            ? Color(0xFFFFC600)
-                            : FlutterFlowTheme.of(context).secondaryBackground,
-                        FlutterFlowTheme.of(context).secondaryBackground,
-                      ),
-                      size: 40,
-                    ),
-                    onPressed: () async {
-                      _model.rait = 5;
-                      safeSetState(() {});
-                    },
-                  ),
-                ),
+                for (var rating = 1; rating <= 5; rating++)
+                  _buildRatingStar(context, rating),
               ],
             ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
-          child: SizedBox(
-            width: double.infinity,
-            child: TextFormField(
+            const SizedBox(height: ExpatlioDesign.space12),
+            TextFormField(
               controller: _model.aboutMeTextController,
               focusNode: _model.aboutMeFocusNode,
               onChanged: (_) => EasyDebounce.debounce(
@@ -478,11 +425,11 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                   ),
                   reviewCommentHintText(context, 0),
                 ),
-                maxLines: 12,
+                maxLines: 5,
               ),
               style: ExpatlioDesign.formTextStyle(context),
-              maxLines: 12,
-              minLines: 2,
+              maxLines: 5,
+              minLines: 3,
               cursorColor: ExpatlioDesign.primary,
               enableInteractiveSelection: true,
               validator:
@@ -498,9 +445,9 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                   }),
               ],
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -537,10 +484,12 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     BuildContext context, {
     required bool isActive,
     required IconData icon,
-    required String text,
+    required String title,
+    required String subtitle,
     required VoidCallback onTap,
     required Color activeBackgroundColor,
     required Color activeIconColor,
+    Color activeBorderColor = const Color(0xFF7B2FF2),
   }) {
     return InkWell(
       splashColor: Colors.transparent,
@@ -549,61 +498,77 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
       highlightColor: Colors.transparent,
       onTap: onTap,
       child: Container(
-        height: 60,
+        constraints: const BoxConstraints(minHeight: 60.0),
         decoration: BoxDecoration(
-          color: valueOrDefault<Color>(
-            isActive
-                ? activeBackgroundColor
-                : FlutterFlowTheme.of(context).primaryBackground,
-            FlutterFlowTheme.of(context).primaryBackground,
+          color: isActive
+              ? activeBackgroundColor
+              : FlutterFlowTheme.of(context).primaryBackground,
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
+          border: Border.all(
+            color: isActive ? activeBorderColor : const Color(0xFFE7E7EC),
           ),
-          borderRadius: BorderRadius.circular(55),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(2),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space12),
           child: Row(
             mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 56,
-                height: 56,
+                width: 40.0,
+                height: 40.0,
                 decoration: BoxDecoration(
-                  color: valueOrDefault<Color>(
-                    isActive
-                        ? FlutterFlowTheme.of(context).primaryBackground
-                        : FlutterFlowTheme.of(context).secondaryBackground,
-                    FlutterFlowTheme.of(context).secondaryBackground,
-                  ),
-                  borderRadius: BorderRadius.circular(55),
+                  color: isActive
+                      ? Colors.white
+                      : FlutterFlowTheme.of(context).secondaryBackground,
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusMedium),
                 ),
                 child: Icon(
                   icon,
-                  color: valueOrDefault<Color>(
-                    isActive ? activeIconColor : ExpatlioDesign.muted,
-                    ExpatlioDesign.muted,
-                  ),
-                  size: 20,
+                  color: isActive ? activeIconColor : ExpatlioDesign.text,
+                  size: 20.0,
                 ),
               ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsetsDirectional.fromSTEB(12, 0, 16, 0),
-                  child: Text(
-                    text,
-                    maxLines: 1,
-                    overflow: TextOverflow.fade,
-                    softWrap: false,
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          color: valueOrDefault<Color>(
-                            isActive
-                                ? FlutterFlowTheme.of(context).primaryBackground
-                                : ExpatlioDesign.text,
-                            ExpatlioDesign.text,
-                          ),
-                          fontSize: 15,
-                          letterSpacing: 0.0,
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space12,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _summaryTextStyle(
+                          context,
+                          fontSize: 15.0,
+                          color: ExpatlioDesign.text,
+                          fontWeight: FontWeight.w700,
                         ),
+                      ),
+                      const SizedBox(height: ExpatlioDesign.space4),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: _summaryTextStyle(
+                          context,
+                          fontSize: 12.0,
+                          color: ExpatlioDesign.muted,
+                          lineHeight: 1.15,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -614,6 +579,87 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     );
   }
 
+  Widget _buildTopBar(BuildContext context) {
+    return SizedBox(
+      height: 44.0,
+      child: Row(
+        children: [
+          InkWell(
+            splashColor: Colors.transparent,
+            focusColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            borderRadius:
+                BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+            onTap: _navigateToHome,
+            child: Container(
+              width: 44.0,
+              height: 44.0,
+              decoration: BoxDecoration(
+                color: FlutterFlowTheme.of(context).secondaryBackground,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.close_rounded,
+                color: ExpatlioDesign.text,
+                size: 22.0,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              FFLocalizations.of(context).getVariableText(
+                ruText: 'Звонок завершён · ${_formattedCallDuration()}',
+                enText: 'Call ended · ${_formattedCallDuration()}',
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: _summaryTextStyle(
+                context,
+                fontSize: 15.0,
+                color: ExpatlioDesign.muted,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: ExpatlioDesign.space40),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryAvatar(
+    BuildContext context, {
+    required String photoUrl,
+  }) {
+    return Container(
+      width: 78.0,
+      height: 78.0,
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).secondaryBackground,
+        shape: BoxShape.circle,
+        image: photoUrl.isNotEmpty
+            ? DecorationImage(
+                fit: BoxFit.cover,
+                image: CachedNetworkImageProvider(
+                  photoUrl,
+                  maxWidth: 240,
+                  maxHeight: 240,
+                ),
+              )
+            : null,
+      ),
+      child: photoUrl.isEmpty
+          ? Icon(
+              Icons.person_rounded,
+              color: ExpatlioDesign.muted,
+              size: 34.0,
+            )
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isKeyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
@@ -621,13 +667,14 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
         (_model.aboutMeFocusNode?.hasFocus ?? false) || isKeyboardVisible;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         FocusScope.of(context).unfocus();
         FocusManager.instance.primaryFocus?.unfocus();
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: ExpatlioDesign.background,
+        backgroundColor: const Color(0xFFFAFAFB),
         body: FutureBuilder<UserPublicProfilesRecord?>(
           future: _model.userFuture,
           builder: (context, snapshot) {
@@ -654,140 +701,237 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                 final effectiveFav = effectiveBlack
                     ? false
                     : (_model.favTouched ? _model.fav : initiallyFavorite);
+                final effectiveSkipToday = _model.skipToday;
 
-                return Stack(
-                  children: [
-                    Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.max,
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding:
-                                  EdgeInsetsDirectional.fromSTEB(10, 16, 10, 0),
-                              child: Text(
-                                FFLocalizations.of(context).getText(
-                                  'nkmvs84c' /* Как прошёл звонок? */,
-                                ),
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'Cool',
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryText,
-                                      fontSize: 43,
-                                      letterSpacing: 0.0,
-                                      fontWeight: FontWeight.normal,
-                                      lineHeight: 1.1,
-                                    ),
-                              ),
+                Future<void> finishSummary() async {
+                  if (_model.rait != 0) {
+                    final sessionRef = widget.sessionID;
+                    final toUserRef = widget.userRef;
+                    if (sessionRef == null || toUserRef == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            FFLocalizations.of(context).getVariableText(
+                              ruText:
+                                  'Не удалось отправить отзыв: отсутствуют данные сессии.',
+                              enText:
+                                  'Unable to submit review: missing session data.',
                             ),
-                            Padding(
-                              padding:
-                                  EdgeInsetsDirectional.fromSTEB(10, 4, 10, 0),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.max,
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      final result = await submitSessionReview(
+                        sessionRef: sessionRef,
+                        toUserRef: toUserRef,
+                        rating: _model.rait,
+                        isTeacher: currentUserDocument?.role ==
+                            UserRole.native_speaker,
+                        comment: _model.aboutMeTextController.text,
+                      );
+                      _model.reviewRefOverride = result.reviewRef;
+                      _model.rait = 0;
+                      _model.aboutMeTextController?.clear();
+                      FocusScope.of(context).unfocus();
+                      safeSetState(() {});
+                    } on FirebaseFunctionsException catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(reviewErrorMessage(context, e)),
+                        ),
+                      );
+                      return;
+                    } catch (_) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(unexpectedReviewErrorMessage(context)),
+                        ),
+                      );
+                      return;
+                    }
+                  }
+
+                  if (targetUserRef != null && signedInUserRef != null) {
+                    final relationshipUpdate = <String, dynamic>{};
+                    if (effectiveBlack) {
+                      relationshipUpdate.addAll(
+                        buildBlockAndRemoveFriendUpdateData(targetUserRef),
+                      );
+                    } else {
+                      if (initiallyBlocked) {
+                        relationshipUpdate.addAll(
+                          buildUnblockUserUpdateData(targetUserRef),
+                        );
+                      }
+                      if (effectiveFav) {
+                        relationshipUpdate.addAll(
+                          buildAddFriendUpdateData(targetUserRef),
+                        );
+                      } else if (initiallyFavorite) {
+                        relationshipUpdate.addAll(
+                          buildRemoveFriendUpdateData(targetUserRef),
+                        );
+                      }
+                    }
+
+                    if (relationshipUpdate.isNotEmpty) {
+                      await signedInUserRef.update(relationshipUpdate);
+                    }
+                  }
+
+                  _navigateToHome();
+                }
+
+                final canShowRelationshipActions =
+                    targetUserRef != null && signedInUserRef != null;
+                final displayName = _summaryUserDisplayName(
+                  context,
+                  stackUserPublicProfile,
+                );
+
+                return SafeArea(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: SingleChildScrollView(
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          padding: const EdgeInsetsDirectional.fromSTEB(
+                            ExpatlioDesign.space24,
+                            ExpatlioDesign.space12,
+                            ExpatlioDesign.space24,
+                            ExpatlioDesign.space136,
+                          ),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints:
+                                  const BoxConstraints(maxWidth: 390.0),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
+                                  _buildTopBar(context),
+                                  const SizedBox(
+                                      height: ExpatlioDesign.space24),
+                                  _buildSummaryAvatar(
+                                    context,
+                                    photoUrl: stackUserPhotoUrl,
+                                  ),
+                                  const SizedBox(
+                                      height: ExpatlioDesign.space12),
                                   Text(
-                                    () {
-                                      final totalSeconds = widget.dur;
-                                      final minutes = totalSeconds ~/ 60;
-                                      final seconds = totalSeconds % 60;
-                                      return '$minutes:${seconds.toString().padLeft(2, '0')} мин';
-                                    }(),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: FlutterFlowTheme.of(context)
-                                              .secondaryText,
-                                          fontSize: 15,
-                                          letterSpacing: 0.0,
-                                        ),
-                                  ),
-                                  SizedBox(
-                                    height: 10,
-                                    child: VerticalDivider(
-                                      thickness: 1,
-                                      color: FlutterFlowTheme.of(context)
-                                          .secondaryText,
+                                    displayName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: _summaryTextStyle(
+                                      context,
+                                      fontSize: 20.0,
+                                      color: ExpatlioDesign.text,
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
-                                  Flexible(
-                                    child: Text(
-                                      _resolvedSessionLanguageName(context),
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'sf pro display',
-                                            color: FlutterFlowTheme.of(context)
-                                                .secondaryText,
-                                            fontSize: 15,
-                                            letterSpacing: 0.0,
-                                          ),
+                                  const SizedBox(height: ExpatlioDesign.space4),
+                                  Text(
+                                    FFLocalizations.of(context).getVariableText(
+                                      ruText: 'Как прошёл разговор?',
+                                      enText: 'How did the conversation go?',
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    style: _summaryTextStyle(
+                                      context,
+                                      fontSize: 17.0,
+                                      color: ExpatlioDesign.text,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                ],
-                              ),
-                            ),
-                            Padding(
-                              padding:
-                                  EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
-                              child: _buildReviewSection(context),
-                            ),
-                            _buildOpenChatCta(context),
-                            if (targetUserRef != null &&
-                                signedInUserRef != null)
-                              Padding(
-                                padding:
-                                    EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
-                                child: LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    final showsFriendAction =
-                                        (currentUserDocument?.role ==
-                                                UserRole.student) &&
-                                            !effectiveBlack;
-                                    final useVerticalActions =
-                                        showsFriendAction &&
-                                            constraints.maxWidth < 430.0;
-                                    final friendAction =
-                                        _buildSummaryActionButton(
+                                  if (canShowRelationshipActions) ...[
+                                    const SizedBox(
+                                        height: ExpatlioDesign.space20),
+                                    _buildSummaryActionButton(
                                       context,
                                       isActive: effectiveFav,
-                                      icon: FFIcons.kheart,
-                                      text: FFLocalizations.of(context)
+                                      icon: Icons.person_add_alt_1_rounded,
+                                      title: FFLocalizations.of(context)
                                           .getVariableText(
-                                        ruText: effectiveFav
-                                            ? 'Убрать из друзей'
-                                            : 'Добавить в друзья',
-                                        enText: effectiveFav
-                                            ? 'Remove from friends'
-                                            : 'Add to friends',
+                                        ruText: 'В друзья',
+                                        enText: 'Add to friends',
+                                      ),
+                                      subtitle: FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText:
+                                            'Появится в вашем списке друзей',
+                                        enText:
+                                            'Will appear in your friends list',
                                       ),
                                       activeBackgroundColor:
-                                          FlutterFlowTheme.of(context).primary,
+                                          const Color(0xFFF5F0FF),
                                       activeIconColor:
-                                          FlutterFlowTheme.of(context).error,
+                                          FlutterFlowTheme.of(context).primary,
                                       onTap: () {
                                         _model.favTouched = true;
                                         _model.fav = !effectiveFav;
+                                        if (_model.fav) {
+                                          _model.blackTouched = true;
+                                          _model.black = false;
+                                        }
                                         safeSetState(() {});
                                       },
-                                    );
-                                    final blockAction =
-                                        _buildSummaryActionButton(
+                                    ),
+                                    const SizedBox(
+                                        height: ExpatlioDesign.space12),
+                                    _buildSummaryActionButton(
                                       context,
-                                      isActive: effectiveBlack,
-                                      icon: FFIcons.kthumbsDown,
-                                      text: FFLocalizations.of(context).getText(
-                                        'kth7l1fn' /* Не соединять */,
+                                      isActive: effectiveSkipToday,
+                                      icon: Icons.access_time_rounded,
+                                      title: FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText: 'Больше не соединять сегодня',
+                                        enText: 'Do not connect again today',
+                                      ),
+                                      subtitle: FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText:
+                                            'Не будем предлагать его до завтра',
+                                        enText:
+                                            'We will not suggest them until tomorrow',
                                       ),
                                       activeBackgroundColor:
-                                          FlutterFlowTheme.of(context).error,
+                                          const Color(0xFFF4F4F6),
+                                      activeIconColor: ExpatlioDesign.text,
+                                      activeBorderColor:
+                                          const Color(0xFFB7B7C2),
+                                      onTap: () {
+                                        _model.skipToday = !_model.skipToday;
+                                        safeSetState(() {});
+                                      },
+                                    ),
+                                    const SizedBox(
+                                        height: ExpatlioDesign.space12),
+                                    _buildSummaryActionButton(
+                                      context,
+                                      isActive: effectiveBlack,
+                                      icon: Icons.person_off_rounded,
+                                      title: FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText: 'Добавить в чёрный список',
+                                        enText: 'Add to blacklist',
+                                      ),
+                                      subtitle: FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText: 'Больше не сможет вам звонить',
+                                        enText:
+                                            'They will no longer be able to call you',
+                                      ),
+                                      activeBackgroundColor:
+                                          const Color(0xFFFFF6F6),
                                       activeIconColor:
                                           FlutterFlowTheme.of(context).error,
+                                      activeBorderColor:
+                                          const Color(0xFFFF8A8A),
                                       onTap: () {
                                         _model.blackTouched = true;
                                         _model.black = !effectiveBlack;
@@ -797,189 +941,120 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                         }
                                         safeSetState(() {});
                                       },
-                                    );
-
-                                    if (useVerticalActions) {
-                                      return Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (showsFriendAction) friendAction,
-                                          if (showsFriendAction)
-                                            const SizedBox(height: 12.0),
-                                          blockAction,
-                                        ],
-                                      );
-                                    }
-
-                                    return Row(
-                                      mainAxisSize: MainAxisSize.max,
-                                      children: [
-                                        if (showsFriendAction)
-                                          Expanded(
-                                            child: Padding(
-                                              padding:
-                                                  const EdgeInsetsDirectional
-                                                      .only(end: 6.0),
-                                              child: friendAction,
-                                            ),
-                                          ),
-                                        if (showsFriendAction)
-                                          const SizedBox(width: 6.0),
-                                        Expanded(child: blockAction),
-                                      ],
-                                    );
-                                  },
-                                ),
+                                    ),
+                                  ],
+                                  const SizedBox(
+                                      height: ExpatlioDesign.space20),
+                                  _buildReviewSection(context),
+                                  _buildOpenChatCta(context),
+                                ],
                               ),
-                          ].addToStart(SizedBox(height: 115)).addToEnd(
-                                const SizedBox(height: 120),
-                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                    Align(
-                      alignment: AlignmentDirectional(0, 1),
-                      child: SizedBox(
-                        height: 120.0,
-                        child: AnimatedPadding(
-                          duration: _ctaAnimationDuration,
-                          curve: Curves.easeOutCubic,
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                            0.0,
-                            0.0,
-                            0.0,
-                            isComposerActive ? 24.0 : 0.0,
+                      Align(
+                        alignment: AlignmentDirectional.bottomCenter,
+                        child: Container(
+                          height: 142.0,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0x00FAFAFB),
+                                const Color(0xEEFAFAFB),
+                                const Color(0xFFFAFAFB),
+                              ],
+                              stops: const [0.0, 0.22, 0.62],
+                              begin: AlignmentDirectional.topCenter,
+                              end: AlignmentDirectional.bottomCenter,
+                            ),
                           ),
-                          child: IgnorePointer(
-                            ignoring: isComposerActive,
-                            child: AnimatedOpacity(
-                              duration: _ctaAnimationDuration,
-                              curve: Curves.easeOutCubic,
-                              opacity: isComposerActive ? 0.0 : 1.0,
-                              child: AnimatedSlide(
+                          child: AnimatedPadding(
+                            duration: _ctaAnimationDuration,
+                            curve: Curves.easeOutCubic,
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space24,
+                              ExpatlioDesign.space24,
+                              ExpatlioDesign.space24,
+                              isComposerActive
+                                  ? ExpatlioDesign.space24
+                                  : ExpatlioDesign.space12,
+                            ),
+                            child: IgnorePointer(
+                              ignoring: isComposerActive,
+                              child: AnimatedOpacity(
                                 duration: _ctaAnimationDuration,
                                 curve: Curves.easeOutCubic,
-                                offset: isComposerActive
-                                    ? const Offset(0.0, 0.24)
-                                    : Offset.zero,
-                                child: wrapWithModel(
-                                  model: _model.buttonModel,
-                                  updateCallback: () => safeSetState(() {}),
-                                  child: Center(
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        maxWidth: 360.0,
-                                      ),
-                                      child: Wrapper(
-                                        padding: const EdgeInsetsDirectional
-                                            .fromSTEB(6.0, 0.0, 6.0, 35.0),
-                                        child: ButtonWidget(
-                                          text: FFLocalizations.of(context)
-                                              .getText(
-                                            'duynuhus' /* Готово */,
-                                          ),
-                                          loadingText:
-                                              FFLocalizations.of(context)
-                                                  .getVariableText(
-                                            ruText: 'Сохраняем...',
-                                            enText: 'Saving...',
-                                          ),
-                                          busyStyle: ButtonBusyStyle.spinner,
-                                          action: () async {
-                                            if (_model.rait != 0) {
-                                              final sessionRef =
-                                                  widget.sessionID;
-                                              final toUserRef = widget.userRef;
-                                              if (sessionRef == null ||
-                                                  toUserRef == null) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      FFLocalizations.of(
-                                                              context)
-                                                          .getVariableText(
-                                                        ruText:
-                                                            'Не удалось отправить отзыв: отсутствуют данные сессии.',
-                                                        enText:
-                                                            'Unable to submit review: missing session data.',
-                                                      ),
-                                                    ),
+                                opacity: isComposerActive ? 0.0 : 1.0,
+                                child: AnimatedSlide(
+                                  duration: _ctaAnimationDuration,
+                                  curve: Curves.easeOutCubic,
+                                  offset: isComposerActive
+                                      ? const Offset(0.0, 0.24)
+                                      : Offset.zero,
+                                  child: wrapWithModel(
+                                    model: _model.buttonModel,
+                                    updateCallback: () => safeSetState(() {}),
+                                    child: Center(
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 390.0,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            ButtonWidget(
+                                              text: FFLocalizations.of(context)
+                                                  .getText(
+                                                'duynuhus' /* Готово */,
+                                              ),
+                                              loadingText:
+                                                  FFLocalizations.of(context)
+                                                      .getVariableText(
+                                                ruText: 'Сохраняем...',
+                                                enText: 'Saving...',
+                                              ),
+                                              busyStyle:
+                                                  ButtonBusyStyle.spinner,
+                                              action: finishSummary,
+                                            ),
+                                            const SizedBox(
+                                                height: ExpatlioDesign.space12),
+                                            InkWell(
+                                              splashColor: Colors.transparent,
+                                              focusColor: Colors.transparent,
+                                              hoverColor: Colors.transparent,
+                                              highlightColor:
+                                                  Colors.transparent,
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                      ExpatlioDesign
+                                                          .radiusLarge),
+                                              onTap: _navigateToHome,
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsetsDirectional
+                                                        .fromSTEB(
+                                                  12.0,
+                                                  4.0,
+                                                  12.0,
+                                                  4.0,
+                                                ),
+                                                child: Text(
+                                                  FFLocalizations.of(context)
+                                                      .getText(
+                                                    's918m7k5' /* Пропустить */,
                                                   ),
-                                                );
-                                                return;
-                                              }
-
-                                              try {
-                                                final result =
-                                                    await submitSessionReview(
-                                                  sessionRef: sessionRef,
-                                                  toUserRef: toUserRef,
-                                                  rating: _model.rait,
-                                                  isTeacher: currentUserDocument
-                                                          ?.role ==
-                                                      UserRole.native_speaker,
-                                                  comment: _model
-                                                      .aboutMeTextController
-                                                      .text,
-                                                );
-                                                _model.reviewRefOverride =
-                                                    result.reviewRef;
-                                                _model.rait = 0;
-                                                _model.aboutMeTextController
-                                                    ?.clear();
-                                                FocusScope.of(context)
-                                                    .unfocus();
-                                                safeSetState(() {});
-                                              } on FirebaseFunctionsException catch (e) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      reviewErrorMessage(
-                                                          context, e),
-                                                    ),
+                                                  style: _summaryTextStyle(
+                                                    context,
+                                                    fontSize: 15.0,
+                                                    color: ExpatlioDesign.muted,
+                                                    fontWeight: FontWeight.w500,
                                                   ),
-                                                );
-                                                return;
-                                              } catch (_) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      unexpectedReviewErrorMessage(
-                                                          context),
-                                                    ),
-                                                  ),
-                                                );
-                                                return;
-                                              }
-                                            }
-                                            if (targetUserRef != null &&
-                                                signedInUserRef != null) {
-                                              if (effectiveBlack) {
-                                                await signedInUserRef.update({
-                                                  ...buildBlockAndRemoveFriendUpdateData(
-                                                    targetUserRef,
-                                                  ),
-                                                });
-                                              } else if (effectiveFav) {
-                                                await signedInUserRef.update({
-                                                  ...buildAddFriendUpdateData(
-                                                    targetUserRef,
-                                                  ),
-                                                });
-                                              } else if (initiallyFavorite) {
-                                                await signedInUserRef.update({
-                                                  ...buildRemoveFriendUpdateData(
-                                                    targetUserRef,
-                                                  ),
-                                                });
-                                              }
-                                            }
-
-                                            _navigateToHome();
-                                          },
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
@@ -990,136 +1065,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                           ),
                         ),
                       ),
-                    ),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            FlutterFlowTheme.of(context).secondaryBackground,
-                            Color(0xEFF2F2F7),
-                            Color(0x00F2F2F7)
-                          ],
-                          stops: [0, 0.8, 1],
-                          begin: AlignmentDirectional(0, -1),
-                          end: AlignmentDirectional(0, 1),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(6, 55, 6, 6),
-                        child: Container(
-                          height: 70,
-                          decoration: BoxDecoration(
-                            color:
-                                FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(50),
-                            border: Border.all(
-                              color: FlutterFlowTheme.of(context)
-                                  .secondaryBackground,
-                            ),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.max,
-                              children: [
-                                Container(
-                                  width: 66,
-                                  height: 66,
-                                  decoration: BoxDecoration(
-                                    color: FlutterFlowTheme.of(context)
-                                        .secondaryBackground,
-                                    image: stackUserPhotoUrl.isNotEmpty
-                                        ? DecorationImage(
-                                            fit: BoxFit.cover,
-                                            image: CachedNetworkImageProvider(
-                                              stackUserPhotoUrl,
-                                              maxWidth: 200,
-                                              maxHeight: 200,
-                                            ),
-                                          )
-                                        : null,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        12, 0, 0, 0),
-                                    child: Text(
-                                      _summaryUserDisplayName(
-                                        context,
-                                        stackUserPublicProfile,
-                                      ),
-                                      maxLines: 2,
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'sf pro display',
-                                            fontSize: 16,
-                                            letterSpacing: 0.0,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                                InkWell(
-                                  splashColor: Colors.transparent,
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  onTap: () async {
-                                    _navigateToHome();
-                                  },
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    children: [
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            12, 0, 12, 0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            's918m7k5' /* Пропустить */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 66,
-                                        height: 66,
-                                        decoration: BoxDecoration(
-                                          color: FlutterFlowTheme.of(context)
-                                              .secondaryBackground,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Align(
-                                          alignment: AlignmentDirectional(0, 0),
-                                          child: Icon(
-                                            Icons.close_rounded,
-                                            color: FlutterFlowTheme.of(context)
-                                                .primaryText,
-                                            size: 20,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 );
               },
             );

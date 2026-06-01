@@ -424,7 +424,11 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
             key: scaffoldKey,
             backgroundColor: ExpatlioDesign.background,
             body: Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space0),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.max,
@@ -434,7 +438,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                       height: 70.0,
                       decoration: ExpatlioDesign.cardDecoration(radius: 24.0),
                       child: Padding(
-                        padding: EdgeInsets.all(2.0),
+                        padding: EdgeInsets.all(ExpatlioDesign.space4),
                         child: Row(
                           mainAxisSize: MainAxisSize.max,
                           children: [
@@ -453,8 +457,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                 builder: (context) {
                                   if (currentUserPhoto != '') {
                                     return ClipRRect(
-                                      borderRadius:
-                                          BorderRadius.circular(100.0),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusCapsule),
                                       child: CachedNetworkImage(
                                         fadeInDuration:
                                             Duration(milliseconds: 0),
@@ -486,7 +490,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                                 .bodyMedium
                                                 .override(
                                                   fontFamily: 'Cool',
-                                                  fontSize: 24.0,
+                                                  fontSize: 22.0,
                                                   letterSpacing: 0.0,
                                                 ),
                                           );
@@ -500,7 +504,10 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                             Expanded(
                               child: Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    12.0, 0.0, 0.0, 0.0),
+                                    ExpatlioDesign.space12,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0),
                                 child: Column(
                                   mainAxisSize: MainAxisSize.max,
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -558,7 +565,10 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                           children: [
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  55.0, 0.0, 55.0, 0.0),
+                                  ExpatlioDesign.space56,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space56,
+                                  ExpatlioDesign.space0),
                               child: Container(
                                 width: double.infinity,
                                 height: 165.0,
@@ -583,7 +593,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                               ],
                             ),
                             Padding(
-                              padding: EdgeInsets.all(16.0),
+                              padding: EdgeInsets.all(ExpatlioDesign.space16),
                               child: Column(
                                 mainAxisSize: MainAxisSize.max,
                                 mainAxisAlignment: MainAxisAlignment.start,
@@ -637,7 +647,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                                 color:
                                                     FlutterFlowTheme.of(context)
                                                         .primaryText,
-                                                fontSize: 40.0,
+                                                fontSize: 34.0,
                                                 letterSpacing: 0.0,
                                                 fontWeight: FontWeight.w300,
                                               ),
@@ -658,7 +668,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                             fontFamily: 'sf pro display',
                                             color: FlutterFlowTheme.of(context)
                                                 .primaryText,
-                                            fontSize: 40.0,
+                                            fontSize: 34.0,
                                             letterSpacing: 0.0,
                                             fontWeight: FontWeight.w300,
                                           ),
@@ -666,7 +676,10 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   ),
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 22.0, 0.0, 0.0),
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space24,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0),
                                     child: InkWell(
                                       splashColor: Colors.transparent,
                                       focusColor: Colors.transparent,
@@ -681,11 +694,12 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                         decoration: BoxDecoration(
                                           color: FlutterFlowTheme.of(context)
                                               .secondaryBackground,
-                                          borderRadius:
-                                              BorderRadius.circular(100.0),
+                                          borderRadius: BorderRadius.circular(
+                                              ExpatlioDesign.radiusCapsule),
                                         ),
                                         child: Padding(
-                                          padding: EdgeInsets.all(2.0),
+                                          padding: EdgeInsets.all(
+                                              ExpatlioDesign.space4),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
@@ -752,8 +766,11 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                     if (_hasPendingTeacherReview)
                       const PendingTeacherReviewCard(),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(10.0, 18.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space12,
+                          ExpatlioDesign.space20,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: AuthUserStreamWidget(
                         builder: (context) => Text(
                           _effectiveAvailabilityEnabled
@@ -770,7 +787,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                               .override(
                                 fontFamily: 'Cool',
                                 color: FlutterFlowTheme.of(context).primaryText,
-                                fontSize: 21.0,
+                                fontSize: 22.0,
                                 letterSpacing: 0.0,
                                 fontWeight: FontWeight.normal,
                               ),
@@ -778,17 +795,21 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 4.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space4,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,
                         height: 60.0,
                         decoration: BoxDecoration(
                           color: ExpatlioDesign.card,
-                          borderRadius: BorderRadius.circular(16.0),
+                          borderRadius:
+                              BorderRadius.circular(ExpatlioDesign.radiusLarge),
                         ),
                         child: Padding(
-                          padding: EdgeInsets.all(16.0),
+                          padding: EdgeInsets.all(ExpatlioDesign.space16),
                           child: Row(
                             mainAxisSize: MainAxisSize.max,
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -833,7 +854,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   scrollDirection: Axis.vertical,
                                   itemCount: intervals.length,
                                   separatorBuilder: (_, __) =>
-                                      SizedBox(height: 6.0),
+                                      SizedBox(height: ExpatlioDesign.space8),
                                   itemBuilder: (context, intervalsIndex) {
                                     final intervalsItem =
                                         intervals[intervalsIndex];
@@ -843,11 +864,12 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                       decoration: BoxDecoration(
                                         color: FlutterFlowTheme.of(context)
                                             .primaryBackground,
-                                        borderRadius:
-                                            BorderRadius.circular(26.0),
+                                        borderRadius: BorderRadius.circular(
+                                            ExpatlioDesign.radiusExtraLarge),
                                       ),
                                       child: Padding(
-                                        padding: EdgeInsets.all(4.0),
+                                        padding: EdgeInsets.all(
+                                            ExpatlioDesign.space4),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           children: [
@@ -858,7 +880,9 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                                 color:
                                                     ExpatlioDesign.mutedSurface,
                                                 borderRadius:
-                                                    BorderRadius.circular(22.0),
+                                                    BorderRadius.circular(
+                                                        ExpatlioDesign
+                                                            .radiusExtraLarge),
                                               ),
                                               child: Align(
                                                 alignment: AlignmentDirectional(
@@ -894,7 +918,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                               ),
                                             ),
                                             FlutterFlowIconButton(
-                                              borderRadius: 22.0,
+                                              borderRadius: ExpatlioDesign
+                                                  .radiusExtraLarge,
                                               buttonSize: 52.0,
                                               icon: Icon(
                                                 FFIcons.ktrash03,
@@ -941,7 +966,10 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                             ),
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  0.0, 6.0, 0.0, 0.0),
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space8,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0),
                               child: InkWell(
                                 splashColor: Colors.transparent,
                                 focusColor: Colors.transparent,
@@ -960,21 +988,24 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .primaryBackground,
-                                    borderRadius: BorderRadius.circular(16.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusLarge),
                                     border: Border.all(
                                       color: FlutterFlowTheme.of(context)
                                           .secondaryBackground,
                                     ),
                                   ),
                                   child: Padding(
-                                    padding: EdgeInsets.all(2.0),
+                                    padding:
+                                        EdgeInsets.all(ExpatlioDesign.space4),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
                                       children: [
                                         FlutterFlowIconButton(
-                                          borderRadius: 12.0,
+                                          borderRadius:
+                                              ExpatlioDesign.radiusMedium,
                                           buttonSize: 35.0,
                                           fillColor:
                                               FlutterFlowTheme.of(context)
@@ -1005,7 +1036,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                                 fontWeight: FontWeight.w500,
                                               ),
                                         ),
-                                      ].divide(SizedBox(width: 8.0)),
+                                      ].divide(SizedBox(
+                                          width: ExpatlioDesign.space8)),
                                     ),
                                   ),
                                 ),
@@ -1015,8 +1047,11 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                         ),
                       ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(10.0, 18.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space12,
+                          ExpatlioDesign.space20,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: Text(
                         FFLocalizations.of(context).getText(
                           '5e7lo84r' /* Статистика за сегодня */,
@@ -1024,15 +1059,18 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
                               fontFamily: 'Cool',
                               color: FlutterFlowTheme.of(context).primaryText,
-                              fontSize: 21.0,
+                              fontSize: 22.0,
                               letterSpacing: 0.0,
                               fontWeight: FontWeight.normal,
                             ),
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 4.0, 0.0, 122.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space4,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space112),
                       child: StreamBuilder<List<StatsRecord>>(
                         stream: _model.statsStream,
                         builder: (context, snapshot) {
@@ -1054,10 +1092,12 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .primaryBackground,
-                                    borderRadius: BorderRadius.circular(16.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusLarge),
                                   ),
                                   child: Padding(
-                                    padding: EdgeInsets.all(16.0),
+                                    padding:
+                                        EdgeInsets.all(ExpatlioDesign.space16),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.max,
                                       children: [
@@ -1083,7 +1123,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                                       .bodyMedium
                                                       .override(
                                                         fontFamily: 'Cool',
-                                                        fontSize: 30.0,
+                                                        fontSize: 28.0,
                                                         letterSpacing: 0.0,
                                                       ),
                                                 ),
@@ -1119,7 +1159,9 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                                   ).image,
                                                 ),
                                                 borderRadius:
-                                                    BorderRadius.circular(26.0),
+                                                    BorderRadius.circular(
+                                                        ExpatlioDesign
+                                                            .radiusExtraLarge),
                                                 border: Border.all(
                                                   color: FlutterFlowTheme.of(
                                                           context)
@@ -1151,7 +1193,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                                       .bodyMedium
                                                       .override(
                                                         fontFamily: 'Cool',
-                                                        fontSize: 30.0,
+                                                        fontSize: 28.0,
                                                         letterSpacing: 0.0,
                                                       ),
                                                 ),
@@ -1181,7 +1223,9 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                               height: 64.0,
                                               decoration: BoxDecoration(
                                                 borderRadius:
-                                                    BorderRadius.circular(26.0),
+                                                    BorderRadius.circular(
+                                                        ExpatlioDesign
+                                                            .radiusExtraLarge),
                                                 border: Border.all(
                                                   color: FlutterFlowTheme.of(
                                                           context)
@@ -1220,7 +1264,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                                       .bodyMedium
                                                       .override(
                                                         fontFamily: 'Cool',
-                                                        fontSize: 30.0,
+                                                        fontSize: 28.0,
                                                         letterSpacing: 0.0,
                                                       ),
                                                 ),
@@ -1250,7 +1294,9 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                               height: 64.0,
                                               decoration: BoxDecoration(
                                                 borderRadius:
-                                                    BorderRadius.circular(26.0),
+                                                    BorderRadius.circular(
+                                                        ExpatlioDesign
+                                                            .radiusExtraLarge),
                                                 border: Border.all(
                                                   color: FlutterFlowTheme.of(
                                                           context)
@@ -1267,7 +1313,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                             ),
                                           ],
                                         ),
-                                      ].divide(SizedBox(height: 16.0)),
+                                      ].divide(SizedBox(
+                                          height: ExpatlioDesign.space16)),
                                     ),
                                   ),
                                 );
@@ -1277,10 +1324,12 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .primaryBackground,
-                                    borderRadius: BorderRadius.circular(16.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusLarge),
                                   ),
                                   child: Padding(
-                                    padding: EdgeInsets.all(2.0),
+                                    padding:
+                                        EdgeInsets.all(ExpatlioDesign.space4),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
                                       mainAxisAlignment:
@@ -1296,7 +1345,10 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  12.0, 0.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space12,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Column(
                                             mainAxisSize: MainAxisSize.max,
                                             mainAxisAlignment:
@@ -1364,8 +1416,8 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                       ),
                     ),
                   ]
-                      .divide(SizedBox(height: 6.0))
-                      .addToStart(SizedBox(height: 55.0)),
+                      .divide(SizedBox(height: ExpatlioDesign.space8))
+                      .addToStart(SizedBox(height: ExpatlioDesign.space56)),
                 ),
               ),
             ),

@@ -34,18 +34,21 @@ class StudentOnboardingLevelStep extends StatelessWidget {
     return SingleChildScrollView(
       key: const ValueKey<String>('student_onboarding_step_level'),
       padding: EdgeInsetsDirectional.fromSTEB(
-        6.0,
-        showTitle ? 32.0 : 0.0,
-        6.0,
-        120.0,
+        ExpatlioDesign.space8,
+        showTitle ? ExpatlioDesign.space32 : ExpatlioDesign.space0,
+        ExpatlioDesign.space8,
+        ExpatlioDesign.space112,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (showTitle)
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0),
               child: AutoSizeText(
                 title ??
                     FFLocalizations.of(context).getVariableText(
@@ -55,7 +58,7 @@ class StudentOnboardingLevelStep extends StatelessWidget {
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'Cool',
                       color: ExpatlioDesign.text,
-                      fontSize: 43.0,
+                      fontSize: 34.0,
                       letterSpacing: 0.0,
                       fontWeight: FontWeight.normal,
                       lineHeight: 1.1,
@@ -63,7 +66,9 @@ class StudentOnboardingLevelStep extends StatelessWidget {
               ),
             ),
           Padding(
-            padding: EdgeInsetsDirectional.only(top: showTitle ? 30.0 : 0.0),
+            padding: EdgeInsetsDirectional.only(
+                top:
+                    showTitle ? ExpatlioDesign.space32 : ExpatlioDesign.space0),
             child: Stack(
               alignment: const AlignmentDirectional(0.0, 1.0),
               children: [
@@ -80,18 +85,22 @@ class StudentOnboardingLevelStep extends StatelessWidget {
                   ),
                 ),
                 Padding(
-                  padding:
-                      const EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 12.0),
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space12),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       Padding(
-                        padding: const EdgeInsetsDirectional.only(bottom: 30.0),
+                        padding: const EdgeInsetsDirectional.only(
+                            bottom: ExpatlioDesign.space32),
                         child: Column(
                           children: [
                             Padding(
                               padding: const EdgeInsetsDirectional.only(
-                                  bottom: 12.0),
+                                  bottom: ExpatlioDesign.space12),
                               child: Image.asset(
                                 presentation.assetPath,
                                 width: 100.0,
@@ -105,7 +114,7 @@ class StudentOnboardingLevelStep extends StatelessWidget {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'sf pro display',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -136,11 +145,13 @@ class StudentOnboardingLevelStep extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
-                              borderRadius: BorderRadius.circular(50.0),
+                              borderRadius: BorderRadius.circular(
+                                  ExpatlioDesign.radiusCapsule),
                             ),
                           ),
                           Padding(
-                            padding: const EdgeInsets.all(2.0),
+                            padding:
+                                const EdgeInsets.all(ExpatlioDesign.space4),
                             child: Row(
                               children: _levels
                                   .map(
@@ -158,7 +169,8 @@ class StudentOnboardingLevelStep extends StatelessWidget {
                         ],
                       ),
                       Padding(
-                        padding: const EdgeInsetsDirectional.only(top: 4.0),
+                        padding: const EdgeInsetsDirectional.only(
+                            top: ExpatlioDesign.space4),
                         child: Row(
                           children: _levels
                               .map(
@@ -166,9 +178,11 @@ class StudentOnboardingLevelStep extends StatelessWidget {
                                   child: Padding(
                                     padding: EdgeInsetsDirectional.only(
                                       start: item == Level.Intermediate
-                                          ? 6.0
-                                          : 0.0,
-                                      end: item == Level.Basic ? 6.0 : 0.0,
+                                          ? ExpatlioDesign.space8
+                                          : ExpatlioDesign.space0,
+                                      end: item == Level.Basic
+                                          ? ExpatlioDesign.space8
+                                          : ExpatlioDesign.space0,
                                     ),
                                     child: _LevelLabel(
                                       level: item,
@@ -218,7 +232,8 @@ class _LevelLabel extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         child: Padding(
-          padding: const EdgeInsetsDirectional.only(top: 2.0, bottom: 2.0),
+          padding: const EdgeInsetsDirectional.only(
+              top: ExpatlioDesign.space4, bottom: ExpatlioDesign.space4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: level == Level.Beginner

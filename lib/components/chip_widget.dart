@@ -65,7 +65,7 @@ class _ChipWidgetState extends State<ChipWidget> {
         height: 62.0,
         decoration: ExpatlioDesign.cardDecoration(radius: 16.0),
         child: Padding(
-          padding: EdgeInsets.all(4.0),
+          padding: EdgeInsets.all(ExpatlioDesign.space4),
           child: Row(
             mainAxisSize: MainAxisSize.max,
             children: [
@@ -74,7 +74,8 @@ class _ChipWidgetState extends State<ChipWidget> {
                 height: 52.0,
                 decoration: BoxDecoration(
                   color: ExpatlioDesign.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14.0),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusMedium),
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),
@@ -83,7 +84,11 @@ class _ChipWidgetState extends State<ChipWidget> {
               ),
               Expanded(
                 child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 8.0, 0.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space12,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0),
                   child: Text(
                     valueOrDefault<String>(
                       widget.text,
@@ -101,7 +106,11 @@ class _ChipWidgetState extends State<ChipWidget> {
               ),
               if (widget.text == widget.currentSelected)
                 Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 8.0, 0.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0),
                   child: Container(
                     width: 30.0,
                     height: 30.0,

@@ -175,9 +175,9 @@ class _WordsWidgetState extends State<WordsWidget> {
                           if (words.isEmpty) {
                             return Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0,
-                                0.0,
-                                0.0,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0,
                                 _contentBottomPadding(context),
                               ),
                               child: EmptyWidget(
@@ -197,7 +197,7 @@ class _WordsWidgetState extends State<WordsWidget> {
                             ),
                             itemCount: words.length,
                             separatorBuilder: (context, index) =>
-                                const SizedBox(height: 0.0),
+                                const SizedBox(height: ExpatlioDesign.space0),
                             itemBuilder: (context, index) {
                               final word = words[index];
                               final entry = word.entry.firstOrNull;

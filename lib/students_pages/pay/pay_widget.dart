@@ -240,9 +240,9 @@ class _PayWidgetState extends State<PayWidget> {
               child: SingleChildScrollView(
                 padding: const EdgeInsetsDirectional.fromSTEB(
                   ExpatlioDesign.pagePadding,
-                  24,
+                  ExpatlioDesign.space24,
                   ExpatlioDesign.pagePadding,
-                  24,
+                  ExpatlioDesign.space24,
                 ),
                 child: Center(
                   child: ConstrainedBox(
@@ -251,7 +251,7 @@ class _PayWidgetState extends State<PayWidget> {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         const StudentPayIntro(),
-                        const SizedBox(height: 22),
+                        const SizedBox(height: ExpatlioDesign.space24),
                         for (final plan in _plans) ...[
                           StudentPayPlanCard(
                             plan: plan,
@@ -264,9 +264,10 @@ class _PayWidgetState extends State<PayWidget> {
                               });
                             },
                           ),
-                          if (plan != _plans.last) const SizedBox(height: 12),
+                          if (plan != _plans.last)
+                            const SizedBox(height: ExpatlioDesign.space12),
                         ],
-                        const SizedBox(height: 14),
+                        const SizedBox(height: ExpatlioDesign.space16),
                         StudentPayRestorePurchasesButton(
                           isBusy: _isRestoringPurchases,
                           onPressed: _restorePurchases,

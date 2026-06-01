@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '/shared_pages/design/expatlio_design.dart';
 
 class Wrapper extends StatelessWidget {
   const Wrapper({
@@ -49,9 +50,13 @@ class Wrapper extends StatelessWidget {
   const Wrapper.keyboardAware({
     super.key,
     required this.child,
-    this.padding = const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 35.0),
-    EdgeInsetsGeometry keyboardPadding =
-        const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 6.0),
+    this.padding = const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space8,
+        ExpatlioDesign.space0, ExpatlioDesign.space8, ExpatlioDesign.space32),
+    EdgeInsetsGeometry keyboardPadding = const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.space8,
+        ExpatlioDesign.space0,
+        ExpatlioDesign.space8,
+        ExpatlioDesign.space8),
     this.margin = EdgeInsets.zero,
     this.alignment,
   })  : children = null,

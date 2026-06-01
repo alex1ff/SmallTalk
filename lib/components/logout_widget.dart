@@ -46,7 +46,11 @@ class _LogoutWidgetState extends State<LogoutWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
@@ -61,16 +65,20 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space8,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space8,
+                          ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
                           color: ExpatlioDesign.card,
-                          borderRadius: BorderRadius.circular(20.0),
+                          borderRadius: BorderRadius.circular(
+                              ExpatlioDesign.radiusExtraLarge),
                         ),
                         child: Padding(
-                          padding: EdgeInsets.all(24.0),
+                          padding: EdgeInsets.all(ExpatlioDesign.space24),
                           child: Column(
                             mainAxisSize: MainAxisSize.max,
                             crossAxisAlignment: CrossAxisAlignment.center,
@@ -102,7 +110,10 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                               ),
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    0.0, 16.0, 0.0, 0.0),
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space16,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0),
                                 child: Text(
                                   FFLocalizations.of(context).getText(
                                     'zd4lq385' /* Вы уверены, что хотите выйти */,
@@ -112,14 +123,17 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                                       .bodyMedium
                                       .override(
                                         fontFamily: 'Cool',
-                                        fontSize: 21.0,
+                                        fontSize: 22.0,
                                         letterSpacing: 0.0,
                                       ),
                                 ),
                               ),
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    0.0, 12.0, 0.0, 0.0),
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space12,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0),
                                 child: Text(
                                   FFLocalizations.of(context).getText(
                                     'j9kmlyfd' /* Это действие нельзя отменить, ... */,
@@ -140,8 +154,11 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 24.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space24,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: FFButtonWidget(
                         onPressed: () async {
                           GoRouter.of(context).prepareAuthEvent();
@@ -162,10 +179,16 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                         options: FFButtonOptions(
                           height: ExpatlioDesign.buttonHeight,
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              16.0, 0.0, 16.0, 0.0),
+                              ExpatlioDesign.space16,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space16,
+                              ExpatlioDesign.space0),
                           iconAlignment: IconAlignment.end,
                           iconPadding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 0.0, 0.0, 0.0),
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           color: Colors.transparent,
                           textStyle:
                               FlutterFlowTheme.of(context).titleSmall.override(
@@ -176,14 +199,18 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                                     fontWeight: FontWeight.w500,
                                   ),
                           elevation: 0.0,
-                          borderRadius: BorderRadius.circular(8.0),
+                          borderRadius:
+                              BorderRadius.circular(ExpatlioDesign.radiusSmall),
                         ),
                         showLoadingIndicator: false,
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space12,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: wrapWithModel(
                         model: _model.buttonModel,
                         updateCallback: () => safeSetState(() {}),
@@ -199,7 +226,7 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                         ),
                       ),
                     ),
-                  ].divide(SizedBox(height: 2.0)),
+                  ].divide(SizedBox(height: ExpatlioDesign.space4)),
                 ),
               ),
             ],

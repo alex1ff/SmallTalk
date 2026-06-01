@@ -51,7 +51,11 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
@@ -72,13 +76,17 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                       showConfirm: false,
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space8,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space8,
+                          ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
                           color: ExpatlioDesign.card,
-                          borderRadius: BorderRadius.circular(20.0),
+                          borderRadius: BorderRadius.circular(
+                              ExpatlioDesign.radiusExtraLarge),
                         ),
                         child: Container(
                           width: double.infinity,
@@ -86,10 +94,11 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                           decoration: BoxDecoration(
                             color:
                                 FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(16.0),
+                            borderRadius: BorderRadius.circular(
+                                ExpatlioDesign.radiusLarge),
                           ),
                           child: Padding(
-                            padding: EdgeInsets.all(4.0),
+                            padding: EdgeInsets.all(ExpatlioDesign.space4),
                             child: Row(
                               mainAxisSize: MainAxisSize.max,
                               children: [
@@ -99,7 +108,8 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .secondaryBackground,
-                                    borderRadius: BorderRadius.circular(22.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusExtraLarge),
                                   ),
                                   child: Align(
                                     alignment: AlignmentDirectional(0.0, 0.0),
@@ -114,7 +124,10 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                                 Expanded(
                                   child: Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        12.0, 0.0, 8.0, 0.0),
+                                        ExpatlioDesign.space12,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space8,
+                                        ExpatlioDesign.space0),
                                     child: Text(
                                       valueOrDefault<String>(
                                         widget.doc?.pan,
@@ -139,8 +152,11 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 24.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space24,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: FFButtonWidget(
                         onPressed: () async {
                           unawaited(
@@ -160,10 +176,16 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                         options: FFButtonOptions(
                           height: ExpatlioDesign.buttonHeight,
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              16.0, 0.0, 16.0, 0.0),
+                              ExpatlioDesign.space16,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space16,
+                              ExpatlioDesign.space0),
                           iconAlignment: IconAlignment.end,
                           iconPadding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 0.0, 0.0, 0.0),
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           color: Colors.transparent,
                           textStyle:
                               FlutterFlowTheme.of(context).titleSmall.override(
@@ -174,14 +196,18 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                                     fontWeight: FontWeight.w500,
                                   ),
                           elevation: 0.0,
-                          borderRadius: BorderRadius.circular(8.0),
+                          borderRadius:
+                              BorderRadius.circular(ExpatlioDesign.radiusSmall),
                         ),
                         showLoadingIndicator: false,
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space12,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: wrapWithModel(
                         model: _model.buttonModel,
                         updateCallback: () => safeSetState(() {}),
@@ -197,7 +223,7 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                         ),
                       ),
                     ),
-                  ].divide(SizedBox(height: 2.0)),
+                  ].divide(SizedBox(height: ExpatlioDesign.space4)),
                 ),
               ),
             ],

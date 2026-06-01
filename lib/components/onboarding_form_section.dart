@@ -17,7 +17,8 @@ class OnboardingFormSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsetsDirectional.only(start: 2.0, bottom: 8.0),
+          padding: const EdgeInsetsDirectional.only(
+              start: ExpatlioDesign.space4, bottom: ExpatlioDesign.space8),
           child: Text(
             title,
             style: ExpatlioDesign.formLabelStyle(context),

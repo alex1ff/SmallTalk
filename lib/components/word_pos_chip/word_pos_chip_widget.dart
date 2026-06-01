@@ -66,13 +66,17 @@ class _WordPosChipWidgetState extends State<WordPosChipWidget> {
                 : ExpatlioDesign.card,
             FlutterFlowTheme.of(context).primary,
           ),
-          borderRadius: BorderRadius.circular(16.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
           shape: BoxShape.rectangle,
         ),
         child: Align(
           alignment: AlignmentDirectional(0.0, 0.0),
           child: Padding(
-            padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+            padding: EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space16,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space16,
+                ExpatlioDesign.space0),
             child: Text(
               widget.text,
               style: FlutterFlowTheme.of(context).bodyMedium.override(

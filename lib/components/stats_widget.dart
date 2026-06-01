@@ -52,7 +52,8 @@ class _StatsWidgetState extends State<StatsWidget> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+      padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0,
+          ExpatlioDesign.space56, ExpatlioDesign.space0, ExpatlioDesign.space0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.start,
@@ -72,7 +73,11 @@ class _StatsWidgetState extends State<StatsWidget> {
                   onConfirm: () => Navigator.pop(context),
                 ),
                 Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(6.0, 16.0, 6.0, 0.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space16,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0),
                   child: StreamBuilder<List<StatsRecord>>(
                     stream: _model.statsStream,
                     builder: (context, snapshot) {
@@ -87,10 +92,11 @@ class _StatsWidgetState extends State<StatsWidget> {
                         width: double.infinity,
                         decoration: BoxDecoration(
                           color: ExpatlioDesign.card,
-                          borderRadius: BorderRadius.circular(20.0),
+                          borderRadius: BorderRadius.circular(
+                              ExpatlioDesign.radiusExtraLarge),
                         ),
                         child: Padding(
-                          padding: EdgeInsets.all(16.0),
+                          padding: EdgeInsets.all(ExpatlioDesign.space16),
                           child: Column(
                             mainAxisSize: MainAxisSize.max,
                             children: [
@@ -126,7 +132,7 @@ class _StatsWidgetState extends State<StatsWidget> {
                                                         .bodyMedium
                                                         .override(
                                                           fontFamily: 'Cool',
-                                                          fontSize: 32.0,
+                                                          fontSize: 34.0,
                                                           letterSpacing: 0.0,
                                                         ),
                                                   ),
@@ -171,7 +177,7 @@ class _StatsWidgetState extends State<StatsWidget> {
                                                       .bodyMedium
                                                       .override(
                                                         fontFamily: 'Cool',
-                                                        fontSize: 32.0,
+                                                        fontSize: 34.0,
                                                         letterSpacing: 0.0,
                                                       ),
                                             ),
@@ -209,7 +215,8 @@ class _StatsWidgetState extends State<StatsWidget> {
                                           'assets/images/Frame_22.png',
                                         ).image,
                                       ),
-                                      borderRadius: BorderRadius.circular(12.0),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusMedium),
                                       border: Border.all(
                                         color: FlutterFlowTheme.of(context)
                                             .secondaryBackground,
@@ -238,7 +245,7 @@ class _StatsWidgetState extends State<StatsWidget> {
                                             .bodyMedium
                                             .override(
                                               fontFamily: 'Cool',
-                                              fontSize: 32.0,
+                                              fontSize: 34.0,
                                               letterSpacing: 0.0,
                                             ),
                                       ),
@@ -263,7 +270,8 @@ class _StatsWidgetState extends State<StatsWidget> {
                                     width: 64.0,
                                     height: 64.0,
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12.0),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusMedium),
                                       border: Border.all(
                                         color: FlutterFlowTheme.of(context)
                                             .secondaryBackground,
@@ -298,7 +306,7 @@ class _StatsWidgetState extends State<StatsWidget> {
                                             .bodyMedium
                                             .override(
                                               fontFamily: 'Cool',
-                                              fontSize: 32.0,
+                                              fontSize: 34.0,
                                               letterSpacing: 0.0,
                                             ),
                                       ),
@@ -323,7 +331,8 @@ class _StatsWidgetState extends State<StatsWidget> {
                                     width: 64.0,
                                     height: 64.0,
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12.0),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusMedium),
                                       border: Border.all(
                                         color: FlutterFlowTheme.of(context)
                                             .secondaryBackground,
@@ -338,14 +347,14 @@ class _StatsWidgetState extends State<StatsWidget> {
                                   ),
                                 ],
                               ),
-                            ].divide(SizedBox(height: 16.0)),
+                            ].divide(SizedBox(height: ExpatlioDesign.space16)),
                           ),
                         ),
                       );
                     },
                   ),
                 ),
-                const SizedBox(height: 35.0),
+                const SizedBox(height: ExpatlioDesign.space32),
               ],
             ),
           ),

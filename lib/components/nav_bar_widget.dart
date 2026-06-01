@@ -184,7 +184,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
   Widget _buildExpatlioNavBar(BuildContext context) {
     final destinations = _destinations(context);
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Material(
       color: ExpatlioDesign.card,
@@ -200,7 +199,12 @@ class _NavBarWidgetState extends State<NavBarWidget> {
               ),
             ),
           ),
-          padding: EdgeInsets.fromLTRB(8, 6, 8, bottomPadding > 0 ? 6 : 8),
+          padding: const EdgeInsets.fromLTRB(
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: List.generate(destinations.length, (index) {
@@ -215,7 +219,8 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                   highlightColor: Colors.transparent,
                   onTap: () => _onTap(index),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 1),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: ExpatlioDesign.space4),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -228,7 +233,8 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                             color: selected
                                 ? ExpatlioDesign.primary.withValues(alpha: 0.10)
                                 : Colors.transparent,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(
+                                ExpatlioDesign.radiusMedium),
                           ),
                           child: Icon(
                             destination.icon,
@@ -236,7 +242,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                             size: 22,
                           ),
                         ),
-                        const SizedBox(height: 1),
+                        const SizedBox(height: ExpatlioDesign.space4),
                         Text(
                           destination.label,
                           maxLines: 1,

@@ -25,7 +25,7 @@ class ProfileNameField extends StatelessWidget {
             enText: 'Name',
           ),
         ),
-        const SizedBox(height: 8.0),
+        const SizedBox(height: ExpatlioDesign.space8),
         TextFormField(
           controller: controller,
           focusNode: focusNode,
@@ -85,12 +85,12 @@ class ProfileReadOnlyField extends StatelessWidget {
         final interactive = enabled && onTap != null;
         return InkWell(
           onTap: interactive ? () => unawaited(onTap!(fieldContext)) : null,
-          borderRadius: BorderRadius.circular(14.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _ProfileFieldLabel(text: label),
-              const SizedBox(height: 8.0),
+              const SizedBox(height: ExpatlioDesign.space8),
               Container(
                 width: double.infinity,
                 constraints: BoxConstraints(
@@ -99,13 +99,17 @@ class ProfileReadOnlyField extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFBFBFB),
-                  borderRadius: BorderRadius.circular(14.0),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusMedium),
                   border:
                       Border.all(color: const Color(0xFFE7E7E7), width: 1.0),
                 ),
                 alignment: AlignmentDirectional.centerStart,
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(16.0, 7.0, 12.0, 7.0),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space8),
                 child: Row(
                   children: [
                     Expanded(
@@ -117,7 +121,7 @@ class ProfileReadOnlyField extends StatelessWidget {
                       ),
                     ),
                     if (interactive && showDropdownIcon) ...[
-                      const SizedBox(width: 8.0),
+                      const SizedBox(width: ExpatlioDesign.space8),
                       Icon(
                         menuOpen
                             ? Icons.keyboard_arrow_up_rounded

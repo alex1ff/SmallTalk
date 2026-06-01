@@ -70,7 +70,11 @@ class _EditLevelWidgetState extends State<EditLevelWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
@@ -81,7 +85,11 @@ class _EditLevelWidgetState extends State<EditLevelWidget> {
                   color: ExpatlioDesign.card,
                 ),
                 child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.start,
@@ -95,7 +103,10 @@ class _EditLevelWidgetState extends State<EditLevelWidget> {
                       ),
                       Padding(
                         padding: EdgeInsetsDirectional.fromSTEB(
-                            0.0, 30.0, 0.0, 100.0),
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space32,
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space96),
                         child: Stack(
                           alignment: AlignmentDirectional(0.0, 1.0),
                           children: [
@@ -114,14 +125,20 @@ class _EditLevelWidgetState extends State<EditLevelWidget> {
                             ),
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  0.0, 0.0, 0.0, 12.0),
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space12),
                               child: Column(
                                 mainAxisSize: MainAxisSize.max,
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 0.0, 0.0, 30.0),
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space32),
                                     child: Builder(
                                       builder: (context) {
                                         if (_model.level == Level.Beginner) {
@@ -150,7 +167,7 @@ class _EditLevelWidgetState extends State<EditLevelWidget> {
                                                         .override(
                                                           fontFamily:
                                                               'sf pro display',
-                                                          fontSize: 21.0,
+                                                          fontSize: 22.0,
                                                           letterSpacing: 0.0,
                                                           fontWeight:
                                                               FontWeight.w500,
@@ -208,7 +225,7 @@ A1-... */
                                                         .override(
                                                           fontFamily:
                                                               'sf pro display',
-                                                          fontSize: 21.0,
+                                                          fontSize: 22.0,
                                                           letterSpacing: 0.0,
                                                           fontWeight:
                                                               FontWeight.w500,
@@ -264,7 +281,7 @@ A1-... */
                                                         .override(
                                                           fontFamily:
                                                               'sf pro display',
-                                                          fontSize: 21.0,
+                                                          fontSize: 22.0,
                                                           letterSpacing: 0.0,
                                                           fontWeight:
                                                               FontWeight.w500,
@@ -319,7 +336,7 @@ A1-... */
                                                         .override(
                                                           fontFamily:
                                                               'sf pro display',
-                                                          fontSize: 21.0,
+                                                          fontSize: 22.0,
                                                           letterSpacing: 0.0,
                                                           fontWeight:
                                                               FontWeight.w500,
@@ -363,12 +380,13 @@ Native */
                                         decoration: BoxDecoration(
                                           color: FlutterFlowTheme.of(context)
                                               .primaryBackground,
-                                          borderRadius:
-                                              BorderRadius.circular(50.0),
+                                          borderRadius: BorderRadius.circular(
+                                              ExpatlioDesign.radiusCapsule),
                                         ),
                                       ),
                                       Padding(
-                                        padding: EdgeInsets.all(2.0),
+                                        padding: EdgeInsets.all(
+                                            ExpatlioDesign.space4),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           mainAxisAlignment:
@@ -777,7 +795,10 @@ Native */
                                   ),
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 4.0, 0.0, 0.0),
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
                                       children: [
@@ -826,7 +847,10 @@ Native */
                                           child: Padding(
                                             padding:
                                                 EdgeInsetsDirectional.fromSTEB(
-                                                    0.0, 0.0, 6.0, 0.0),
+                                                    ExpatlioDesign.space0,
+                                                    ExpatlioDesign.space0,
+                                                    ExpatlioDesign.space8,
+                                                    ExpatlioDesign.space0),
                                             child: Column(
                                               mainAxisSize: MainAxisSize.max,
                                               children: [
@@ -873,7 +897,10 @@ Native */
                                           child: Padding(
                                             padding:
                                                 EdgeInsetsDirectional.fromSTEB(
-                                                    6.0, 0.0, 0.0, 0.0),
+                                                    ExpatlioDesign.space8,
+                                                    ExpatlioDesign.space0,
+                                                    ExpatlioDesign.space0,
+                                                    ExpatlioDesign.space0),
                                             child: Column(
                                               mainAxisSize: MainAxisSize.max,
                                               children: [

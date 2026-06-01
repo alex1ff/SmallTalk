@@ -22,12 +22,20 @@ class StudentOnboardingLanguageStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       key: const ValueKey<String>('student_onboarding_step_language'),
-      padding: const EdgeInsetsDirectional.fromSTEB(6.0, 32.0, 6.0, 120.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space8,
+          ExpatlioDesign.space32,
+          ExpatlioDesign.space8,
+          ExpatlioDesign.space112),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0),
             child: AutoSizeText(
               FFLocalizations.of(context).getVariableText(
                 ruText: 'Какой язык хотите практиковать?',
@@ -37,7 +45,7 @@ class StudentOnboardingLanguageStep extends StatelessWidget {
               style: FlutterFlowTheme.of(context).bodyMedium.override(
                     fontFamily: 'Cool',
                     color: ExpatlioDesign.text,
-                    fontSize: 43.0,
+                    fontSize: 34.0,
                     letterSpacing: 0.0,
                     fontWeight: FontWeight.normal,
                     lineHeight: 1.1,
@@ -45,7 +53,11 @@ class StudentOnboardingLanguageStep extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(10.0, 4.0, 0.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space4,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space0),
             child: Text(
               FFLocalizations.of(context).getVariableText(
                 ruText: 'Сможете изменить позднее',
@@ -61,7 +73,8 @@ class StudentOnboardingLanguageStep extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsetsDirectional.only(top: 60.0),
+            padding:
+                const EdgeInsetsDirectional.only(top: ExpatlioDesign.space64),
             child: RepaintBoundary(
               child: LangWidget(
                 key: const ValueKey<String>(

@@ -44,7 +44,11 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
@@ -53,8 +57,8 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                 width: double.infinity,
                 decoration: BoxDecoration(
                   color: ExpatlioDesign.card,
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(28.0)),
+                  borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(ExpatlioDesign.radiusSheet)),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -68,16 +72,20 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                       showConfirm: false,
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space8,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space8,
+                          ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
                           color: ExpatlioDesign.card,
-                          borderRadius: BorderRadius.circular(20.0),
+                          borderRadius: BorderRadius.circular(
+                              ExpatlioDesign.radiusExtraLarge),
                         ),
                         child: Padding(
-                          padding: EdgeInsets.all(24.0),
+                          padding: EdgeInsets.all(ExpatlioDesign.space24),
                           child: Column(
                             mainAxisSize: MainAxisSize.max,
                             crossAxisAlignment: CrossAxisAlignment.center,
@@ -95,7 +103,8 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                                     begin: AlignmentDirectional(0.0, -1.0),
                                     end: AlignmentDirectional(0, 1.0),
                                   ),
-                                  borderRadius: BorderRadius.circular(36.0),
+                                  borderRadius: BorderRadius.circular(
+                                      ExpatlioDesign.radiusCapsule),
                                 ),
                                 child: Align(
                                   alignment: AlignmentDirectional(0.0, 0.0),
@@ -109,7 +118,10 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                               ),
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    0.0, 20.0, 0.0, 0.0),
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space20,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0),
                                 child: Text(
                                   FFLocalizations.of(context).getVariableText(
                                     ruText:
@@ -123,7 +135,7 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                                       .override(
                                         fontFamily: 'sf pro display',
                                         color: ExpatlioDesign.text,
-                                        fontSize: 21.0,
+                                        fontSize: 22.0,
                                         letterSpacing: 0.0,
                                         fontWeight: FontWeight.w700,
                                         lineHeight: 1.1,
@@ -137,8 +149,11 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                     ),
                     // ─── SUBSCRIPTION REWORK (promo entry point) ──
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 18.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space20,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: TextButton(
                         onPressed: () async {
                           Navigator.pop(context);
@@ -167,8 +182,11 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                     ),
                     // ──────────────────────────────────────────────
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 20.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space20,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: wrapWithModel(
                         model: _model.buttonModel,
                         updateCallback: () => safeSetState(() {}),
@@ -186,7 +204,7 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                         ),
                       ),
                     ),
-                  ].divide(SizedBox(height: 2.0)),
+                  ].divide(SizedBox(height: ExpatlioDesign.space4)),
                 ),
               ),
             ],

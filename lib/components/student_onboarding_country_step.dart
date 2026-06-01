@@ -19,7 +19,8 @@ class StudentOnboardingCountryStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       key: const ValueKey<String>('student_onboarding_step_country'),
-      padding: const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space8,
+          ExpatlioDesign.space0, ExpatlioDesign.space8, ExpatlioDesign.space0),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.max,
@@ -27,8 +28,11 @@ class StudentOnboardingCountryStep extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(10.0, 32.0, 10.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space32,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
                   ruText: 'Где вы сейчас находитесь?',
@@ -36,7 +40,7 @@ class StudentOnboardingCountryStep extends StatelessWidget {
                 ),
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'Cool',
-                      fontSize: 43.0,
+                      fontSize: 34.0,
                       letterSpacing: 0.0,
                       fontWeight: FontWeight.normal,
                       lineHeight: 1.1,
@@ -44,8 +48,11 @@ class StudentOnboardingCountryStep extends StatelessWidget {
               ),
             ),
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(10.0, 4.0, 10.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space4,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
                   ruText:
@@ -63,8 +70,11 @@ class StudentOnboardingCountryStep extends StatelessWidget {
               ),
             ),
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(0.0, 60.0, 0.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space64,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0),
               child: RepaintBoundary(
                 child: CountryWidget(
                   selected: selectedCountry,
@@ -73,7 +83,7 @@ class StudentOnboardingCountryStep extends StatelessWidget {
               ),
             ),
           ].addToEnd(
-            const SizedBox(height: 120.0),
+            const SizedBox(height: ExpatlioDesign.space112),
           ),
         ),
       ),

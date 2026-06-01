@@ -189,7 +189,7 @@ class _OrbitingAvatar extends StatelessWidget {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(2.0),
+            padding: const EdgeInsets.all(ExpatlioDesign.space4),
             child: ClipOval(
               child: _buildAvatarContent(context, photoUrl, assetPath),
             ),

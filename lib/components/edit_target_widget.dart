@@ -80,7 +80,8 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+      padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0,
+          ExpatlioDesign.space56, ExpatlioDesign.space0, ExpatlioDesign.space0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.start,
@@ -104,15 +105,22 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                   onConfirm: _saveTarget,
                 ),
                 Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0),
                   child: Column(
                     mainAxisSize: MainAxisSize.max,
                     mainAxisAlignment: MainAxisAlignment.start,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
+                        padding: EdgeInsetsDirectional.fromSTEB(
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space12,
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space0),
                         child: Container(
                           height: 364.13,
                           decoration: BoxDecoration(),
@@ -121,8 +129,8 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                             gridDelegate:
                                 SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 3,
-                              crossAxisSpacing: 6.0,
-                              mainAxisSpacing: 6.0,
+                              crossAxisSpacing: ExpatlioDesign.space8,
+                              mainAxisSpacing: ExpatlioDesign.space8,
                               childAspectRatio: 0.8,
                             ),
                             scrollDirection: Axis.vertical,
@@ -255,8 +263,8 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 35.0),
-              ].divide(SizedBox(height: 16.0)),
+                const SizedBox(height: ExpatlioDesign.space32),
+              ].divide(SizedBox(height: ExpatlioDesign.space16)),
             ),
           ),
         ],

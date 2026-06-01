@@ -78,7 +78,11 @@ class _RateAppWidgetState extends State<RateAppWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
@@ -111,13 +115,19 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                       Expanded(
                         child: Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 16.0, 0.0, 0.0),
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space16,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Container(
                             width: double.infinity,
                             height: double.infinity,
                             child: Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  0.0, 0.0, 0.0, 116.0),
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space112),
                               child: PageView(
                                 physics: const NeverScrollableScrollPhysics(),
                                 controller: _model.pageViewController ??=
@@ -127,7 +137,10 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                 children: [
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        6.0, 0.0, 6.0, 0.0),
+                                        ExpatlioDesign.space8,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space8,
+                                        ExpatlioDesign.space0),
                                     child: SingleChildScrollView(
                                       primary: false,
                                       child: Column(
@@ -221,7 +234,10 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                           Padding(
                                             padding:
                                                 EdgeInsetsDirectional.fromSTEB(
-                                                    0.0, 10.0, 0.0, 0.0),
+                                                    ExpatlioDesign.space0,
+                                                    ExpatlioDesign.space12,
+                                                    ExpatlioDesign.space0,
+                                                    ExpatlioDesign.space0),
                                             child: Container(
                                               width: double.infinity,
                                               child: TextFormField(
@@ -274,13 +290,17 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                               ),
                                             ),
                                           ),
-                                        ].divide(SizedBox(height: 6.0)),
+                                        ].divide(SizedBox(
+                                            height: ExpatlioDesign.space8)),
                                       ),
                                     ),
                                   ),
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        24.0, 24.0, 24.0, 0.0),
+                                        ExpatlioDesign.space24,
+                                        ExpatlioDesign.space24,
+                                        ExpatlioDesign.space24,
+                                        ExpatlioDesign.space0),
                                     child: Text(
                                       FFLocalizations.of(context).getText(
                                         'nymvvzvm' /* Мы читаем каждое сообщение. Ес... */,

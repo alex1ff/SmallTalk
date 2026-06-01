@@ -27,6 +27,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '/services/voip_service.dart';
 import '/components/interactive_caption_text.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'session_limit_ui.dart' as session_limit_ui;
 
 // VideoQuality enum simplified - only auto mode needed
@@ -3831,13 +3832,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               isWarning ? const Color(0xFFFFB020) : Colors.white;
 
           return Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: hasCountdown ? 11 : 12,
-              vertical: hasCountdown ? 7 : 6,
+            padding: const EdgeInsets.symmetric(
+              horizontal: ExpatlioDesign.space12,
+              vertical: ExpatlioDesign.space8,
             ),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: isWarning ? 0.68 : 0.45),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               border: hasCountdown
                   ? Border.all(
                       color: accentColor.withValues(alpha: 0.44),
@@ -3854,7 +3855,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                     color: accentColor,
                     size: 16,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: ExpatlioDesign.space8),
                 ],
                 Column(
                   mainAxisSize: MainAxisSize.min,
@@ -3871,12 +3872,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                       ),
                     ),
                     if (hasCountdown) ...[
-                      const SizedBox(height: 2),
+                      const SizedBox(height: ExpatlioDesign.space4),
                       Text(
                         'до лимита',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.72),
-                          fontSize: 10,
+                          fontSize: 11.0,
                           fontWeight: FontWeight.w500,
                           letterSpacing: 0.2,
                           height: 1.0,
@@ -3938,10 +3939,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     return RepaintBoundary(
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(
+            horizontal: ExpatlioDesign.space16,
+            vertical: ExpatlioDesign.space12),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
           border: Border.all(
             color: accentColor.withValues(alpha: 0.46),
             width: 1.1,
@@ -3962,7 +3965,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               height: 36,
               decoration: BoxDecoration(
                 color: accentColor.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.radiusMedium),
               ),
               child: Icon(
                 Icons.schedule_rounded,
@@ -3970,7 +3974,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 size: 20,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: ExpatlioDesign.space12),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -3987,7 +3991,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                       height: 1.1,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: ExpatlioDesign.space4),
                   Text(
                     notice.subtitle,
                     maxLines: 2,
@@ -4044,10 +4048,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     return RepaintBoundary(
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(
+            horizontal: ExpatlioDesign.space16,
+            vertical: ExpatlioDesign.space12),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.78),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
           border: Border.all(
             color: accentColor.withValues(alpha: 0.42),
             width: 1.1,
@@ -4071,7 +4077,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                   height: 36,
                   decoration: BoxDecoration(
                     color: accentColor.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusMedium),
                   ),
                   child: Icon(
                     hasOwnRequest && !hasOtherRequest
@@ -4081,7 +4088,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                     size: 20,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: ExpatlioDesign.space12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -4096,7 +4103,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                           height: 1.1,
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: ExpatlioDesign.space4),
                       Text(
                         subtitle,
                         style: TextStyle(
@@ -4112,7 +4119,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               ],
             ),
             if (!hasOwnRequest) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: ExpatlioDesign.space12),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -4126,9 +4133,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                         accentColor.withValues(alpha: 0.55),
                     disabledForegroundColor:
                         Colors.black.withValues(alpha: 0.7),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: ExpatlioDesign.space12),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusMedium),
                     ),
                     elevation: 0,
                   ),
@@ -4146,7 +4155,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                           buttonLabel,
                           style: const TextStyle(
                             fontWeight: FontWeight.w700,
-                            fontSize: 14,
+                            fontSize: 15.0,
                           ),
                         ),
                 ),
@@ -4187,10 +4196,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               const CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
               ),
-            if (showSpinner) const SizedBox(height: 24),
+            if (showSpinner) const SizedBox(height: ExpatlioDesign.space24),
             Text(
               message,
-              style: const TextStyle(color: Colors.white, fontSize: 18),
+              style: const TextStyle(color: Colors.white, fontSize: 17.0),
             ),
           ],
         ),
@@ -4210,7 +4219,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
 
       return _buildMirroredLocalVideoView(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
       );
     } catch (e) {
       if (kDebugMode) print('Error building local video: $e');
@@ -4295,7 +4304,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.white, width: 1),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
       ),
       clipBehavior: Clip.hardEdge,
       child: _buildLocalVideo(),
@@ -4312,10 +4321,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.videocam_off, color: Colors.white54, size: 48),
-            const SizedBox(height: 12),
+            const SizedBox(height: ExpatlioDesign.space12),
             Text(
               message,
-              style: const TextStyle(color: Colors.white70, fontSize: 14),
+              style: const TextStyle(color: Colors.white70, fontSize: 15.0),
               textAlign: TextAlign.center,
             ),
           ],
@@ -4344,7 +4353,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
     if (localCaption != null) {
       if (overlayChildren.isNotEmpty) {
-        overlayChildren.add(const SizedBox(height: 12));
+        overlayChildren.add(const SizedBox(height: ExpatlioDesign.space12));
       }
       overlayChildren.add(
         _buildCaptionCard(
@@ -4401,10 +4410,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     final panel = Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+          horizontal: ExpatlioDesign.space16, vertical: ExpatlioDesign.space12),
       decoration: BoxDecoration(
         color: panelColor,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
         border: Border.all(color: panelBorderColor, width: 0.9),
         boxShadow: [
           BoxShadow(
@@ -4430,10 +4440,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(
+                horizontal: ExpatlioDesign.space12,
+                vertical: ExpatlioDesign.space8),
             decoration: BoxDecoration(
               color: labelColor,
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.24),
                 width: 0.5,
@@ -4448,7 +4460,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: ExpatlioDesign.space8),
           panel,
         ],
       ),
@@ -4668,11 +4680,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildUnreadBadge(int count) {
     final label = _formatUnreadChatCount(count);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      padding: const EdgeInsets.symmetric(
+          horizontal: ExpatlioDesign.space8, vertical: ExpatlioDesign.space4),
       constraints: const BoxConstraints(minWidth: 22),
       decoration: BoxDecoration(
         color: const Color(0xFF2F80ED),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
         border: Border.all(color: Colors.black, width: 1.2),
       ),
       child: Text(
@@ -4722,7 +4735,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       child: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF101216).withValues(alpha: 0.96),
-          borderRadius: BorderRadius.circular(isWideChat ? 24 : 28),
+          borderRadius: BorderRadius.circular(
+            isWideChat
+                ? ExpatlioDesign.radiusExtraLarge
+                : ExpatlioDesign.radiusSheet,
+          ),
           border: Border.all(
             color: Colors.white.withValues(alpha: 0.08),
             width: 1,
@@ -4756,7 +4773,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   Widget _buildChatHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
+      padding: const EdgeInsets.fromLTRB(
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space12,
+          ExpatlioDesign.space12),
       child: Row(
         children: [
           Container(
@@ -4764,7 +4785,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             height: 36,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
             ),
             child: const Icon(
               Icons.chat_bubble_outline,
@@ -4772,7 +4793,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               size: 18,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: ExpatlioDesign.space12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4824,7 +4845,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildEmptyChatState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.symmetric(horizontal: ExpatlioDesign.space24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -4833,7 +4854,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               height: 64,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(22),
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
               ),
               child: const Icon(
                 Icons.chat_bubble_outline,
@@ -4841,7 +4863,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 size: 28,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: ExpatlioDesign.space16),
             const Text(
               'Сообщения появятся здесь',
               textAlign: TextAlign.center,
@@ -4851,7 +4873,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: ExpatlioDesign.space8),
             Text(
               _hasRemoteParticipantPresent()
                   ? 'Напишите первое сообщение собеседнику.'
@@ -4875,9 +4897,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       thumbVisibility: _state.chatMessages.length > 4,
       child: ListView.separated(
         controller: _chatScrollController,
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        padding: const EdgeInsets.fromLTRB(
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space12),
         itemCount: _state.chatMessages.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, __) =>
+            const SizedBox(height: ExpatlioDesign.space12),
         itemBuilder: (context, index) {
           final message = _state.chatMessages[index];
           return _buildChatMessageBubble(message);
@@ -4904,7 +4931,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               : CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.only(bottom: ExpatlioDesign.space4),
               child: Text(
                 message.isLocal ? 'Вы' : message.senderName,
                 style: TextStyle(
@@ -4917,31 +4944,32 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             DecoratedBox(
               decoration: BoxDecoration(
                 color: bubbleColor,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
                 border: Border.all(
                   color: Colors.white.withValues(alpha: 0.08),
                   width: 0.8,
                 ),
               ),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: ExpatlioDesign.space16,
+                    vertical: ExpatlioDesign.space12),
                 child: Text(
                   message.text,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 14,
+                    fontSize: 15.0,
                     height: 1.35,
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: ExpatlioDesign.space4),
             Text(
               _formatChatTimestamp(message.sentAt),
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.46),
-                fontSize: 10,
+                fontSize: 11.0,
               ),
             ),
           ],
@@ -4953,7 +4981,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildChatComposer() {
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      minimum: const EdgeInsets.fromLTRB(
+          ExpatlioDesign.space12,
+          ExpatlioDesign.space0,
+          ExpatlioDesign.space12,
+          ExpatlioDesign.space12),
       child: ValueListenableBuilder<TextEditingValue>(
         valueListenable: _chatTextController,
         builder: (context, value, _) {
@@ -4971,7 +5003,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             children: [
               if (!hasRemoteParticipant)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+                  padding: const EdgeInsets.fromLTRB(
+                      ExpatlioDesign.space4,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space4,
+                      ExpatlioDesign.space12),
                   child: Text(
                     'Собеседник еще не в звонке. Сообщение можно отправить после подключения.',
                     style: TextStyle(
@@ -4981,10 +5017,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                   ),
                 ),
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(ExpatlioDesign.space8),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.08),
                     width: 1,
@@ -5003,7 +5040,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                         keyboardType: TextInputType.multiline,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 14,
+                          fontSize: 15.0,
                         ),
                         decoration: InputDecoration(
                           hintText: hasRemoteParticipant
@@ -5011,12 +5048,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                               : 'Ожидаем собеседника...',
                           hintStyle: TextStyle(
                             color: Colors.white.withValues(alpha: 0.42),
-                            fontSize: 14,
+                            fontSize: 15.0,
                           ),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
+                            horizontal: ExpatlioDesign.space12,
+                            vertical: ExpatlioDesign.space12,
                           ),
                         ),
                         onSubmitted: (_) {
@@ -5026,7 +5063,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                         },
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: ExpatlioDesign.space8),
                     SizedBox(
                       width: 48,
                       height: 48,
@@ -5087,11 +5124,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Build reconnecting indicator
   Widget _buildReconnectingIndicator() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(horizontal: ExpatlioDesign.space20),
+      padding: const EdgeInsets.all(ExpatlioDesign.space12),
       decoration: BoxDecoration(
         color: Colors.orange.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusSmall),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -5105,7 +5142,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: ExpatlioDesign.space8),
           Text(
             'Переподключение... (${_state.retryCount}/$_maxRetryAttempts)',
             style: const TextStyle(color: Colors.white, fontSize: 12),
@@ -5119,26 +5156,26 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildErrorDisplay() {
     return Center(
       child: Container(
-        padding: const EdgeInsets.all(20),
-        margin: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(ExpatlioDesign.space20),
+        margin: const EdgeInsets.all(ExpatlioDesign.space20),
         decoration: BoxDecoration(
           color: Colors.red.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.error, color: Colors.white, size: 48),
-            const SizedBox(height: 16),
+            const SizedBox(height: ExpatlioDesign.space16),
             const Text(
               'Не удалось подключиться',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 18,
+                fontSize: 17.0,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: ExpatlioDesign.space8),
             Container(
               constraints: const BoxConstraints(maxHeight: 100),
               child: SingleChildScrollView(
@@ -5149,7 +5186,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: ExpatlioDesign.space16),
             ElevatedButton(
               onPressed: () {
                 _updateState(_state.copyWith(retryCount: 0));

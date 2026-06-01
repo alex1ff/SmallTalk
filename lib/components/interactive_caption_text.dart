@@ -70,7 +70,7 @@ class _InteractiveCaptionTextState extends State<InteractiveCaptionText> {
           .copyWith(height: 1.35),
       InteractiveCaptionTextTone.overlayLocal => TextStyle(
           color: Colors.white,
-          fontSize: 18.0,
+          fontSize: 17.0,
           height: 1.18,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.0,
@@ -78,7 +78,7 @@ class _InteractiveCaptionTextState extends State<InteractiveCaptionText> {
         ),
       InteractiveCaptionTextTone.overlayRemote => TextStyle(
           color: const Color(0xFFF9F3FF),
-          fontSize: 18.0,
+          fontSize: 17.0,
           height: 1.18,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.0,

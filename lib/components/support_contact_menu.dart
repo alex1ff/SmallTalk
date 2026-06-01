@@ -21,10 +21,14 @@ class SupportContactMenu extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: Container(
-        padding: const EdgeInsetsDirectional.fromSTEB(16.0, 14.0, 16.0, 16.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space16),
         decoration: BoxDecoration(
           color: ExpatlioDesign.card,
-          borderRadius: BorderRadius.circular(14.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
           border: Border.all(color: ExpatlioDesign.border),
           boxShadow: const [
             BoxShadow(
@@ -49,14 +53,14 @@ class SupportContactMenu extends StatelessWidget {
                 size: 13.0,
               ),
             ),
-            const SizedBox(height: 10.0),
+            const SizedBox(height: ExpatlioDesign.space12),
             _SupportContactCard(
               icon: Icons.mail_outline_rounded,
               title: 'Email',
               value: email,
               onTap: onEmailTap,
             ),
-            const SizedBox(height: 8.0),
+            const SizedBox(height: ExpatlioDesign.space8),
             _SupportContactCard(
               icon: Icons.near_me_outlined,
               title: 'Telegram',
@@ -86,14 +90,18 @@ class _SupportContactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(12.0),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsetsDirectional.fromSTEB(12.0, 10.0, 12.0, 10.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space12),
         decoration: BoxDecoration(
           color: ExpatlioDesign.card,
-          borderRadius: BorderRadius.circular(12.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
           border: Border.all(color: ExpatlioDesign.border),
         ),
         child: Row(
@@ -108,7 +116,7 @@ class _SupportContactCard extends StatelessWidget {
                 size: 20.0,
               ),
             ),
-            const SizedBox(width: 12.0),
+            const SizedBox(width: ExpatlioDesign.space12),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -122,7 +130,7 @@ class _SupportContactCard extends StatelessWidget {
                       size: 13.0,
                     ),
                   ),
-                  const SizedBox(height: 2.0),
+                  const SizedBox(height: ExpatlioDesign.space4),
                   Text(
                     value,
                     maxLines: 1,

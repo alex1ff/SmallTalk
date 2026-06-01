@@ -748,21 +748,30 @@ class _WaitingForTeacherPageWidgetState
               ),
             ),
             child: Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(6.0, 35.0, 6.0, 35.0),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space8,
+                  ExpatlioDesign.space32,
+                  ExpatlioDesign.space8,
+                  ExpatlioDesign.space32),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 6.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space8),
                     child: Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
                         color: ExpatlioDesign.card,
-                        borderRadius: BorderRadius.circular(16.0),
+                        borderRadius:
+                            BorderRadius.circular(ExpatlioDesign.radiusLarge),
                       ),
                       child: Padding(
-                        padding: EdgeInsets.all(16.0),
+                        padding: EdgeInsets.all(ExpatlioDesign.space16),
                         child: Column(
                           mainAxisSize: MainAxisSize.max,
                           crossAxisAlignment: CrossAxisAlignment.center,
@@ -776,14 +785,17 @@ class _WaitingForTeacherPageWidgetState
                                     fontFamily: 'Cool',
                                     color: FlutterFlowTheme.of(context)
                                         .primaryText,
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
                             ),
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  0.0, 8.0, 0.0, 0.0),
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space8,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0),
                               child: Text(
                                 subtitle,
                                 textAlign: TextAlign.center,
@@ -823,11 +835,17 @@ class _WaitingForTeacherPageWidgetState
                     options: FFButtonOptions(
                       width: double.infinity,
                       height: ExpatlioDesign.buttonHeight,
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space16,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space16,
+                          ExpatlioDesign.space0),
                       iconAlignment: IconAlignment.end,
-                      iconPadding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
+                      iconPadding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       color: Color(0xFF6E6CFA),
                       textStyle: FlutterFlowTheme.of(context)
                           .titleSmall
@@ -840,7 +858,8 @@ class _WaitingForTeacherPageWidgetState
                             fontWeight: FontWeight.w500,
                           ),
                       elevation: 0.0,
-                      borderRadius: BorderRadius.circular(50.0),
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusCapsule),
                     ),
                     showLoadingIndicator: _isCancelling,
                   ),

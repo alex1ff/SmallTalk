@@ -112,7 +112,11 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
       padding: MediaQuery.viewInsetsOf(context),
       child: Container(
         decoration: ExpatlioDesign.sheetDecoration(),
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        padding: const EdgeInsets.fromLTRB(
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -123,11 +127,12 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
                 height: 4,
                 decoration: BoxDecoration(
                   color: theme.alternate,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusCapsule),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: ExpatlioDesign.space16),
             if (success != null)
               ..._buildSuccess(theme, success)
             else
@@ -145,12 +150,9 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
             enText: 'Enter a promo code',
           ),
           textAlign: TextAlign.center,
-          style: theme.titleMedium.override(
-            fontFamily: theme.titleMediumFamily,
-            letterSpacing: 0.0,
-          ),
+          style: ExpatlioDesign.bottomSheetTitleStyle(context),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: ExpatlioDesign.space8),
         Text(
           FFLocalizations.of(context).getVariableText(
             ruText: 'Промокод добавит подарочные минуты на ваш счёт',
@@ -163,7 +165,7 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
             letterSpacing: 0.0,
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: ExpatlioDesign.space24),
         Container(
           decoration: ExpatlioDesign.formGroupDecoration(),
           padding: ExpatlioDesign.formGroupPadding,
@@ -177,7 +179,7 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
                 ),
                 style: ExpatlioDesign.formLabelStyle(context),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: ExpatlioDesign.space8),
               TextField(
                 controller: _codeController,
                 focusNode: _codeFocus,
@@ -201,7 +203,7 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: ExpatlioDesign.space16),
         FFButtonWidget(
           onPressed: _isSubmitting ? null : _submit,
           text: _isSubmitting
@@ -218,11 +220,11 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
             color: theme.primary,
             textStyle: theme.titleSmall.override(
               fontFamily: theme.titleSmallFamily,
-              color: theme.info,
+              color: Colors.white,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.0,
             ),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
             elevation: 0,
           ),
         ),
@@ -234,19 +236,16 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
           size: 56,
           color: theme.primary,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: ExpatlioDesign.space12),
         Text(
           FFLocalizations.of(context).getVariableText(
             ruText: 'Промокод активирован',
             enText: 'Promo code redeemed',
           ),
           textAlign: TextAlign.center,
-          style: theme.titleMedium.override(
-            fontFamily: theme.titleMediumFamily,
-            letterSpacing: 0.0,
-          ),
+          style: ExpatlioDesign.bottomSheetTitleStyle(context),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: ExpatlioDesign.space8),
         Text(
           _buildSuccessMessage(info),
           textAlign: TextAlign.center,
@@ -256,7 +255,7 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
             letterSpacing: 0.0,
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: ExpatlioDesign.space24),
         FFButtonWidget(
           onPressed: () => Navigator.pop(context),
           text: FFLocalizations.of(context).getVariableText(
@@ -268,11 +267,11 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
             color: theme.primary,
             textStyle: theme.titleSmall.override(
               fontFamily: theme.titleSmallFamily,
-              color: theme.info,
+              color: Colors.white,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.0,
             ),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
             elevation: 0,
           ),
         ),

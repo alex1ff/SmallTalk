@@ -55,10 +55,10 @@ class BasicPageHeader extends StatelessWidget {
                 ),
               Padding(
                 padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.pagePadding * 4.5,
-                  0.0,
-                  ExpatlioDesign.pagePadding * 4.5,
-                  0.0,
+                  ExpatlioDesign.pagePadding * ExpatlioDesign.space8,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.pagePadding * ExpatlioDesign.space8,
+                  ExpatlioDesign.space0,
                 ),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,

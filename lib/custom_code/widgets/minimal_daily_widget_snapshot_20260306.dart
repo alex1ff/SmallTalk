@@ -29,6 +29,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '/services/voip_service.dart';
+import '/shared_pages/design/expatlio_design.dart';
 
 // VideoQuality enum simplified - only auto mode needed
 // Daily Adaptive Bitrate handles all quality adjustments automatically
@@ -1122,9 +1123,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Start Deepgram streaming with proper resource management
   Future<void> _startDeepgramStreaming(String credential) async {
-    if (_state.isStreamingToDeepgram ||
-        !mounted ||
-        _deepgramStartInProgress) {
+    if (_state.isStreamingToDeepgram || !mounted || _deepgramStartInProgress) {
       return;
     }
 
@@ -1629,11 +1628,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               top: 55,
               left: 20,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: ExpatlioDesign.space12,
+                    vertical: ExpatlioDesign.space8),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.45),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusLarge),
                 ),
                 child: Text(
                   _formatDuration(_callDurationSeconds),
@@ -1801,10 +1802,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               const CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
               ),
-            if (showSpinner) const SizedBox(height: 24),
+            if (showSpinner) const SizedBox(height: ExpatlioDesign.space24),
             Text(
               message,
-              style: const TextStyle(color: Colors.white, fontSize: 18),
+              style: const TextStyle(color: Colors.white, fontSize: 17.0),
             ),
           ],
         ),
@@ -1824,7 +1825,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
 
       return ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
         child: VideoView(
           controller: _localVideoController!,
           fit: VideoViewFit.cover,
@@ -1890,7 +1891,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.white, width: 1),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
       ),
       clipBehavior: Clip.hardEdge,
       child: _buildLocalVideo(),
@@ -1907,10 +1908,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.videocam_off, color: Colors.white54, size: 48),
-            const SizedBox(height: 12),
+            const SizedBox(height: ExpatlioDesign.space12),
             Text(
               message,
-              style: const TextStyle(color: Colors.white70, fontSize: 14),
+              style: const TextStyle(color: Colors.white70, fontSize: 15.0),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1948,7 +1949,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           // My subtitles section
           if (myWords.isNotEmpty) ...[
             _buildSpeakerSection('Me:', myWords, true),
-            const SizedBox(height: 12),
+            const SizedBox(height: ExpatlioDesign.space12),
           ],
 
           // Remote participant subtitles section
@@ -1966,12 +1967,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     final labelChip = IntrinsicWidth(
       child: Container(
         height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(
+            horizontal: ExpatlioDesign.space12,
+            vertical: ExpatlioDesign.space8),
         decoration: BoxDecoration(
           color: isMySection
               ? Colors.white.withOpacity(0.9)
               : const Color(0xFFB8A4FF).withOpacity(0.9),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
           border: Border.all(
             color: Colors.white.withOpacity(0.3),
             width: 0.5,
@@ -1990,7 +1993,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             label,
             style: TextStyle(
               color: isMySection ? Colors.black : Colors.white,
-              fontSize: 14,
+              fontSize: 15.0,
               fontWeight: FontWeight.bold,
               shadows: [
                 Shadow(
@@ -2007,8 +2010,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     // Combine label and words in a single wrap
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: ExpatlioDesign.space8,
+      runSpacing: ExpatlioDesign.space8,
       children: [labelChip, ...words.map(_buildWordChip)],
     );
   }
@@ -2096,10 +2099,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         child: Container(
           // Removed RepaintBoundary from here
           height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(
+              horizontal: ExpatlioDesign.space12,
+              vertical: ExpatlioDesign.space8),
           decoration: BoxDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
             border: Border.all(
               color: Colors.white.withOpacity(0.3),
               width: 0.5,
@@ -2196,11 +2201,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Build reconnecting indicator
   Widget _buildReconnectingIndicator() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(horizontal: ExpatlioDesign.space20),
+      padding: const EdgeInsets.all(ExpatlioDesign.space12),
       decoration: BoxDecoration(
         color: Colors.orange.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusSmall),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2214,7 +2219,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: ExpatlioDesign.space8),
           Text(
             'Переподключение... (${_state.retryCount}/$_maxRetryAttempts)',
             style: const TextStyle(color: Colors.white, fontSize: 12),
@@ -2228,26 +2233,26 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildErrorDisplay() {
     return Center(
       child: Container(
-        padding: const EdgeInsets.all(20),
-        margin: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(ExpatlioDesign.space20),
+        margin: const EdgeInsets.all(ExpatlioDesign.space20),
         decoration: BoxDecoration(
           color: Colors.red.withOpacity(0.9),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.error, color: Colors.white, size: 48),
-            const SizedBox(height: 16),
+            const SizedBox(height: ExpatlioDesign.space16),
             const Text(
               'Не удалось подключиться',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 18,
+                fontSize: 17.0,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: ExpatlioDesign.space8),
             Container(
               constraints: const BoxConstraints(maxHeight: 100),
               child: SingleChildScrollView(
@@ -2258,7 +2263,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: ExpatlioDesign.space16),
             ElevatedButton(
               onPressed: () {
                 _updateState(_state.copyWith(retryCount: 0));

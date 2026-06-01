@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 import 'package:small_talk/components/bottom_sheet_header.dart';
+import 'package:small_talk/components/promo_redeem_widget.dart';
+import 'package:small_talk/flutter_flow/flutter_flow_widgets.dart';
 
 void main() {
   Widget buildHarness(Widget child) {
@@ -38,6 +40,42 @@ void main() {
     expect(confirmButton, findsOneWidget);
     expect(tester.getSize(closeButton), const Size(48.0, 48.0));
     expect(tester.getSize(confirmButton), const Size(48.0, 48.0));
+  });
+
+  testWidgets('promo sheet title matches the standard bottom sheet title',
+      (tester) async {
+    await tester.pumpWidget(
+      buildHarness(
+        const BottomSheetHeader(
+          title: 'Standard title',
+          showConfirm: false,
+        ),
+      ),
+    );
+
+    final standardTitleStyle =
+        tester.widget<Text>(find.text('Standard title')).style;
+
+    await tester.pumpWidget(
+      buildHarness(const PromoRedeemWidget()),
+    );
+
+    final promoTitleStyle =
+        tester.widget<Text>(find.text('Введите промокод')).style;
+
+    expect(promoTitleStyle, standardTitleStyle);
+  });
+
+  testWidgets('promo sheet primary button uses visible white text',
+      (tester) async {
+    await tester.pumpWidget(
+      buildHarness(const PromoRedeemWidget()),
+    );
+
+    final button = tester.widget<FFButtonWidget>(find.byType(FFButtonWidget));
+
+    expect(button.text, 'Активировать');
+    expect(button.options.textStyle?.color, Colors.white);
   });
 
   testWidgets('bottom sheet header close button dismisses modal sheet',
@@ -92,8 +130,8 @@ void main() {
   });
 
   test('header circle button does not receive visual color overrides', () {
-    final source = File('lib/components/bottom_sheet_header.dart')
-        .readAsStringSync();
+    final source =
+        File('lib/components/bottom_sheet_header.dart').readAsStringSync();
 
     expect(source, isNot(contains('fillColor')));
     expect(source, isNot(contains('iconColor')));

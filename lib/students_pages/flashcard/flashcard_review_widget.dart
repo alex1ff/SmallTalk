@@ -196,7 +196,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
       mainAxisSize: MainAxisSize.max,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 12.0),
+          padding: const EdgeInsets.only(bottom: ExpatlioDesign.space12),
           child: Text(
             FFLocalizations.of(context).getVariableText(
               ruText:
@@ -207,7 +207,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
             style: FlutterFlowTheme.of(context).bodyMedium.override(
                   fontFamily: 'sf pro display',
                   color: ExpatlioDesign.muted,
-                  fontSize: 14.0,
+                  fontSize: 15.0,
                   letterSpacing: 0.0,
                   fontWeight: FontWeight.w500,
                 ),
@@ -231,7 +231,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
             ],
           ),
         ),
-        const SizedBox(height: 20.0),
+        const SizedBox(height: ExpatlioDesign.space20),
         _buildDecisionButtons(context),
       ],
     );
@@ -243,13 +243,15 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
         children: [
           Expanded(
             child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 4.0),
+              margin:
+                  const EdgeInsets.symmetric(vertical: ExpatlioDesign.space4),
               decoration: BoxDecoration(
                 color: const Color(0x14FF3B30),
-                borderRadius: BorderRadius.circular(18.0),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               ),
               alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: ExpatlioDesign.space24),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
                   ruText: 'Не помню',
@@ -267,13 +269,15 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
           ),
           Expanded(
             child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 4.0),
+              margin:
+                  const EdgeInsets.symmetric(vertical: ExpatlioDesign.space4),
               decoration: BoxDecoration(
                 color: const Color(0x141FBF75),
-                borderRadius: BorderRadius.circular(18.0),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               ),
               alignment: Alignment.centerRight,
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: ExpatlioDesign.space24),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
                   ruText: 'Помню',
@@ -305,10 +309,10 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      margin: const EdgeInsets.symmetric(vertical: ExpatlioDesign.space4),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(18.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
         border: Border.all(color: ExpatlioDesign.border),
         boxShadow: [
           BoxShadow(
@@ -319,7 +323,11 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24.0, 27.0, 24.0, 28.0),
+        padding: const EdgeInsets.fromLTRB(
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space32,
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -327,17 +335,19 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12.0, vertical: 7.0),
+                      horizontal: ExpatlioDesign.space12,
+                      vertical: ExpatlioDesign.space8),
                   decoration: BoxDecoration(
                     color: accentColor.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(20.0),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
                   ),
                   child: Text(
                     _directionLabel(context, entry.direction),
                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'sf pro display',
                           color: accentColor,
-                          fontSize: 14.0,
+                          fontSize: 15.0,
                           letterSpacing: 0.0,
                           fontWeight: FontWeight.w600,
                         ),
@@ -346,7 +356,8 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                 const Spacer(),
                 InkWell(
                   key: const Key('answerVisibilityToggle'),
-                  borderRadius: BorderRadius.circular(18.0),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusLarge),
                   onTap: _isSubmitting
                       ? null
                       : () {
@@ -376,7 +387,8 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
               child: Center(
                 child: SingleChildScrollView(
                   physics: const ClampingScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(vertical: 24.0),
+                  padding: const EdgeInsets.symmetric(
+                      vertical: ExpatlioDesign.space24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -392,10 +404,10 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                             ),
                       ),
                       if (hasSourceMetadata) ...[
-                        const SizedBox(height: 10.0),
+                        const SizedBox(height: ExpatlioDesign.space12),
                         _buildSourceMetadata(context, entry),
                       ],
-                      const SizedBox(height: 28.0),
+                      const SizedBox(height: ExpatlioDesign.space32),
                       SizedBox(
                         height: 56.0,
                         child: Center(
@@ -495,21 +507,22 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                 ),
           ),
         if (hasSynonyms) ...[
-          if (hasTranscription) const SizedBox(height: 12.0),
+          if (hasTranscription) const SizedBox(height: ExpatlioDesign.space12),
           Wrap(
-            spacing: 8.0,
-            runSpacing: 8.0,
+            spacing: ExpatlioDesign.space8,
+            runSpacing: ExpatlioDesign.space8,
             alignment: WrapAlignment.center,
             children: synonyms
                 .map(
                   (synonym) => Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12.0,
-                      vertical: 8.0,
+                      horizontal: ExpatlioDesign.space12,
+                      vertical: ExpatlioDesign.space8,
                     ),
                     decoration: BoxDecoration(
                       color: ExpatlioDesign.background,
-                      borderRadius: BorderRadius.circular(18.0),
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusLarge),
                     ),
                     child: Text(
                       key: ValueKey<String>('sourceSynonym_${synonym.text}'),
@@ -558,7 +571,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                 color: Color(0xFFFF3B30),
               ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16.0),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               ),
             ),
             child: Text(
@@ -576,7 +589,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
             ),
           ),
         ),
-        const SizedBox(width: 12.0),
+        const SizedBox(width: ExpatlioDesign.space12),
         Expanded(
           child: ElevatedButton(
             key: const Key('rememberButton'),
@@ -586,7 +599,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
               foregroundColor: Colors.white,
               minimumSize: const Size.fromHeight(56.0),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16.0),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               ),
               elevation: 0.0,
             ),

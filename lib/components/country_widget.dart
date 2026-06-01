@@ -119,7 +119,11 @@ class _CountryWidgetState extends State<CountryWidget> {
           height: 58.0,
           decoration: ExpatlioDesign.cardDecoration(radius: 16.0),
           child: Padding(
-            padding: EdgeInsetsDirectional.fromSTEB(6.0, 4.0, 10.0, 4.0),
+            padding: EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space8,
+                ExpatlioDesign.space4,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space4),
             child: Row(
               mainAxisSize: MainAxisSize.max,
               children: [
@@ -138,7 +142,11 @@ class _CountryWidgetState extends State<CountryWidget> {
                 ),
                 Expanded(
                   child: Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space0),
                     child: Container(
                       width: 200.0,
                       child: TextFormField(
@@ -200,7 +208,11 @@ class _CountryWidgetState extends State<CountryWidget> {
           ),
         ),
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: ListView.separated(
             padding: EdgeInsets.zero,
             primary: false,
@@ -208,7 +220,8 @@ class _CountryWidgetState extends State<CountryWidget> {
             physics: const NeverScrollableScrollPhysics(),
             scrollDirection: Axis.vertical,
             itemCount: countriesToDisplay.length,
-            separatorBuilder: (_, __) => SizedBox(height: 6.0),
+            separatorBuilder: (_, __) =>
+                SizedBox(height: ExpatlioDesign.space8),
             itemBuilder: (context, countryIndex) {
               final countryItem = countriesToDisplay[countryIndex];
               return CountryCardWidget(

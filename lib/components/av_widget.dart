@@ -59,7 +59,11 @@ class _AvWidgetState extends State<AvWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
@@ -135,8 +139,8 @@ class _AvWidgetState extends State<AvWidget> {
                         );
                       },
                     ),
-                    const SizedBox(height: 35.0),
-                  ].divide(SizedBox(height: 24.0)),
+                    const SizedBox(height: ExpatlioDesign.space32),
+                  ].divide(SizedBox(height: ExpatlioDesign.space24)),
                 ),
               ),
             ],

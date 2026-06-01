@@ -18,9 +18,9 @@ class NativeSpeakerGroupedPageScaffold extends StatelessWidget {
     return ListView(
       padding: const EdgeInsetsDirectional.fromSTEB(
         ExpatlioDesign.pagePadding,
-        20.0,
+        ExpatlioDesign.space20,
         ExpatlioDesign.pagePadding,
-        130.0,
+        ExpatlioDesign.space136,
       ),
       children: [
         Text(
@@ -32,7 +32,7 @@ class NativeSpeakerGroupedPageScaffold extends StatelessWidget {
             height: 1.1,
           ),
         ),
-        const SizedBox(height: 8.0),
+        const SizedBox(height: ExpatlioDesign.space8),
         Text(
           subtitle,
           style: ExpatlioDesign.textStyle(
@@ -41,7 +41,7 @@ class NativeSpeakerGroupedPageScaffold extends StatelessWidget {
             size: 15.0,
           ),
         ),
-        const SizedBox(height: 22.0),
+        const SizedBox(height: ExpatlioDesign.space24),
         child,
       ],
     );

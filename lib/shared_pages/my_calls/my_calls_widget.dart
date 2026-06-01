@@ -82,9 +82,9 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
                 Padding(
                   padding: const EdgeInsetsDirectional.fromSTEB(
                     ExpatlioDesign.pagePadding,
-                    0.0,
+                    ExpatlioDesign.space0,
                     ExpatlioDesign.pagePadding,
-                    0.0,
+                    ExpatlioDesign.space0,
                   ),
                   child: StreamBuilder<List<VideoSessionsRecord>>(
                     stream: queryVideoSessionsRecord(
@@ -122,14 +122,14 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
 
                       return ListView.separated(
                         padding: EdgeInsets.fromLTRB(
-                          0.0,
+                          ExpatlioDesign.space0,
                           contentTopPadding,
-                          0.0,
+                          ExpatlioDesign.space0,
                           ExpatlioDesign.pageBottomSpacing,
                         ),
                         itemCount: sessions.length,
                         separatorBuilder: (_, __) =>
-                            const SizedBox(height: 0.0),
+                            const SizedBox(height: ExpatlioDesign.space0),
                         itemBuilder: (context, index) {
                           return CallHistoryCard(
                             session: sessions[index],

@@ -336,7 +336,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
       elevation: 8.0,
       shadowColor: const Color(0x12000000),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         side: const BorderSide(color: ExpatlioDesign.border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -538,9 +538,9 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
               key: const ValueKey<String>('student_onboarding_single_form'),
               padding: const EdgeInsetsDirectional.fromSTEB(
                 ExpatlioDesign.pagePadding,
-                20.0,
+                ExpatlioDesign.space20,
                 ExpatlioDesign.pagePadding,
-                24.0,
+                ExpatlioDesign.space24,
               ),
               children: [
                 Text(
@@ -555,7 +555,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                     height: 1.1,
                   ),
                 ),
-                const SizedBox(height: 8.0),
+                const SizedBox(height: ExpatlioDesign.space8),
                 Text(
                   FFLocalizations.of(context).getVariableText(
                     ruText:
@@ -569,7 +569,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                     size: 15.0,
                   ),
                 ),
-                const SizedBox(height: 22.0),
+                const SizedBox(height: ExpatlioDesign.space24),
                 Container(
                   decoration: ExpatlioDesign.formGroupDecoration(),
                   padding: ExpatlioDesign.formGroupPadding,
@@ -704,7 +704,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 18.0),
+                const SizedBox(height: ExpatlioDesign.space20),
                 ValueListenableBuilder<bool>(
                   valueListenable: _formCompleteNotifier,
                   builder: (context, isFormComplete, _) => ButtonWidget(

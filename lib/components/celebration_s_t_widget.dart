@@ -48,7 +48,11 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
@@ -76,16 +80,21 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                             children: [
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    6.0, 20.0, 6.0, 0.0),
+                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.space20,
+                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.space0),
                                 child: Container(
                                   width: double.infinity,
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .primaryBackground,
-                                    borderRadius: BorderRadius.circular(38.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusCapsule),
                                   ),
                                   child: Padding(
-                                    padding: EdgeInsets.all(24.0),
+                                    padding:
+                                        EdgeInsets.all(ExpatlioDesign.space24),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.max,
                                       crossAxisAlignment:
@@ -111,7 +120,7 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                                         .bodyMedium
                                                         .override(
                                                           fontFamily: 'Cool',
-                                                          fontSize: 21.0,
+                                                          fontSize: 22.0,
                                                           letterSpacing: 0.0,
                                                         ),
                                                   ),
@@ -125,7 +134,7 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                                           .bodyMedium
                                                           .override(
                                                             fontFamily: 'Cool',
-                                                            fontSize: 21.0,
+                                                            fontSize: 22.0,
                                                             letterSpacing: 0.0,
                                                           ),
                                                     ),
@@ -141,7 +150,7 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                                         .bodyMedium
                                                         .override(
                                                           fontFamily: 'Cool',
-                                                          fontSize: 21.0,
+                                                          fontSize: 22.0,
                                                           letterSpacing: 0.0,
                                                         ),
                                                   ),
@@ -155,12 +164,16 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                                 shape: BoxShape.rectangle,
                                               ),
                                             ),
-                                          ].divide(SizedBox(width: 16.0)),
+                                          ].divide(SizedBox(
+                                              width: ExpatlioDesign.space16)),
                                         ),
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  0.0, 24.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space24,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Text(
                                             FFLocalizations.of(context).getText(
                                               '0ejtqqi8' /* Вы получили: */,
@@ -170,7 +183,7 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                                 .bodyMedium
                                                 .override(
                                                   fontFamily: 'Cool',
-                                                  fontSize: 21.0,
+                                                  fontSize: 22.0,
                                                   letterSpacing: 0.0,
                                                 ),
                                           ),
@@ -178,7 +191,10 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  0.0, 12.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space12,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
                                             children: [
@@ -230,7 +246,10 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  0.0, 12.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space12,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
                                             children: [
@@ -282,7 +301,10 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  0.0, 12.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space12,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
                                             children: [
@@ -334,7 +356,10 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  0.0, 24.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space24,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Text(
                                             FFLocalizations.of(context).getText(
                                               'o2lqwjf0' /* Всё готово для первого разгово... */,
@@ -380,8 +405,8 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 35.0),
-                        ].divide(SizedBox(height: 24.0)),
+                          const SizedBox(height: ExpatlioDesign.space32),
+                        ].divide(SizedBox(height: ExpatlioDesign.space24)),
                       );
                     } else {
                       return Column(
@@ -399,16 +424,21 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                             children: [
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    6.0, 20.0, 6.0, 0.0),
+                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.space20,
+                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.space0),
                                 child: Container(
                                   width: double.infinity,
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .primaryBackground,
-                                    borderRadius: BorderRadius.circular(38.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusCapsule),
                                   ),
                                   child: Padding(
-                                    padding: EdgeInsets.all(24.0),
+                                    padding:
+                                        EdgeInsets.all(ExpatlioDesign.space24),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.max,
                                       crossAxisAlignment:
@@ -434,7 +464,7 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                                         .bodyMedium
                                                         .override(
                                                           fontFamily: 'Cool',
-                                                          fontSize: 21.0,
+                                                          fontSize: 22.0,
                                                           letterSpacing: 0.0,
                                                         ),
                                                   ),
@@ -448,7 +478,7 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                                           .bodyMedium
                                                           .override(
                                                             fontFamily: 'Cool',
-                                                            fontSize: 21.0,
+                                                            fontSize: 22.0,
                                                             letterSpacing: 0.0,
                                                           ),
                                                     ),
@@ -463,12 +493,16 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                                 shape: BoxShape.rectangle,
                                               ),
                                             ),
-                                          ].divide(SizedBox(width: 16.0)),
+                                          ].divide(SizedBox(
+                                              width: ExpatlioDesign.space16)),
                                         ),
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  0.0, 24.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space24,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Text(
                                             FFLocalizations.of(context).getText(
                                               '5s3400tx' /* Завершите профиль
@@ -480,7 +514,7 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                                 .bodyMedium
                                                 .override(
                                                   fontFamily: 'Cool',
-                                                  fontSize: 21.0,
+                                                  fontSize: 22.0,
                                                   letterSpacing: 0.0,
                                                 ),
                                           ),
@@ -488,7 +522,10 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  0.0, 12.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space12,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
                                             children: [
@@ -540,7 +577,10 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  0.0, 12.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space12,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
                                             children: [
@@ -592,7 +632,10 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  0.0, 12.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space12,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
                                             children: [
@@ -644,7 +687,10 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                         Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  0.0, 24.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space24,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Text(
                                             FFLocalizations.of(context).getText(
                                               'yq11lpzm' /* Основная информация готова. 
@@ -692,8 +738,8 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 35.0),
-                        ].divide(SizedBox(height: 24.0)),
+                          const SizedBox(height: ExpatlioDesign.space32),
+                        ].divide(SizedBox(height: ExpatlioDesign.space24)),
                       );
                     }
                   },
@@ -703,7 +749,11 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
           ),
         ),
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 100.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space96),
           child: IgnorePointer(
             child: Lottie.asset(
               'assets/jsons/Confetti_Animation.json',

@@ -23,7 +23,11 @@ class StudentOnboardingGenderStep extends StatelessWidget {
       key: const ValueKey<String>('student_onboarding_gender_page_clip'),
       child: SingleChildScrollView(
         key: const ValueKey<String>('student_onboarding_step_gender'),
-        padding: const EdgeInsetsDirectional.fromSTEB(12.0, 32.0, 12.0, 120.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space32,
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space112),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -36,13 +40,13 @@ class StudentOnboardingGenderStep extends StatelessWidget {
               style: FlutterFlowTheme.of(context).bodyMedium.override(
                     fontFamily: 'Cool',
                     color: ExpatlioDesign.text,
-                    fontSize: 43.0,
+                    fontSize: 34.0,
                     letterSpacing: 0.0,
                     fontWeight: FontWeight.normal,
                     lineHeight: 1.1,
                   ),
             ),
-            const SizedBox(height: 28.0),
+            const SizedBox(height: ExpatlioDesign.space32),
             _StudentGenderChoice(
               genderMale: genderMale,
               onChanged: onChanged,
@@ -73,10 +77,10 @@ class _StudentGenderChoiceState extends State<_StudentGenderChoice> {
   static const _maleRotationAngle = 15.0 * math.pi / 180.0;
   static const _femaleRotationAngle = 350.0 * math.pi / 180.0;
   static const _swiperPadding = EdgeInsetsDirectional.fromSTEB(
-    6.0,
-    12.0,
-    28.0,
-    12.0,
+    ExpatlioDesign.space8,
+    ExpatlioDesign.space12,
+    ExpatlioDesign.space32,
+    ExpatlioDesign.space12,
   );
   static const _backCardOffset = Offset(84.0, 0.0);
 
@@ -172,7 +176,7 @@ class _StudentGenderChoiceState extends State<_StudentGenderChoice> {
               },
             ),
           ),
-          const SizedBox(height: 14.0),
+          const SizedBox(height: ExpatlioDesign.space16),
           ValueListenableBuilder<bool>(
             valueListenable: _selectedGenderMale,
             builder: (context, genderMale, _) {
@@ -207,11 +211,16 @@ class _StudentGenderCard extends StatelessWidget {
       onTap: onTap,
       child: Center(
         child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(4.0, 4.0, 4.0, 4.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space4,
+              ExpatlioDesign.space4,
+              ExpatlioDesign.space4,
+              ExpatlioDesign.space4),
           child: Transform.rotate(
             angle: rotationAngle,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20.0),
+              borderRadius:
+                  BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
               child: Image.asset(
                 assetPath,
                 height: 340.0,
@@ -243,9 +252,9 @@ class _StudentGenderSelector extends StatelessWidget {
       height: 58.0,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(18.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
       ),
-      padding: const EdgeInsets.all(2.0),
+      padding: const EdgeInsets.all(ExpatlioDesign.space4),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final selectedSegmentWidth = (constraints.maxWidth - 2.0) / 2.0;
@@ -268,7 +277,8 @@ class _StudentGenderSelector extends StatelessWidget {
                   width: selectedSegmentWidth,
                   decoration: BoxDecoration(
                     color: ExpatlioDesign.background,
-                    borderRadius: BorderRadius.circular(24.0),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
                   ),
                 ),
               ),
@@ -286,7 +296,7 @@ class _StudentGenderSelector extends StatelessWidget {
                       onTap: () => onChanged(true),
                     ),
                   ),
-                  const SizedBox(width: 2.0),
+                  const SizedBox(width: ExpatlioDesign.space4),
                   Expanded(
                     child: _StudentGenderSelectorItem(
                       key: const ValueKey<String>(
@@ -328,7 +338,7 @@ class _StudentGenderSelectorItem extends StatelessWidget {
       focusColor: Colors.transparent,
       hoverColor: Colors.transparent,
       highlightColor: Colors.transparent,
-      borderRadius: BorderRadius.circular(24.0),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
       onTap: onTap,
       child: Container(
         width: double.infinity,

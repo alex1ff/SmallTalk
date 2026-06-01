@@ -102,7 +102,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
       width: widget.fullWidth ? double.infinity : _compactWidth,
       decoration: ExpatlioDesign.cardDecoration(radius: 20.0),
       child: Padding(
-        padding: EdgeInsets.all(16.0),
+        padding: EdgeInsets.all(ExpatlioDesign.space16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -153,7 +153,10 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                             Flexible(
                               child: Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    12.0, 0.0, 0.0, 0.0),
+                                    ExpatlioDesign.space12,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0),
                                 child: Column(
                                   mainAxisSize: MainAxisSize.max,
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -189,7 +192,7 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                                             fontFamily: 'sf pro display',
                                             color: FlutterFlowTheme.of(context)
                                                 .secondaryText,
-                                            fontSize: 14.0,
+                                            fontSize: 15.0,
                                             letterSpacing: 0.0,
                                           ),
                                     ),
@@ -218,7 +221,11 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
             ),
             if (reviewComment != null)
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space0),
                 child: Text(
                   reviewComment,
                   style: FlutterFlowTheme.of(context).bodyMedium.override(

@@ -29,7 +29,7 @@ class OnboardingGenderChips extends StatelessWidget {
             onTap: () => onChanged(true),
           ),
         ),
-        const SizedBox(width: 8.0),
+        const SizedBox(width: ExpatlioDesign.space8),
         Expanded(
           child: _OnboardingGenderChip(
             key: const ValueKey<String>('student_onboarding_gender_female'),
@@ -82,12 +82,13 @@ class _OnboardingGenderChip extends StatelessWidget {
       child: Container(
         height: ExpatlioDesign.formFieldHeight,
         decoration: decoration,
-        padding: const EdgeInsetsDirectional.symmetric(horizontal: 12.0),
+        padding: const EdgeInsetsDirectional.symmetric(
+            horizontal: ExpatlioDesign.space12),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: foreground, size: 19.0),
-            const SizedBox(width: 6.0),
+            const SizedBox(width: ExpatlioDesign.space8),
             Flexible(
               child: Text(
                 title,

@@ -383,7 +383,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                         children: [
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                16.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space16,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'd7d95pj7' /* О себе */,
@@ -392,7 +395,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 24.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -400,7 +403,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                16.0, 10.0, 16.0, 0.0),
+                                ExpatlioDesign.space16,
+                                ExpatlioDesign.space12,
+                                ExpatlioDesign.space16,
+                                ExpatlioDesign.space0),
                             child: Row(
                               mainAxisSize: MainAxisSize.max,
                               children: [
@@ -482,7 +488,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                16.0, 10.0, 16.0, 0.0),
+                                ExpatlioDesign.space16,
+                                ExpatlioDesign.space12,
+                                ExpatlioDesign.space16,
+                                ExpatlioDesign.space0),
                             child: Text(
                               nativeSpeakerPublicProfile.aboutMe,
                               maxLines: _model.numMaxLineAbout,
@@ -522,9 +531,15 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                               options: FFButtonOptions(
                                 height: ExpatlioDesign.buttonHeight,
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    16.0, 0.0, 16.0, 0.0),
+                                    ExpatlioDesign.space16,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space16,
+                                    ExpatlioDesign.space0),
                                 iconPadding: EdgeInsetsDirectional.fromSTEB(
-                                    0.0, 0.0, 0.0, 0.0),
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0),
                                 color: Colors.transparent,
                                 textStyle: FlutterFlowTheme.of(context)
                                     .bodyMedium
@@ -536,13 +551,17 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                       letterSpacing: 0.0,
                                     ),
                                 elevation: 0.0,
-                                borderRadius: BorderRadius.circular(8.0),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusSmall),
                               ),
                             ),
                           if (hasInstructionLanguage)
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  16.0, 24.0, 0.0, 0.0),
+                                  ExpatlioDesign.space16,
+                                  ExpatlioDesign.space24,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0),
                               child: Text(
                                 FFLocalizations.of(context).getVariableText(
                                   ruText: 'Я преподаю',
@@ -552,7 +571,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                     .bodyMedium
                                     .override(
                                       fontFamily: 'Cool',
-                                      fontSize: 24.0,
+                                      fontSize: 22.0,
                                       letterSpacing: 0.0,
                                       fontWeight: FontWeight.normal,
                                     ),
@@ -561,7 +580,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           if (hasInstructionLanguage)
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  6.0, 10.0, 6.0, 0.0),
+                                  ExpatlioDesign.space8,
+                                  ExpatlioDesign.space12,
+                                  ExpatlioDesign.space8,
+                                  ExpatlioDesign.space0),
                               child: wrapWithModel(
                                 model: _model.languageCardModel1,
                                 updateCallback: () => safeSetState(() {}),
@@ -575,7 +597,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           if (hasNativeLanguage)
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  16.0, 24.0, 0.0, 0.0),
+                                  ExpatlioDesign.space16,
+                                  ExpatlioDesign.space24,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0),
                               child: Text(
                                 FFLocalizations.of(context).getVariableText(
                                   ruText: 'Мой родной язык',
@@ -585,7 +610,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                     .bodyMedium
                                     .override(
                                       fontFamily: 'Cool',
-                                      fontSize: 24.0,
+                                      fontSize: 22.0,
                                       letterSpacing: 0.0,
                                       fontWeight: FontWeight.normal,
                                     ),
@@ -594,7 +619,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           if (hasNativeLanguage)
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  6.0, 10.0, 6.0, 0.0),
+                                  ExpatlioDesign.space8,
+                                  ExpatlioDesign.space12,
+                                  ExpatlioDesign.space8,
+                                  ExpatlioDesign.space0),
                               child: wrapWithModel(
                                 model: _model.languageCardModel2,
                                 updateCallback: () => safeSetState(() {}),
@@ -607,7 +635,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                             ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                16.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space16,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getVariableText(
                                 ruText: 'Отзывы',
@@ -617,7 +648,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 24.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -625,7 +656,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 10.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space12,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: _buildReviewsSection(
                                 nativeSpeakerPublicProfile),
                           ),
@@ -690,10 +724,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 ),
                                 child: Wrapper(
                                   padding: const EdgeInsetsDirectional.fromSTEB(
-                                    6.0,
-                                    12.0,
-                                    6.0,
-                                    12.0,
+                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.space12,
+                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.space12,
                                   ),
                                   child: ButtonWidget(
                                     text: FFLocalizations.of(context)
@@ -796,7 +830,11 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
           ),
         ),
         child: Wrapper(
-          padding: const EdgeInsetsDirectional.fromSTEB(6.0, 12.0, 6.0, 35.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space8,
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space8,
+              ExpatlioDesign.space32),
           child: ButtonWidget(
             text: FFLocalizations.of(context).getText(
               '2sabsnp2' /* Начать разговор */,
@@ -915,7 +953,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
-                      padding: EdgeInsets.all(16.0),
+                      padding: EdgeInsets.all(ExpatlioDesign.space16),
                       child: Row(
                         mainAxisSize: MainAxisSize.max,
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -935,14 +973,17 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                     .bodyMedium
                                     .override(
                                       fontFamily: 'Cool',
-                                      fontSize: 48.0,
+                                      fontSize: 34.0,
                                       letterSpacing: 0.0,
                                       fontWeight: FontWeight.normal,
                                     ),
                               ),
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    0.0, 6.0, 0.0, 0.0),
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0),
                                 child: RatingBar.builder(
                                   onRatingUpdate: (newValue) => safeSetState(
                                       () => _model.ratingBarValue = newValue),
@@ -963,7 +1004,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                               ),
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    0.0, 4.0, 0.0, 0.0),
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space4,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0),
                                 child: Text(
                                   functions
                                       .getReviewString(valueOrDefault<String>(
@@ -986,7 +1030,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           Expanded(
                             child: Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  10.0, 0.0, 0.0, 0.0),
+                                  ExpatlioDesign.space12,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0),
                               child: Column(
                                 mainAxisSize: MainAxisSize.max,
                                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -1021,7 +1068,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                       ),
                                       Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            2.0, 0.0, 2.0, 0.0),
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0),
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               LinearPercentIndicator(
@@ -1036,7 +1086,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                             backgroundColor:
                                                 FlutterFlowTheme.of(context)
                                                     .accent4,
-                                            barRadius: Radius.circular(8.0),
+                                            barRadius: Radius.circular(
+                                                ExpatlioDesign.radiusSmall),
                                             padding: EdgeInsets.zero,
                                           ),
                                         ),
@@ -1059,7 +1110,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               ),
                                         ),
                                       ),
-                                    ].divide(SizedBox(width: 3.0)),
+                                    ].divide(
+                                        SizedBox(width: ExpatlioDesign.space4)),
                                   ),
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -1091,7 +1143,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                       ),
                                       Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            2.0, 0.0, 2.0, 0.0),
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0),
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               LinearPercentIndicator(
@@ -1106,7 +1161,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                             backgroundColor:
                                                 FlutterFlowTheme.of(context)
                                                     .accent4,
-                                            barRadius: Radius.circular(8.0),
+                                            barRadius: Radius.circular(
+                                                ExpatlioDesign.radiusSmall),
                                             padding: EdgeInsets.zero,
                                           ),
                                         ),
@@ -1129,7 +1185,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               ),
                                         ),
                                       ),
-                                    ].divide(SizedBox(width: 3.0)),
+                                    ].divide(
+                                        SizedBox(width: ExpatlioDesign.space4)),
                                   ),
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -1162,7 +1219,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                       ),
                                       Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            2.0, 0.0, 2.0, 0.0),
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0),
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               LinearPercentIndicator(
@@ -1177,7 +1237,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                             backgroundColor:
                                                 FlutterFlowTheme.of(context)
                                                     .accent4,
-                                            barRadius: Radius.circular(8.0),
+                                            barRadius: Radius.circular(
+                                                ExpatlioDesign.radiusSmall),
                                             padding: EdgeInsets.zero,
                                           ),
                                         ),
@@ -1200,7 +1261,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               ),
                                         ),
                                       ),
-                                    ].divide(SizedBox(width: 3.0)),
+                                    ].divide(
+                                        SizedBox(width: ExpatlioDesign.space4)),
                                   ),
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -1232,7 +1294,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                       ),
                                       Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            2.0, 0.0, 2.0, 0.0),
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0),
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               LinearPercentIndicator(
@@ -1247,7 +1312,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                             backgroundColor:
                                                 FlutterFlowTheme.of(context)
                                                     .accent4,
-                                            barRadius: Radius.circular(8.0),
+                                            barRadius: Radius.circular(
+                                                ExpatlioDesign.radiusSmall),
                                             padding: EdgeInsets.zero,
                                           ),
                                         ),
@@ -1270,7 +1336,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               ),
                                         ),
                                       ),
-                                    ].divide(SizedBox(width: 3.0)),
+                                    ].divide(
+                                        SizedBox(width: ExpatlioDesign.space4)),
                                   ),
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -1302,7 +1369,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                       ),
                                       Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            2.0, 0.0, 2.0, 0.0),
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0),
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               LinearPercentIndicator(
@@ -1317,7 +1387,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                             backgroundColor:
                                                 FlutterFlowTheme.of(context)
                                                     .accent4,
-                                            barRadius: Radius.circular(8.0),
+                                            barRadius: Radius.circular(
+                                                ExpatlioDesign.radiusSmall),
                                             padding: EdgeInsets.zero,
                                           ),
                                         ),
@@ -1340,9 +1411,11 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               ),
                                         ),
                                       ),
-                                    ].divide(SizedBox(width: 3.0)),
+                                    ].divide(
+                                        SizedBox(width: ExpatlioDesign.space4)),
                                   ),
-                                ].divide(SizedBox(height: 4.0)),
+                                ].divide(
+                                    SizedBox(height: ExpatlioDesign.space4)),
                               ),
                             ),
                           ),
@@ -1350,8 +1423,11 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space12,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,
                         height: 45.0,
@@ -1381,7 +1457,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(18.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusLarge),
                                   ),
                                   child: Align(
                                     alignment: AlignmentDirectional(0.0, 0.0),
@@ -1429,7 +1506,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(18.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusLarge),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
@@ -1463,7 +1541,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         color: Color(0xFFFFCC31),
                                         size: 13.0,
                                       ),
-                                    ].divide(SizedBox(width: 3.0)),
+                                    ].divide(
+                                        SizedBox(width: ExpatlioDesign.space4)),
                                   ),
                                 ),
                               ),
@@ -1487,7 +1566,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(18.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusLarge),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
@@ -1521,7 +1601,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         color: Color(0xFFFFCC31),
                                         size: 13.0,
                                       ),
-                                    ].divide(SizedBox(width: 3.0)),
+                                    ].divide(
+                                        SizedBox(width: ExpatlioDesign.space4)),
                                   ),
                                 ),
                               ),
@@ -1545,7 +1626,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(18.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusLarge),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
@@ -1579,7 +1661,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         color: Color(0xFFFFCC31),
                                         size: 13.0,
                                       ),
-                                    ].divide(SizedBox(width: 3.0)),
+                                    ].divide(
+                                        SizedBox(width: ExpatlioDesign.space4)),
                                   ),
                                 ),
                               ),
@@ -1603,7 +1686,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(18.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusLarge),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
@@ -1637,7 +1721,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         color: Color(0xFFFFCC31),
                                         size: 13.0,
                                       ),
-                                    ].divide(SizedBox(width: 3.0)),
+                                    ].divide(
+                                        SizedBox(width: ExpatlioDesign.space4)),
                                   ),
                                 ),
                               ),
@@ -1661,7 +1746,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               .primaryBackground,
                                       FlutterFlowTheme.of(context).primary,
                                     ),
-                                    borderRadius: BorderRadius.circular(18.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusLarge),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
@@ -1695,21 +1781,27 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                         color: Color(0xFFFFCC31),
                                         size: 13.0,
                                       ),
-                                    ].divide(SizedBox(width: 3.0)),
+                                    ].divide(
+                                        SizedBox(width: ExpatlioDesign.space4)),
                                   ),
                                 ),
                               ),
                             ]
-                                .divide(SizedBox(width: 5.0))
-                                .addToStart(SizedBox(width: 16.0))
-                                .addToEnd(SizedBox(width: 16.0)),
+                                .divide(SizedBox(width: ExpatlioDesign.space8))
+                                .addToStart(
+                                    SizedBox(width: ExpatlioDesign.space16))
+                                .addToEnd(
+                                    SizedBox(width: ExpatlioDesign.space16)),
                           ),
                         ),
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space12,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: Builder(
                         builder: (context) {
                           final rew = containerReviewsRecordList
@@ -1733,12 +1825,16 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                             shrinkWrap: true,
                             scrollDirection: Axis.vertical,
                             itemCount: rew.length,
-                            separatorBuilder: (_, __) => SizedBox(height: 6.0),
+                            separatorBuilder: (_, __) =>
+                                SizedBox(height: ExpatlioDesign.space8),
                             itemBuilder: (context, rewIndex) {
                               final rewItem = rew[rewIndex];
                               return Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    16.0, 0.0, 16.0, 0.0),
+                                    ExpatlioDesign.space16,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space16,
+                                    ExpatlioDesign.space0),
                                 child: ReviewCardWidget(
                                   key: Key(
                                       'Keyngy_${rewIndex}_of_${rew.length}'),
@@ -1750,7 +1846,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                         },
                       ),
                     ),
-                  ].addToEnd(SizedBox(height: 24.0)),
+                  ].addToEnd(SizedBox(height: ExpatlioDesign.space24)),
                 );
               } else {
                 return EmptyWidget(
@@ -1843,8 +1939,8 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
       photoT = ui.lerpDouble(0.0, circleTop, p1)!;
       photoBR = BorderRadius.lerp(
         BorderRadius.only(
-          bottomLeft: Radius.circular(20.0),
-          bottomRight: Radius.circular(20.0),
+          bottomLeft: Radius.circular(ExpatlioDesign.radiusExtraLarge),
+          bottomRight: Radius.circular(ExpatlioDesign.radiusExtraLarge),
         ),
         BorderRadius.circular(circleMaxSize / 2),
         p1,
@@ -1967,10 +2063,11 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
                   height: 45.0,
                   decoration: BoxDecoration(
                     color: Color(0x3CFFFFFF),
-                    borderRadius: BorderRadius.circular(18.0),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusLarge),
                   ),
                   child: Padding(
-                    padding: EdgeInsets.all(2.0),
+                    padding: EdgeInsets.all(ExpatlioDesign.space4),
                     child: Row(
                       mainAxisSize: MainAxisSize.max,
                       children: [
@@ -1989,7 +2086,10 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              6.0, 0.0, 0.0, 0.0),
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Text(
                             formatNumber(
                               ratingAverage,
@@ -2052,7 +2152,8 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
                           Opacity(
                             opacity: subtitleOpacity,
                             child: Padding(
-                              padding: EdgeInsets.only(top: 3.0),
+                              padding:
+                                  EdgeInsets.only(top: ExpatlioDesign.space4),
                               child: Text(
                                 cityAndStatus,
                                 textAlign: p1 < 0.5
@@ -2099,7 +2200,9 @@ class _ProfileHeaderDelegate extends SliverPersistentHeaderDelegate {
                   ),
                   child: Padding(
                     padding: EdgeInsets.only(
-                        top: statusBarHeight, left: 60.0, right: 60.0),
+                        top: statusBarHeight,
+                        left: ExpatlioDesign.space64,
+                        right: ExpatlioDesign.space64),
                     child: Center(
                       child: Text(
                         displayName,

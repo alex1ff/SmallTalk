@@ -376,11 +376,16 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     final locale = FFLocalizations.of(context).languageCode;
     return Center(
       child: Container(
-        margin: const EdgeInsetsDirectional.only(bottom: 12.0),
-        padding: const EdgeInsetsDirectional.fromSTEB(12.0, 6.0, 12.0, 6.0),
+        margin:
+            const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space12),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space8),
         decoration: BoxDecoration(
           color: ExpatlioDesign.card.withValues(alpha: 0.86),
-          borderRadius: BorderRadius.circular(14.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         ),
         child: Text(
           formatChatDateDividerLabel(timestamp, locale: locale),
@@ -554,18 +559,30 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
               : AlignmentDirectional.centerStart,
           child: Container(
             constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-            margin: const EdgeInsetsDirectional.only(bottom: 8.0),
+            margin:
+                const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space8),
             decoration: BoxDecoration(
               color: bubbleColor,
               borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16.0),
-                topRight: const Radius.circular(16.0),
-                bottomLeft: Radius.circular(isCurrentUser ? 16.0 : 4.0),
-                bottomRight: Radius.circular(isCurrentUser ? 4.0 : 16.0),
+                topLeft: const Radius.circular(ExpatlioDesign.radiusLarge),
+                topRight: const Radius.circular(ExpatlioDesign.radiusLarge),
+                bottomLeft: Radius.circular(
+                  isCurrentUser
+                      ? ExpatlioDesign.radiusLarge
+                      : ExpatlioDesign.radiusSmall,
+                ),
+                bottomRight: Radius.circular(
+                  isCurrentUser
+                      ? ExpatlioDesign.radiusSmall
+                      : ExpatlioDesign.radiusLarge,
+                ),
               ),
             ),
-            padding:
-                const EdgeInsetsDirectional.fromSTEB(14.0, 10.0, 14.0, 8.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space16,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space16,
+                ExpatlioDesign.space8),
             child: Column(
               crossAxisAlignment: isCurrentUser
                   ? CrossAxisAlignment.end
@@ -583,7 +600,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                 ),
                 if (message.createdAt != null)
                   Padding(
-                    padding: const EdgeInsetsDirectional.only(top: 4.0),
+                    padding: const EdgeInsetsDirectional.only(
+                        top: ExpatlioDesign.space4),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -598,7 +616,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                   ),
                         ),
                         if (isCurrentUser) ...[
-                          const SizedBox(width: 4.0),
+                          const SizedBox(width: ExpatlioDesign.space4),
                           Icon(
                             isReadByPartner
                                 ? Icons.done_all_rounded
@@ -667,7 +685,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         child: SizedBox(
           height: 58.0,
           child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(2.0, 6.0, 8.0, 6.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space4,
+                ExpatlioDesign.space8,
+                ExpatlioDesign.space8,
+                ExpatlioDesign.space8),
             child: Row(
               children: [
                 IconButton(
@@ -685,7 +707,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                   photoUrl: partnerPhotoUrl,
                   size: 40.0,
                 ),
-                const SizedBox(width: 10.0),
+                const SizedBox(width: ExpatlioDesign.space12),
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -707,7 +729,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                           ),
                           if (isFriend)
                             const Padding(
-                              padding: EdgeInsetsDirectional.only(start: 4.0),
+                              padding: EdgeInsetsDirectional.only(
+                                  start: ExpatlioDesign.space4),
                               child: Icon(
                                 Icons.star_rounded,
                                 color: Color(0xFFFFC107),
@@ -717,7 +740,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                         ],
                       ),
                       if (presenceLabel.isNotEmpty) ...[
-                        const SizedBox(height: 2.0),
+                        const SizedBox(height: ExpatlioDesign.space4),
                         Text(
                           presenceLabel,
                           maxLines: 1,
@@ -735,7 +758,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8.0),
+                const SizedBox(width: ExpatlioDesign.space8),
                 Semantics(
                   button: true,
                   label: friendButtonLabel,
@@ -775,11 +798,12 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                       MaterialTapTargetSize.shrinkWrap,
                                   visualDensity: VisualDensity.compact,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusMedium),
                                   ),
                                   padding:
                                       const EdgeInsetsDirectional.symmetric(
-                                    horizontal: 8.0,
+                                    horizontal: ExpatlioDesign.space8,
                                   ),
                                   textStyle: ExpatlioDesign.textStyle(
                                     context,
@@ -969,8 +993,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
           body: Stack(
             children: [
               Padding(
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0),
                 child: Column(
                   children: [
                     StreamBuilder<UserPublicProfilesRecord?>(
@@ -1036,7 +1063,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                           if (messages.isEmpty) {
                             return Center(
                               child: Padding(
-                                padding: const EdgeInsets.all(24.0),
+                                padding: const EdgeInsets.all(
+                                    ExpatlioDesign.space24),
                                 child: Text(
                                   FFLocalizations.of(context).getVariableText(
                                     ruText:
@@ -1063,10 +1091,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             controller: _messagesScrollController,
                             reverse: true,
                             padding: const EdgeInsetsDirectional.fromSTEB(
-                              12.0,
-                              12.0,
-                              12.0,
-                              120.0,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space112,
                             ),
                             itemCount: messages.length,
                             itemBuilder: (context, index) {
@@ -1144,10 +1172,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                   ),
                   child: Padding(
                     padding: const EdgeInsetsDirectional.fromSTEB(
-                      6.0,
-                      12.0,
-                      6.0,
-                      35.0,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space12,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space32,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.max,
@@ -1173,15 +1201,17 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             onFieldSubmitted: (_) => _sendMessage(conversation),
                           ),
                         ),
-                        const SizedBox(width: 8.0),
+                        const SizedBox(width: ExpatlioDesign.space8),
                         SizedBox(
                           width: ExpatlioDesign.formFieldHeight,
                           height: ExpatlioDesign.formFieldHeight,
                           child: Material(
                             color: ExpatlioDesign.primary,
-                            borderRadius: BorderRadius.circular(14.0),
+                            borderRadius: BorderRadius.circular(
+                                ExpatlioDesign.radiusMedium),
                             child: InkWell(
-                              borderRadius: BorderRadius.circular(14.0),
+                              borderRadius: BorderRadius.circular(
+                                  ExpatlioDesign.radiusMedium),
                               onTap: _isSending
                                   ? null
                                   : () => _sendMessage(conversation),

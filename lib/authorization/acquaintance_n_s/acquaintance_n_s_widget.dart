@@ -529,7 +529,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
       elevation: 8.0,
       shadowColor: const Color(0x12000000),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         side: const BorderSide(color: ExpatlioDesign.border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -1328,8 +1328,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
               const SizedBox(height: ExpatlioDesign.sectionSpacing),
               ValueListenableBuilder<CountryStruct?>(
                 valueListenable: _countryNotifier,
-                builder: (context, selectedCountry, _) =>
-                    OnboardingFormSection(
+                builder: (context, selectedCountry, _) => OnboardingFormSection(
                   key: const ValueKey<String>(
                     'native_speaker_onboarding_step_country',
                   ),

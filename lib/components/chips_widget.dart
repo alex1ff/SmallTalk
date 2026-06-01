@@ -74,7 +74,7 @@ class _ChipsWidgetState extends State<ChipsWidget> {
           color: widget.selected
               ? ExpatlioDesign.primary.withValues(alpha: 0.10)
               : ExpatlioDesign.card,
-          borderRadius: BorderRadius.circular(16.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
           border: Border.all(
             color: widget.selected
                 ? ExpatlioDesign.primary
@@ -82,7 +82,11 @@ class _ChipsWidgetState extends State<ChipsWidget> {
           ),
         ),
         child: Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.max,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -94,7 +98,8 @@ class _ChipsWidgetState extends State<ChipsWidget> {
                   color: widget.selected
                       ? ExpatlioDesign.primary
                       : ExpatlioDesign.mutedSurface,
-                  borderRadius: BorderRadius.circular(16.0),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusLarge),
                   border: Border.all(
                     color: widget.selected
                         ? ExpatlioDesign.primary
@@ -117,7 +122,11 @@ class _ChipsWidgetState extends State<ChipsWidget> {
                 ),
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space0),
                 child: AutoSizeText(
                   valueOrDefault<String>(
                     widget.text,

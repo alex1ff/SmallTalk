@@ -373,7 +373,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       elevation: 8.0,
       shadowColor: const Color(0x12000000),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         side: const BorderSide(color: ExpatlioDesign.border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -847,7 +847,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                         child: Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
                             ExpatlioDesign.pagePadding,
-                            24.0,
+                            ExpatlioDesign.space24,
                             ExpatlioDesign.pagePadding,
                             contentBottomPadding,
                           ),
@@ -855,7 +855,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               ProfileAvatarPicker(onTap: _pickPhoto),
-                              const SizedBox(height: 34.0),
+                              const SizedBox(height: ExpatlioDesign.space32),
                               Text(
                                 FFLocalizations.of(context).getVariableText(
                                   ruText: 'ЛИЧНЫЕ ДАННЫЕ',
@@ -868,11 +868,12 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                   weight: FontWeight.w700,
                                 ),
                               ),
-                              const SizedBox(height: 10.0),
+                              const SizedBox(height: ExpatlioDesign.space12),
                               Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16.0),
+                                  borderRadius: BorderRadius.circular(
+                                      ExpatlioDesign.radiusLarge),
                                   border: Border.all(
                                     color: const Color(0xFFE8E8E8),
                                     width: 1.0,
@@ -880,7 +881,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                 ),
                                 child: Padding(
                                   padding: const EdgeInsetsDirectional.fromSTEB(
-                                      16.0, 16.0, 16.0, 18.0),
+                                      ExpatlioDesign.space16,
+                                      ExpatlioDesign.space16,
+                                      ExpatlioDesign.space16,
+                                      ExpatlioDesign.space20),
                                   child: Column(
                                     children: isStudent
                                         ? _studentFields(context)
@@ -948,7 +952,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         menuOpen: _isPurposeMenuOpen,
         onTap: _editTarget,
       ),
-    ].divide(const SizedBox(height: 14.0));
+    ].divide(const SizedBox(height: ExpatlioDesign.space16));
   }
 
   List<Widget> _nativeSpeakerFields(BuildContext context) {
@@ -995,7 +999,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         menuOpen: _isCountryMenuOpen,
         onTap: _editCountry,
       ),
-    ].divide(const SizedBox(height: 14.0));
+    ].divide(const SizedBox(height: ExpatlioDesign.space16));
   }
 }
 

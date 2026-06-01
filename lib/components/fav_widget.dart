@@ -131,10 +131,10 @@ class _FavWidgetState extends State<FavWidget> {
             width: 140.0,
             decoration: BoxDecoration(
               color: ExpatlioDesign.card,
-              borderRadius: BorderRadius.circular(16.0),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
             ),
             child: Padding(
-              padding: EdgeInsets.all(12.0),
+              padding: EdgeInsets.all(ExpatlioDesign.space12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -184,11 +184,15 @@ class _FavWidgetState extends State<FavWidget> {
                           height: 25.0,
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(16.0),
+                            borderRadius: BorderRadius.circular(
+                                ExpatlioDesign.radiusLarge),
                           ),
                           child: Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                6.0, 0.0, 6.0, 0.0),
+                                ExpatlioDesign.space8,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space8,
+                                ExpatlioDesign.space0),
                             child: Row(
                               mainAxisSize: MainAxisSize.max,
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -212,15 +216,18 @@ class _FavWidgetState extends State<FavWidget> {
                                         letterSpacing: 0.0,
                                       ),
                                 ),
-                              ].divide(SizedBox(width: 3.0)),
+                              ].divide(SizedBox(width: ExpatlioDesign.space4)),
                             ),
                           ),
                         ),
                     ],
                   ),
                   Padding(
-                    padding:
-                        EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space12,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space0),
                     child: Text(
                       profileDisplayName,
                       maxLines: 1,

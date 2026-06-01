@@ -51,10 +51,12 @@ class _PopWidgetState extends State<PopWidget> {
     final hasText = text.isNotEmpty;
     final primaryText = hasHeader ? header : text;
     final secondaryText = hasHeader && hasText ? text : null;
-    final cardBorderRadius = BorderRadius.circular(24.0);
+    final cardBorderRadius =
+        BorderRadius.circular(ExpatlioDesign.radiusExtraLarge);
 
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(20.0, 0.0, 20.0, 0.0),
+      padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space20,
+          ExpatlioDesign.space0, ExpatlioDesign.space20, ExpatlioDesign.space0),
       child: Container(
         width: double.infinity,
         constraints: BoxConstraints(minHeight: 60.0),
@@ -79,7 +81,7 @@ class _PopWidgetState extends State<PopWidget> {
         child: ClipRRect(
           borderRadius: cardBorderRadius,
           child: Padding(
-            padding: EdgeInsets.all(4.0),
+            padding: EdgeInsets.all(ExpatlioDesign.space4),
             child: Row(
               mainAxisSize: MainAxisSize.max,
               children: [
@@ -88,7 +90,8 @@ class _PopWidgetState extends State<PopWidget> {
                   height: 52.0,
                   decoration: BoxDecoration(
                     color: ExpatlioDesign.mutedSurface,
-                    borderRadius: BorderRadius.circular(18.0),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusLarge),
                   ),
                   child: Builder(
                     builder: (context) {
@@ -121,8 +124,11 @@ class _PopWidgetState extends State<PopWidget> {
                 ),
                 Flexible(
                   child: Padding(
-                    padding:
-                        EdgeInsetsDirectional.fromSTEB(12.0, 9.0, 12.0, 9.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space12,
+                        ExpatlioDesign.space12,
+                        ExpatlioDesign.space12,
+                        ExpatlioDesign.space12),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,7 +151,10 @@ class _PopWidgetState extends State<PopWidget> {
                         if (secondaryText != null)
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 3.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               secondaryText,
                               maxLines: 2,

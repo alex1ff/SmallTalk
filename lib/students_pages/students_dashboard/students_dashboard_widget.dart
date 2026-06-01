@@ -611,7 +611,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       elevation: 8.0,
       shadowColor: const Color(0x12000000),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         side: const BorderSide(color: ExpatlioDesign.border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -834,7 +834,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
             height: 60.0,
             decoration: BoxDecoration(
               color: FlutterFlowTheme.of(context).primaryBackground,
-              borderRadius: BorderRadius.circular(26.0),
+              borderRadius:
+                  BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
             ),
             child: Padding(
               padding: ExpatlioDesign.cardPadding,
@@ -882,10 +883,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                       height: 60.0,
                       decoration: BoxDecoration(
                         color: FlutterFlowTheme.of(context).primaryBackground,
-                        borderRadius: BorderRadius.circular(26.0),
+                        borderRadius: BorderRadius.circular(
+                            ExpatlioDesign.radiusExtraLarge),
                       ),
                       child: Padding(
-                        padding: EdgeInsets.all(4.0),
+                        padding: EdgeInsets.all(ExpatlioDesign.space4),
                         child: Row(
                           mainAxisSize: MainAxisSize.max,
                           children: [
@@ -894,7 +896,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               height: 52.0,
                               decoration: BoxDecoration(
                                 color: ExpatlioDesign.mutedSurface,
-                                borderRadius: BorderRadius.circular(22.0),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusExtraLarge),
                               ),
                               child: Align(
                                 alignment: AlignmentDirectional(0.0, 0.0),
@@ -909,7 +912,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                             Expanded(
                               child: Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    12.0, 0.0, 0.0, 0.0),
+                                    ExpatlioDesign.space12,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space0),
                                 child: Text(
                                   '${intervalsItem.start} - ${intervalsItem.end}',
                                   style: FlutterFlowTheme.of(context)
@@ -924,7 +930,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               ),
                             ),
                             FlutterFlowIconButton(
-                              borderRadius: 22.0,
+                              borderRadius: ExpatlioDesign.radiusExtraLarge,
                               buttonSize: 52.0,
                               icon: Icon(
                                 FFIcons.ktrash03,
@@ -978,19 +984,20 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                 height: 60.0,
                 decoration: BoxDecoration(
                   color: FlutterFlowTheme.of(context).primaryBackground,
-                  borderRadius: BorderRadius.circular(26.0),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
                   border: Border.all(
                     color: FlutterFlowTheme.of(context).secondaryBackground,
                   ),
                 ),
                 child: Padding(
-                  padding: EdgeInsets.all(2.0),
+                  padding: EdgeInsets.all(ExpatlioDesign.space4),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       FlutterFlowIconButton(
-                        borderRadius: 12.0,
+                        borderRadius: ExpatlioDesign.radiusMedium,
                         buttonSize: 35.0,
                         fillColor:
                             FlutterFlowTheme.of(context).secondaryBackground,
@@ -1100,14 +1107,15 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(20.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
         onTap: _handleStartConversation,
         child: Container(
           width: 240.0,
           height: 60.0,
           decoration: BoxDecoration(
             gradient: ExpatlioDesign.primaryGradient,
-            borderRadius: BorderRadius.circular(20.0),
+            borderRadius:
+                BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x267430E8),
@@ -1240,7 +1248,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(
           ExpatlioDesign.pagePadding,
-          0.0,
+          ExpatlioDesign.space0,
           ExpatlioDesign.pagePadding,
           ExpatlioDesign.pagePaddingLarge,
         ),
@@ -1252,7 +1260,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
               height: 72.0,
               fit: BoxFit.contain,
             ),
-            const SizedBox(height: 30.0),
+            const SizedBox(height: ExpatlioDesign.space32),
             _buildAvailabilitySection(context),
             const SizedBox(height: ExpatlioDesign.itemSpacing),
             Row(
@@ -1422,20 +1430,25 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                       _buildReferenceSearchHero(context),
                       if (_showLegacyDashboard) ...[
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space0),
                           child: Container(
                             height: 70,
                             decoration: BoxDecoration(
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
-                              borderRadius: BorderRadius.circular(50),
+                              borderRadius: BorderRadius.circular(
+                                  ExpatlioDesign.radiusCapsule),
                               border: Border.all(
                                 color: FlutterFlowTheme.of(context)
                                     .secondaryBackground,
                               ),
                             ),
                             child: Padding(
-                              padding: EdgeInsets.all(2),
+                              padding: EdgeInsets.all(ExpatlioDesign.space4),
                               child: Row(
                                 mainAxisSize: MainAxisSize.max,
                                 children: [
@@ -1456,8 +1469,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                       builder: (context) {
                                         if (currentUserPhoto != '') {
                                           return ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(100),
+                                            borderRadius: BorderRadius.circular(
+                                                ExpatlioDesign.radiusCapsule),
                                             child: CachedNetworkImage(
                                               fadeInDuration:
                                                   Duration(milliseconds: 0),
@@ -1493,7 +1506,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                       .bodyMedium
                                                       .override(
                                                         fontFamily: 'Cool',
-                                                        fontSize: 24,
+                                                        fontSize: 22.0,
                                                         letterSpacing: 0.0,
                                                       ),
                                                 );
@@ -1507,7 +1520,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   Expanded(
                                     child: Padding(
                                       padding: EdgeInsetsDirectional.fromSTEB(
-                                          12, 0, 0, 0),
+                                          ExpatlioDesign.space12,
+                                          ExpatlioDesign.space0,
+                                          ExpatlioDesign.space0,
+                                          ExpatlioDesign.space0),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.max,
                                         mainAxisAlignment:
@@ -1556,7 +1572,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                           ),
                         ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(6, 6, 6, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space0),
                           child: InkWell(
                             splashColor: Colors.transparent,
                             focusColor: Colors.transparent,
@@ -1569,14 +1589,18 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               children: [
                                 Padding(
                                   padding: EdgeInsetsDirectional.fromSTEB(
-                                      55, 0, 55, 0),
+                                      ExpatlioDesign.space56,
+                                      ExpatlioDesign.space0,
+                                      ExpatlioDesign.space56,
+                                      ExpatlioDesign.space0),
                                   child: Container(
                                     width: double.infinity,
                                     height: 165,
                                     decoration: BoxDecoration(
                                       color: FlutterFlowTheme.of(context)
                                           .primaryBackground,
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusMedium),
                                       border: Border.all(
                                         color: Color(0xFFE0E3E7),
                                         width: 1,
@@ -1602,7 +1626,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   ],
                                 ),
                                 Padding(
-                                  padding: EdgeInsets.all(16),
+                                  padding:
+                                      EdgeInsets.all(ExpatlioDesign.space16),
                                   child: Column(
                                     mainAxisSize: MainAxisSize.max,
                                     mainAxisAlignment: MainAxisAlignment.start,
@@ -1703,7 +1728,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                               .secondaryText,
                                                       fontWeight:
                                                           FontWeight.w300,
-                                                      fontSize: 24,
+                                                      fontSize: 22.0,
                                                     ),
                                                   ),
                                                   TextSpan(
@@ -1718,7 +1743,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                           color: FlutterFlowTheme
                                                                   .of(context)
                                                               .primaryText,
-                                                          fontSize: 40,
+                                                          fontSize: 34.0,
                                                           letterSpacing: 0.0,
                                                           fontWeight:
                                                               FontWeight.w300,
@@ -1733,7 +1758,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                           color: FlutterFlowTheme
                                                                   .of(context)
                                                               .primaryText,
-                                                          fontSize: 40,
+                                                          fontSize: 34.0,
                                                           letterSpacing: 0.0,
                                                           fontWeight:
                                                               FontWeight.normal,
@@ -1773,7 +1798,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                             FontWeight.w500,
                                                       ),
                                                 ),
-                                                const SizedBox(height: 2),
+                                                const SizedBox(
+                                                    height:
+                                                        ExpatlioDesign.space4),
                                                 Text(
                                                   'действуют ${formatGiftExpiry(giftExpiresAt)}',
                                                   style: FlutterFlowTheme.of(
@@ -1786,7 +1813,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                             FlutterFlowTheme.of(
                                                                     context)
                                                                 .secondaryText,
-                                                        fontSize: 14,
+                                                        fontSize: 15.0,
                                                         letterSpacing: 0.0,
                                                       ),
                                                 ),
@@ -1802,7 +1829,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                   color: FlutterFlowTheme.of(
                                                           context)
                                                       .secondaryText,
-                                                  fontSize: 24,
+                                                  fontSize: 22.0,
                                                   letterSpacing: 0.0,
                                                   fontWeight: FontWeight.w400,
                                                 ),
@@ -1815,7 +1842,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                       // up gift minutes any time.
                                       Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            0, 12, 0, 0),
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space12,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space0),
                                         child: TextButton(
                                           onPressed: () async {
                                             await showModalBottomSheet(
@@ -1837,7 +1867,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                   color: FlutterFlowTheme.of(
                                                           context)
                                                       .primary,
-                                                  fontSize: 14,
+                                                  fontSize: 15.0,
                                                   letterSpacing: 0.0,
                                                   fontWeight: FontWeight.w500,
                                                 ),
@@ -1847,17 +1877,21 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                       // ────────────────────────────────────
                                       Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            0, 22, 0, 0),
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space24,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space0),
                                         child: Container(
                                           height: 45,
                                           decoration: BoxDecoration(
                                             color: FlutterFlowTheme.of(context)
                                                 .secondaryBackground,
-                                            borderRadius:
-                                                BorderRadius.circular(100),
+                                            borderRadius: BorderRadius.circular(
+                                                ExpatlioDesign.radiusCapsule),
                                           ),
                                           child: Padding(
-                                            padding: EdgeInsets.all(2),
+                                            padding: EdgeInsets.all(
+                                                ExpatlioDesign.space4),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
@@ -1921,7 +1955,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                           ),
                         ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(6, 10, 6, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space0),
                           child: AuthUserStreamWidget(
                             builder: (context) {
                               final selectedPartnerLevel = currentUserDocument
@@ -1957,7 +1995,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                             },
                                     ),
                                   ),
-                                  const SizedBox(width: 8.0),
+                                  const SizedBox(width: ExpatlioDesign.space8),
                                   Expanded(
                                     child: DashboardInlineFilterButton(
                                       title: _localizedText(
@@ -1992,11 +2030,19 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                           ),
                         ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(6, 8, 6, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space0),
                           child: _buildAvailabilitySection(context),
                         ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(0, 40, 0, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space40,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Stack(
                             alignment: AlignmentDirectional(0, -1),
                             children: [
@@ -2008,7 +2054,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               ),
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    60, 110, 60, 0),
+                                    ExpatlioDesign.space64,
+                                    ExpatlioDesign.space112,
+                                    ExpatlioDesign.space64,
+                                    ExpatlioDesign.space0),
                                 child: Column(
                                   mainAxisSize: MainAxisSize.max,
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -2024,7 +2073,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                           .bodyMedium
                                           .override(
                                             fontFamily: 'Cool',
-                                            fontSize: 21,
+                                            fontSize: 22.0,
                                             letterSpacing: 0.0,
                                             fontWeight: FontWeight.normal,
                                             lineHeight: 1.1,
@@ -2032,7 +2081,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                     ),
                                     Padding(
                                       padding: EdgeInsetsDirectional.fromSTEB(
-                                          0, 10, 0, 0),
+                                          ExpatlioDesign.space0,
+                                          ExpatlioDesign.space12,
+                                          ExpatlioDesign.space0,
+                                          ExpatlioDesign.space0),
                                       child: Text(
                                         FFLocalizations.of(context).getText(
                                           'crtk35jr' /* Первая минута бесплатно! */,
@@ -2053,7 +2105,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                     ),
                                     Padding(
                                       padding: EdgeInsetsDirectional.fromSTEB(
-                                          0, 29, 0, 0),
+                                          ExpatlioDesign.space0,
+                                          ExpatlioDesign.space32,
+                                          ExpatlioDesign.space0,
+                                          ExpatlioDesign.space0),
                                       child: InkWell(
                                         splashColor: Colors.transparent,
                                         focusColor: Colors.transparent,
@@ -2111,8 +2166,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                           decoration: BoxDecoration(
                                             gradient:
                                                 ExpatlioDesign.primaryGradient,
-                                            borderRadius:
-                                                BorderRadius.circular(18),
+                                            borderRadius: BorderRadius.circular(
+                                                ExpatlioDesign.radiusLarge),
                                             boxShadow: const [
                                               BoxShadow(
                                                 color: Color(0x227430E8),
@@ -2160,8 +2215,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                         if (resolveFriendsForUser(currentUserDocument)
                             .isNotEmpty)
                           Padding(
-                            padding:
-                                EdgeInsetsDirectional.fromSTEB(0, 30, 0, 0),
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space32,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: AuthUserStreamWidget(
                               builder: (context) => Column(
                                 mainAxisSize: MainAxisSize.max,
@@ -2181,7 +2239,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                       decoration: BoxDecoration(),
                                       child: Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            16, 0, 16, 0),
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           mainAxisAlignment:
@@ -2201,7 +2262,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                             FlutterFlowTheme.of(
                                                                     context)
                                                                 .primaryText,
-                                                        fontSize: 21,
+                                                        fontSize: 22.0,
                                                         letterSpacing: 0.0,
                                                         fontWeight:
                                                             FontWeight.normal,
@@ -2221,7 +2282,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   ),
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        0, 10, 0, 0),
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space12,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0),
                                     child: Container(
                                       width: double.infinity,
                                       height: 180,
@@ -2234,11 +2298,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
                                           return ListView.separated(
                                             padding: EdgeInsets.symmetric(
-                                                horizontal: 6),
+                                                horizontal:
+                                                    ExpatlioDesign.space8),
                                             scrollDirection: Axis.horizontal,
                                             itemCount: favs.length,
                                             separatorBuilder: (_, __) =>
-                                                SizedBox(width: 6),
+                                                SizedBox(
+                                                    width:
+                                                        ExpatlioDesign.space8),
                                             itemBuilder: (context, favsIndex) {
                                               final favsItem = favs[favsIndex];
                                               return FavWidget(
@@ -2257,7 +2324,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                             ),
                           ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(16, 40, 0, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space16,
+                              ExpatlioDesign.space40,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Text(
                             FFLocalizations.of(context).getText(
                               'lffx4k7x' /* Статистика за сегодня */,
@@ -2268,14 +2339,18 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                   fontFamily: 'Cool',
                                   color:
                                       FlutterFlowTheme.of(context).primaryText,
-                                  fontSize: 21,
+                                  fontSize: 22.0,
                                   letterSpacing: 0.0,
                                   fontWeight: FontWeight.normal,
                                 ),
                           ),
                         ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(6, 10, 6, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space0),
                           child: StreamBuilder<List<StatsRecord>>(
                             stream: _model.statsStream,
                             builder: (context, snapshot) {
@@ -2311,10 +2386,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                       decoration: BoxDecoration(
                                         color: FlutterFlowTheme.of(context)
                                             .primaryBackground,
-                                        borderRadius: BorderRadius.circular(26),
+                                        borderRadius: BorderRadius.circular(
+                                            ExpatlioDesign.radiusExtraLarge),
                                       ),
                                       child: Padding(
-                                        padding: EdgeInsets.all(16),
+                                        padding: EdgeInsets.all(
+                                            ExpatlioDesign.space16),
                                         child: Column(
                                           mainAxisSize: MainAxisSize.max,
                                           children: [
@@ -2342,7 +2419,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                           .bodyMedium
                                                           .override(
                                                             fontFamily: 'Cool',
-                                                            fontSize: 30,
+                                                            fontSize: 28.0,
                                                             letterSpacing: 0.0,
                                                           ),
                                                     ),
@@ -2373,9 +2450,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                   width: 64,
                                                   height: 64,
                                                   decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            26),
+                                                    borderRadius: BorderRadius
+                                                        .circular(ExpatlioDesign
+                                                            .radiusExtraLarge),
                                                     border: Border.all(
                                                       color: FlutterFlowTheme
                                                               .of(context)
@@ -2416,7 +2493,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                           .bodyMedium
                                                           .override(
                                                             fontFamily: 'Cool',
-                                                            fontSize: 30,
+                                                            fontSize: 28.0,
                                                             letterSpacing: 0.0,
                                                           ),
                                                     ),
@@ -2447,9 +2524,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                   width: 64,
                                                   height: 64,
                                                   decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            26),
+                                                    borderRadius: BorderRadius
+                                                        .circular(ExpatlioDesign
+                                                            .radiusExtraLarge),
                                                     border: Border.all(
                                                       color: FlutterFlowTheme
                                                               .of(context)
@@ -2466,7 +2543,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                 ),
                                               ],
                                             ),
-                                          ].divide(SizedBox(height: 16)),
+                                          ].divide(SizedBox(
+                                              height: ExpatlioDesign.space16)),
                                         ),
                                       ),
                                     );
@@ -2477,10 +2555,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                       decoration: BoxDecoration(
                                         color: FlutterFlowTheme.of(context)
                                             .primaryBackground,
-                                        borderRadius: BorderRadius.circular(26),
+                                        borderRadius: BorderRadius.circular(
+                                            ExpatlioDesign.radiusExtraLarge),
                                       ),
                                       child: Padding(
-                                        padding: EdgeInsets.all(2),
+                                        padding: EdgeInsets.all(
+                                            ExpatlioDesign.space4),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           mainAxisAlignment:
@@ -2546,7 +2626,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                                                 color: FlutterFlowTheme.of(
                                                                         context)
                                                                     .secondaryText,
-                                                                fontSize: 14,
+                                                                fontSize: 15.0,
                                                                 letterSpacing:
                                                                     0.0,
                                                               ),
@@ -2567,8 +2647,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                         ),
                       ],
                     ]
-                        .addToStart(SizedBox(height: 55))
-                        .addToEnd(SizedBox(height: 116)),
+                        .addToStart(SizedBox(height: ExpatlioDesign.space56))
+                        .addToEnd(SizedBox(height: ExpatlioDesign.space112)),
                   ),
                 ),
               ],

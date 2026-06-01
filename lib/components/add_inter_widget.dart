@@ -196,12 +196,13 @@ class _AddInterWidgetState extends State<AddInterWidget> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.all(18.0),
+          padding: const EdgeInsets.all(ExpatlioDesign.space20),
           decoration: BoxDecoration(
             color: isSelected
                 ? const Color(0xFFF7EEF6)
                 : FlutterFlowTheme.of(context).primaryBackground,
-            borderRadius: BorderRadius.circular(24.0),
+            borderRadius:
+                BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
             border: Border.all(
               color: isSelected
                   ? FlutterFlowTheme.of(context).primaryText
@@ -221,12 +222,12 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                       letterSpacing: 0.0,
                     ),
               ),
-              const SizedBox(height: 6.0),
+              const SizedBox(height: ExpatlioDesign.space8),
               Text(
                 value,
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'sf pro display',
-                      fontSize: 24.0,
+                      fontSize: 22.0,
                       letterSpacing: 0.0,
                       fontWeight: FontWeight.w600,
                     ),
@@ -266,13 +267,18 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                 onConfirm: _saveInterval,
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0),
                 child: Container(
                   width: double.infinity,
-                  padding: EdgeInsets.all(4.0),
+                  padding: EdgeInsets.all(ExpatlioDesign.space4),
                   decoration: BoxDecoration(
                     color: ExpatlioDesign.card,
-                    borderRadius: BorderRadius.circular(20.0),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.max,
@@ -282,7 +288,8 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                         height: 52.0,
                         decoration: BoxDecoration(
                           color: ExpatlioDesign.mutedSurface,
-                          borderRadius: BorderRadius.circular(16.0),
+                          borderRadius:
+                              BorderRadius.circular(ExpatlioDesign.radiusLarge),
                         ),
                         child: Align(
                           alignment: AlignmentDirectional(0.0, 0.0),
@@ -296,7 +303,10 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                       Expanded(
                         child: Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              12.0, 0.0, 0.0, 0.0),
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,7 +317,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                                     .bodyMedium
                                     .override(
                                       fontFamily: 'sf pro display',
-                                      fontSize: 18.0,
+                                      fontSize: 17.0,
                                       letterSpacing: 0.0,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -322,7 +332,11 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                 ),
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(16.0, 32.0, 0.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space32,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space0),
                 child: Text(
                   'Выберите интервал',
                   textAlign: TextAlign.start,
@@ -335,7 +349,11 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                 ),
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 12.0, 6.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0),
                 child: Row(
                   children: [
                     _buildSelectionCard(
@@ -347,7 +365,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                         AvailabilityIntervalField.start,
                       ),
                     ),
-                    const SizedBox(width: 10.0),
+                    const SizedBox(width: ExpatlioDesign.space12),
                     _buildSelectionCard(
                       label: 'Конец',
                       value: _model.timeEnd ?? '--:--',
@@ -360,20 +378,28 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                 ),
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 18.0, 6.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space20,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0),
                 child: Container(
                   width: double.infinity,
                   height: 148.0,
                   decoration: BoxDecoration(
                     color: ExpatlioDesign.card,
-                    borderRadius: BorderRadius.circular(16.0),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusLarge),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Padding(
                         padding: EdgeInsetsDirectional.fromSTEB(
-                            18.0, 14.0, 18.0, 0.0),
+                            ExpatlioDesign.space20,
+                            ExpatlioDesign.space16,
+                            ExpatlioDesign.space20,
+                            ExpatlioDesign.space0),
                         child: Align(
                           alignment: AlignmentDirectional.centerStart,
                           child: Text(
@@ -413,7 +439,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                   ),
                 ),
               ),
-              const SizedBox(height: 35.0),
+              const SizedBox(height: ExpatlioDesign.space32),
             ],
           ),
         ),

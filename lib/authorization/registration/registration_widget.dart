@@ -311,7 +311,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: ExpatlioDesign.formLabelStyle(context)),
-        const SizedBox(height: 6.0),
+        const SizedBox(height: ExpatlioDesign.space8),
         SizedBox(
           height: ExpatlioDesign.formFieldHeight,
           child: TextFormField(
@@ -347,17 +347,21 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
           onTap: onTap,
           child: Container(
             height: ExpatlioDesign.buttonHeight,
             decoration: ExpatlioDesign.cardDecoration(radius: 12.0),
-            padding: const EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 14.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space16,
+                ExpatlioDesign.space0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 icon,
-                const SizedBox(width: 8.0),
+                const SizedBox(width: ExpatlioDesign.space8),
                 Flexible(
                   child: Text(
                     label,
@@ -394,7 +398,10 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsetsDirectional.fromSTEB(
-                    16.0, 22.0, 16.0, 24.0),
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space24,
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space24),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     minHeight: constraints.maxHeight - 46.0,
@@ -407,7 +414,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                         height: 82.0,
                         fit: BoxFit.contain,
                       ),
-                      const SizedBox(height: 28.0),
+                      const SizedBox(height: ExpatlioDesign.space32),
                       SizedBox(
                         width: double.infinity,
                         child: Column(
@@ -423,7 +430,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                 weight: FontWeight.w700,
                               ),
                             ),
-                            const SizedBox(height: 6.0),
+                            const SizedBox(height: ExpatlioDesign.space8),
                             Text(
                               FFLocalizations.of(context).getText(
                                 '2qzo58i1' /* Чтобы начать, нужно зарегестри... */,
@@ -435,7 +442,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                 weight: FontWeight.w400,
                               ),
                             ),
-                            const SizedBox(height: 18.0),
+                            const SizedBox(height: ExpatlioDesign.space20),
                             Container(
                               decoration: ExpatlioDesign.formGroupDecoration(),
                               padding: ExpatlioDesign.formGroupPadding,
@@ -454,7 +461,8 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                         .emailTextControllerValidator
                                         .asValidator(context),
                                   ),
-                                  const SizedBox(height: 12.0),
+                                  const SizedBox(
+                                      height: ExpatlioDesign.space12),
                                   _buildAuthField(
                                     controller: _model.passTextController,
                                     focusNode: _model.passFocusNode,
@@ -482,7 +490,8 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 12.0),
+                                  const SizedBox(
+                                      height: ExpatlioDesign.space12),
                                   NativeSpeakerEntryToggle(
                                     value: _model.switchValue ?? false,
                                     onChanged: (newValue) async {
@@ -493,7 +502,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 16.0),
+                            const SizedBox(height: ExpatlioDesign.space16),
                             ButtonWidget(
                               text: FFLocalizations.of(context).getText(
                                 'ohbb27ah' /* Далее */,
@@ -509,7 +518,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 18.0),
+                      const SizedBox(height: ExpatlioDesign.space20),
                       Row(
                         children: [
                           _buildSocialButton(
@@ -542,7 +551,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                               );
                             },
                           ),
-                          const SizedBox(width: 10.0),
+                          const SizedBox(width: ExpatlioDesign.space12),
                           _buildSocialButton(
                             icon: const FaIcon(
                               FontAwesomeIcons.google,
@@ -562,14 +571,16 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20.0),
+                      const SizedBox(height: ExpatlioDesign.space20),
                       InkWell(
-                        borderRadius: BorderRadius.circular(12.0),
+                        borderRadius:
+                            BorderRadius.circular(ExpatlioDesign.radiusMedium),
                         onTap: () async {
                           context.pushNamed(PolicyWidget.routeName);
                         },
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: ExpatlioDesign.space8),
                           child: RichText(
                             textScaler: MediaQuery.of(context).textScaler,
                             textAlign: TextAlign.center,
@@ -601,14 +612,15 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 22.0),
+                      const SizedBox(height: ExpatlioDesign.space24),
                       InkWell(
-                        borderRadius: BorderRadius.circular(12.0),
+                        borderRadius:
+                            BorderRadius.circular(ExpatlioDesign.radiusMedium),
                         onTap: () async {
                           context.pushNamed(LoginWidget.routeName);
                         },
                         child: Padding(
-                          padding: const EdgeInsets.all(8.0),
+                          padding: const EdgeInsets.all(ExpatlioDesign.space8),
                           child: RichText(
                             textScaler: MediaQuery.of(context).textScaler,
                             textAlign: TextAlign.center,

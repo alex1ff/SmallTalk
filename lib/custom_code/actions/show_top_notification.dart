@@ -14,6 +14,7 @@ import 'index.dart'; // Imports other custom actions
 
 import 'dart:async';
 import '/components/pop/pop_widget.dart';
+import '/shared_pages/design/expatlio_design.dart';
 
 Future showTopNotification(
   BuildContext context,
@@ -74,9 +75,10 @@ Future showTopNotification(
                   .clamp(0.0, 1.0), // FIX: clamp для предотвращения ошибки
               child: Padding(
                 padding: EdgeInsets.only(
-                  top: MediaQuery.of(context).padding.top + 8,
-                  left: 8,
-                  right: 8,
+                  top: MediaQuery.of(context).padding.top +
+                      ExpatlioDesign.space8,
+                  left: ExpatlioDesign.space8,
+                  right: ExpatlioDesign.space8,
                 ),
                 child: child,
               ),

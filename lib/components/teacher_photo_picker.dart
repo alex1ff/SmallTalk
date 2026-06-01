@@ -35,7 +35,11 @@ class TeacherPhotoPicker extends StatelessWidget {
             radius: ExpatlioDesign.controlRadius,
             borderColor: ExpatlioDesign.border,
           ),
-          padding: const EdgeInsetsDirectional.fromSTEB(12.0, 10.0, 14.0, 10.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space12),
           child: Row(
             children: [
               Container(
@@ -43,7 +47,8 @@ class TeacherPhotoPicker extends StatelessWidget {
                 height: 62.0,
                 decoration: BoxDecoration(
                   color: ExpatlioDesign.card,
-                  borderRadius: BorderRadius.circular(18.0),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusLarge),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Builder(
@@ -72,7 +77,7 @@ class TeacherPhotoPicker extends StatelessWidget {
                   },
                 ),
               ),
-              const SizedBox(width: 12.0),
+              const SizedBox(width: ExpatlioDesign.space12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,7 +99,7 @@ class TeacherPhotoPicker extends StatelessWidget {
                         weight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 3.0),
+                    const SizedBox(height: ExpatlioDesign.space4),
                     Text(
                       FFLocalizations.of(context).getVariableText(
                         ruText: 'Нажмите, чтобы изменить',

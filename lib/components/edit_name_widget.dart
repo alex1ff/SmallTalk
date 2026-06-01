@@ -112,7 +112,11 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                 onConfirm: _saveName,
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space0),
                 child: AuthUserStreamWidget(
                   builder: (context) => Container(
                     decoration: ExpatlioDesign.formGroupDecoration(),
@@ -126,7 +130,7 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                           ),
                           style: ExpatlioDesign.formLabelStyle(context),
                         ),
-                        const SizedBox(height: 6.0),
+                        const SizedBox(height: ExpatlioDesign.space8),
                         TextFormField(
                           controller: _model.nameTextController,
                           focusNode: _model.nameFocusNode,
@@ -169,8 +173,8 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                   ),
                 ),
               ),
-              const SizedBox(height: 35.0),
-            ].divide(SizedBox(height: 16.0)),
+              const SizedBox(height: ExpatlioDesign.space32),
+            ].divide(SizedBox(height: ExpatlioDesign.space16)),
           ),
         ),
       ],

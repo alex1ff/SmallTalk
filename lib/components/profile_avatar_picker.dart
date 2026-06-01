@@ -17,7 +17,7 @@ class ProfileAvatarPicker extends StatelessWidget {
     return Center(
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(78.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -76,7 +76,7 @@ class ProfileAvatarPicker extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 12.0),
+            const SizedBox(height: ExpatlioDesign.space12),
             Text(
               FFLocalizations.of(context).getVariableText(
                 ruText: 'Изменить фото',

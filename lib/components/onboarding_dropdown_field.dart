@@ -28,7 +28,7 @@ class OnboardingDropdownField extends StatelessWidget {
       child: InkWell(
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
-        borderRadius: BorderRadius.circular(999.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
         onTap: () async => onTap(context),
         child: Container(
           height: ExpatlioDesign.formFieldHeight,
@@ -38,18 +38,22 @@ class OnboardingDropdownField extends StatelessWidget {
                 : active
                     ? ExpatlioDesign.primary.withValues(alpha: 0.08)
                     : ExpatlioDesign.mutedSurface,
-            borderRadius: BorderRadius.circular(999.0),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
             border: Border.all(
               color: active
                   ? ExpatlioDesign.primary.withValues(alpha: 0.22)
                   : ExpatlioDesign.mutedSurface,
             ),
           ),
-          padding: const EdgeInsetsDirectional.fromSTEB(14.0, 0.0, 12.0, 0.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space0),
           child: Row(
             children: [
               Icon(icon, size: 17.0, color: accent),
-              const SizedBox(width: 8.0),
+              const SizedBox(width: ExpatlioDesign.space8),
               Expanded(
                 child: Text(
                   value,
@@ -63,7 +67,7 @@ class OnboardingDropdownField extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 8.0),
+              const SizedBox(width: ExpatlioDesign.space8),
               Icon(
                 menuOpen
                     ? Icons.keyboard_arrow_up_rounded

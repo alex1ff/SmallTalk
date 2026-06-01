@@ -39,7 +39,7 @@ class LanguageCardWidget extends StatelessWidget {
         height: 62.0,
         decoration: ExpatlioDesign.cardDecoration(radius: 16.0),
         child: Padding(
-          padding: EdgeInsets.all(4.0),
+          padding: EdgeInsets.all(ExpatlioDesign.space4),
           child: Row(
             mainAxisSize: MainAxisSize.max,
             children: [
@@ -48,7 +48,8 @@ class LanguageCardWidget extends StatelessWidget {
                 height: 52.0,
                 decoration: BoxDecoration(
                   color: ExpatlioDesign.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14.0),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusMedium),
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),
@@ -70,7 +71,11 @@ class LanguageCardWidget extends StatelessWidget {
               ),
               Expanded(
                 child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 8.0, 0.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space12,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0),
                   child: Text(
                     FFLocalizations.of(context).getVariableText(
                       ruText: lang?.nameRu,
@@ -88,7 +93,11 @@ class LanguageCardWidget extends StatelessWidget {
               ),
               if (lang == currentSelected)
                 Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 8.0, 0.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0),
                   child: Container(
                     key: const ValueKey<String>(
                         'language_card_selected_indicator'),

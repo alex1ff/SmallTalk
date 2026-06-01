@@ -25,12 +25,12 @@ class DictionaryWordRow extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         onTap: onTap,
         child: Container(
           constraints: const BoxConstraints(minHeight: 49.0),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12.0),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
             border: Border.all(
               color: ExpatlioDesign.border,
               width: 1.0,
@@ -38,10 +38,10 @@ class DictionaryWordRow extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-              16.0,
-              8.0,
-              16.0,
-              8.0,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space8,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space8,
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -55,7 +55,7 @@ class DictionaryWordRow extends StatelessWidget {
                     style: textStyle,
                   ),
                 ),
-                const SizedBox(width: 24.0),
+                const SizedBox(width: ExpatlioDesign.space24),
                 Expanded(
                   flex: 7,
                   child: Text(

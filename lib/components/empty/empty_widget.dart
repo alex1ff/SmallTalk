@@ -44,7 +44,11 @@ class _EmptyWidgetState extends State<EmptyWidget> {
     return Container(
       decoration: BoxDecoration(),
       child: Padding(
-        padding: EdgeInsetsDirectional.fromSTEB(24.0, 60.0, 24.0, 0.0),
+        padding: EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space64,
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space0),
         child: Column(
           mainAxisSize: MainAxisSize.max,
           children: [
@@ -57,7 +61,11 @@ class _EmptyWidgetState extends State<EmptyWidget> {
               ),
             ),
             Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(0.0, 16.0, 0.0, 0.0),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
                   ruText: 'Здесь пока пусто',
@@ -67,14 +75,18 @@ class _EmptyWidgetState extends State<EmptyWidget> {
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'sf pro display',
                       color: ExpatlioDesign.text,
-                      fontSize: 18.0,
+                      fontSize: 17.0,
                       letterSpacing: 0.0,
                       fontWeight: FontWeight.w700,
                     ),
               ),
             ),
             Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(0.0, 6.0, 0.0, 0.0),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space8,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0),
               child: Text(
                 valueOrDefault<String>(
                   widget.txt,

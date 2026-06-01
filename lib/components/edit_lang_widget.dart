@@ -76,7 +76,8 @@ class _EditLangWidgetState extends State<EditLangWidget> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+      padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0,
+          ExpatlioDesign.space56, ExpatlioDesign.space0, ExpatlioDesign.space0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.start,
@@ -102,7 +103,11 @@ class _EditLangWidgetState extends State<EditLangWidget> {
                 ),
                 Flexible(
                   child: Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space0),
                     child: SingleChildScrollView(
                       primary: false,
                       child: Column(
@@ -123,12 +128,12 @@ class _EditLangWidgetState extends State<EditLangWidget> {
                               },
                             ),
                           ),
-                        ].addToEnd(SizedBox(height: 35.0)),
+                        ].addToEnd(SizedBox(height: ExpatlioDesign.space32)),
                       ),
                     ),
                   ),
                 ),
-              ].divide(SizedBox(height: 16.0)),
+              ].divide(SizedBox(height: ExpatlioDesign.space16)),
             ),
           ),
         ],

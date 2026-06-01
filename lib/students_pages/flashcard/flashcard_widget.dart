@@ -71,9 +71,9 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
           children: [
             Padding(
               padding: EdgeInsetsDirectional.fromSTEB(
-                3.0,
-                115.0,
-                3.0,
+                ExpatlioDesign.space4,
+                ExpatlioDesign.space112,
+                ExpatlioDesign.space4,
                 bottomSafePadding,
               ),
               child: FutureBuilder<List<FlashcardSessionEntry>>(
@@ -82,7 +82,8 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
                   if (snapshot.hasError) {
                     return Center(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: ExpatlioDesign.space24),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -91,7 +92,7 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
                               color: FlutterFlowTheme.of(context).error,
                               size: 42.0,
                             ),
-                            const SizedBox(height: 16.0),
+                            const SizedBox(height: ExpatlioDesign.space16),
                             Text(
                               FFLocalizations.of(context).getVariableText(
                                 ruText:
@@ -109,7 +110,7 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
                                     fontWeight: FontWeight.w500,
                                   ),
                             ),
-                            const SizedBox(height: 16.0),
+                            const SizedBox(height: ExpatlioDesign.space16),
                             FFButtonWidget(
                               onPressed: () {
                                 safeSetState(_refreshSession);
@@ -121,18 +122,19 @@ class _FlashcardWidgetState extends State<FlashcardWidget> {
                               options: FFButtonOptions(
                                 height: ExpatlioDesign.buttonHeight,
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 20.0),
+                                    horizontal: ExpatlioDesign.space20),
                                 color: FlutterFlowTheme.of(context).secondary,
                                 textStyle: FlutterFlowTheme.of(context)
                                     .titleSmall
                                     .override(
                                       fontFamily: 'sf pro display',
                                       color: Colors.white,
-                                      fontSize: 14.0,
+                                      fontSize: 15.0,
                                       letterSpacing: 0.0,
                                       fontWeight: FontWeight.w600,
                                     ),
-                                borderRadius: BorderRadius.circular(10.0),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusMedium),
                               ),
                             ),
                           ],

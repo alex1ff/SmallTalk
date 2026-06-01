@@ -37,7 +37,8 @@ class _ReportWidgetState extends State<ReportWidget> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 35.0),
+      padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space8,
+          ExpatlioDesign.space0, ExpatlioDesign.space8, ExpatlioDesign.space32),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -45,7 +46,8 @@ class _ReportWidgetState extends State<ReportWidget> {
             width: double.infinity,
             decoration: BoxDecoration(
               color: ExpatlioDesign.card,
-              borderRadius: BorderRadius.circular(20.0),
+              borderRadius:
+                  BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -107,7 +109,8 @@ class _ReportWidgetState extends State<ReportWidget> {
               height: 60.0,
               decoration: BoxDecoration(
                 color: ExpatlioDesign.card,
-                borderRadius: BorderRadius.circular(20.0),
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
               ),
               child: Align(
                 alignment: AlignmentDirectional(0.0, 0.0),
@@ -125,7 +128,7 @@ class _ReportWidgetState extends State<ReportWidget> {
               ),
             ),
           ),
-        ].divide(SizedBox(height: 6.0)),
+        ].divide(SizedBox(height: ExpatlioDesign.space8)),
       ),
     );
   }

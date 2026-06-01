@@ -117,16 +117,20 @@ class _FiltersWidgetState extends State<FiltersWidget> {
     final theme = FlutterFlowTheme.of(context);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(18.0),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
       onTap: () async {
         await _setPreferredPartnerLevel(level);
         safeSetState(() {});
       },
       child: Container(
-        padding: EdgeInsetsDirectional.fromSTEB(14.0, 8.0, 14.0, 8.0),
+        padding: EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space8),
         decoration: BoxDecoration(
           color: selected ? theme.primary : theme.secondaryBackground,
-          borderRadius: BorderRadius.circular(18.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
           border: Border.all(
             color: selected ? theme.primary : theme.alternate,
           ),
@@ -152,8 +156,8 @@ class _FiltersWidgetState extends State<FiltersWidget> {
             currentUserDocument?.preferences.preferredPartnerLevel;
 
         return Wrap(
-          spacing: 8.0,
-          runSpacing: 8.0,
+          spacing: ExpatlioDesign.space8,
+          runSpacing: ExpatlioDesign.space8,
           children: [
             _buildLevelChoice(
               context,
@@ -210,7 +214,11 @@ class _FiltersWidgetState extends State<FiltersWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
@@ -222,8 +230,11 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                     color: ExpatlioDesign.background,
                   ),
                   child: Padding(
-                    padding:
-                        EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 35.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space32),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +247,10 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              10.0, 24.0, 0.0, 0.0),
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space24,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Text(
                             FFLocalizations.of(context).getText(
                               'nu210379' /* Язык зучения */,
@@ -254,7 +268,10 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 12.0, 0.0, 0.0),
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: AuthUserStreamWidget(
                             builder: (context) => wrapWithModel(
                               model: _model.languageCardModel1,
@@ -299,7 +316,10 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              10.0, 40.0, 0.0, 0.0),
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space40,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Text(
                             FFLocalizations.of(context).getText(
                               'dtstv5e7' /* Локация cобеседника */,
@@ -317,7 +337,10 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 12.0, 0.0, 0.0),
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: AuthUserStreamWidget(
                             builder: (context) => wrapWithModel(
                               model: _model.countryCardModel,
@@ -370,7 +393,10 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              10.0, 40.0, 0.0, 0.0),
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space40,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Text(
                             FFLocalizations.of(context).getVariableText(
                               ruText: 'Уровень собеседника',
@@ -389,7 +415,10 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              10.0, 12.0, 10.0, 0.0),
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space0),
                           child: _buildPreferredPartnerLevelSelector(context),
                         ),
                       ],

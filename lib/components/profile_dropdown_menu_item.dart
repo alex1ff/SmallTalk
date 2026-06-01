@@ -15,13 +15,15 @@ class ProfileDropdownMenuItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsetsDirectional.fromSTEB(8.0, 3.0, 8.0, 3.0),
-      padding: const EdgeInsetsDirectional.fromSTEB(12.0, 7.0, 10.0, 7.0),
+      margin: const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space8,
+          ExpatlioDesign.space4, ExpatlioDesign.space8, ExpatlioDesign.space4),
+      padding: const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space12,
+          ExpatlioDesign.space8, ExpatlioDesign.space12, ExpatlioDesign.space8),
       decoration: BoxDecoration(
         color: selected
             ? ExpatlioDesign.primary.withValues(alpha: 0.12)
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(10.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
       ),
       child: Row(
         children: [
@@ -38,7 +40,7 @@ class ProfileDropdownMenuItem extends StatelessWidget {
             ),
           ),
           if (selected) ...[
-            const SizedBox(width: 10.0),
+            const SizedBox(width: ExpatlioDesign.space12),
             const Icon(
               Icons.check_rounded,
               color: ExpatlioDesign.primary,

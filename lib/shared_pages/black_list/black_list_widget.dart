@@ -83,7 +83,11 @@ class _BlackListWidgetState extends State<BlackListWidget> {
         body: Stack(
           children: [
             Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space0),
               child: AuthUserStreamWidget(
                 builder: (context) => Builder(
                   builder: (context) {
@@ -104,13 +108,14 @@ class _BlackListWidgetState extends State<BlackListWidget> {
 
                     return ListView.separated(
                       padding: EdgeInsets.fromLTRB(
-                        0,
-                        115.0,
-                        0,
-                        120.0,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space112,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space112,
                       ),
                       itemCount: list.length,
-                      separatorBuilder: (_, __) => SizedBox(height: 6.0),
+                      separatorBuilder: (_, __) =>
+                          SizedBox(height: ExpatlioDesign.space8),
                       itemBuilder: (context, listIndex) {
                         final listItem = list[listIndex];
                         return FutureBuilder<UserPublicProfilesRecord?>(
@@ -177,7 +182,10 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                                 ),
                                 child: Padding(
                                   padding: EdgeInsetsDirectional.fromSTEB(
-                                      0.0, 8.0, 0.0, 8.0),
+                                      ExpatlioDesign.space0,
+                                      ExpatlioDesign.space8,
+                                      ExpatlioDesign.space0,
+                                      ExpatlioDesign.space8),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.max,
                                     children: [
@@ -197,8 +205,8 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                                                   ),
                                                 )
                                               : null,
-                                          borderRadius:
-                                              BorderRadius.circular(26.0),
+                                          borderRadius: BorderRadius.circular(
+                                              ExpatlioDesign.radiusExtraLarge),
                                         ),
                                         child: profilePhotoUrl.isEmpty
                                             ? Center(
@@ -221,7 +229,10 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                                         child: Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  12.0, 0.0, 0.0, 0.0),
+                                                  ExpatlioDesign.space12,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Text(
                                             profileDisplayName,
                                             style: FlutterFlowTheme.of(context)
@@ -238,7 +249,8 @@ class _BlackListWidgetState extends State<BlackListWidget> {
                                         ),
                                       ),
                                       FlutterFlowIconButton(
-                                        borderRadius: 12.0,
+                                        borderRadius:
+                                            ExpatlioDesign.radiusMedium,
                                         buttonSize: 52.0,
                                         icon: Icon(
                                           FFIcons.ktrash03,

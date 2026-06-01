@@ -1,4 +1,5 @@
 import '/flutter_flow/flutter_flow_theme.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/review_flow/review_submission_helper.dart';
 import 'package:flutter/material.dart';
 
@@ -29,7 +30,7 @@ class PairReviewContent extends StatelessWidget {
       children: [
         if (reviewNoteText != null && reviewNoteText!.trim().isNotEmpty) ...[
           _PairReviewInfoCard(message: reviewNoteText!),
-          const SizedBox(height: 12.0),
+          const SizedBox(height: ExpatlioDesign.space12),
         ],
         reviewContent ??
             _PairReviewInfoCard(
@@ -53,10 +54,10 @@ class _PairReviewInfoCard extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(ExpatlioDesign.space16),
         child: Text(
           message,
           style: FlutterFlowTheme.of(context).bodyMedium.override(

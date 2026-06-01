@@ -95,7 +95,11 @@ class _EditAboutWidgetState extends State<EditAboutWidget> {
                 onConfirm: _saveAbout,
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space0),
                 child: AuthUserStreamWidget(
                   builder: (context) => Container(
                     width: double.infinity,
@@ -110,7 +114,7 @@ class _EditAboutWidgetState extends State<EditAboutWidget> {
                           ),
                           style: ExpatlioDesign.formLabelStyle(context),
                         ),
-                        const SizedBox(height: 6.0),
+                        const SizedBox(height: ExpatlioDesign.space8),
                         TextFormField(
                           controller: _model.aboutMeTextController,
                           focusNode: _model.aboutMeFocusNode,
@@ -150,8 +154,8 @@ class _EditAboutWidgetState extends State<EditAboutWidget> {
                   ),
                 ),
               ),
-              const SizedBox(height: 35.0),
-            ].divide(SizedBox(height: 16.0)),
+              const SizedBox(height: ExpatlioDesign.space32),
+            ].divide(SizedBox(height: ExpatlioDesign.space16)),
           ),
         ),
       ],

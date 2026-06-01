@@ -222,10 +222,10 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(16.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(ExpatlioDesign.space16),
         child: child,
       ),
     );
@@ -242,7 +242,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
           .override(
             fontFamily: 'sf pro display',
             color: ExpatlioDesign.muted,
-            fontSize: 14.0,
+            fontSize: 15.0,
             letterSpacing: 0.0,
           )
           .copyWith(height: 1.4),
@@ -416,15 +416,26 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
           decoration: BoxDecoration(
             color: bubbleColor,
             borderRadius: BorderRadiusDirectional.only(
-              topStart: const Radius.circular(14.0),
-              topEnd: const Radius.circular(14.0),
-              bottomStart: Radius.circular(isCurrentUser ? 14.0 : 4.0),
-              bottomEnd: Radius.circular(isCurrentUser ? 4.0 : 14.0),
+              topStart: const Radius.circular(ExpatlioDesign.radiusMedium),
+              topEnd: const Radius.circular(ExpatlioDesign.radiusMedium),
+              bottomStart: Radius.circular(
+                isCurrentUser
+                    ? ExpatlioDesign.radiusMedium
+                    : ExpatlioDesign.radiusSmall,
+              ),
+              bottomEnd: Radius.circular(
+                isCurrentUser
+                    ? ExpatlioDesign.radiusSmall
+                    : ExpatlioDesign.radiusMedium,
+              ),
             ),
           ),
           child: Padding(
-            padding:
-                const EdgeInsetsDirectional.fromSTEB(14.0, 10.0, 14.0, 12.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space16,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space16,
+                ExpatlioDesign.space12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -447,7 +458,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                       ),
                     ),
                     if (timestampLabel.isNotEmpty) ...[
-                      const SizedBox(width: 8.0),
+                      const SizedBox(width: ExpatlioDesign.space8),
                       Text(
                         timestampLabel,
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
@@ -460,7 +471,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                     ],
                   ],
                 ),
-                const SizedBox(height: 6.0),
+                const SizedBox(height: ExpatlioDesign.space8),
                 InteractiveCaptionText(
                   text: log.text,
                   mode: InteractiveCaptionTextMode.wordScan,
@@ -507,12 +518,12 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(999.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
         onTap: () => _setCaptionLogsExpanded(!isExpanded),
         child: Ink(
           decoration: BoxDecoration(
             color: theme.primaryBackground.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(999.0),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
             border: Border.all(
               color: theme.primaryText.withValues(alpha: 0.08),
               width: 1.0,
@@ -527,8 +538,8 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 10.0,
+              horizontal: ExpatlioDesign.space16,
+              vertical: ExpatlioDesign.space12,
             ),
             child: Text(
               _captionLogsToggleLabel(
@@ -537,7 +548,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               ),
               style: theme.bodyMedium.override(
                 fontFamily: 'sf pro display',
-                fontSize: 14.0,
+                fontSize: 15.0,
                 letterSpacing: 0.0,
                 fontWeight: FontWeight.w600,
               ),
@@ -559,7 +570,8 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
       children: [
         for (var index = 0; index < logs.length; index++) ...[
           _buildCaptionLogItem(context, session, logs[index]),
-          if (index < logs.length - 1) const SizedBox(height: 12.0),
+          if (index < logs.length - 1)
+            const SizedBox(height: ExpatlioDesign.space12),
         ],
       ],
     );
@@ -642,7 +654,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
             return _buildCaptionLogsCardShell(
               context,
               child: Padding(
-                padding: const EdgeInsets.all(4.0),
+                padding: const EdgeInsets.all(ExpatlioDesign.space4),
                 child: _buildLoadingState(context),
               ),
             );
@@ -690,7 +702,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                 logs,
               ),
               if (canCollapse) ...[
-                const SizedBox(height: 12.0),
+                const SizedBox(height: ExpatlioDesign.space12),
                 Align(
                   alignment: Alignment.center,
                   child: _buildCaptionLogsToggleButton(
@@ -715,7 +727,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                   : logs,
             ),
             if (canCollapse) ...[
-              const SizedBox(height: 12.0),
+              const SizedBox(height: ExpatlioDesign.space12),
               _buildCollapsedCaptionLogPeek(
                 context,
                 session,
@@ -762,10 +774,10 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               ),
               Padding(
                 padding: const EdgeInsetsDirectional.fromSTEB(
-                  72.0,
-                  0.0,
-                  72.0,
-                  0.0,
+                  ExpatlioDesign.space80,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space80,
+                  ExpatlioDesign.space0,
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -780,7 +792,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                       textAlign: TextAlign.center,
                       style: ExpatlioDesign.pageHeaderTitleStyle(context),
                     ),
-                    const SizedBox(height: 2.0),
+                    const SizedBox(height: ExpatlioDesign.space4),
                     Text(
                       subtitle,
                       maxLines: 1,
@@ -952,9 +964,13 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         height: 74.0,
         decoration: BoxDecoration(
           color: ExpatlioDesign.card,
-          borderRadius: BorderRadius.circular(10.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         ),
-        padding: const EdgeInsetsDirectional.fromSTEB(8.0, 8.0, 8.0, 8.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -963,7 +979,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               size: 16.0,
               color: ExpatlioDesign.muted,
             ),
-            const SizedBox(height: 4.0),
+            const SizedBox(height: ExpatlioDesign.space4),
             Text(
               label,
               maxLines: 1,
@@ -974,7 +990,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                 size: 11.0,
               ),
             ),
-            const SizedBox(height: 2.0),
+            const SizedBox(height: ExpatlioDesign.space4),
             Text(
               value,
               maxLines: 1,
@@ -1018,9 +1034,10 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
             photoUrl: counterpartPhotoUrl,
             displayName: counterpartName,
           ),
-          const SizedBox(height: 14.0),
+          const SizedBox(height: ExpatlioDesign.space16),
           Padding(
-            padding: const EdgeInsetsDirectional.symmetric(horizontal: 30.0),
+            padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: ExpatlioDesign.space32),
             child: Text(
               counterpartName,
               maxLines: 1,
@@ -1034,13 +1051,17 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               ),
             ),
           ),
-          const SizedBox(height: 10.0),
+          const SizedBox(height: ExpatlioDesign.space12),
           Container(
             decoration: BoxDecoration(
               color: ExpatlioDesign.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(999.0),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
             ),
-            padding: const EdgeInsetsDirectional.fromSTEB(10.0, 5.0, 12.0, 5.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space8,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1049,7 +1070,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                   color: ExpatlioDesign.primary,
                   size: 14.0,
                 ),
-                const SizedBox(width: 5.0),
+                const SizedBox(width: ExpatlioDesign.space8),
                 Text(
                   _callDirectionLabel(context, session),
                   style: ExpatlioDesign.textStyle(
@@ -1062,7 +1083,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               ],
             ),
           ),
-          const SizedBox(height: 22.0),
+          const SizedBox(height: ExpatlioDesign.space24),
           Row(
             children: [
               _buildCallMetricCard(
@@ -1074,7 +1095,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                 ),
                 value: _callDateLabel(context, session),
               ),
-              const SizedBox(width: 12.0),
+              const SizedBox(width: ExpatlioDesign.space12),
               _buildCallMetricCard(
                 context,
                 icon: Icons.access_time_rounded,
@@ -1084,7 +1105,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                 ),
                 value: _callTimeLabel(context, session),
               ),
-              const SizedBox(width: 12.0),
+              const SizedBox(width: ExpatlioDesign.space12),
               _buildCallMetricCard(
                 context,
                 icon: Icons.schedule_rounded,
@@ -1170,7 +1191,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     return Expanded(
       child: FlutterFlowIconButton(
         borderColor: Colors.transparent,
-        borderRadius: 8.0,
+        borderRadius: ExpatlioDesign.radiusSmall,
         buttonSize: 55.0,
         icon: Icon(
           FFIcons.kstar012,
@@ -1295,11 +1316,15 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
           width: double.infinity,
           decoration: BoxDecoration(
             color: ExpatlioDesign.card,
-            borderRadius: BorderRadius.circular(16.0),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
           ),
           alignment: const AlignmentDirectional(0.0, 0.0),
           child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(8.0, 28.0, 8.0, 28.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space8,
+                ExpatlioDesign.space32,
+                ExpatlioDesign.space8,
+                ExpatlioDesign.space32),
             child: Row(
               mainAxisSize: MainAxisSize.max,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1310,7 +1335,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
             ),
           ),
         ),
-        const SizedBox(height: 12.0),
+        const SizedBox(height: ExpatlioDesign.space12),
         TextFormField(
           controller: _model.reviewCommentTextController,
           focusNode: _model.reviewCommentFocusNode,
@@ -1347,7 +1372,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               }),
           ],
         ),
-        const SizedBox(height: 14.0),
+        const SizedBox(height: ExpatlioDesign.space16),
         _buildReviewSubmitButton(context, session),
       ],
     );
@@ -1408,8 +1433,11 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
                   ruText: hasReviewed ? 'Отзыв оставлен' : 'Оставить отзыв',
@@ -1417,16 +1445,19 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                 ),
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'Cool',
-                      fontSize: 24.0,
+                      fontSize: 22.0,
                       letterSpacing: 0.0,
                       fontWeight: FontWeight.normal,
                     ),
               ),
             ),
-            const SizedBox(height: 12.0),
+            const SizedBox(height: ExpatlioDesign.space12),
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0),
               child: !snapshot.hasData && _model.reviewRefOverride == null
                   ? _buildLoadingState(context)
                   : PairReviewContent(
@@ -1501,9 +1532,9 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                   Padding(
                     padding: const EdgeInsetsDirectional.fromSTEB(
                       ExpatlioDesign.pagePadding,
-                      0.0,
+                      ExpatlioDesign.space0,
                       ExpatlioDesign.pagePadding,
-                      0.0,
+                      ExpatlioDesign.space0,
                     ),
                     child: SingleChildScrollView(
                       child: Column(
@@ -1517,10 +1548,10 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                             fallbackPhotoUrl: counterpartPhotoUrl,
                             durationLabel: durationLabel,
                           ),
-                          const SizedBox(height: 28.0),
+                          const SizedBox(height: ExpatlioDesign.space32),
                           Padding(
-                            padding:
-                                const EdgeInsetsDirectional.only(bottom: 14.0),
+                            padding: const EdgeInsetsDirectional.only(
+                                bottom: ExpatlioDesign.space16),
                             child: Row(
                               children: [
                                 Expanded(
@@ -1551,9 +1582,9 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                             ),
                           ),
                           _buildCaptionLogsSection(context, session),
-                          const SizedBox(height: 22.0),
+                          const SizedBox(height: ExpatlioDesign.space24),
                           _buildReviewSection(context, session),
-                          const SizedBox(height: 120.0),
+                          const SizedBox(height: ExpatlioDesign.space112),
                         ],
                       ),
                     ),

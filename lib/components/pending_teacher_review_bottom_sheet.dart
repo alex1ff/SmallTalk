@@ -13,7 +13,11 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
       alignment: const AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -34,15 +38,19 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
                     ),
                     Padding(
                       padding: const EdgeInsetsDirectional.fromSTEB(
-                          6.0, 0.0, 6.0, 0.0),
+                          ExpatlioDesign.space8,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space8,
+                          ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
                           color: ExpatlioDesign.card,
-                          borderRadius: BorderRadius.circular(20.0),
+                          borderRadius: BorderRadius.circular(
+                              ExpatlioDesign.radiusExtraLarge),
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.all(24.0),
+                          padding: const EdgeInsets.all(ExpatlioDesign.space24),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -70,7 +78,7 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 16.0),
+                              const SizedBox(height: ExpatlioDesign.space16),
                               Text(
                                 FFLocalizations.of(context).getVariableText(
                                   ruText: 'Заявка ещё на проверке',
@@ -81,11 +89,11 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
                                     .bodyMedium
                                     .override(
                                       fontFamily: 'Cool',
-                                      fontSize: 24.0,
+                                      fontSize: 22.0,
                                       letterSpacing: 0.0,
                                     ),
                               ),
-                              const SizedBox(height: 12.0),
+                              const SizedBox(height: ExpatlioDesign.space12),
                               Text(
                                 FFLocalizations.of(context).getVariableText(
                                   ruText:
@@ -107,7 +115,7 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 35.0),
+                    const SizedBox(height: ExpatlioDesign.space32),
                   ],
                 ),
               ),

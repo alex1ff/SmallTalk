@@ -9,15 +9,16 @@ class PendingTeacherReviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(0.0, 6.0, 0.0, 0.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0,
+          ExpatlioDesign.space8, ExpatlioDesign.space0, ExpatlioDesign.space0),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
           color: ExpatlioDesign.card,
-          borderRadius: BorderRadius.circular(16.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(ExpatlioDesign.space16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -26,7 +27,8 @@ class PendingTeacherReviewCard extends StatelessWidget {
                 height: 48.0,
                 decoration: BoxDecoration(
                   color: ExpatlioDesign.background,
-                  borderRadius: BorderRadius.circular(18.0),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusLarge),
                 ),
                 child: Icon(
                   Icons.pending_outlined,
@@ -34,7 +36,7 @@ class PendingTeacherReviewCard extends StatelessWidget {
                   size: 22.0,
                 ),
               ),
-              const SizedBox(width: 12.0),
+              const SizedBox(width: ExpatlioDesign.space12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -46,11 +48,11 @@ class PendingTeacherReviewCard extends StatelessWidget {
                       ),
                       style: FlutterFlowTheme.of(context).bodyMedium.override(
                             fontFamily: 'Cool',
-                            fontSize: 21.0,
+                            fontSize: 22.0,
                             letterSpacing: 0.0,
                           ),
                     ),
-                    const SizedBox(height: 8.0),
+                    const SizedBox(height: ExpatlioDesign.space8),
                     Text(
                       FFLocalizations.of(context).getVariableText(
                         ruText:

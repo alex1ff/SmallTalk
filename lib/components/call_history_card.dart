@@ -132,10 +132,11 @@ class CallHistoryCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsetsDirectional.only(top: 14.0),
+              padding:
+                  const EdgeInsetsDirectional.only(top: ExpatlioDesign.space16),
               child: _buildAvatar(context),
             ),
-            const SizedBox(width: 14.0),
+            const SizedBox(width: ExpatlioDesign.space16),
             Expanded(
               child: Container(
                 constraints: const BoxConstraints(minHeight: 72.0),
@@ -144,8 +145,11 @@ class CallHistoryCard extends StatelessWidget {
                     bottom: BorderSide(color: ExpatlioDesign.border),
                   ),
                 ),
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(0.0, 14.0, 0.0, 14.0),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space16),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -164,7 +168,7 @@ class CallHistoryCard extends StatelessWidget {
                               weight: FontWeight.w700,
                             ),
                           ),
-                          const SizedBox(height: 3.0),
+                          const SizedBox(height: ExpatlioDesign.space4),
                           Row(
                             children: [
                               Icon(
@@ -172,7 +176,7 @@ class CallHistoryCard extends StatelessWidget {
                                 color: callDirectionColor,
                                 size: 15.0,
                               ),
-                              const SizedBox(width: 4.0),
+                              const SizedBox(width: ExpatlioDesign.space4),
                               Flexible(
                                 child: Text(
                                   '${_callDirectionLabel(context)} · $durationLabel',
@@ -190,7 +194,7 @@ class CallHistoryCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8.0),
+                    const SizedBox(width: ExpatlioDesign.space8),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 112.0),
                       child: Text(

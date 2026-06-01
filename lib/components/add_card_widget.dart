@@ -83,7 +83,11 @@ class _AddCardWidgetState extends State<AddCardWidget> {
                 onConfirm: _saveCard,
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0),
                 child: Form(
                   key: _model.formKey,
                   autovalidateMode: AutovalidateMode.disabled,
@@ -91,11 +95,12 @@ class _AddCardWidgetState extends State<AddCardWidget> {
                     width: double.infinity,
                     decoration: BoxDecoration(
                       color: ExpatlioDesign.card,
-                      borderRadius: BorderRadius.circular(14.0),
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusMedium),
                       border: Border.all(color: ExpatlioDesign.border),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(14.0),
+                      padding: const EdgeInsets.all(ExpatlioDesign.space16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -105,7 +110,7 @@ class _AddCardWidgetState extends State<AddCardWidget> {
                             ),
                             style: ExpatlioDesign.formLabelStyle(context),
                           ),
-                          const SizedBox(height: 8.0),
+                          const SizedBox(height: ExpatlioDesign.space8),
                           TextFormField(
                             controller: _model.nameTextController,
                             focusNode: _model.nameFocusNode,
@@ -135,8 +140,8 @@ class _AddCardWidgetState extends State<AddCardWidget> {
                   ),
                 ),
               ),
-              const SizedBox(height: 35.0),
-            ].divide(SizedBox(height: 16.0)),
+              const SizedBox(height: ExpatlioDesign.space32),
+            ].divide(SizedBox(height: ExpatlioDesign.space16)),
           ),
         ),
       ],

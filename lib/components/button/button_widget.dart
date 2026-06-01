@@ -110,7 +110,11 @@ class _ButtonWidgetState extends State<ButtonWidget> {
             ],
           ),
           child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(20.0, 0.0, 20.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0),
             child: Row(
               mainAxisAlignment: widget.trailingContent != null && !showsSpinner
                   ? MainAxisAlignment.spaceBetween
@@ -128,7 +132,7 @@ class _ButtonWidgetState extends State<ButtonWidget> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10.0),
+                  const SizedBox(width: ExpatlioDesign.space12),
                 ],
                 Flexible(
                   fit: widget.trailingContent != null && !showsSpinner
@@ -151,7 +155,7 @@ class _ButtonWidgetState extends State<ButtonWidget> {
                   ),
                 ),
                 if (widget.trailingContent != null && !showsSpinner) ...[
-                  const SizedBox(width: 12.0),
+                  const SizedBox(width: ExpatlioDesign.space12),
                   widget.trailingContent!,
                 ],
               ],

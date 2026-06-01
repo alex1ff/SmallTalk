@@ -19,7 +19,7 @@ class StudentPayIntro extends StatelessWidget {
             height: 1.18,
           ),
         ),
-        const SizedBox(height: 8.0),
+        const SizedBox(height: ExpatlioDesign.space8),
         Text(
           'Отмените или измените подписку в любой момент',
           textAlign: TextAlign.center,

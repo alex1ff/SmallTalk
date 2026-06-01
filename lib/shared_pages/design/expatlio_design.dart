@@ -22,19 +22,43 @@ class ExpatlioDesign {
   static const Color warning = Color(0xFFF59E0B);
   static const Color info = primary;
 
-  static const double pagePadding = 16.0;
-  static const double pagePaddingLarge = 20.0;
-  static const double compactSpacing = 8.0;
-  static const double itemSpacing = 12.0;
-  static const double sectionSpacing = 16.0;
-  static const double sectionGap = 24.0;
+  static const double space0 = 0.0;
+  static const double space4 = 4.0;
+  static const double space8 = 8.0;
+  static const double space12 = 12.0;
+  static const double space16 = 16.0;
+  static const double space20 = 20.0;
+  static const double space24 = 24.0;
+  static const double space32 = 32.0;
+  static const double space40 = 40.0;
+  static const double space48 = 48.0;
+  static const double space56 = 56.0;
+  static const double space64 = 64.0;
+  static const double space80 = 80.0;
+  static const double space96 = 96.0;
+  static const double space112 = 112.0;
+  static const double space136 = 136.0;
+  static const double pagePadding = space16;
+  static const double pagePaddingLarge = space20;
+  static const double compactSpacing = space8;
+  static const double itemSpacing = space12;
+  static const double sectionSpacing = space16;
+  static const double sectionGap = space24;
   static const double titleContentGap = compactSpacing;
   static const double pageTopSpacing = compactSpacing;
-  static const double pageBottomSpacing = 112.0;
-  static const double cardRadius = 18.0;
-  static const double controlRadius = 14.0;
-  static const double buttonRadius = 16.0;
-  static const double sheetRadius = 28.0;
+  static const double pageBottomSpacing = space112;
+  static const double radiusNone = 0.0;
+  static const double radiusSmall = 8.0;
+  static const double radiusMedium = 12.0;
+  static const double radiusLarge = 16.0;
+  static const double radiusExtraLarge = 20.0;
+  static const double radiusSheet = 28.0;
+  static const double radiusCapsule = 999.0;
+  static const double cardRadius = radiusLarge;
+  static const double controlRadius = radiusMedium;
+  static const double buttonRadius = radiusLarge;
+  static const double sheetRadius = radiusSheet;
+  static const double bottomSheetTitleSize = 22.0;
   static const double pageHeaderHeight = 52.0;
   static const double pageHeaderTitleSize = 17.0;
   static const double buttonHeight = 52.0;
@@ -50,7 +74,7 @@ class ExpatlioDesign {
   static const EdgeInsetsDirectional cardPaddingDirectional =
       EdgeInsetsDirectional.all(pagePadding);
   static const EdgeInsetsDirectional formGroupPadding =
-      EdgeInsetsDirectional.fromSTEB(16.0, 16.0, 16.0, 18.0);
+      EdgeInsetsDirectional.fromSTEB(space16, space16, space16, space20);
 
   static const List<BoxShadow> cardShadow = [
     BoxShadow(
@@ -117,6 +141,15 @@ class ExpatlioDesign {
     );
   }
 
+  static TextStyle bottomSheetTitleStyle(BuildContext context) {
+    return textStyle(
+      context,
+      size: bottomSheetTitleSize,
+      weight: FontWeight.normal,
+      height: 1.24,
+    ).copyWith(fontFamily: headingFontFamily);
+  }
+
   static TextStyle formTextStyle(
     BuildContext context, {
     bool enabled = true,
@@ -148,10 +181,10 @@ class ExpatlioDesign {
           ? const BoxConstraints(minHeight: 96.0)
           : const BoxConstraints.tightFor(height: formFieldHeight),
       contentPadding: EdgeInsetsDirectional.fromSTEB(
-        16.0,
-        maxLines > 1 ? 14.0 : 12.0,
-        16.0,
-        maxLines > 1 ? 14.0 : 12.0,
+        ExpatlioDesign.space16,
+        maxLines > 1 ? ExpatlioDesign.space16 : ExpatlioDesign.space12,
+        ExpatlioDesign.space16,
+        maxLines > 1 ? ExpatlioDesign.space16 : ExpatlioDesign.space12,
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: borderRadius,
@@ -190,7 +223,7 @@ class ExpatlioDesign {
   static TextStyle textStyle(
     BuildContext context, {
     Color color = text,
-    double size = 15,
+    double size = 17,
     FontWeight weight = FontWeight.w400,
     double height = 1.28,
   }) {
@@ -220,29 +253,33 @@ class ExpatlioDesign {
 
     return TextTheme(
       displayLarge:
-          headingBase.copyWith(fontSize: 40, fontWeight: FontWeight.w700),
+          headingBase.copyWith(fontSize: 34.0, fontWeight: FontWeight.w700),
       displayMedium:
-          headingBase.copyWith(fontSize: 34, fontWeight: FontWeight.w700),
+          headingBase.copyWith(fontSize: 28.0, fontWeight: FontWeight.w700),
       displaySmall:
-          headingBase.copyWith(fontSize: 28, fontWeight: FontWeight.w700),
+          headingBase.copyWith(fontSize: 22.0, fontWeight: FontWeight.w700),
       headlineLarge:
-          headingBase.copyWith(fontSize: 24, fontWeight: FontWeight.w700),
+          headingBase.copyWith(fontSize: 20.0, fontWeight: FontWeight.w700),
       headlineMedium:
-          headingBase.copyWith(fontSize: 22, fontWeight: FontWeight.w600),
+          headingBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w600),
       headlineSmall:
-          headingBase.copyWith(fontSize: 20, fontWeight: FontWeight.w600),
+          headingBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w600),
       titleLarge:
-          headingBase.copyWith(fontSize: 18, fontWeight: FontWeight.w600),
+          headingBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w600),
       titleMedium:
-          headingBase.copyWith(fontSize: 16, fontWeight: FontWeight.w600),
+          headingBase.copyWith(fontSize: 16.0, fontWeight: FontWeight.w600),
       titleSmall:
-          headingBase.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
-      bodyLarge: bodyBase.copyWith(fontSize: 16, fontWeight: FontWeight.w400),
-      bodyMedium: bodyBase.copyWith(fontSize: 15, fontWeight: FontWeight.w400),
-      bodySmall: bodyBase.copyWith(fontSize: 13, fontWeight: FontWeight.w400),
-      labelLarge: bodyBase.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
-      labelMedium: bodyBase.copyWith(fontSize: 13, fontWeight: FontWeight.w500),
-      labelSmall: bodyBase.copyWith(fontSize: 12, fontWeight: FontWeight.w500),
+          headingBase.copyWith(fontSize: 15.0, fontWeight: FontWeight.w600),
+      bodyLarge: bodyBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w400),
+      bodyMedium:
+          bodyBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w400),
+      bodySmall: bodyBase.copyWith(fontSize: 13.0, fontWeight: FontWeight.w400),
+      labelLarge:
+          bodyBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w600),
+      labelMedium:
+          bodyBase.copyWith(fontSize: 13.0, fontWeight: FontWeight.w500),
+      labelSmall:
+          bodyBase.copyWith(fontSize: 12.0, fontWeight: FontWeight.w500),
     );
   }
 
@@ -326,10 +363,10 @@ class ExpatlioDesign {
         fillColor: mutedSurface,
         hintStyle: textTheme.bodyMedium?.copyWith(color: inactive),
         contentPadding: const EdgeInsetsDirectional.fromSTEB(
-          16.0,
-          12.0,
-          16.0,
-          12.0,
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space12,
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space12,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(controlRadius),
@@ -358,7 +395,11 @@ class ExpatlioDesign {
             Size(0, buttonHeight),
           ),
           padding: const WidgetStatePropertyAll(
-            EdgeInsetsDirectional.fromSTEB(18.0, 0.0, 18.0, 0.0),
+            EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0),
           ),
           elevation: const WidgetStatePropertyAll(0),
           shadowColor: const WidgetStatePropertyAll(Colors.transparent),
@@ -381,7 +422,11 @@ class ExpatlioDesign {
         style: ButtonStyle(
           minimumSize: const WidgetStatePropertyAll(Size(0, buttonHeight)),
           padding: const WidgetStatePropertyAll(
-            EdgeInsetsDirectional.fromSTEB(18.0, 0.0, 18.0, 0.0),
+            EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0),
           ),
           shape: WidgetStatePropertyAll(buttonShape),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
@@ -391,7 +436,11 @@ class ExpatlioDesign {
         style: ButtonStyle(
           minimumSize: const WidgetStatePropertyAll(Size(0, buttonHeight)),
           padding: const WidgetStatePropertyAll(
-            EdgeInsetsDirectional.fromSTEB(18.0, 0.0, 18.0, 0.0),
+            EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0),
           ),
           shape: WidgetStatePropertyAll(buttonShape),
           side: const WidgetStatePropertyAll(BorderSide(color: border)),
@@ -403,7 +452,11 @@ class ExpatlioDesign {
         style: ButtonStyle(
           minimumSize: const WidgetStatePropertyAll(Size(0, 44.0)),
           padding: const WidgetStatePropertyAll(
-            EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 12.0, 0.0),
+            EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0),
           ),
           shape: WidgetStatePropertyAll(controlShape),
           foregroundColor: const WidgetStatePropertyAll(primary),
@@ -429,7 +482,7 @@ class ExpatlioDesign {
           side: const BorderSide(color: border),
         ),
         side: const BorderSide(color: border),
-        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+        padding: const EdgeInsets.symmetric(horizontal: ExpatlioDesign.space12),
       ),
       listTileTheme: ListTileThemeData(
         iconColor: muted,
@@ -437,10 +490,10 @@ class ExpatlioDesign {
         titleTextStyle: textTheme.bodyLarge,
         subtitleTextStyle: textTheme.bodySmall?.copyWith(color: muted),
         contentPadding: const EdgeInsetsDirectional.fromSTEB(
-          16.0,
-          4.0,
-          16.0,
-          4.0,
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space4,
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space4,
         ),
         shape: controlShape,
       ),

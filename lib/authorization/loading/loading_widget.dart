@@ -397,9 +397,10 @@ class _LoadingWidgetState extends State<LoadingWidget> {
                 ),
               ),
               if (_errorMessage != null) ...[
-                const SizedBox(height: 20.0),
+                const SizedBox(height: ExpatlioDesign.space20),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: ExpatlioDesign.space32),
                   child: Text(
                     _errorMessage!,
                     textAlign: TextAlign.center,
@@ -412,9 +413,10 @@ class _LoadingWidgetState extends State<LoadingWidget> {
                 ),
               ],
               if (_showRoleRecoveryChoice) ...[
-                const SizedBox(height: 20.0),
+                const SizedBox(height: ExpatlioDesign.space20),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: ExpatlioDesign.space20),
                   child: Text(
                     'Мы нашли аккаунт, но не смогли определить тип профиля. Выберите, как продолжить вход.',
                     textAlign: TextAlign.center,
@@ -425,9 +427,10 @@ class _LoadingWidgetState extends State<LoadingWidget> {
                         ),
                   ),
                 ),
-                const SizedBox(height: 12.0),
+                const SizedBox(height: ExpatlioDesign.space12),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: ExpatlioDesign.space20),
                   child: NativeSpeakerEntryToggle(
                     value: _recoverySwitchValue,
                     onChanged: (newValue) {
@@ -436,7 +439,11 @@ class _LoadingWidgetState extends State<LoadingWidget> {
                   ),
                 ),
                 Wrapper(
-                  padding: const EdgeInsets.fromLTRB(20.0, 12.0, 20.0, 0.0),
+                  padding: const EdgeInsets.fromLTRB(
+                      ExpatlioDesign.space20,
+                      ExpatlioDesign.space12,
+                      ExpatlioDesign.space20,
+                      ExpatlioDesign.space0),
                   child: ButtonWidget(
                     text: 'Продолжить',
                     loadingText: 'Сохраняем...',

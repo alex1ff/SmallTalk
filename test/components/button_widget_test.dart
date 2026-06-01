@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/components/button/button_widget.dart';
 import 'package:small_talk/components/wrapper.dart';
+import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 
 const _footerIgnoreKey = ValueKey<String>('call_summary_footer_ignore');
 const _footerOpacityKey = ValueKey<String>('call_summary_footer_opacity');
@@ -208,7 +209,7 @@ void main() {
         tester.widget<AnimatedPadding>(find.byType(AnimatedPadding).first);
     expect(
       animatedPadding.padding.resolve(TextDirection.ltr).bottom,
-      35.0,
+      ExpatlioDesign.space32,
     );
 
     await tester.pumpWidget(
@@ -227,7 +228,7 @@ void main() {
         tester.widget<AnimatedPadding>(find.byType(AnimatedPadding).first);
     expect(
       animatedPadding.padding.resolve(TextDirection.ltr).bottom,
-      6.0,
+      ExpatlioDesign.space8,
     );
   });
 

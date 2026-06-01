@@ -225,31 +225,31 @@ class ThemeTypography extends Typography {
   String get displayLargeFamily => ExpatlioDesign.headingFontFamily;
   bool get displayLargeIsCustom => true;
   TextStyle get displayLarge =>
-      _headingStyle(theme.primaryText, 40.0, FontWeight.w700);
+      _headingStyle(theme.primaryText, 34.0, FontWeight.w700);
   String get displayMediumFamily => ExpatlioDesign.headingFontFamily;
   bool get displayMediumIsCustom => true;
   TextStyle get displayMedium =>
-      _headingStyle(theme.primaryText, 34.0, FontWeight.w700);
+      _headingStyle(theme.primaryText, 28.0, FontWeight.w700);
   String get displaySmallFamily => ExpatlioDesign.headingFontFamily;
   bool get displaySmallIsCustom => true;
   TextStyle get displaySmall =>
-      _headingStyle(theme.primaryText, 28.0, FontWeight.w700);
+      _headingStyle(theme.primaryText, 22.0, FontWeight.w700);
   String get headlineLargeFamily => ExpatlioDesign.headingFontFamily;
   bool get headlineLargeIsCustom => true;
   TextStyle get headlineLarge =>
-      _headingStyle(theme.primaryText, 24.0, FontWeight.w700);
+      _headingStyle(theme.primaryText, 20.0, FontWeight.w700);
   String get headlineMediumFamily => ExpatlioDesign.headingFontFamily;
   bool get headlineMediumIsCustom => true;
   TextStyle get headlineMedium =>
-      _headingStyle(theme.primaryText, 22.0, FontWeight.w600);
+      _headingStyle(theme.primaryText, 17.0, FontWeight.w600);
   String get headlineSmallFamily => ExpatlioDesign.headingFontFamily;
   bool get headlineSmallIsCustom => true;
   TextStyle get headlineSmall =>
-      _headingStyle(theme.primaryText, 20.0, FontWeight.w600);
+      _headingStyle(theme.primaryText, 17.0, FontWeight.w600);
   String get titleLargeFamily => ExpatlioDesign.headingFontFamily;
   bool get titleLargeIsCustom => true;
   TextStyle get titleLarge =>
-      _headingStyle(theme.primaryText, 18.0, FontWeight.w600);
+      _headingStyle(theme.primaryText, 17.0, FontWeight.w600);
   String get titleMediumFamily => ExpatlioDesign.headingFontFamily;
   bool get titleMediumIsCustom => true;
   TextStyle get titleMedium =>
@@ -261,7 +261,7 @@ class ThemeTypography extends Typography {
   String get labelLargeFamily => ExpatlioDesign.fontFamily;
   bool get labelLargeIsCustom => true;
   TextStyle get labelLarge =>
-      _style(theme.secondaryText, 15.0, FontWeight.w600);
+      _style(theme.secondaryText, 17.0, FontWeight.w600);
   String get labelMediumFamily => ExpatlioDesign.fontFamily;
   bool get labelMediumIsCustom => true;
   TextStyle get labelMedium =>
@@ -272,10 +272,10 @@ class ThemeTypography extends Typography {
       _style(theme.secondaryText, 12.0, FontWeight.w500);
   String get bodyLargeFamily => ExpatlioDesign.fontFamily;
   bool get bodyLargeIsCustom => true;
-  TextStyle get bodyLarge => _style(theme.primaryText, 16.0, FontWeight.w400);
+  TextStyle get bodyLarge => _style(theme.primaryText, 17.0, FontWeight.w400);
   String get bodyMediumFamily => ExpatlioDesign.fontFamily;
   bool get bodyMediumIsCustom => true;
-  TextStyle get bodyMedium => _style(theme.primaryText, 15.0, FontWeight.w400);
+  TextStyle get bodyMedium => _style(theme.primaryText, 17.0, FontWeight.w400);
   String get bodySmallFamily => ExpatlioDesign.fontFamily;
   bool get bodySmallIsCustom => true;
   TextStyle get bodySmall => _style(theme.primaryText, 13.0, FontWeight.w400);

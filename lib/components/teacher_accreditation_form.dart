@@ -62,8 +62,8 @@ class TeacherAccreditationForm extends StatelessWidget {
           OnboardingFormSection(
             title: isRu ? 'Опыт преподавания' : 'Teaching experience',
             child: Wrap(
-              spacing: 8.0,
-              runSpacing: 8.0,
+              spacing: ExpatlioDesign.space8,
+              runSpacing: ExpatlioDesign.space8,
               children: experienceOptions.entries
                   .map(
                     (entry) => _TeacherAccreditationChoice(
@@ -94,10 +94,10 @@ class TeacherAccreditationForm extends StatelessWidget {
                     size: 13.0,
                   ),
                 ),
-                const SizedBox(height: 10.0),
+                const SizedBox(height: ExpatlioDesign.space12),
                 Wrap(
-                  spacing: 8.0,
-                  runSpacing: 8.0,
+                  spacing: ExpatlioDesign.space8,
+                  runSpacing: ExpatlioDesign.space8,
                   children: proofOptions.entries
                       .map(
                         (entry) => _TeacherAccreditationChoice(
@@ -174,7 +174,7 @@ class _TeacherEvidenceUploader extends StatelessWidget {
             size: 13.0,
           ),
         ),
-        const SizedBox(height: 10.0),
+        const SizedBox(height: ExpatlioDesign.space12),
         InkWell(
           key: const ValueKey<String>(
             'native_speaker_accreditation_upload_button',
@@ -188,7 +188,8 @@ class _TeacherEvidenceUploader extends StatelessWidget {
               radius: ExpatlioDesign.controlRadius,
               borderColor: ExpatlioDesign.border,
             ),
-            padding: const EdgeInsetsDirectional.symmetric(horizontal: 14.0),
+            padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: ExpatlioDesign.space16),
             child: Row(
               children: [
                 const Icon(
@@ -196,7 +197,7 @@ class _TeacherEvidenceUploader extends StatelessWidget {
                   color: ExpatlioDesign.primary,
                   size: 19.0,
                 ),
-                const SizedBox(width: 9.0),
+                const SizedBox(width: ExpatlioDesign.space12),
                 Expanded(
                   child: Text(
                     _uploadButtonText(context),
@@ -213,10 +214,13 @@ class _TeacherEvidenceUploader extends StatelessWidget {
         ),
         if (existingQualificationFiles.isNotEmpty ||
             localQualificationFiles.isNotEmpty) ...[
-          const SizedBox(height: 10.0),
-          for (var index = 0; index < existingQualificationFiles.length; index++)
+          const SizedBox(height: ExpatlioDesign.space12),
+          for (var index = 0;
+              index < existingQualificationFiles.length;
+              index++)
             Padding(
-              padding: const EdgeInsetsDirectional.only(bottom: 8.0),
+              padding: const EdgeInsetsDirectional.only(
+                  bottom: ExpatlioDesign.space8),
               child: _TeacherEvidenceFileTile(
                 fileName: existingQualificationFiles[index].name,
                 fileReference: existingQualificationFiles[index].storagePath,
@@ -225,7 +229,8 @@ class _TeacherEvidenceUploader extends StatelessWidget {
             ),
           for (var index = 0; index < localQualificationFiles.length; index++)
             Padding(
-              padding: const EdgeInsetsDirectional.only(bottom: 8.0),
+              padding: const EdgeInsetsDirectional.only(
+                  bottom: ExpatlioDesign.space8),
               child: _TeacherEvidenceFileTile(
                 fileName: _displayNameForLocalFile(
                   localQualificationFiles[index],
@@ -282,14 +287,18 @@ class _TeacherAccreditationChoice extends StatelessWidget {
   Widget build(BuildContext context) {
     final foreground = selected ? Colors.white : ExpatlioDesign.text;
     return InkWell(
-      borderRadius: BorderRadius.circular(999.0),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsetsDirectional.fromSTEB(13.0, 9.0, 13.0, 9.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space12),
         decoration: BoxDecoration(
           color:
               selected ? ExpatlioDesign.primary : ExpatlioDesign.mutedSurface,
-          borderRadius: BorderRadius.circular(999.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
           border: Border.all(
             color: selected ? ExpatlioDesign.primary : ExpatlioDesign.border,
           ),
@@ -324,7 +333,11 @@ class _TeacherEvidenceFileTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsetsDirectional.fromSTEB(12.0, 10.0, 8.0, 10.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space12,
+          ExpatlioDesign.space12,
+          ExpatlioDesign.space8,
+          ExpatlioDesign.space12),
       decoration: ExpatlioDesign.cardDecoration(
         color: ExpatlioDesign.mutedSurface,
         radius: ExpatlioDesign.controlRadius,
@@ -337,7 +350,7 @@ class _TeacherEvidenceFileTile extends StatelessWidget {
             color: ExpatlioDesign.primary,
             size: 19.0,
           ),
-          const SizedBox(width: 9.0),
+          const SizedBox(width: ExpatlioDesign.space12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -372,10 +385,10 @@ class _TeacherEvidenceFileTile extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8.0),
+          const SizedBox(width: ExpatlioDesign.space8),
           InkWell(
             onTap: onRemove,
-            borderRadius: BorderRadius.circular(16.0),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
             child: const SizedBox(
               width: 30.0,
               height: 30.0,

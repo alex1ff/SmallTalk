@@ -67,7 +67,11 @@ class _BottomSheetHeaderState extends State<BottomSheetHeader> {
     final showConfirm = widget.showConfirm ?? widget.onConfirm != null;
 
     return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(6.0, 24.0, 6.0, 16.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space8,
+          ExpatlioDesign.space24,
+          ExpatlioDesign.space8,
+          ExpatlioDesign.space16),
       child: Row(
         children: [
           _HeaderCircleButton(
@@ -80,12 +84,7 @@ class _BottomSheetHeaderState extends State<BottomSheetHeader> {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'Cool',
-                    fontSize: 24.0,
-                    letterSpacing: 0.0,
-                    fontWeight: FontWeight.normal,
-                  ),
+              style: ExpatlioDesign.bottomSheetTitleStyle(context),
             ),
           ),
           if (showConfirm)

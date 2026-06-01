@@ -484,6 +484,17 @@ void main() {
       );
     });
 
+    test('post-call summary keeps requested action surface', () {
+      final source =
+          _source('lib/shared_pages/call_summary/call_summary_widget.dart');
+
+      expect(source, contains("ruText: 'В друзья'"));
+      expect(source, contains("ruText: 'Больше не соединять сегодня'"));
+      expect(source, contains("ruText: 'Добавить в чёрный список'"));
+      expect(source, contains("ruText: 'Оставить отзыв'"));
+      expect(source, isNot(contains('AI-обратная связь')));
+    });
+
     test('call details delegates participant avatar visuals to component', () {
       final source =
           _source('lib/shared_pages/call_details/call_details_widget.dart');

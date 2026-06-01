@@ -60,7 +60,11 @@ class _LangAppWidgetState extends State<LangAppWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.start,
@@ -72,8 +76,11 @@ class _LangAppWidgetState extends State<LangAppWidget> {
                     color: ExpatlioDesign.card,
                   ),
                   child: Padding(
-                    padding:
-                        EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 35.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space32),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -86,7 +93,10 @@ class _LangAppWidgetState extends State<LangAppWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 24.0, 0.0, 0.0),
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space24,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Builder(
                             builder: (context) {
                               final la =
@@ -99,7 +109,7 @@ class _LangAppWidgetState extends State<LangAppWidget> {
                                 scrollDirection: Axis.vertical,
                                 itemCount: la.length,
                                 separatorBuilder: (_, __) =>
-                                    SizedBox(height: 6.0),
+                                    SizedBox(height: ExpatlioDesign.space8),
                                 itemBuilder: (context, laIndex) {
                                   final laItem = la[laIndex];
                                   return LanguageCardWidget(

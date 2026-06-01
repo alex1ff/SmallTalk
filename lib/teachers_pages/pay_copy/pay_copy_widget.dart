@@ -204,7 +204,11 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
             body: Stack(
               children: [
                 Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0),
                   child: SingleChildScrollView(
                     child: Column(
                       mainAxisSize: MainAxisSize.max,
@@ -245,7 +249,10 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                 children: [
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        10, 0, 8, 0),
+                                        ExpatlioDesign.space12,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space8,
+                                        ExpatlioDesign.space0),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
                                       mainAxisAlignment:
@@ -265,7 +272,8 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                         ),
                                         if (containerCardsRecordList.isNotEmpty)
                                           FlutterFlowIconButton(
-                                            borderRadius: 12,
+                                            borderRadius:
+                                                ExpatlioDesign.radiusMedium,
                                             buttonSize: 40,
                                             fillColor:
                                                 FlutterFlowTheme.of(context)
@@ -309,7 +317,10 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                   ),
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        0, 6, 0, 0),
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space8,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0),
                                     child: Builder(
                                       builder: (context) {
                                         final containerVar =
@@ -321,8 +332,8 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                           shrinkWrap: true,
                                           scrollDirection: Axis.vertical,
                                           itemCount: containerVar.length,
-                                          separatorBuilder: (_, __) =>
-                                              SizedBox(height: 6),
+                                          separatorBuilder: (_, __) => SizedBox(
+                                              height: ExpatlioDesign.space8),
                                           itemBuilder:
                                               (context, containerVarIndex) {
                                             final containerVarItem =
@@ -345,11 +356,13 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                                   color: FlutterFlowTheme.of(
                                                           context)
                                                       .primaryBackground,
-                                                  borderRadius:
-                                                      BorderRadius.circular(26),
+                                                  borderRadius: BorderRadius
+                                                      .circular(ExpatlioDesign
+                                                          .radiusExtraLarge),
                                                 ),
                                                 child: Padding(
-                                                  padding: EdgeInsets.all(4),
+                                                  padding: EdgeInsets.all(
+                                                      ExpatlioDesign.space4),
                                                   child: Row(
                                                     mainAxisSize:
                                                         MainAxisSize.max,
@@ -453,7 +466,11 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                           },
                         ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: InkWell(
                             splashColor: Colors.transparent,
                             focusColor: Colors.transparent,
@@ -485,20 +502,21 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                               decoration: BoxDecoration(
                                 color: FlutterFlowTheme.of(context)
                                     .primaryBackground,
-                                borderRadius: BorderRadius.circular(26),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusExtraLarge),
                                 border: Border.all(
                                   color: FlutterFlowTheme.of(context)
                                       .secondaryBackground,
                                 ),
                               ),
                               child: Padding(
-                                padding: EdgeInsets.all(2),
+                                padding: EdgeInsets.all(ExpatlioDesign.space4),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     FlutterFlowIconButton(
-                                      borderRadius: 12,
+                                      borderRadius: ExpatlioDesign.radiusMedium,
                                       buttonSize: 35,
                                       fillColor: FlutterFlowTheme.of(context)
                                           .secondaryBackground,
@@ -527,14 +545,19 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                             fontWeight: FontWeight.w500,
                                           ),
                                     ),
-                                  ].divide(SizedBox(width: 8)),
+                                  ].divide(
+                                      SizedBox(width: ExpatlioDesign.space8)),
                                 ),
                               ),
                             ),
                           ),
                         ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(10, 40, 0, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space40,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Text(
                             FFLocalizations.of(context).getText(
                               'qpndbc1w' /* История операций */,
@@ -549,21 +572,26 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                           ),
                         ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: Container(
                             width: double.infinity,
                             height: 40,
                             decoration: BoxDecoration(
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
-                              borderRadius: BorderRadius.circular(100),
+                              borderRadius: BorderRadius.circular(
+                                  ExpatlioDesign.radiusCapsule),
                               border: Border.all(
                                 color: FlutterFlowTheme.of(context)
                                     .secondaryBackground,
                               ),
                             ),
                             child: Padding(
-                              padding: EdgeInsets.all(2),
+                              padding: EdgeInsets.all(ExpatlioDesign.space4),
                               child: Row(
                                 mainAxisSize: MainAxisSize.max,
                                 children: [
@@ -589,8 +617,8 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                             FlutterFlowTheme.of(context)
                                                 .secondaryBackground,
                                           ),
-                                          borderRadius:
-                                              BorderRadius.circular(24),
+                                          borderRadius: BorderRadius.circular(
+                                              ExpatlioDesign.radiusExtraLarge),
                                           shape: BoxShape.rectangle,
                                         ),
                                         child: Align(
@@ -643,8 +671,8 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                                 : Colors.transparent,
                                             Colors.transparent,
                                           ),
-                                          borderRadius:
-                                              BorderRadius.circular(24),
+                                          borderRadius: BorderRadius.circular(
+                                              ExpatlioDesign.radiusExtraLarge),
                                           shape: BoxShape.rectangle,
                                         ),
                                         child: Align(
@@ -697,8 +725,8 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                                 : Colors.transparent,
                                             Colors.transparent,
                                           ),
-                                          borderRadius:
-                                              BorderRadius.circular(24),
+                                          borderRadius: BorderRadius.circular(
+                                              ExpatlioDesign.radiusExtraLarge),
                                           shape: BoxShape.rectangle,
                                         ),
                                         child: Align(
@@ -736,7 +764,11 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                           ),
                         ),
                         Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
                           child: StreamBuilder<List<TransactionsRecord>>(
                             stream: queryTransactionsRecord(
                               queryBuilder: (transactionsRecord) =>
@@ -804,8 +836,8 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                       shrinkWrap: true,
                                       scrollDirection: Axis.vertical,
                                       itemCount: list.length,
-                                      separatorBuilder: (_, __) =>
-                                          SizedBox(height: 6),
+                                      separatorBuilder: (_, __) => SizedBox(
+                                          height: ExpatlioDesign.space8),
                                       itemBuilder: (context, listIndex) {
                                         final listItem = list[listIndex];
                                         return TransWidget(
@@ -822,8 +854,8 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                           ),
                         ),
                       ]
-                          .addToStart(SizedBox(height: 115))
-                          .addToEnd(SizedBox(height: 120)),
+                          .addToStart(SizedBox(height: ExpatlioDesign.space112))
+                          .addToEnd(SizedBox(height: ExpatlioDesign.space112)),
                     ),
                   ),
                 ),
@@ -860,7 +892,10 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                         ),
                         child: Wrapper(
                           padding: const EdgeInsetsDirectional.fromSTEB(
-                              6, 12, 6, 35),
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space32),
                           child: ButtonWidget(
                             text: FFLocalizations.of(context).getText(
                               'djp5cokc' /* Вывести */,
@@ -888,7 +923,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                           fontFamily: 'sf pro display',
                                           color: FlutterFlowTheme.of(context)
                                               .primaryBackground,
-                                          fontSize: 18,
+                                          fontSize: 17.0,
                                           letterSpacing: 0.0,
                                           fontWeight: FontWeight.normal,
                                         ),
@@ -911,7 +946,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                       fontFamily: 'Cool',
                                       color: FlutterFlowTheme.of(context)
                                           .primaryText,
-                                      fontSize: 18,
+                                      fontSize: 17.0,
                                       letterSpacing: 0.0,
                                       fontWeight: FontWeight.normal,
                                     ),

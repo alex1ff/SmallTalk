@@ -205,7 +205,11 @@ class _FFButtonWidgetState extends State<FFButtonWidget> {
       }),
       padding: WidgetStateProperty.all(
         widget.options.padding ??
-            const EdgeInsetsDirectional.fromSTEB(18.0, 0.0, 18.0, 0.0),
+            const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0),
       ),
       minimumSize: WidgetStatePropertyAll(
         Size(0, widget.options.height ?? ExpatlioDesign.buttonHeight),
@@ -423,7 +427,8 @@ class _FFFocusIndicatorState extends State<FFFocusIndicator> {
       padding: widget.padding,
       decoration: BoxDecoration(
         border: _hasFocus ? widget.border : null,
-        borderRadius: widget.borderRadius ?? BorderRadius.circular(4),
+        borderRadius: widget.borderRadius ??
+            BorderRadius.circular(ExpatlioDesign.radiusSmall),
       ),
       child: childWidget,
     );

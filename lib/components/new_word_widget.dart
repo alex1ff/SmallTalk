@@ -206,13 +206,14 @@ class _NewWordWidgetState extends State<NewWordWidget> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(20.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
         border: Border.all(
           color: FlutterFlowTheme.of(context).alternate,
           width: 0.8,
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+      padding: const EdgeInsets.symmetric(
+          horizontal: ExpatlioDesign.space16, vertical: ExpatlioDesign.space12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -220,21 +221,21 @@ class _NewWordWidgetState extends State<NewWordWidget> {
             'Контекст',
             style: FlutterFlowTheme.of(context).bodyMedium.override(
                   fontFamily: 'sf pro display',
-                  fontSize: 14.0,
+                  fontSize: 15.0,
                   letterSpacing: 0.0,
                   fontWeight: FontWeight.w700,
                 ),
           ),
           if (phraseContext != null) ...[
-            const SizedBox(height: 10.0),
+            const SizedBox(height: ExpatlioDesign.space12),
             Text('Фраза', style: labelStyle),
-            const SizedBox(height: 4.0),
+            const SizedBox(height: ExpatlioDesign.space4),
             Text(phraseContext, style: valueStyle),
           ],
           if (sentenceContext != null) ...[
-            const SizedBox(height: 10.0),
+            const SizedBox(height: ExpatlioDesign.space12),
             Text('Предложение', style: labelStyle),
-            const SizedBox(height: 4.0),
+            const SizedBox(height: ExpatlioDesign.space4),
             Text(
               sentenceContext,
               style: valueStyle.copyWith(height: 1.3),
@@ -351,7 +352,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                   textAlign: TextAlign.center,
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'sf pro display',
-                        fontSize: 18.0,
+                        fontSize: 17.0,
                         letterSpacing: 0.0,
                         fontWeight: FontWeight.normal,
                       ),
@@ -362,7 +363,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                 textAlign: TextAlign.center,
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'sf pro display',
-                      fontSize: 18.0,
+                      fontSize: 17.0,
                       letterSpacing: 0.0,
                       fontWeight: FontWeight.normal,
                     ),
@@ -413,7 +414,11 @@ class _NewWordWidgetState extends State<NewWordWidget> {
         height: _model.size,
         decoration: BoxDecoration(),
         child: Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 40.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space40,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -434,20 +439,28 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                         Flexible(
                           child: ClipRRect(
                             borderRadius: BorderRadius.only(
-                              bottomLeft: Radius.circular(0.0),
-                              bottomRight: Radius.circular(0.0),
-                              topLeft: Radius.circular(0.0),
-                              topRight: Radius.circular(0.0),
+                              bottomLeft:
+                                  Radius.circular(ExpatlioDesign.radiusNone),
+                              bottomRight:
+                                  Radius.circular(ExpatlioDesign.radiusNone),
+                              topLeft:
+                                  Radius.circular(ExpatlioDesign.radiusNone),
+                              topRight:
+                                  Radius.circular(ExpatlioDesign.radiusNone),
                             ),
                             child: Container(
                               decoration: BoxDecoration(
                                 color: FlutterFlowTheme.of(context)
                                     .primaryBackground,
                                 borderRadius: BorderRadius.only(
-                                  bottomLeft: Radius.circular(0.0),
-                                  bottomRight: Radius.circular(0.0),
-                                  topLeft: Radius.circular(0.0),
-                                  topRight: Radius.circular(0.0),
+                                  bottomLeft: Radius.circular(
+                                      ExpatlioDesign.radiusNone),
+                                  bottomRight: Radius.circular(
+                                      ExpatlioDesign.radiusNone),
+                                  topLeft: Radius.circular(
+                                      ExpatlioDesign.radiusNone),
+                                  topRight: Radius.circular(
+                                      ExpatlioDesign.radiusNone),
                                 ),
                                 border: Border.all(
                                   color: Colors.white,
@@ -467,14 +480,19 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                           Padding(
                                             padding:
                                                 EdgeInsetsDirectional.fromSTEB(
-                                                    6.0, 0.0, 6.0, 0.0),
+                                                    ExpatlioDesign.space8,
+                                                    ExpatlioDesign.space0,
+                                                    ExpatlioDesign.space8,
+                                                    ExpatlioDesign.space0),
                                             child: Container(
                                               decoration: BoxDecoration(
                                                 color:
                                                     FlutterFlowTheme.of(context)
                                                         .primaryBackground,
                                                 borderRadius:
-                                                    BorderRadius.circular(26.0),
+                                                    BorderRadius.circular(
+                                                        ExpatlioDesign
+                                                            .radiusExtraLarge),
                                               ),
                                               child: Column(
                                                 mainAxisSize: MainAxisSize.max,
@@ -614,7 +632,8 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                             duration: 200.0.ms,
                                             curve: Curves.easeInOut,
                                             child: Padding(
-                                              padding: EdgeInsets.all(16.0),
+                                              padding: EdgeInsets.all(
+                                                  ExpatlioDesign.space16),
                                               child: Column(
                                                 mainAxisSize: MainAxisSize.max,
                                                 crossAxisAlignment:
@@ -635,7 +654,9 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                         itemCount: wwww.length,
                                                         separatorBuilder:
                                                             (_, __) => SizedBox(
-                                                                height: 24.0),
+                                                                height:
+                                                                    ExpatlioDesign
+                                                                        .space24),
                                                         itemBuilder: (context,
                                                             wwwwIndex) {
                                                           final wwwwItem =
@@ -664,7 +685,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                             fontFamily:
                                                                                 'Cool',
                                                                             fontSize:
-                                                                                21.0,
+                                                                                22.0,
                                                                             letterSpacing:
                                                                                 0.0,
                                                                             fontWeight:
@@ -683,7 +704,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                         fontWeight:
                                                                             FontWeight.normal,
                                                                         fontSize:
-                                                                            21.0,
+                                                                            22.0,
                                                                       ),
                                                                     ),
                                                                     TextSpan(
@@ -713,7 +734,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                         fontWeight:
                                                                             FontWeight.normal,
                                                                         fontSize:
-                                                                            21.0,
+                                                                            22.0,
                                                                         fontStyle:
                                                                             FontStyle.italic,
                                                                       ),
@@ -728,7 +749,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                         color: Colors
                                                                             .black,
                                                                         fontSize:
-                                                                            21.0,
+                                                                            22.0,
                                                                         letterSpacing:
                                                                             0.0,
                                                                         fontWeight:
@@ -762,7 +783,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                             __) =>
                                                                         SizedBox(
                                                                             height:
-                                                                                8.0),
+                                                                                ExpatlioDesign.space8),
                                                                     itemBuilder:
                                                                         (context,
                                                                             trIndex) {
@@ -776,18 +797,18 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                         children: [
                                                                           Padding(
                                                                             padding: EdgeInsetsDirectional.fromSTEB(
-                                                                                0.0,
-                                                                                12.0,
-                                                                                0.0,
-                                                                                0.0),
+                                                                                ExpatlioDesign.space0,
+                                                                                ExpatlioDesign.space12,
+                                                                                ExpatlioDesign.space0,
+                                                                                ExpatlioDesign.space0),
                                                                             child:
                                                                                 Builder(
                                                                               builder: (context) {
                                                                                 final sssss = functions.syn(trItem.gen, trItem.text, trItem.syn.toList())?.toList() ?? [];
 
                                                                                 return Wrap(
-                                                                                  spacing: 4.0,
-                                                                                  runSpacing: 8.0,
+                                                                                  spacing: ExpatlioDesign.space4,
+                                                                                  runSpacing: ExpatlioDesign.space8,
                                                                                   alignment: WrapAlignment.start,
                                                                                   crossAxisAlignment: WrapCrossAlignment.start,
                                                                                   direction: Axis.horizontal,
@@ -800,10 +821,10 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                                       height: 35.0,
                                                                                       decoration: BoxDecoration(
                                                                                         color: ExpatlioDesign.card,
-                                                                                        borderRadius: BorderRadius.circular(50.0),
+                                                                                        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
                                                                                       ),
                                                                                       child: Padding(
-                                                                                        padding: EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 12.0, 0.0),
+                                                                                        padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space12, ExpatlioDesign.space0, ExpatlioDesign.space12, ExpatlioDesign.space0),
                                                                                         child: Column(
                                                                                           mainAxisSize: MainAxisSize.max,
                                                                                           mainAxisAlignment: MainAxisAlignment.center,
@@ -854,10 +875,10 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                           ),
                                                                           Padding(
                                                                             padding: EdgeInsetsDirectional.fromSTEB(
-                                                                                0.0,
-                                                                                6.0,
-                                                                                0.0,
-                                                                                0.0),
+                                                                                ExpatlioDesign.space0,
+                                                                                ExpatlioDesign.space8,
+                                                                                ExpatlioDesign.space0,
+                                                                                ExpatlioDesign.space0),
                                                                             child:
                                                                                 Container(
                                                                               height: 17.0,
@@ -923,7 +944,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                             .override(
                                                               fontFamily:
                                                                   'Cool',
-                                                              fontSize: 21.0,
+                                                              fontSize: 22.0,
                                                               letterSpacing:
                                                                   0.0,
                                                               fontWeight:
@@ -959,7 +980,9 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                           separatorBuilder: (_,
                                                                   __) =>
                                                               SizedBox(
-                                                                  height: 8.0),
+                                                                  height:
+                                                                      ExpatlioDesign
+                                                                          .space8),
                                                           itemBuilder: (context,
                                                               sssIndex) {
                                                             final sssItem =
@@ -1010,10 +1033,14 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                     ),
                                                                     Padding(
                                                                       padding: EdgeInsetsDirectional.fromSTEB(
-                                                                          0.0,
-                                                                          6.0,
-                                                                          0.0,
-                                                                          0.0),
+                                                                          ExpatlioDesign
+                                                                              .space0,
+                                                                          ExpatlioDesign
+                                                                              .space8,
+                                                                          ExpatlioDesign
+                                                                              .space0,
+                                                                          ExpatlioDesign
+                                                                              .space0),
                                                                       child:
                                                                           Text(
                                                                         valueOrDefault<
@@ -1047,8 +1074,11 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                             ),
                                           ),
                                         ]
-                                            .addToStart(SizedBox(height: 16.0))
-                                            .addToEnd(SizedBox(height: 24.0)),
+                                            .addToStart(SizedBox(
+                                                height: ExpatlioDesign.space16))
+                                            .addToEnd(SizedBox(
+                                                height:
+                                                    ExpatlioDesign.space24)),
                                       ),
                                     ),
                                   );
@@ -1062,8 +1092,11 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                     Align(
                       alignment: AlignmentDirectional(1.0, 1.0),
                       child: Padding(
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 6.0, 20.0),
+                        padding: EdgeInsetsDirectional.fromSTEB(
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space8,
+                            ExpatlioDesign.space20),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1324,14 +1357,14 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                   );
                                 },
                               ),
-                          ].divide(SizedBox(height: 6.0)),
+                          ].divide(SizedBox(height: ExpatlioDesign.space8)),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-            ].divide(SizedBox(width: 4.0)),
+            ].divide(SizedBox(width: ExpatlioDesign.space4)),
           ),
         ),
       ),

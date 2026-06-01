@@ -286,13 +286,13 @@ class _TransWidgetState extends State<TransWidget> {
       height: 60.0,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(20.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
         border: Border.all(
           color: ExpatlioDesign.background,
         ),
       ),
       child: Padding(
-        padding: EdgeInsets.all(4.0),
+        padding: EdgeInsets.all(ExpatlioDesign.space4),
         child: Row(
           mainAxisSize: MainAxisSize.max,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -302,7 +302,7 @@ class _TransWidgetState extends State<TransWidget> {
               height: 52.0,
               decoration: BoxDecoration(
                 color: _leadingBackgroundColor(context),
-                borderRadius: BorderRadius.circular(16.0),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               ),
               child: Icon(
                 FFIcons.kcoinsStacked01,
@@ -312,7 +312,11 @@ class _TransWidgetState extends State<TransWidget> {
             ),
             Expanded(
               child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(12.0, 0.0, 0.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space0),
                 child: Column(
                   mainAxisSize: MainAxisSize.max,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -370,8 +374,11 @@ class _TransWidgetState extends State<TransWidget> {
                           ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 4.0, 0.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space4,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       child: _buildDateText(context),
                     ),
                   ],
@@ -379,7 +386,11 @@ class _TransWidgetState extends State<TransWidget> {
               ),
             ),
             Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 12.0, 0.0),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0),
               child: Column(
                 mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -396,7 +407,11 @@ class _TransWidgetState extends State<TransWidget> {
                         ),
                   ),
                   Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(0.0, 4.0, 0.0, 0.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space4,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space0),
                     child: Text(
                       () {
                         if (widget.trans?.type == TypeTransactions.purchase) {

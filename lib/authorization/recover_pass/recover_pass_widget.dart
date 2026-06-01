@@ -116,10 +116,10 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsetsDirectional.fromSTEB(
-                  16.0,
-                  24.0,
-                  16.0,
-                  24.0,
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space24,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -136,7 +136,7 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                         weight: FontWeight.w400,
                       ),
                     ),
-                    const SizedBox(height: 18.0),
+                    const SizedBox(height: ExpatlioDesign.space20),
                     Container(
                       decoration: ExpatlioDesign.formGroupDecoration(),
                       padding: ExpatlioDesign.formGroupPadding,
@@ -149,7 +149,7 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                             ),
                             style: ExpatlioDesign.formLabelStyle(context),
                           ),
-                          const SizedBox(height: 6.0),
+                          const SizedBox(height: ExpatlioDesign.space8),
                           SizedBox(
                             height: ExpatlioDesign.formFieldHeight,
                             child: TextFormField(
@@ -175,7 +175,7 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16.0),
+                    const SizedBox(height: ExpatlioDesign.space16),
                     wrapWithModel(
                       model: _model.buttonModel,
                       updateCallback: () => safeSetState(() {}),
@@ -192,14 +192,16 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                         action: _submitPasswordReset,
                       ),
                     ),
-                    const SizedBox(height: 20.0),
+                    const SizedBox(height: ExpatlioDesign.space20),
                     InkWell(
-                      borderRadius: BorderRadius.circular(12.0),
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusMedium),
                       onTap: () async {
                         context.pushNamed(PolicyWidget.routeName);
                       },
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: ExpatlioDesign.space8),
                         child: RichText(
                           textScaler: MediaQuery.of(context).textScaler,
                           textAlign: TextAlign.center,
@@ -231,14 +233,15 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 22.0),
+                    const SizedBox(height: ExpatlioDesign.space24),
                     InkWell(
-                      borderRadius: BorderRadius.circular(12.0),
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusMedium),
                       onTap: () async {
                         context.safePop();
                       },
                       child: Padding(
-                        padding: const EdgeInsets.all(8.0),
+                        padding: const EdgeInsets.all(ExpatlioDesign.space8),
                         child: RichText(
                           textScaler: MediaQuery.of(context).textScaler,
                           textAlign: TextAlign.center,

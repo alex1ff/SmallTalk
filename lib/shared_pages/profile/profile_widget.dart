@@ -278,7 +278,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
 
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(0, 26, 0, 0),
+      padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0,
+          ExpatlioDesign.space24, ExpatlioDesign.space0, ExpatlioDesign.space0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -290,24 +291,28 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             style: theme.titleMedium.override(
               fontFamily: 'sf pro display',
               color: theme.primaryText,
-              fontSize: 24,
+              fontSize: 22.0,
               letterSpacing: 0.0,
               fontWeight: FontWeight.w700,
             ),
           ),
-          SizedBox(height: 16),
+          SizedBox(height: ExpatlioDesign.space16),
           Container(
             width: double.infinity,
             decoration: BoxDecoration(
               color: theme.primaryBackground,
-              borderRadius: BorderRadius.circular(32),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
               border: Border.all(
                 color: const Color(0xFFE8E8E8),
                 width: 1.2,
               ),
             ),
             child: Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(24, 24, 24, 24),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -319,7 +324,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         height: 72,
                         decoration: BoxDecoration(
                           color: const Color(0xFFF0E5FF),
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius:
+                              BorderRadius.circular(ExpatlioDesign.radiusLarge),
                         ),
                         child: const Icon(
                           FFIcons.kwallet02,
@@ -327,7 +333,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                           size: 31,
                         ),
                       ),
-                      SizedBox(width: 24),
+                      SizedBox(width: ExpatlioDesign.space24),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -363,14 +369,14 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                 fontWeight: FontWeight.w400,
                               ),
                             ),
-                            SizedBox(height: 6),
+                            SizedBox(height: ExpatlioDesign.space8),
                             isTeacher
                                 ? Text(
                                     '$teacherBalance ₽',
                                     style: theme.titleMedium.override(
                                       fontFamily: 'sf pro display',
                                       color: theme.primaryText,
-                                      fontSize: 30,
+                                      fontSize: 28.0,
                                       letterSpacing: 0.0,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -386,7 +392,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                               style: theme.titleMedium.override(
                                                 fontFamily: 'sf pro display',
                                                 color: theme.primaryText,
-                                                fontSize: 30,
+                                                fontSize: 28.0,
                                                 letterSpacing: 0.0,
                                                 fontWeight: FontWeight.w700,
                                               ),
@@ -396,7 +402,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                               style: theme.titleMedium.override(
                                                 fontFamily: 'sf pro display',
                                                 color: theme.primaryText,
-                                                fontSize: 30,
+                                                fontSize: 28.0,
                                                 letterSpacing: 0.0,
                                                 fontWeight: FontWeight.w700,
                                               ),
@@ -406,7 +412,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                               style: theme.titleMedium.override(
                                                 fontFamily: 'sf pro display',
                                                 color: const Color(0xFF7B2FF2),
-                                                fontSize: 30,
+                                                fontSize: 28.0,
                                                 letterSpacing: 0.0,
                                                 fontWeight: FontWeight.w700,
                                               ),
@@ -416,7 +422,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                               style: theme.titleMedium.override(
                                                 fontFamily: 'sf pro display',
                                                 color: theme.secondaryText,
-                                                fontSize: 26,
+                                                fontSize: 28.0,
                                                 letterSpacing: 0.0,
                                                 fontWeight: FontWeight.w500,
                                               ),
@@ -436,7 +442,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                             style: theme.titleMedium.override(
                                               fontFamily: 'sf pro display',
                                               color: theme.primaryText,
-                                              fontSize: 30,
+                                              fontSize: 28.0,
                                               letterSpacing: 0.0,
                                               fontWeight: FontWeight.w700,
                                             ),
@@ -450,7 +456,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                             style: theme.titleMedium.override(
                                               fontFamily: 'sf pro display',
                                               color: theme.primaryText,
-                                              fontSize: 30,
+                                              fontSize: 28.0,
                                               letterSpacing: 0.0,
                                               fontWeight: FontWeight.w700,
                                             ),
@@ -460,7 +466,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                       ),
                     ],
                   ),
-                  SizedBox(height: 24),
+                  SizedBox(height: ExpatlioDesign.space24),
                   _tariffActionButton(
                     context,
                     label: FFLocalizations.of(context).getVariableText(
@@ -499,7 +505,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   }) {
     final theme = FlutterFlowTheme.of(context);
     return InkWell(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
       onTap: onTap,
       child: Container(
         width: fullWidth ? double.infinity : null,
@@ -507,7 +513,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: filled ? const Color(0xFF7B2FF2) : const Color(0xFFF3F3F3),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
           border: Border.all(
             color: filled ? const Color(0xFF7B2FF2) : const Color(0xFFE9E9E9),
           ),
@@ -663,7 +669,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: ExpatlioDesign.mutedSurface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
       ),
       padding: const EdgeInsets.all(ExpatlioDesign.itemSpacing),
       child: Row(
@@ -740,7 +746,11 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       style: TextButton.styleFrom(
         foregroundColor: ExpatlioDesign.primary,
         disabledForegroundColor: ExpatlioDesign.inactive,
-        padding: const EdgeInsetsDirectional.fromSTEB(8, 4, 8, 4),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space4,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space4),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         textStyle: ExpatlioDesign.textStyle(
@@ -764,7 +774,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         AlwaysStoppedAnimation<Color>(ExpatlioDesign.primary),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: ExpatlioDesign.space8),
                 Text(
                   label,
                   maxLines: 1,
@@ -964,7 +974,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       elevation: 8.0,
       shadowColor: const Color(0x12000000),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         side: const BorderSide(color: ExpatlioDesign.border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -1049,9 +1059,9 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   Widget _profileTitle(BuildContext context, String text) {
     return Padding(
       padding: const EdgeInsetsDirectional.fromSTEB(
-        0,
-        0,
-        0,
+        ExpatlioDesign.space0,
+        ExpatlioDesign.space0,
+        ExpatlioDesign.space0,
         ExpatlioDesign.titleContentGap,
       ),
       child: Text(
@@ -1072,7 +1082,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       height: 40,
       decoration: BoxDecoration(
         color: iconColor.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
       ),
       child: Icon(icon, color: iconColor, size: 20),
     );
@@ -1180,7 +1190,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                 weight: FontWeight.w800,
                               ),
                             ),
-                            const SizedBox(height: 3),
+                            const SizedBox(height: ExpatlioDesign.space4),
                             Text(
                               currentUserEmail,
                               maxLines: 1,
@@ -1234,16 +1244,16 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     return InkWell(
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
       onTap: onTap,
       child: Container(
         height: 44,
         decoration: ExpatlioDesign.cardDecoration(radius: 12),
         padding: const EdgeInsetsDirectional.fromSTEB(
           ExpatlioDesign.pagePadding,
-          0,
+          ExpatlioDesign.space0,
           ExpatlioDesign.itemSpacing,
-          0,
+          ExpatlioDesign.space0,
         ),
         child: Row(
           children: [
@@ -1454,14 +1464,14 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     return InkWell(
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
       onTap: onTap,
       child: Container(
         height: 44,
         width: double.infinity,
         decoration: BoxDecoration(
           color: primary ? ExpatlioDesign.primary : ExpatlioDesign.mutedSurface,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         ),
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(
@@ -1550,7 +1560,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                     height: 48,
                     decoration: BoxDecoration(
                       color: ExpatlioDesign.primary.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusMedium),
                     ),
                     child: Icon(
                       FFIcons.kwallet02,
@@ -1650,7 +1661,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                   weight: FontWeight.w700,
                                 ),
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: ExpatlioDesign.space4),
                               Text(
                                 planSubtitle,
                                 maxLines: 2,
@@ -1771,9 +1782,9 @@ class _ProfileWidgetState extends State<ProfileWidget> {
         height: 52,
         padding: const EdgeInsetsDirectional.fromSTEB(
           ExpatlioDesign.pagePadding,
-          0,
+          ExpatlioDesign.space0,
           ExpatlioDesign.pagePadding,
-          0,
+          ExpatlioDesign.space0,
         ),
         child: Row(
           children: [
@@ -1824,9 +1835,9 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       children: [
         Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(
-            0,
-            0,
-            0,
+            ExpatlioDesign.space0,
+            ExpatlioDesign.space0,
+            ExpatlioDesign.space0,
             ExpatlioDesign.titleContentGap,
           ),
           child: Text(
@@ -1953,12 +1964,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             InkWell(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusSmall),
               onTap: () => context.pushNamed(PolicyWidget.routeName),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
+                  horizontal: ExpatlioDesign.space8,
+                  vertical: ExpatlioDesign.space4,
                 ),
                 child: Text(
                   FFLocalizations.of(context).getText(
@@ -1975,7 +1986,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               ),
             ),
             InkWell(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusSmall),
               onTap: () async {
                 await Clipboard.setData(ClipboardData(text: currentUserUid));
                 HapticFeedback.mediumImpact();
@@ -1988,8 +1999,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               },
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
+                  horizontal: ExpatlioDesign.space8,
+                  vertical: ExpatlioDesign.space4,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -2008,7 +2019,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: ExpatlioDesign.space4),
                     Icon(
                       FFIcons.kcopy01,
                       color: muted.withValues(alpha: 0.55),
@@ -2018,7 +2029,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 ),
               ),
             ),
-            const SizedBox(height: 1),
+            const SizedBox(height: ExpatlioDesign.space4),
             Text(
               FFLocalizations.of(context).getText(
                 'l1x4xu81' /* © 2025 Expatlio. Версия 1.0.0 */,
@@ -2043,7 +2054,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       child: SingleChildScrollView(
         padding: const EdgeInsetsDirectional.fromSTEB(
           ExpatlioDesign.pagePadding,
-          0.0,
+          ExpatlioDesign.space0,
           ExpatlioDesign.pagePadding,
           ExpatlioDesign.pageBottomSpacing,
         ),
@@ -2107,7 +2118,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               child: SingleChildScrollView(
                 padding: const EdgeInsetsDirectional.fromSTEB(
                   ExpatlioDesign.pagePadding,
-                  0.0,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.pagePadding,
                   ExpatlioDesign.pageBottomSpacing,
                 ),
@@ -2173,7 +2184,11 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 Offstage(
                   offstage: true,
                   child: Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space0),
                     child: SingleChildScrollView(
                       child: Column(
                         mainAxisSize: MainAxisSize.max,
@@ -2184,14 +2199,15 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                             decoration: BoxDecoration(
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
-                              borderRadius: BorderRadius.circular(50),
+                              borderRadius: BorderRadius.circular(
+                                  ExpatlioDesign.radiusCapsule),
                               border: Border.all(
                                 color: FlutterFlowTheme.of(context)
                                     .secondaryBackground,
                               ),
                             ),
                             child: Padding(
-                              padding: EdgeInsets.all(2),
+                              padding: EdgeInsets.all(ExpatlioDesign.space4),
                               child: Row(
                                 mainAxisSize: MainAxisSize.max,
                                 children: [
@@ -2212,8 +2228,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       builder: (context) {
                                         if (currentUserPhoto != '') {
                                           return ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(100),
+                                            borderRadius: BorderRadius.circular(
+                                                ExpatlioDesign.radiusCapsule),
                                             child: CachedNetworkImage(
                                               fadeInDuration:
                                                   Duration(milliseconds: 0),
@@ -2249,7 +2265,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                                       .bodyMedium
                                                       .override(
                                                         fontFamily: 'Cool',
-                                                        fontSize: 24,
+                                                        fontSize: 22.0,
                                                         letterSpacing: 0.0,
                                                       ),
                                                 );
@@ -2263,7 +2279,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                   Expanded(
                                     child: Padding(
                                       padding: EdgeInsetsDirectional.fromSTEB(
-                                          12, 0, 0, 0),
+                                          ExpatlioDesign.space12,
+                                          ExpatlioDesign.space0,
+                                          ExpatlioDesign.space0,
+                                          ExpatlioDesign.space0),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.max,
                                         mainAxisAlignment:
@@ -2369,10 +2388,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     decoration: BoxDecoration(
                                       color: FlutterFlowTheme.of(context)
                                           .primaryBackground,
-                                      borderRadius: BorderRadius.circular(26),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusExtraLarge),
                                     ),
                                     child: Padding(
-                                      padding: EdgeInsets.all(16),
+                                      padding: EdgeInsets.all(
+                                          ExpatlioDesign.space16),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.max,
                                         mainAxisAlignment:
@@ -2445,10 +2466,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     decoration: BoxDecoration(
                                       color: FlutterFlowTheme.of(context)
                                           .primaryBackground,
-                                      borderRadius: BorderRadius.circular(26),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusExtraLarge),
                                     ),
                                     child: Padding(
-                                      padding: EdgeInsets.all(16),
+                                      padding: EdgeInsets.all(
+                                          ExpatlioDesign.space16),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.max,
                                         mainAxisAlignment:
@@ -2496,7 +2519,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                   ),
                                 ),
                               ),
-                            ].divide(SizedBox(width: 6)),
+                            ].divide(SizedBox(width: ExpatlioDesign.space8)),
                           ),
                           Row(
                             mainAxisSize: MainAxisSize.max,
@@ -2516,10 +2539,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     decoration: BoxDecoration(
                                       color: FlutterFlowTheme.of(context)
                                           .primaryBackground,
-                                      borderRadius: BorderRadius.circular(26),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusExtraLarge),
                                     ),
                                     child: Padding(
-                                      padding: EdgeInsets.all(16),
+                                      padding: EdgeInsets.all(
+                                          ExpatlioDesign.space16),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.max,
                                         mainAxisAlignment:
@@ -2603,10 +2628,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     decoration: BoxDecoration(
                                       color: FlutterFlowTheme.of(context)
                                           .primaryBackground,
-                                      borderRadius: BorderRadius.circular(26),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusExtraLarge),
                                     ),
                                     child: Padding(
-                                      padding: EdgeInsets.all(16),
+                                      padding: EdgeInsets.all(
+                                          ExpatlioDesign.space16),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.max,
                                         mainAxisAlignment:
@@ -2654,18 +2681,22 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                   ),
                                 ),
                               ),
-                            ].divide(SizedBox(width: 6)),
+                            ].divide(SizedBox(width: ExpatlioDesign.space8)),
                           ),
                           _buildCurrentTariffSection(context),
                           Padding(
-                            padding:
-                                EdgeInsetsDirectional.fromSTEB(0, 18, 0, 0),
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space20,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Container(
                               width: double.infinity,
                               decoration: BoxDecoration(
                                 color: FlutterFlowTheme.of(context)
                                     .primaryBackground,
-                                borderRadius: BorderRadius.circular(26),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusExtraLarge),
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.max,
@@ -2910,7 +2941,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       decoration: BoxDecoration(),
                                       child: Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            16, 0, 16, 0),
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           mainAxisAlignment:
@@ -2982,7 +3016,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       decoration: BoxDecoration(),
                                       child: Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            16, 0, 16, 0),
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           mainAxisAlignment:
@@ -3036,7 +3073,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       decoration: BoxDecoration(),
                                       child: Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            16, 0, 16, 0),
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           mainAxisAlignment:
@@ -3108,7 +3148,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       decoration: BoxDecoration(),
                                       child: Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            16, 0, 16, 0),
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           mainAxisAlignment:
@@ -3180,7 +3223,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       decoration: BoxDecoration(),
                                       child: Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            16, 0, 16, 0),
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           mainAxisAlignment:
@@ -3222,14 +3268,18 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                             ),
                           ),
                           Padding(
-                            padding:
-                                EdgeInsetsDirectional.fromSTEB(0, 18, 0, 0),
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space20,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Container(
                               width: double.infinity,
                               decoration: BoxDecoration(
                                 color: FlutterFlowTheme.of(context)
                                     .primaryBackground,
-                                borderRadius: BorderRadius.circular(26),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusExtraLarge),
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.max,
@@ -3252,7 +3302,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                         child: Padding(
                                           padding:
                                               EdgeInsetsDirectional.fromSTEB(
-                                                  16, 0, 0, 0),
+                                                  ExpatlioDesign.space16,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0,
+                                                  ExpatlioDesign.space0),
                                           child: Text(
                                             FFLocalizations.of(context).getText(
                                               'g1hqddj1' /* Политика конфиденциальности */,
@@ -3301,7 +3354,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       decoration: BoxDecoration(),
                                       child: Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            16, 0, 16, 0),
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.max,
                                           mainAxisAlignment:
@@ -3354,7 +3410,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       alignment: AlignmentDirectional(-1, 0),
                                       child: Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            16, 0, 0, 0),
+                                            ExpatlioDesign.space16,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space0),
                                         child: Text(
                                           FFLocalizations.of(context).getText(
                                             'l1x4xu81' /* © 2025 Expatlio. Версия 1.0.0 */,
@@ -3379,9 +3438,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                             ),
                           ),
                         ]
-                            .divide(SizedBox(height: 6))
-                            .addToStart(SizedBox(height: 55))
-                            .addToEnd(SizedBox(height: 100)),
+                            .divide(SizedBox(height: ExpatlioDesign.space8))
+                            .addToStart(
+                                SizedBox(height: ExpatlioDesign.space56))
+                            .addToEnd(SizedBox(height: ExpatlioDesign.space96)),
                       ),
                     ),
                   ),

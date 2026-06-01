@@ -27,9 +27,9 @@ class StudentPayBottomBar extends StatelessWidget {
       child: Container(
         padding: const EdgeInsetsDirectional.fromSTEB(
           ExpatlioDesign.pagePadding,
-          12.0,
+          ExpatlioDesign.space12,
           ExpatlioDesign.pagePadding,
-          12.0,
+          ExpatlioDesign.space12,
         ),
         decoration: const BoxDecoration(
           color: ExpatlioDesign.card,

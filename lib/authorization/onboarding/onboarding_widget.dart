@@ -66,7 +66,7 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                     radius: ExpatlioDesign.cardRadius,
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(4.0),
+                    padding: const EdgeInsets.all(ExpatlioDesign.space4),
                     child: Row(
                       mainAxisSize: MainAxisSize.max,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -83,10 +83,10 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                             alignment: AlignmentDirectional(0, 0),
                             child: Padding(
                               padding: const EdgeInsetsDirectional.fromSTEB(
-                                9.0,
-                                7.0,
-                                9.0,
-                                3.0,
+                                ExpatlioDesign.space12,
+                                ExpatlioDesign.space8,
+                                ExpatlioDesign.space12,
+                                ExpatlioDesign.space4,
                               ),
                               child: Image.asset(
                                 'assets/images/logo.png',
@@ -111,7 +111,10 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                             children: [
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    12, 0, 12, 0),
+                                    ExpatlioDesign.space12,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space12,
+                                    ExpatlioDesign.space0),
                                 child: Text(
                                   FFLocalizations.of(context).getText(
                                     'on7eoqhl' /* Пропустить */,
@@ -189,7 +192,8 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                     loop: false,
                     cardDisplayCount: 1,
                     scale: 1.0,
-                    cardPadding: const EdgeInsetsDirectional.only(bottom: 20.0),
+                    cardPadding: const EdgeInsetsDirectional.only(
+                        bottom: ExpatlioDesign.space20),
                     backCardOffset: Offset.zero,
                     allowedSwipeDirection:
                         AllowedSwipeDirection.symmetric(horizontal: true),

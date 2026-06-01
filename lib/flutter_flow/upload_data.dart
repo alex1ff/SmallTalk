@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 
 import '../auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'flutter_flow_util.dart';
 
 const allowedFormats = {'image/png', 'image/jpeg', 'video/mp4', 'image/gif'};
@@ -88,7 +89,11 @@ Future<List<SelectedFile>?> selectMediaWithSourceBottomSheet({
           children: [
             if (!kIsWeb) ...[
               Padding(
-                padding: EdgeInsets.fromLTRB(0, 8, 0, 0),
+                padding: EdgeInsets.fromLTRB(
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space0),
                 child: ListTile(
                   title: Text(
                     'Choose Source',
@@ -131,7 +136,7 @@ Future<List<SelectedFile>?> selectMediaWithSourceBottomSheet({
               createUploadMediaListTile('Camera', MediaSource.camera),
               const Divider(),
             ],
-            const SizedBox(height: 10),
+            const SizedBox(height: ExpatlioDesign.space12),
           ],
         );
       });
@@ -386,7 +391,8 @@ void showUploadMessage(
           children: [
             if (showLoading)
               Padding(
-                padding: EdgeInsetsDirectional.only(end: 10.0),
+                padding:
+                    EdgeInsetsDirectional.only(end: ExpatlioDesign.space12),
                 child: CircularProgressIndicator(
                   valueColor: Theme.of(context).brightness == Brightness.dark
                       ? AlwaysStoppedAnimation<Color>(

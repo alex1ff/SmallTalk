@@ -55,12 +55,20 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
       key: const ValueKey<String>(
         'native_speaker_onboarding_step_accreditation',
       ),
-      padding: const EdgeInsetsDirectional.fromSTEB(6.0, 32.0, 6.0, 120.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space8,
+          ExpatlioDesign.space32,
+          ExpatlioDesign.space8,
+          ExpatlioDesign.space112),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(10.0, 0.0, 10.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0),
             child: Text(
               FFLocalizations.of(context).getVariableText(
                 ruText: 'Подтвердите опыт учителя',
@@ -68,7 +76,7 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
               ),
               style: FlutterFlowTheme.of(context).bodyMedium.override(
                     fontFamily: 'Cool',
-                    fontSize: 43.0,
+                    fontSize: 34.0,
                     letterSpacing: 0.0,
                     fontWeight: FontWeight.normal,
                     lineHeight: 1.1,
@@ -76,7 +84,11 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(10.0, 4.0, 10.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space4,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0),
             child: Text(
               FFLocalizations.of(context).getVariableText(
                 ruText:
@@ -93,8 +105,11 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
             ),
           ),
           Padding(
-            padding:
-                const EdgeInsetsDirectional.fromSTEB(10.0, 28.0, 10.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space32,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0),
             child: Text(
               isRu ? 'Опыт преподавания' : 'Teaching experience',
               style: FlutterFlowTheme.of(context).bodyMedium.override(
@@ -106,11 +121,14 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
             ),
           ),
           Padding(
-            padding:
-                const EdgeInsetsDirectional.fromSTEB(10.0, 10.0, 10.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0),
             child: Wrap(
-              spacing: 8.0,
-              runSpacing: 8.0,
+              spacing: ExpatlioDesign.space8,
+              runSpacing: ExpatlioDesign.space8,
               children: experienceOptions.entries
                   .map(
                     (entry) => _NativeSpeakerAccreditationChoice(
@@ -123,8 +141,11 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
             ),
           ),
           Padding(
-            padding:
-                const EdgeInsetsDirectional.fromSTEB(10.0, 24.0, 10.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space24,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0),
             child: Text(
               isRu ? 'Подтверждение квалификации' : 'Qualification proof',
               style: FlutterFlowTheme.of(context).bodyMedium.override(
@@ -136,7 +157,11 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(10.0, 4.0, 10.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space4,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0),
             child: Text(
               FFLocalizations.of(context).getVariableText(
                 ruText:
@@ -147,17 +172,20 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
               style: FlutterFlowTheme.of(context).bodyMedium.override(
                     fontFamily: 'sf pro display',
                     color: ExpatlioDesign.muted,
-                    fontSize: 14.0,
+                    fontSize: 15.0,
                     letterSpacing: 0.0,
                   ),
             ),
           ),
           Padding(
-            padding:
-                const EdgeInsetsDirectional.fromSTEB(10.0, 10.0, 10.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space12,
+                ExpatlioDesign.space0),
             child: Wrap(
-              spacing: 8.0,
-              runSpacing: 8.0,
+              spacing: ExpatlioDesign.space8,
+              runSpacing: ExpatlioDesign.space8,
               children: proofOptions.entries
                   .map(
                     (entry) => _NativeSpeakerAccreditationChoice(
@@ -176,8 +204,11 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
           ),
           if (requiresEvidenceFiles) ...[
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(10.0, 24.0, 10.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0),
               child: Text(
                 isRu ? 'Файлы подтверждения' : 'Supporting files',
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
@@ -189,8 +220,11 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
               ),
             ),
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(10.0, 4.0, 10.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space4,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
                   ruText:
@@ -201,27 +235,35 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'sf pro display',
                       color: ExpatlioDesign.muted,
-                      fontSize: 14.0,
+                      fontSize: 15.0,
                       letterSpacing: 0.0,
                     ),
               ),
             ),
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(10.0, 12.0, 10.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0),
               child: InkWell(
                 key: const ValueKey<String>(
                   'native_speaker_accreditation_upload_button',
                 ),
-                borderRadius: BorderRadius.circular(24.0),
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
                 onTap: isPickingFiles || isUploadingFiles ? null : onPickFiles,
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsetsDirectional.fromSTEB(
-                      16.0, 14.0, 16.0, 14.0),
+                      ExpatlioDesign.space16,
+                      ExpatlioDesign.space16,
+                      ExpatlioDesign.space16,
+                      ExpatlioDesign.space16),
                   decoration: BoxDecoration(
                     color: ExpatlioDesign.card,
-                    borderRadius: BorderRadius.circular(24.0),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
                     border: Border.all(
                       color: FlutterFlowTheme.of(context).alternate,
                     ),
@@ -233,7 +275,7 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
                         color: ExpatlioDesign.text,
                         size: 20.0,
                       ),
-                      const SizedBox(width: 10.0),
+                      const SizedBox(width: ExpatlioDesign.space12),
                       Expanded(
                         child: Text(
                           isUploadingFiles
@@ -267,15 +309,19 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
             if (existingQualificationFiles.isNotEmpty ||
                 localQualificationFiles.isNotEmpty)
               Padding(
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(10.0, 12.0, 10.0, 0.0),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space0),
                 child: Column(
                   children: [
                     for (var index = 0;
                         index < existingQualificationFiles.length;
                         index++)
                       Padding(
-                        padding: const EdgeInsetsDirectional.only(bottom: 8.0),
+                        padding: const EdgeInsetsDirectional.only(
+                            bottom: ExpatlioDesign.space8),
                         child: _NativeSpeakerEvidenceFileTile(
                           fileName: existingQualificationFiles[index].name,
                           fileReference:
@@ -287,7 +333,8 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
                         index < localQualificationFiles.length;
                         index++)
                       Padding(
-                        padding: const EdgeInsetsDirectional.only(bottom: 8.0),
+                        padding: const EdgeInsetsDirectional.only(
+                            bottom: ExpatlioDesign.space8),
                         child: _NativeSpeakerEvidenceFileTile(
                           fileName: _displayNameForLocalFile(
                             localQualificationFiles[index],
@@ -330,13 +377,17 @@ class _NativeSpeakerAccreditationChoice extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = FlutterFlowTheme.of(context);
     return InkWell(
-      borderRadius: BorderRadius.circular(20.0),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsetsDirectional.fromSTEB(14.0, 10.0, 14.0, 10.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space12),
         decoration: BoxDecoration(
           color: selected ? theme.primaryText : theme.primaryBackground,
-          borderRadius: BorderRadius.circular(20.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
           border: Border.all(
             color: selected ? theme.primaryText : theme.alternate,
           ),
@@ -373,10 +424,14 @@ class _NativeSpeakerEvidenceFileTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = FlutterFlowTheme.of(context);
     return Container(
-      padding: const EdgeInsetsDirectional.fromSTEB(14.0, 12.0, 12.0, 12.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space12,
+          ExpatlioDesign.space12,
+          ExpatlioDesign.space12),
       decoration: BoxDecoration(
         color: theme.primaryBackground,
-        borderRadius: BorderRadius.circular(20.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
         border: Border.all(color: theme.alternate),
       ),
       child: Row(
@@ -386,7 +441,7 @@ class _NativeSpeakerEvidenceFileTile extends StatelessWidget {
             color: theme.primaryText,
             size: 20.0,
           ),
-          const SizedBox(width: 10.0),
+          const SizedBox(width: ExpatlioDesign.space12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -397,7 +452,7 @@ class _NativeSpeakerEvidenceFileTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.bodyMedium.override(
                     fontFamily: 'sf pro display',
-                    fontSize: 14.0,
+                    fontSize: 15.0,
                     letterSpacing: 0.0,
                     fontWeight: FontWeight.w500,
                   ),
@@ -423,16 +478,16 @@ class _NativeSpeakerEvidenceFileTile extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8.0),
+          const SizedBox(width: ExpatlioDesign.space8),
           InkWell(
             onTap: onRemove,
-            borderRadius: BorderRadius.circular(16.0),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
             child: Container(
               width: 28.0,
               height: 28.0,
               decoration: BoxDecoration(
                 color: const Color(0xFFF2F2F7),
-                borderRadius: BorderRadius.circular(16.0),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               ),
               child: const Icon(
                 Icons.close_rounded,

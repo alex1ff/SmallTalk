@@ -275,7 +275,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                   textAlign: TextAlign.center,
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'sf pro display',
-                        fontSize: 18.0,
+                        fontSize: 17.0,
                         letterSpacing: 0.0,
                         fontWeight: FontWeight.normal,
                       ),
@@ -286,7 +286,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                 textAlign: TextAlign.center,
                 style: FlutterFlowTheme.of(context).bodyMedium.override(
                       fontFamily: 'sf pro display',
-                      fontSize: 18.0,
+                      fontSize: 17.0,
                       letterSpacing: 0.0,
                       fontWeight: FontWeight.normal,
                     ),
@@ -388,11 +388,12 @@ class _WoedWidgetState extends State<WoedWidget> {
     final translationText = _primaryTranslationText();
 
     return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space8,
+          ExpatlioDesign.space0, ExpatlioDesign.space8, ExpatlioDesign.space0),
       child: Container(
         decoration: BoxDecoration(
           color: ExpatlioDesign.card,
-          borderRadius: BorderRadius.circular(16.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.max,
@@ -401,8 +402,11 @@ class _WoedWidgetState extends State<WoedWidget> {
               mainAxisSize: MainAxisSize.max,
               children: [
                 Padding(
-                  padding:
-                      const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 0.0, 0.0),
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0),
                   child: _buildLanguageFlag(
                     sourceLanguageCode,
                     fallbackLabel: '🌐',
@@ -433,8 +437,11 @@ class _WoedWidgetState extends State<WoedWidget> {
               mainAxisSize: MainAxisSize.max,
               children: [
                 Padding(
-                  padding:
-                      const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 0.0, 0.0),
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0),
                   child: _buildLanguageFlag(
                     translationLanguageCode,
                     fallbackLabel: '🌐',
@@ -474,7 +481,8 @@ class _WoedWidgetState extends State<WoedWidget> {
           shrinkWrap: true,
           scrollDirection: Axis.vertical,
           itemCount: entries.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 24.0),
+          separatorBuilder: (_, __) =>
+              const SizedBox(height: ExpatlioDesign.space24),
           itemBuilder: (context, entryIndex) {
             final entryItem = entries[entryIndex];
 
@@ -490,7 +498,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                         text: entryItem.text,
                         style: FlutterFlowTheme.of(context).bodyMedium.override(
                               fontFamily: 'Cool',
-                              fontSize: 21.0,
+                              fontSize: 22.0,
                               letterSpacing: 0.0,
                               fontWeight: FontWeight.normal,
                             ),
@@ -501,7 +509,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                           fontFamily: 'Cool',
                           color: ExpatlioDesign.muted,
                           fontWeight: FontWeight.normal,
-                          fontSize: 21.0,
+                          fontSize: 22.0,
                         ),
                       ),
                       TextSpan(
@@ -510,7 +518,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                           fontFamily: 'Cool',
                           color: ExpatlioDesign.muted,
                           fontWeight: FontWeight.normal,
-                          fontSize: 21.0,
+                          fontSize: 22.0,
                           fontStyle: FontStyle.italic,
                         ),
                       ),
@@ -518,7 +526,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'Cool',
                           color: ExpatlioDesign.text,
-                          fontSize: 21.0,
+                          fontSize: 22.0,
                           letterSpacing: 0.0,
                           fontWeight: FontWeight.normal,
                         ),
@@ -534,7 +542,8 @@ class _WoedWidgetState extends State<WoedWidget> {
                       shrinkWrap: true,
                       scrollDirection: Axis.vertical,
                       itemCount: translations.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8.0),
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: ExpatlioDesign.space8),
                       itemBuilder: (context, translationIndex) {
                         final translationItem = translations[translationIndex];
 
@@ -544,10 +553,10 @@ class _WoedWidgetState extends State<WoedWidget> {
                           children: [
                             Padding(
                               padding: const EdgeInsetsDirectional.fromSTEB(
-                                0.0,
-                                12.0,
-                                0.0,
-                                0.0,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space12,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0,
                               ),
                               child: Builder(
                                 builder: (context) {
@@ -561,8 +570,8 @@ class _WoedWidgetState extends State<WoedWidget> {
                                       [];
 
                                   return Wrap(
-                                    spacing: 4.0,
-                                    runSpacing: 8.0,
+                                    spacing: ExpatlioDesign.space4,
+                                    runSpacing: ExpatlioDesign.space8,
                                     alignment: WrapAlignment.start,
                                     crossAxisAlignment:
                                         WrapCrossAlignment.start,
@@ -576,8 +585,8 @@ class _WoedWidgetState extends State<WoedWidget> {
                                         decoration: BoxDecoration(
                                           color: FlutterFlowTheme.of(context)
                                               .primaryBackground,
-                                          borderRadius:
-                                              BorderRadius.circular(50.0),
+                                          borderRadius: BorderRadius.circular(
+                                              ExpatlioDesign.radiusCapsule),
                                         ),
                                         child: Padding(
                                           padding: const EdgeInsetsDirectional
@@ -653,10 +662,10 @@ class _WoedWidgetState extends State<WoedWidget> {
                             ),
                             Padding(
                               padding: const EdgeInsetsDirectional.fromSTEB(
-                                0.0,
-                                6.0,
-                                0.0,
-                                0.0,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space8,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0,
                               ),
                               child: SizedBox(
                                 height: 17.0,
@@ -716,38 +725,48 @@ class _WoedWidgetState extends State<WoedWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(0.0, 16.0, 0.0, 0.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Text(
             FFLocalizations.of(context).getText(
               '7118sl5m' /* Примеры */,
             ),
             style: FlutterFlowTheme.of(context).bodyMedium.override(
                   fontFamily: 'Cool',
-                  fontSize: 21.0,
+                  fontSize: 22.0,
                   letterSpacing: 0.0,
                   fontWeight: FontWeight.normal,
                 ),
           ),
         ),
         Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: ListView.separated(
             padding: EdgeInsets.zero,
             primary: false,
             shrinkWrap: true,
             scrollDirection: Axis.vertical,
             itemCount: sentences.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8.0),
+            separatorBuilder: (_, __) =>
+                const SizedBox(height: ExpatlioDesign.space8),
             itemBuilder: (context, sentenceIndex) {
               final sentenceItem = sentences[sentenceIndex];
 
               return Container(
                 decoration: BoxDecoration(
                   color: ExpatlioDesign.card,
-                  borderRadius: BorderRadius.circular(16.0),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusLarge),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(ExpatlioDesign.space16),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -767,10 +786,10 @@ class _WoedWidgetState extends State<WoedWidget> {
                               .translations.firstOrNull!.text.isNotEmpty)
                         Padding(
                           padding: const EdgeInsetsDirectional.fromSTEB(
-                            0.0,
-                            6.0,
-                            0.0,
-                            0.0,
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space8,
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space0,
                           ),
                           child: Text(
                             sentenceItem.translations.firstOrNull!.text,
@@ -829,7 +848,11 @@ class _WoedWidgetState extends State<WoedWidget> {
         height: _model.size,
         decoration: const BoxDecoration(),
         child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(0.0, 40.0, 0.0, 0.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space40,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -884,8 +907,8 @@ class _WoedWidgetState extends State<WoedWidget> {
                                             duration: 200.0.ms,
                                             curve: Curves.easeInOut,
                                             child: Padding(
-                                              padding:
-                                                  const EdgeInsets.all(16.0),
+                                              padding: const EdgeInsets.all(
+                                                  ExpatlioDesign.space16),
                                               child: Column(
                                                 mainAxisSize: MainAxisSize.max,
                                                 crossAxisAlignment:
@@ -903,10 +926,14 @@ class _WoedWidgetState extends State<WoedWidget> {
                                           ),
                                         ]
                                             .addToStart(
-                                              const SizedBox(height: 24.0),
+                                              const SizedBox(
+                                                  height:
+                                                      ExpatlioDesign.space24),
                                             )
                                             .addToEnd(
-                                              const SizedBox(height: 35.0),
+                                              const SizedBox(
+                                                  height:
+                                                      ExpatlioDesign.space32),
                                             ),
                                       ),
                                     ),
@@ -922,17 +949,17 @@ class _WoedWidgetState extends State<WoedWidget> {
                       alignment: const AlignmentDirectional(1.0, 1.0),
                       child: Padding(
                         padding: const EdgeInsetsDirectional.fromSTEB(
-                          0.0,
-                          0.0,
-                          6.0,
-                          20.0,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space8,
+                          ExpatlioDesign.space20,
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (_canManageDictionary)
                               FlutterFlowIconButton(
-                                borderRadius: 70.0,
+                                borderRadius: ExpatlioDesign.radiusCapsule,
                                 buttonSize: 60.0,
                                 fillColor: Colors.white,
                                 icon: Icon(
@@ -944,7 +971,8 @@ class _WoedWidgetState extends State<WoedWidget> {
                                 ),
                                 onPressed: _toggleDictionaryWord,
                               ),
-                          ].divide(const SizedBox(height: 6.0)),
+                          ].divide(
+                              const SizedBox(height: ExpatlioDesign.space8)),
                         ),
                       ),
                     ),

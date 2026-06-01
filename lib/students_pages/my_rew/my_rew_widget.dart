@@ -86,8 +86,11 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
+                        padding: EdgeInsetsDirectional.fromSTEB(
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space12,
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space0),
                         child: Container(
                           width: double.infinity,
                           height: 45.0,
@@ -118,8 +121,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                                 .primaryBackground,
                                         FlutterFlowTheme.of(context).primary,
                                       ),
-                                      borderRadius:
-                                          BorderRadius.circular(100.0),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusCapsule),
                                     ),
                                     child: Align(
                                       alignment: AlignmentDirectional(0.0, 0.0),
@@ -170,8 +173,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                                 .primaryBackground,
                                         FlutterFlowTheme.of(context).primary,
                                       ),
-                                      borderRadius:
-                                          BorderRadius.circular(100.0),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusCapsule),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
@@ -206,7 +209,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                           color: Color(0xFFFFCC31),
                                           size: 13.0,
                                         ),
-                                      ].divide(SizedBox(width: 3.0)),
+                                      ].divide(SizedBox(
+                                          width: ExpatlioDesign.space4)),
                                     ),
                                   ),
                                 ),
@@ -231,8 +235,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                                 .primaryBackground,
                                         FlutterFlowTheme.of(context).primary,
                                       ),
-                                      borderRadius:
-                                          BorderRadius.circular(100.0),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusCapsule),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
@@ -267,7 +271,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                           color: Color(0xFFFFCC31),
                                           size: 13.0,
                                         ),
-                                      ].divide(SizedBox(width: 3.0)),
+                                      ].divide(SizedBox(
+                                          width: ExpatlioDesign.space4)),
                                     ),
                                   ),
                                 ),
@@ -292,8 +297,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                                 .primaryBackground,
                                         FlutterFlowTheme.of(context).primary,
                                       ),
-                                      borderRadius:
-                                          BorderRadius.circular(100.0),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusCapsule),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
@@ -328,7 +333,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                           color: Color(0xFFFFCC31),
                                           size: 13.0,
                                         ),
-                                      ].divide(SizedBox(width: 3.0)),
+                                      ].divide(SizedBox(
+                                          width: ExpatlioDesign.space4)),
                                     ),
                                   ),
                                 ),
@@ -353,8 +359,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                                 .primaryBackground,
                                         FlutterFlowTheme.of(context).primary,
                                       ),
-                                      borderRadius:
-                                          BorderRadius.circular(100.0),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusCapsule),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
@@ -389,7 +395,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                           color: Color(0xFFFFCC31),
                                           size: 13.0,
                                         ),
-                                      ].divide(SizedBox(width: 3.0)),
+                                      ].divide(SizedBox(
+                                          width: ExpatlioDesign.space4)),
                                     ),
                                   ),
                                 ),
@@ -414,8 +421,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                                 .primaryBackground,
                                         FlutterFlowTheme.of(context).primary,
                                       ),
-                                      borderRadius:
-                                          BorderRadius.circular(100.0),
+                                      borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusCapsule),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
@@ -450,21 +457,28 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                           color: Color(0xFFFFCC31),
                                           size: 13.0,
                                         ),
-                                      ].divide(SizedBox(width: 3.0)),
+                                      ].divide(SizedBox(
+                                          width: ExpatlioDesign.space4)),
                                     ),
                                   ),
                                 ),
                               ]
-                                  .divide(SizedBox(width: 5.0))
-                                  .addToStart(SizedBox(width: 16.0))
-                                  .addToEnd(SizedBox(width: 16.0)),
+                                  .divide(
+                                      SizedBox(width: ExpatlioDesign.space8))
+                                  .addToStart(
+                                      SizedBox(width: ExpatlioDesign.space16))
+                                  .addToEnd(
+                                      SizedBox(width: ExpatlioDesign.space16)),
                             ),
                           ),
                         ),
                       ),
                       Padding(
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+                        padding: EdgeInsetsDirectional.fromSTEB(
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space12,
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space0),
                         child: Builder(
                           builder: (context) {
                             final rew = myRewReviewsRecordList
@@ -488,12 +502,15 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                               scrollDirection: Axis.vertical,
                               itemCount: rew.length,
                               separatorBuilder: (_, __) =>
-                                  SizedBox(height: 6.0),
+                                  SizedBox(height: ExpatlioDesign.space8),
                               itemBuilder: (context, rewIndex) {
                                 final rewItem = rew[rewIndex];
                                 return Padding(
                                   padding: EdgeInsetsDirectional.fromSTEB(
-                                      16.0, 0.0, 16.0, 0.0),
+                                      ExpatlioDesign.space16,
+                                      ExpatlioDesign.space0,
+                                      ExpatlioDesign.space16,
+                                      ExpatlioDesign.space0),
                                   child: ReviewCardWidget(
                                     key: Key(
                                         'Keyg6a_${rewIndex}_of_${rew.length}'),
@@ -506,8 +523,8 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                         ),
                       ),
                     ]
-                        .addToStart(SizedBox(height: 115.0))
-                        .addToEnd(SizedBox(height: 35.0)),
+                        .addToStart(SizedBox(height: ExpatlioDesign.space112))
+                        .addToEnd(SizedBox(height: ExpatlioDesign.space32)),
                   ),
                 ),
                 BasicPageHeader(

@@ -19,7 +19,11 @@ class WordDetailBody extends StatelessWidget {
     final sourceSynonyms = content.sourceSynonyms;
 
     return SingleChildScrollView(
-      padding: const EdgeInsetsDirectional.fromSTEB(20.0, 30.0, 20.0, 40.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space20,
+          ExpatlioDesign.space32,
+          ExpatlioDesign.space20,
+          ExpatlioDesign.space40),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -39,14 +43,17 @@ class WordDetailBody extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 16.0),
+              const SizedBox(width: ExpatlioDesign.space16),
               const _PronunciationButton(),
             ],
           ),
           if (content.transcription.isNotEmpty)
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0),
               child: Text(
                 content.transcription,
                 style: ExpatlioDesign.textStyle(
@@ -59,11 +66,14 @@ class WordDetailBody extends StatelessWidget {
             ),
           if (sourceSynonyms.isNotEmpty)
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(0.0, 14.0, 0.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0),
               child: _SynonymWrap(synonyms: sourceSynonyms),
             ),
-          const SizedBox(height: 32.0),
+          const SizedBox(height: ExpatlioDesign.space32),
           _InfoCard(
             label: FFLocalizations.of(context).getVariableText(
               ruText: 'ПЕРЕВОД',
@@ -72,7 +82,7 @@ class WordDetailBody extends StatelessWidget {
             child: _TranslationDetails(content: content),
           ),
           if (examples.isNotEmpty) ...[
-            const SizedBox(height: 32.0),
+            const SizedBox(height: ExpatlioDesign.space32),
             Text(
               FFLocalizations.of(context).getVariableText(
                 ruText: 'ПРИМЕРЫ',
@@ -86,11 +96,14 @@ class WordDetailBody extends StatelessWidget {
                 height: 1.2,
               ).copyWith(letterSpacing: 1.2),
             ),
-            const SizedBox(height: 18.0),
+            const SizedBox(height: ExpatlioDesign.space20),
             ...examples.map(
               (example) => Padding(
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 16.0),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space16),
                 child: _ExampleCard(sentence: example),
               ),
             ),
@@ -125,11 +138,14 @@ class _TranslationDetails extends StatelessWidget {
           ),
         ),
         if (groups.isNotEmpty) ...[
-          const SizedBox(height: 18.0),
+          const SizedBox(height: ExpatlioDesign.space20),
           ...groups.map(
             (group) => Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 14.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space16),
               child: _TranslationGroupView(group: group),
             ),
           ),
@@ -174,10 +190,10 @@ class _TranslationGroupView extends StatelessWidget {
         if (hasMeanings)
           Padding(
             padding: EdgeInsetsDirectional.fromSTEB(
-              0.0,
-              hasSynonyms ? 8.0 : 0.0,
-              0.0,
-              0.0,
+              ExpatlioDesign.space0,
+              hasSynonyms ? ExpatlioDesign.space8 : ExpatlioDesign.space0,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0,
             ),
             child: Text(
               meaningsText,
@@ -205,8 +221,8 @@ class _SynonymWrap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Wrap(
-      spacing: 8.0,
-      runSpacing: 8.0,
+      spacing: ExpatlioDesign.space8,
+      runSpacing: ExpatlioDesign.space8,
       children: synonyms
           .map(
             (synonym) => _SynonymChip(synonym: synonym),
@@ -231,9 +247,10 @@ class _SynonymChip extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 34.0),
       decoration: BoxDecoration(
         color: ExpatlioDesign.mutedSurface,
-        borderRadius: BorderRadius.circular(18.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
       ),
-      padding: const EdgeInsetsDirectional.fromSTEB(12.0, 7.0, 12.0, 7.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space12,
+          ExpatlioDesign.space8, ExpatlioDesign.space12, ExpatlioDesign.space8),
       child: RichText(
         textScaler: MediaQuery.of(context).textScaler,
         text: TextSpan(
@@ -298,10 +315,14 @@ class _InfoCard extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(20.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
         border: Border.all(color: ExpatlioDesign.border),
       ),
-      padding: const EdgeInsetsDirectional.fromSTEB(18.0, 18.0, 18.0, 20.0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space20,
+          ExpatlioDesign.space20,
+          ExpatlioDesign.space20,
+          ExpatlioDesign.space20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -315,7 +336,7 @@ class _InfoCard extends StatelessWidget {
               height: 1.2,
             ).copyWith(letterSpacing: 1.2),
           ),
-          const SizedBox(height: 18.0),
+          const SizedBox(height: ExpatlioDesign.space20),
           child,
         ],
       ),
@@ -340,10 +361,10 @@ class _ExampleCard extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(18.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
         border: Border.all(color: ExpatlioDesign.border),
       ),
-      padding: const EdgeInsetsDirectional.all(18.0),
+      padding: const EdgeInsetsDirectional.all(ExpatlioDesign.space20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -358,8 +379,11 @@ class _ExampleCard extends StatelessWidget {
           ),
           if (_translation.isNotEmpty)
             Padding(
-              padding:
-                  const EdgeInsetsDirectional.fromSTEB(0.0, 12.0, 0.0, 0.0),
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0),
               child: Text(
                 _translation,
                 style: ExpatlioDesign.textStyle(

@@ -579,17 +579,18 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         child: Center(
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-              24.0,
-              0.0,
-              24.0,
-              0.0,
+              ExpatlioDesign.space24,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space24,
+              ExpatlioDesign.space0,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (isLoading)
                   const Padding(
-                    padding: EdgeInsetsDirectional.only(bottom: 18.0),
+                    padding: EdgeInsetsDirectional.only(
+                        bottom: ExpatlioDesign.space20),
                     child: CircularProgressIndicator(),
                   ),
                 Text(
@@ -597,11 +598,11 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: ExpatlioDesign.text,
-                        fontSize: 21.0,
+                        fontSize: 22.0,
                         fontWeight: FontWeight.w700,
                       ),
                 ),
-                const SizedBox(height: 8.0),
+                const SizedBox(height: ExpatlioDesign.space8),
                 Text(
                   subtitle,
                   textAlign: TextAlign.center,
@@ -611,7 +612,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       ),
                 ),
                 if (!isLoading) ...[
-                  const SizedBox(height: 24.0),
+                  const SizedBox(height: ExpatlioDesign.space24),
                   ElevatedButton(
                     onPressed: _retryMediaPermissions,
                     child: Text(
@@ -653,10 +654,10 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         child: Center(
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-              24.0,
-              0.0,
-              24.0,
-              0.0,
+              ExpatlioDesign.space24,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space24,
+              ExpatlioDesign.space0,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -672,7 +673,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                         fontSize: 16.0,
                       ),
                 ),
-                const SizedBox(height: 16.0),
+                const SizedBox(height: ExpatlioDesign.space16),
                 TextButton(
                   onPressed: () => context.safePop(),
                   child: Text(

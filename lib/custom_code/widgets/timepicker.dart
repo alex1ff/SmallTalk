@@ -8,6 +8,7 @@ import 'index.dart'; // Imports other custom widgets
 import '/custom_code/actions/index.dart'; // Imports custom actions
 import '/flutter_flow/custom_functions.dart'; // Imports custom functions
 import 'package:flutter/material.dart';
+import '/shared_pages/design/expatlio_design.dart';
 // Begin custom widget code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
@@ -115,7 +116,7 @@ class _TimepickerState extends State<Timepicker> {
                         .toList(),
                   ),
                 ),
-                const SizedBox(width: 0),
+                const SizedBox(width: ExpatlioDesign.space0),
                 Container(
                   width: wheelWidth,
                   child: CupertinoPicker(

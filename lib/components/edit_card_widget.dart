@@ -67,7 +67,11 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                 onConfirm: () => Navigator.pop(context),
               ),
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 6.0, 6.0, 6.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space8),
                 child: StreamBuilder<List<CardsRecord>>(
                   stream: _model.cardsStream,
                   builder: (context, snapshot) {
@@ -80,7 +84,8 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                       shrinkWrap: true,
                       scrollDirection: Axis.vertical,
                       itemCount: listViewCardsRecordList.length,
-                      separatorBuilder: (_, __) => SizedBox(height: 6.0),
+                      separatorBuilder: (_, __) =>
+                          SizedBox(height: ExpatlioDesign.space8),
                       itemBuilder: (context, listViewIndex) {
                         final listViewCardsRecord =
                             listViewCardsRecordList[listViewIndex];
@@ -90,10 +95,11 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                           decoration: BoxDecoration(
                             color:
                                 FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(16.0),
+                            borderRadius: BorderRadius.circular(
+                                ExpatlioDesign.radiusLarge),
                           ),
                           child: Padding(
-                            padding: EdgeInsets.all(4.0),
+                            padding: EdgeInsets.all(ExpatlioDesign.space4),
                             child: Row(
                               mainAxisSize: MainAxisSize.max,
                               children: [
@@ -103,7 +109,8 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                   decoration: BoxDecoration(
                                     color: FlutterFlowTheme.of(context)
                                         .secondaryBackground,
-                                    borderRadius: BorderRadius.circular(22.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusExtraLarge),
                                   ),
                                   child: Align(
                                     alignment: AlignmentDirectional(0.0, 0.0),
@@ -118,7 +125,10 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                 Expanded(
                                   child: Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        12.0, 0.0, 8.0, 0.0),
+                                        ExpatlioDesign.space12,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space8,
+                                        ExpatlioDesign.space0),
                                     child: Text(
                                       listViewCardsRecord.pan,
                                       style: FlutterFlowTheme.of(context)
@@ -132,7 +142,7 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                   ),
                                 ),
                                 FlutterFlowIconButton(
-                                  borderRadius: 22.0,
+                                  borderRadius: ExpatlioDesign.radiusExtraLarge,
                                   buttonSize: 52.0,
                                   icon: Icon(
                                     FFIcons.ktrash03,
@@ -165,8 +175,8 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                   },
                 ),
               ),
-              const SizedBox(height: 35.0),
-            ].divide(SizedBox(height: 16.0)),
+              const SizedBox(height: ExpatlioDesign.space32),
+            ].divide(SizedBox(height: ExpatlioDesign.space16)),
           ),
         ),
       ],

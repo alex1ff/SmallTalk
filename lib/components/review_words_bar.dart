@@ -18,7 +18,7 @@ class ReviewWordsBar extends StatelessWidget {
     final decoration = enabled
         ? BoxDecoration(
             gradient: ExpatlioDesign.primaryGradient,
-            borderRadius: BorderRadius.circular(16.0),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x302B0B63),
@@ -29,7 +29,7 @@ class ReviewWordsBar extends StatelessWidget {
           )
         : BoxDecoration(
             color: ExpatlioDesign.mutedSurface,
-            borderRadius: BorderRadius.circular(16.0),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
             border: Border.all(color: ExpatlioDesign.border),
           );
     final foregroundColor = enabled ? Colors.white : ExpatlioDesign.muted;
@@ -37,17 +37,17 @@ class ReviewWordsBar extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
         onTap: onTap,
         child: Ink(
           height: 60.0,
           decoration: decoration,
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-              18.0,
-              0.0,
-              13.0,
-              0.0,
+              ExpatlioDesign.space20,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space0,
             ),
             child: Row(
               children: [
@@ -56,7 +56,7 @@ class ReviewWordsBar extends StatelessWidget {
                   color: foregroundColor,
                   size: 21.0,
                 ),
-                const SizedBox(width: 14.0),
+                const SizedBox(width: ExpatlioDesign.space16),
                 Expanded(
                   child: Text(
                     text,
@@ -72,19 +72,20 @@ class ReviewWordsBar extends StatelessWidget {
                   ),
                 ),
                 if (enabled) ...[
-                  const SizedBox(width: 12.0),
+                  const SizedBox(width: ExpatlioDesign.space12),
                   Container(
                     height: 44.0,
                     constraints: const BoxConstraints(minWidth: 96.0),
                     decoration: BoxDecoration(
                       color: const Color(0x33FFFFFF),
-                      borderRadius: BorderRadius.circular(16.0),
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusLarge),
                     ),
                     padding: const EdgeInsetsDirectional.fromSTEB(
-                      20.0,
-                      0.0,
-                      20.0,
-                      0.0,
+                      ExpatlioDesign.space20,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space20,
+                      ExpatlioDesign.space0,
                     ),
                     alignment: Alignment.center,
                     child: Text(

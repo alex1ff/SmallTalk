@@ -97,7 +97,8 @@ class _LangWidgetState extends State<LangWidget> {
           : const NeverScrollableScrollPhysics(),
       scrollDirection: Axis.vertical,
       itemCount: languagesToDisplay.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 6.0),
+      separatorBuilder: (_, __) =>
+          const SizedBox(height: ExpatlioDesign.space8),
       itemBuilder: (context, langIndex) {
         final langItem = languagesToDisplay[langIndex];
         final languageKey =
@@ -120,7 +121,11 @@ class _LangWidgetState extends State<LangWidget> {
       height: 58.0,
       decoration: ExpatlioDesign.cardDecoration(radius: 16.0),
       child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(6.0, 4.0, 10.0, 4.0),
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space4,
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space4),
         child: Row(
           mainAxisSize: MainAxisSize.max,
           children: [
@@ -139,8 +144,11 @@ class _LangWidgetState extends State<LangWidget> {
             ),
             Expanded(
               child: Padding(
-                padding:
-                    const EdgeInsetsDirectional.fromSTEB(8.0, 0.0, 8.0, 0.0),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space0),
                 child: SizedBox(
                   width: 200.0,
                   child: TextFormField(
@@ -201,7 +209,7 @@ class _LangWidgetState extends State<LangWidget> {
         mainAxisSize: MainAxisSize.max,
         children: [
           searchField,
-          const SizedBox(height: 10.0),
+          const SizedBox(height: ExpatlioDesign.space12),
           Expanded(child: languagesListView),
         ],
       );
@@ -212,7 +220,11 @@ class _LangWidgetState extends State<LangWidget> {
       children: [
         searchField,
         Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(0.0, 10.0, 0.0, 0.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: languagesListView,
         ),
       ],

@@ -42,7 +42,11 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 1.0, 8.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space4,
+              ExpatlioDesign.space8,
+              ExpatlioDesign.space0),
           child: Container(
             width: 20.0,
             height: 20.0,
@@ -80,7 +84,11 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -101,16 +109,20 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                       children: [
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              6.0, 20.0, 6.0, 0.0),
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space20,
+                              ExpatlioDesign.space8,
+                              ExpatlioDesign.space0),
                           child: Container(
                             width: double.infinity,
                             decoration: BoxDecoration(
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
-                              borderRadius: BorderRadius.circular(38.0),
+                              borderRadius: BorderRadius.circular(
+                                  ExpatlioDesign.radiusCapsule),
                             ),
                             child: Padding(
-                              padding: EdgeInsets.all(24.0),
+                              padding: EdgeInsets.all(ExpatlioDesign.space24),
                               child: Column(
                                 mainAxisSize: MainAxisSize.max,
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -132,7 +144,7 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                                                       .bodyMedium
                                                       .override(
                                                         fontFamily: 'Cool',
-                                                        fontSize: 21.0,
+                                                        fontSize: 22.0,
                                                         letterSpacing: 0.0,
                                                       ),
                                             ),
@@ -153,7 +165,7 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                                                       .bodyMedium
                                                       .override(
                                                         fontFamily: 'Cool',
-                                                        fontSize: 21.0,
+                                                        fontSize: 22.0,
                                                         letterSpacing: 0.0,
                                                       ),
                                                 );
@@ -167,7 +179,7 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                                                       .bodyMedium
                                                       .override(
                                                         fontFamily: 'Cool',
-                                                        fontSize: 21.0,
+                                                        fontSize: 22.0,
                                                         letterSpacing: 0.0,
                                                       ),
                                             ),
@@ -179,11 +191,15 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                                         height: 63.8,
                                         decoration: BoxDecoration(),
                                       ),
-                                    ].divide(SizedBox(width: 16.0)),
+                                    ].divide(SizedBox(
+                                        width: ExpatlioDesign.space16)),
                                   ),
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 24.0, 0.0, 0.0),
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space24,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0),
                                     child: Text(
                                       'Что дальше?',
                                       textAlign: TextAlign.start,
@@ -191,14 +207,17 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                                           .bodyMedium
                                           .override(
                                             fontFamily: 'Cool',
-                                            fontSize: 21.0,
+                                            fontSize: 22.0,
                                             letterSpacing: 0.0,
                                           ),
                                     ),
                                   ),
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 12.0, 0.0, 0.0),
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space12,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0),
                                     child: _buildBullet(
                                       context,
                                       'Минуты в Expatlio уже доступны на балансе',
@@ -206,7 +225,10 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                                   ),
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 12.0, 0.0, 0.0),
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space12,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0),
                                     child: _buildBullet(
                                       context,
                                       'Выберите преподавателя и начните разговор',
@@ -214,7 +236,10 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                                   ),
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 12.0, 0.0, 0.0),
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space12,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0),
                                     child: _buildBullet(
                                       context,
                                       'История пополнения уже сохранена в Финансах',
@@ -222,7 +247,10 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                                   ),
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0, 24.0, 0.0, 0.0),
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space24,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0),
                                     child: Text(
                                       'Все готово для нового разговора. Открывайте подбор и начинайте практику.',
                                       style: FlutterFlowTheme.of(context)
@@ -263,8 +291,8 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 35.0),
-                  ].divide(SizedBox(height: 24.0)),
+                    const SizedBox(height: ExpatlioDesign.space32),
+                  ].divide(SizedBox(height: ExpatlioDesign.space24)),
                 ),
               ),
             ],

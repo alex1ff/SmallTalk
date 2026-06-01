@@ -48,7 +48,11 @@ class _PolicyWidgetState extends State<PolicyWidget> {
         body: Stack(
           children: [
             Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space8,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space8,
+                  ExpatlioDesign.space0),
               child: SingleChildScrollView(
                 primary: false,
                 child: Column(
@@ -59,10 +63,11 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                       width: double.infinity,
                       decoration: BoxDecoration(
                         color: FlutterFlowTheme.of(context).primaryBackground,
-                        borderRadius: BorderRadius.circular(16.0),
+                        borderRadius:
+                            BorderRadius.circular(ExpatlioDesign.radiusLarge),
                       ),
                       child: Padding(
-                        padding: EdgeInsets.all(16.0),
+                        padding: EdgeInsets.all(ExpatlioDesign.space16),
                         child: Column(
                           mainAxisSize: MainAxisSize.max,
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -78,14 +83,17 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 24.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
                             ),
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  0.0, 12.0, 0.0, 0.0),
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space12,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0),
                               child: Text(
                                 FFLocalizations.of(context).getText(
                                   'czklyx18' /* Дата вступления в силу: 28 ноя... */,
@@ -106,8 +114,11 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                       ),
                     ),
                     Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(10.0, 24.0, 10.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space12,
+                          ExpatlioDesign.space24,
+                          ExpatlioDesign.space12,
+                          ExpatlioDesign.space0),
                       child: Column(
                         mainAxisSize: MainAxisSize.max,
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,14 +131,17 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                 .bodyMedium
                                 .override(
                                   fontFamily: 'Cool',
-                                  fontSize: 21.0,
+                                  fontSize: 22.0,
                                   letterSpacing: 0.0,
                                   fontWeight: FontWeight.normal,
                                 ),
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'ttebd0yi' /* Expatlio ("мы", "нас", "наше ... */,
@@ -145,7 +159,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'l9d370gj' /* 2. Какую информацию мы собирае... */,
@@ -154,7 +171,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -162,7 +179,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'u78z43s6' /* 2.1. Информация, которую вы пр... */,
@@ -180,7 +200,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'knl0nrpp' /* 3. Как мы используем вашу инфо... */,
@@ -189,7 +212,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -197,7 +220,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 '0yy4lfbi' /* Мы используем собранную информ... */,
@@ -215,7 +241,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'ca70uab5' /* 4. Как мы делимся вашей информ... */,
@@ -224,7 +253,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -232,7 +261,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 '41wy02qp' /* 4.1. С другими пользователями
@@ -252,7 +284,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'dt5pemdf' /* 5. Хранение данных */,
@@ -261,7 +296,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -269,7 +304,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'm9g24qvb' /* Личные данные: хранятся, пока ... */,
@@ -287,7 +325,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'zqtodugk' /* 6. Безопасность данных */,
@@ -296,7 +337,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -304,7 +345,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'f4cv0dej' /* Мы применяем современные техно... */,
@@ -322,7 +366,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'm4x662t6' /* 7. Ваши права */,
@@ -331,7 +378,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -339,7 +386,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'fqnb17ee' /* Вы имеете право:
@@ -360,7 +410,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 '4de90uf9' /* 8. Файлы cookie и технологии о... */,
@@ -369,7 +422,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -377,7 +430,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'hwz018hb' /* Мы используем файлы cookie и а... */,
@@ -395,7 +451,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 '8sdsub64' /* 9. Уведомления */,
@@ -404,7 +463,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -412,7 +471,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 '9o4binxg' /* Вы можете получать:
@@ -433,7 +495,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'va83u8gv' /* 10. Изменения в Политике конфи... */,
@@ -442,7 +507,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -450,7 +515,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'c70i9skq' /* Мы можем периодически обновлят... */,
@@ -468,7 +536,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'su42pbdb' /* 11. Контактная информация */,
@@ -477,7 +548,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -485,7 +556,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'u7llfjy4' /* Если у вас есть вопросы о наст... */,
@@ -503,7 +577,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 24.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space24,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'dhdlspw7' /* Согласие */,
@@ -512,7 +589,7 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                                   .bodyMedium
                                   .override(
                                     fontFamily: 'Cool',
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
@@ -520,7 +597,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 4.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'cfh32zir' /* Используя Expatlio, вы подтве... */,
@@ -538,7 +618,10 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                           ),
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 35.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space32,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               FFLocalizations.of(context).getText(
                                 'gcd5d56f' /* © 2025 Expatlio. Все права за... */,
@@ -558,8 +641,8 @@ class _PolicyWidgetState extends State<PolicyWidget> {
                       ),
                     ),
                   ]
-                      .addToStart(SizedBox(height: 135.0))
-                      .addToEnd(SizedBox(height: 35.0)),
+                      .addToStart(SizedBox(height: ExpatlioDesign.space136))
+                      .addToEnd(SizedBox(height: ExpatlioDesign.space32)),
                 ),
               ),
             ),

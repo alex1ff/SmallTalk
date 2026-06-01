@@ -66,7 +66,7 @@ class _AvatarCardWidgetState extends State<AvatarCardWidget> {
         height: 110.0,
         decoration: BoxDecoration(
           color: ExpatlioDesign.card,
-          borderRadius: BorderRadius.circular(14.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         ),
         child: Stack(
           alignment: AlignmentDirectional(0.0, 0.0),
@@ -85,7 +85,11 @@ class _AvatarCardWidgetState extends State<AvatarCardWidget> {
             Align(
               alignment: AlignmentDirectional(1.0, -1.0),
               child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0.0, 2.0, 2.0, 0.0),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space4,
+                    ExpatlioDesign.space4,
+                    ExpatlioDesign.space0),
                 child: InkWell(
                   splashColor: Colors.transparent,
                   focusColor: Colors.transparent,

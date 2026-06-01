@@ -38,20 +38,20 @@ class StudentOnboardingBottomBar extends StatelessWidget {
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOutCubic,
       padding: EdgeInsetsDirectional.fromSTEB(
-        0.0,
-        0.0,
-        0.0,
-        keyboardVisible ? 8.0 : 35.0,
+        ExpatlioDesign.space0,
+        ExpatlioDesign.space0,
+        ExpatlioDesign.space0,
+        keyboardVisible ? ExpatlioDesign.space8 : ExpatlioDesign.space32,
       ),
       child: Container(
         key: const ValueKey<String>('student_onboarding_bottom_bar'),
         height: ExpatlioDesign.buttonHeight + 4.0,
         decoration: BoxDecoration(
           color: ExpatlioDesign.text,
-          borderRadius: BorderRadius.circular(18.0),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(2.0),
+          padding: const EdgeInsets.all(ExpatlioDesign.space4),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -70,7 +70,7 @@ class StudentOnboardingBottomBar extends StatelessWidget {
                       ),
                       onTap: backButtonEnabled ? onBack : null,
                     ),
-                    const SizedBox(width: 2.0),
+                    const SizedBox(width: ExpatlioDesign.space4),
                   ],
                 ),
               ),
@@ -83,7 +83,7 @@ class StudentOnboardingBottomBar extends StatelessWidget {
                       currentStep: currentStep,
                       totalSteps: totalSteps,
                     ),
-                    const SizedBox(width: 2.0),
+                    const SizedBox(width: ExpatlioDesign.space4),
                   ],
                 ),
               ),
@@ -169,7 +169,7 @@ class _StudentOnboardingProgressBadge extends StatelessWidget {
         alignment: AlignmentDirectional.center,
         children: [
           Padding(
-            padding: const EdgeInsets.all(2.0),
+            padding: const EdgeInsets.all(ExpatlioDesign.space4),
             child: SizedBox(
               width: double.infinity,
               height: double.infinity,
@@ -224,9 +224,9 @@ class _StudentOnboardingActionButton extends StatelessWidget {
 
     return Material(
       color: palette.surface,
-      borderRadius: BorderRadius.circular(16.0),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
         splashColor: Colors.transparent,
         focusColor: Colors.transparent,
         hoverColor: Colors.transparent,
@@ -238,7 +238,11 @@ class _StudentOnboardingActionButton extends StatelessWidget {
             minHeight: ExpatlioDesign.buttonHeight,
           ),
           child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(18.0, 0.0, 18.0, 0.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space20,
+                ExpatlioDesign.space0),
             child: Center(
               child: isLoading
                   ? SizedBox(

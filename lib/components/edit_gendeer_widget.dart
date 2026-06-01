@@ -91,7 +91,11 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
               ),
               Flexible(
                 child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(0.0, 16.0, 0.0, 16.0),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space16,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space16),
                   child: Container(
                     height: 350.0,
                     decoration: BoxDecoration(),
@@ -111,7 +115,8 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
                                 child: Transform.rotate(
                                   angle: 15.0 * (math.pi / 180),
                                   child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(20.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusExtraLarge),
                                     child: Image.asset(
                                       FFLocalizations.of(context)
                                                   .languageCode ==
@@ -129,7 +134,8 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
                                 child: Transform.rotate(
                                   angle: 350.0 * (math.pi / 180),
                                   child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(20.0),
+                                    borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusExtraLarge),
                                     child: Image.asset(
                                       FFLocalizations.of(context)
                                                   .languageCode ==
@@ -156,8 +162,8 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
                   ),
                 ),
               ),
-              const SizedBox(height: 35.0),
-            ].divide(SizedBox(height: 16.0)),
+              const SizedBox(height: ExpatlioDesign.space32),
+            ].divide(SizedBox(height: ExpatlioDesign.space16)),
           ),
         ),
       ],

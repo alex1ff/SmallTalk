@@ -14,6 +14,8 @@ class CallSummaryModel extends FlutterFlowModel<CallSummaryWidget> {
 
   bool black = false;
 
+  bool skipToday = false;
+
   bool favTouched = false;
 
   bool blackTouched = false;

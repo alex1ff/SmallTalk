@@ -136,7 +136,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Padding(
-                              padding: EdgeInsets.all(16.0),
+                              padding: EdgeInsets.all(ExpatlioDesign.space16),
                               child: Row(
                                 mainAxisSize: MainAxisSize.max,
                                 mainAxisAlignment:
@@ -158,7 +158,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                               .bodyMedium
                                               .override(
                                                 fontFamily: 'Cool',
-                                                fontSize: 48.0,
+                                                fontSize: 34.0,
                                                 letterSpacing: 0.0,
                                                 fontWeight: FontWeight.normal,
                                               ),
@@ -166,7 +166,10 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                       ),
                                       Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            0.0, 6.0, 0.0, 0.0),
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space8,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space0),
                                         child: AuthUserStreamWidget(
                                           builder: (context) =>
                                               RatingBar.builder(
@@ -201,7 +204,10 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                       ),
                                       Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            0.0, 4.0, 0.0, 0.0),
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space4,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space0),
                                         child: AuthUserStreamWidget(
                                           builder: (context) => Text(
                                             functions.getReviewString(
@@ -229,7 +235,10 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                   Expanded(
                                     child: Padding(
                                       padding: EdgeInsetsDirectional.fromSTEB(
-                                          10.0, 0.0, 0.0, 0.0),
+                                          ExpatlioDesign.space12,
+                                          ExpatlioDesign.space0,
+                                          ExpatlioDesign.space0,
+                                          ExpatlioDesign.space0),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.max,
                                         crossAxisAlignment:
@@ -297,8 +306,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                         FlutterFlowTheme.of(
                                                                 context)
                                                             .accent4,
-                                                    barRadius:
-                                                        Radius.circular(8.0),
+                                                    barRadius: Radius.circular(
+                                                        ExpatlioDesign
+                                                            .radiusSmall),
                                                     padding: EdgeInsets.zero,
                                                   ),
                                                 ),
@@ -332,7 +342,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                       ),
                                                 ),
                                               ),
-                                            ].divide(SizedBox(width: 3.0)),
+                                            ].divide(SizedBox(
+                                                width: ExpatlioDesign.space4)),
                                           ),
                                           Row(
                                             mainAxisSize: MainAxisSize.min,
@@ -396,8 +407,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                         FlutterFlowTheme.of(
                                                                 context)
                                                             .accent4,
-                                                    barRadius:
-                                                        Radius.circular(8.0),
+                                                    barRadius: Radius.circular(
+                                                        ExpatlioDesign
+                                                            .radiusSmall),
                                                     padding: EdgeInsets.zero,
                                                   ),
                                                 ),
@@ -431,7 +443,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                       ),
                                                 ),
                                               ),
-                                            ].divide(SizedBox(width: 3.0)),
+                                            ].divide(SizedBox(
+                                                width: ExpatlioDesign.space4)),
                                           ),
                                           Row(
                                             mainAxisSize: MainAxisSize.min,
@@ -497,8 +510,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                         FlutterFlowTheme.of(
                                                                 context)
                                                             .accent4,
-                                                    barRadius:
-                                                        Radius.circular(8.0),
+                                                    barRadius: Radius.circular(
+                                                        ExpatlioDesign
+                                                            .radiusSmall),
                                                     padding: EdgeInsets.zero,
                                                   ),
                                                 ),
@@ -529,7 +543,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                       ),
                                                 ),
                                               ),
-                                            ].divide(SizedBox(width: 3.0)),
+                                            ].divide(SizedBox(
+                                                width: ExpatlioDesign.space4)),
                                           ),
                                           Row(
                                             mainAxisSize: MainAxisSize.min,
@@ -593,8 +608,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                         FlutterFlowTheme.of(
                                                                 context)
                                                             .accent4,
-                                                    barRadius:
-                                                        Radius.circular(8.0),
+                                                    barRadius: Radius.circular(
+                                                        ExpatlioDesign
+                                                            .radiusSmall),
                                                     padding: EdgeInsets.zero,
                                                   ),
                                                 ),
@@ -625,7 +641,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                       ),
                                                 ),
                                               ),
-                                            ].divide(SizedBox(width: 3.0)),
+                                            ].divide(SizedBox(
+                                                width: ExpatlioDesign.space4)),
                                           ),
                                           Row(
                                             mainAxisSize: MainAxisSize.min,
@@ -689,8 +706,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                         FlutterFlowTheme.of(
                                                                 context)
                                                             .accent4,
-                                                    barRadius:
-                                                        Radius.circular(8.0),
+                                                    barRadius: Radius.circular(
+                                                        ExpatlioDesign
+                                                            .radiusSmall),
                                                     padding: EdgeInsets.zero,
                                                   ),
                                                 ),
@@ -724,9 +742,11 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                       ),
                                                 ),
                                               ),
-                                            ].divide(SizedBox(width: 3.0)),
+                                            ].divide(SizedBox(
+                                                width: ExpatlioDesign.space4)),
                                           ),
-                                        ].divide(SizedBox(height: 4.0)),
+                                        ].divide(SizedBox(
+                                            height: ExpatlioDesign.space4)),
                                       ),
                                     ),
                                   ),
@@ -735,7 +755,10 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                             ),
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  0.0, 10.0, 0.0, 0.0),
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space12,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0),
                               child: Container(
                                 width: double.infinity,
                                 height: 45.0,
@@ -767,8 +790,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                               FlutterFlowTheme.of(context)
                                                   .primary,
                                             ),
-                                            borderRadius:
-                                                BorderRadius.circular(100.0),
+                                            borderRadius: BorderRadius.circular(
+                                                ExpatlioDesign.radiusCapsule),
                                           ),
                                           child: Align(
                                             alignment:
@@ -826,8 +849,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                               FlutterFlowTheme.of(context)
                                                   .primary,
                                             ),
-                                            borderRadius:
-                                                BorderRadius.circular(100.0),
+                                            borderRadius: BorderRadius.circular(
+                                                ExpatlioDesign.radiusCapsule),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
@@ -867,7 +890,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 color: Color(0xFFFFCC31),
                                                 size: 13.0,
                                               ),
-                                            ].divide(SizedBox(width: 3.0)),
+                                            ].divide(SizedBox(
+                                                width: ExpatlioDesign.space4)),
                                           ),
                                         ),
                                       ),
@@ -893,8 +917,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                               FlutterFlowTheme.of(context)
                                                   .primary,
                                             ),
-                                            borderRadius:
-                                                BorderRadius.circular(100.0),
+                                            borderRadius: BorderRadius.circular(
+                                                ExpatlioDesign.radiusCapsule),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
@@ -934,7 +958,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 color: Color(0xFFFFCC31),
                                                 size: 13.0,
                                               ),
-                                            ].divide(SizedBox(width: 3.0)),
+                                            ].divide(SizedBox(
+                                                width: ExpatlioDesign.space4)),
                                           ),
                                         ),
                                       ),
@@ -960,8 +985,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                               FlutterFlowTheme.of(context)
                                                   .primary,
                                             ),
-                                            borderRadius:
-                                                BorderRadius.circular(100.0),
+                                            borderRadius: BorderRadius.circular(
+                                                ExpatlioDesign.radiusCapsule),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
@@ -1001,7 +1026,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 color: Color(0xFFFFCC31),
                                                 size: 13.0,
                                               ),
-                                            ].divide(SizedBox(width: 3.0)),
+                                            ].divide(SizedBox(
+                                                width: ExpatlioDesign.space4)),
                                           ),
                                         ),
                                       ),
@@ -1027,8 +1053,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                               FlutterFlowTheme.of(context)
                                                   .primary,
                                             ),
-                                            borderRadius:
-                                                BorderRadius.circular(100.0),
+                                            borderRadius: BorderRadius.circular(
+                                                ExpatlioDesign.radiusCapsule),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
@@ -1068,7 +1094,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 color: Color(0xFFFFCC31),
                                                 size: 13.0,
                                               ),
-                                            ].divide(SizedBox(width: 3.0)),
+                                            ].divide(SizedBox(
+                                                width: ExpatlioDesign.space4)),
                                           ),
                                         ),
                                       ),
@@ -1094,8 +1121,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                               FlutterFlowTheme.of(context)
                                                   .primary,
                                             ),
-                                            borderRadius:
-                                                BorderRadius.circular(100.0),
+                                            borderRadius: BorderRadius.circular(
+                                                ExpatlioDesign.radiusCapsule),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
@@ -1135,21 +1162,28 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 color: Color(0xFFFFCC31),
                                                 size: 13.0,
                                               ),
-                                            ].divide(SizedBox(width: 3.0)),
+                                            ].divide(SizedBox(
+                                                width: ExpatlioDesign.space4)),
                                           ),
                                         ),
                                       ),
                                     ]
-                                        .divide(SizedBox(width: 5.0))
-                                        .addToStart(SizedBox(width: 16.0))
-                                        .addToEnd(SizedBox(width: 16.0)),
+                                        .divide(SizedBox(
+                                            width: ExpatlioDesign.space8))
+                                        .addToStart(SizedBox(
+                                            width: ExpatlioDesign.space16))
+                                        .addToEnd(SizedBox(
+                                            width: ExpatlioDesign.space16)),
                                   ),
                                 ),
                               ),
                             ),
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  0.0, 12.0, 0.0, 0.0),
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space12,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0),
                               child: Builder(
                                 builder: (context) {
                                   final rew = myRewNSReviewsRecordList
@@ -1174,12 +1208,15 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                     scrollDirection: Axis.vertical,
                                     itemCount: rew.length,
                                     separatorBuilder: (_, __) =>
-                                        SizedBox(height: 6.0),
+                                        SizedBox(height: ExpatlioDesign.space8),
                                     itemBuilder: (context, rewIndex) {
                                       final rewItem = rew[rewIndex];
                                       return Padding(
                                         padding: EdgeInsetsDirectional.fromSTEB(
-                                            6.0, 0.0, 6.0, 0.0),
+                                            ExpatlioDesign.space8,
+                                            ExpatlioDesign.space0,
+                                            ExpatlioDesign.space8,
+                                            ExpatlioDesign.space0),
                                         child: ReviewCardWidget(
                                           key: Key(
                                               'Keyagz_${rewIndex}_of_${rew.length}'),
@@ -1192,14 +1229,19 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                               ),
                             ),
                           ]
-                              .addToStart(SizedBox(height: 115.0))
-                              .addToEnd(SizedBox(height: 35.0)),
+                              .addToStart(
+                                  SizedBox(height: ExpatlioDesign.space112))
+                              .addToEnd(
+                                  SizedBox(height: ExpatlioDesign.space32)),
                         ),
                       ),
                     if (myRewNSReviewsRecordList.isEmpty)
                       Padding(
                         padding: EdgeInsetsDirectional.fromSTEB(
-                            0.0, 200.0, 0.0, 0.0),
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space136,
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space0),
                         child: EmptyWidget(
                           txt:
                               'В этом разделе будут появляться отзывы учеников о ваших занятиях. Проведите первые звонки, и оценки с комментариями отобразятся здесь.',

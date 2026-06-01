@@ -47,18 +47,18 @@ class StudentPayPlanCard extends StatelessWidget {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsetsDirectional.all(16.0),
+          padding: const EdgeInsetsDirectional.all(ExpatlioDesign.space16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _StudentPayPlanIcon(icon: plan.icon),
-              const SizedBox(width: 12.0),
+              const SizedBox(width: ExpatlioDesign.space12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _StudentPayPlanTitle(plan: plan),
-                    const SizedBox(height: 4.0),
+                    const SizedBox(height: ExpatlioDesign.space4),
                     Text(
                       plan.subtitle,
                       style: ExpatlioDesign.textStyle(
@@ -68,22 +68,22 @@ class StudentPayPlanCard extends StatelessWidget {
                         height: 1.25,
                       ),
                     ),
-                    const SizedBox(height: 8.0),
+                    const SizedBox(height: ExpatlioDesign.space8),
                     _StudentPayPriceLine(
                       price: price,
                       periodLabel: plan.periodLabel,
                       priceAvailable: priceAvailable,
                     ),
-                    const SizedBox(height: 14.0),
+                    const SizedBox(height: ExpatlioDesign.space16),
                     for (final feature in plan.features) ...[
                       _StudentPayFeatureLine(text: feature),
                       if (feature != plan.features.last)
-                        const SizedBox(height: 8.0),
+                        const SizedBox(height: ExpatlioDesign.space8),
                     ],
                   ],
                 ),
               ),
-              const SizedBox(width: 12.0),
+              const SizedBox(width: ExpatlioDesign.space12),
               _StudentPaySelectionIndicator(selected: selected),
             ],
           ),
@@ -139,12 +139,16 @@ class _StudentPayPlanTitle extends StatelessWidget {
           ),
         ),
         if (plan.badge != null) ...[
-          const SizedBox(width: 8.0),
+          const SizedBox(width: ExpatlioDesign.space8),
           Container(
-            padding: const EdgeInsetsDirectional.fromSTEB(8.0, 4.0, 8.0, 4.0),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space8,
+                ExpatlioDesign.space4,
+                ExpatlioDesign.space8,
+                ExpatlioDesign.space4),
             decoration: BoxDecoration(
               color: ExpatlioDesign.primary,
-              borderRadius: BorderRadius.circular(10.0),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
             ),
             child: Text(
               plan.badge!,
@@ -231,7 +235,7 @@ class _StudentPayFeatureLine extends StatelessWidget {
           color: ExpatlioDesign.primary,
           size: 18.0,
         ),
-        const SizedBox(width: 8.0),
+        const SizedBox(width: ExpatlioDesign.space8),
         Expanded(
           child: Text(
             text,

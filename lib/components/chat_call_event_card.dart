@@ -46,26 +46,28 @@ class ChatCallEventCard extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 244.0),
         child: Padding(
-          padding: const EdgeInsetsDirectional.only(bottom: 12.0),
+          padding:
+              const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space12),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: ExpatlioDesign.card,
-              borderRadius: BorderRadius.circular(14.0),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
               border: Border.all(color: ExpatlioDesign.border),
               boxShadow: _shadow,
             ),
             child: Material(
               color: Colors.transparent,
-              borderRadius: BorderRadius.circular(14.0),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
               child: InkWell(
-                borderRadius: BorderRadius.circular(14.0),
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.radiusMedium),
                 onTap: onTap,
                 child: Padding(
                   padding: const EdgeInsetsDirectional.fromSTEB(
-                    16.0,
-                    10.0,
-                    16.0,
-                    10.0,
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space12,
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -85,7 +87,7 @@ class ChatCallEventCard extends StatelessWidget {
                           size: 17.0,
                         ),
                       ),
-                      const SizedBox(width: 10.0),
+                      const SizedBox(width: ExpatlioDesign.space12),
                       Flexible(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -100,12 +102,12 @@ class ChatCallEventCard extends StatelessWidget {
                                   .override(
                                     fontFamily: 'sf pro display',
                                     color: ExpatlioDesign.text,
-                                    fontSize: 14.0,
+                                    fontSize: 15.0,
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 0.0,
                                   ),
                             ),
-                            const SizedBox(height: 2.0),
+                            const SizedBox(height: ExpatlioDesign.space4),
                             Text(
                               details,
                               maxLines: 1,
