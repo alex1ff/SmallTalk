@@ -46,7 +46,7 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -55,11 +55,7 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.card,
-                  borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(ExpatlioDesign.radiusSheet)),
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -69,7 +65,6 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                         ruText: 'Нет активной подписки',
                         enText: 'No active subscription',
                       ),
-                      showConfirm: false,
                     ),
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(
@@ -204,7 +199,7 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                         ),
                       ),
                     ),
-                  ].divide(SizedBox(height: ExpatlioDesign.space4)),
+                  ].divide(SizedBox(height: ExpatlioDesign.space16)),
                 ),
               ),
             ],

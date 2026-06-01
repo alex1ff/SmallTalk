@@ -110,10 +110,11 @@ class ExpatlioDesign {
     return cardDecoration(radius: radius);
   }
 
-  static BoxDecoration sheetDecoration() {
-    return const BoxDecoration(
-      color: card,
-      borderRadius: BorderRadius.vertical(top: Radius.circular(sheetRadius)),
+  static BoxDecoration sheetDecoration({Color color = card}) {
+    return BoxDecoration(
+      color: color,
+      borderRadius:
+          const BorderRadius.vertical(top: Radius.circular(sheetRadius)),
     );
   }
 

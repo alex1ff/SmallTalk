@@ -53,7 +53,7 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -62,9 +62,8 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.background,
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(
+                    color: ExpatlioDesign.background),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -73,7 +72,6 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                       title: FFLocalizations.of(context).getText(
                         '8iw8rarz' /* Удалить сохраненную карту? */,
                       ),
-                      showConfirm: false,
                     ),
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(
@@ -223,7 +221,7 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                         ),
                       ),
                     ),
-                  ].divide(SizedBox(height: ExpatlioDesign.space4)),
+                  ].divide(SizedBox(height: ExpatlioDesign.space16)),
                 ),
               ),
             ],

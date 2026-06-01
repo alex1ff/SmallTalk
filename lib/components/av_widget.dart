@@ -61,7 +61,7 @@ class _AvWidgetState extends State<AvWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -70,9 +70,8 @@ class _AvWidgetState extends State<AvWidget> {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.background,
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(
+                    color: ExpatlioDesign.background),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -81,7 +80,6 @@ class _AvWidgetState extends State<AvWidget> {
                       title: FFLocalizations.of(context).getText(
                         'zlkfpu1u' /* Какой ты сегодня */,
                       ),
-                      onConfirm: _saveAvatar,
                     ),
                     Builder(
                       builder: (context) {
@@ -138,6 +136,13 @@ class _AvWidgetState extends State<AvWidget> {
                           ),
                         );
                       },
+                    ),
+                    BottomSheetPrimaryButton(
+                      text: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Сохранить',
+                        enText: 'Save',
+                      ),
+                      onPressed: _saveAvatar,
                     ),
                     const SizedBox(height: ExpatlioDesign.space32),
                   ].divide(SizedBox(height: ExpatlioDesign.space24)),

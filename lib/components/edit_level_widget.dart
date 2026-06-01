@@ -72,7 +72,7 @@ class _EditLevelWidgetState extends State<EditLevelWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -81,9 +81,7 @@ class _EditLevelWidgetState extends State<EditLevelWidget> {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.card,
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(),
                 child: Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(
                       ExpatlioDesign.space8,
@@ -99,14 +97,13 @@ class _EditLevelWidgetState extends State<EditLevelWidget> {
                         title: FFLocalizations.of(context).getText(
                           'si04kwhp' /* Ваш текущий уровень */,
                         ),
-                        onConfirm: _saveLevel,
                       ),
                       Padding(
                         padding: EdgeInsetsDirectional.fromSTEB(
                             ExpatlioDesign.space0,
                             ExpatlioDesign.space32,
                             ExpatlioDesign.space0,
-                            ExpatlioDesign.space96),
+                            ExpatlioDesign.space0),
                         child: Stack(
                           alignment: AlignmentDirectional(0.0, 1.0),
                           children: [
@@ -992,6 +989,13 @@ Native */
                             ),
                           ],
                         ),
+                      ),
+                      BottomSheetPrimaryButton(
+                        text: FFLocalizations.of(context).getVariableText(
+                          ruText: 'Сохранить',
+                          enText: 'Save',
+                        ),
+                        onPressed: _saveLevel,
                       ),
                     ],
                   ),

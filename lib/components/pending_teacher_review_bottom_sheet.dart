@@ -15,7 +15,7 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
         Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -23,9 +23,8 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.background,
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(
+                    color: ExpatlioDesign.background),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -34,8 +33,8 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
                         ruText: 'Заявка на проверке',
                         enText: 'Request under review',
                       ),
-                      onConfirm: () => Navigator.pop(context),
                     ),
+                    const SizedBox(height: ExpatlioDesign.space16),
                     Padding(
                       padding: const EdgeInsetsDirectional.fromSTEB(
                           ExpatlioDesign.space8,
@@ -115,7 +114,13 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: ExpatlioDesign.space32),
+                    BottomSheetPrimaryButton(
+                      text: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Готово',
+                        enText: 'Done',
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
                   ],
                 ),
               ),

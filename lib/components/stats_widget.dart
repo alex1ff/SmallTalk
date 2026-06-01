@@ -53,15 +53,13 @@ class _StatsWidgetState extends State<StatsWidget> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0,
-          ExpatlioDesign.space56, ExpatlioDesign.space0, ExpatlioDesign.space0),
+          ExpatlioDesign.space0, ExpatlioDesign.space0, ExpatlioDesign.space0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
           Container(
-            decoration: BoxDecoration(
-              color: ExpatlioDesign.card,
-            ),
+            decoration: ExpatlioDesign.sheetDecoration(),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -70,7 +68,6 @@ class _StatsWidgetState extends State<StatsWidget> {
                   title: FFLocalizations.of(context).getText(
                     'h312ck10' /* Статистика */,
                   ),
-                  onConfirm: () => Navigator.pop(context),
                 ),
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(
@@ -354,7 +351,13 @@ class _StatsWidgetState extends State<StatsWidget> {
                     },
                   ),
                 ),
-                const SizedBox(height: ExpatlioDesign.space32),
+                BottomSheetPrimaryButton(
+                  text: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Готово',
+                    enText: 'Done',
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
               ],
             ),
           ),

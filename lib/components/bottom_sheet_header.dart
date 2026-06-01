@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import '/flutter_flow/flutter_flow_theme.dart';
+import '/flutter_flow/flutter_flow_widgets.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 
@@ -8,182 +8,127 @@ class BottomSheetHeader extends StatefulWidget {
   const BottomSheetHeader({
     super.key,
     required this.title,
-    this.onClose,
-    this.onConfirm,
-    this.confirmEnabled = true,
-    this.showConfirm,
   });
 
   final String title;
-  final VoidCallback? onClose;
-  final FutureOr<void> Function()? onConfirm;
-  final bool confirmEnabled;
-  final bool? showConfirm;
 
   @override
   State<BottomSheetHeader> createState() => _BottomSheetHeaderState();
 }
 
 class _BottomSheetHeaderState extends State<BottomSheetHeader> {
-  static const double _buttonSize = 48.0;
-  bool _busy = false;
-
-  Future<void> _handleConfirm() async {
-    if (_busy || !widget.confirmEnabled || widget.onConfirm == null) {
-      return;
-    }
-
-    setState(() => _busy = true);
-    await widget.onConfirm!();
-    if (mounted) {
-      setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _handleClose() async {
-    if (widget.onClose != null) {
-      widget.onClose!();
-      return;
-    }
-
-    final navigator = Navigator.of(context);
-    if (navigator.canPop()) {
-      navigator.pop();
-      return;
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    final rootNavigator = Navigator.maybeOf(context, rootNavigator: true);
-    if (rootNavigator != null && rootNavigator.canPop()) {
-      await rootNavigator.maybePop();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final showConfirm = widget.showConfirm ?? widget.onConfirm != null;
-
-    return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.space8,
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(
           ExpatlioDesign.space24,
-          ExpatlioDesign.space8,
-          ExpatlioDesign.space16),
-      child: Row(
-        children: [
-          _HeaderCircleButton(
-            role: _HeaderCircleButtonRole.close,
-            onTap: () => unawaited(_handleClose()),
-          ),
-          Expanded(
-            child: Text(
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space24,
+          ExpatlioDesign.space0,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const BottomSheetHandle(),
+            const SizedBox(height: ExpatlioDesign.space16),
+            Text(
               widget.title,
               textAlign: TextAlign.center,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: ExpatlioDesign.bottomSheetTitleStyle(context),
             ),
-          ),
-          if (showConfirm)
-            _HeaderCircleButton(
-              role: widget.confirmEnabled
-                  ? _HeaderCircleButtonRole.confirm
-                  : _HeaderCircleButtonRole.confirmDisabled,
-              onTap: widget.confirmEnabled ? _handleConfirm : null,
-              busy: _busy,
-            )
-          else
-            const SizedBox(width: _buttonSize, height: _buttonSize),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-enum _HeaderCircleButtonRole {
-  close,
-  confirm,
-  confirmDisabled,
+class BottomSheetHandle extends StatelessWidget {
+  const BottomSheetHandle({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40.0,
+      height: 4.0,
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.border,
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+      ),
+    );
+  }
 }
 
-class _HeaderCircleButton extends StatelessWidget {
-  const _HeaderCircleButton({
-    required this.role,
-    this.onTap,
-    this.busy = false,
+class BottomSheetPrimaryButton extends StatefulWidget {
+  const BottomSheetPrimaryButton({
+    super.key,
+    required this.text,
+    required this.onPressed,
+    this.enabled = true,
+    this.busyText,
   });
 
-  final _HeaderCircleButtonRole role;
-  final VoidCallback? onTap;
-  final bool busy;
+  final String text;
+  final FutureOr<void> Function()? onPressed;
+  final bool enabled;
+  final String? busyText;
 
-  IconData get _icon {
-    return switch (role) {
-      _HeaderCircleButtonRole.close => Icons.close_rounded,
-      _HeaderCircleButtonRole.confirm ||
-      _HeaderCircleButtonRole.confirmDisabled =>
-        Icons.check_rounded,
-    };
-  }
+  @override
+  State<BottomSheetPrimaryButton> createState() =>
+      _BottomSheetPrimaryButtonState();
+}
 
-  Color _background(BuildContext context) {
-    return switch (role) {
-      _HeaderCircleButtonRole.close => ExpatlioDesign.card,
-      _HeaderCircleButtonRole.confirm => ExpatlioDesign.primary,
-      _HeaderCircleButtonRole.confirmDisabled => const Color(0xFFD1D1D6),
-    };
-  }
+class _BottomSheetPrimaryButtonState extends State<BottomSheetPrimaryButton> {
+  bool _busy = false;
 
-  Color _foreground(BuildContext context) {
-    return switch (role) {
-      _HeaderCircleButtonRole.close => FlutterFlowTheme.of(context).primaryText,
-      _HeaderCircleButtonRole.confirm ||
-      _HeaderCircleButtonRole.confirmDisabled =>
-        Colors.white,
-    };
+  Future<void> _handlePressed() async {
+    if (_busy || !widget.enabled || widget.onPressed == null) {
+      return;
+    }
+
+    setState(() => _busy = true);
+    await widget.onPressed!();
+    if (mounted) {
+      setState(() => _busy = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final foreground = _foreground(context);
+    final enabled = widget.enabled && !_busy && widget.onPressed != null;
 
-    return InkWell(
-      splashColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      customBorder: const CircleBorder(),
-      onTap: busy ? null : onTap,
-      child: Container(
-        width: _BottomSheetHeaderState._buttonSize,
-        height: _BottomSheetHeaderState._buttonSize,
-        decoration: BoxDecoration(
-          color: _background(context),
-          shape: BoxShape.circle,
-          boxShadow: const [
-            BoxShadow(
-              blurRadius: 18.0,
-              color: Color(0x102C2C2C),
-              offset: Offset(0.0, 8.0),
-            ),
-          ],
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space24,
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space24,
+          ExpatlioDesign.space24,
         ),
-        alignment: Alignment.center,
-        child: busy
-            ? SizedBox(
-                width: 18.0,
-                height: 18.0,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.2,
-                  valueColor: AlwaysStoppedAnimation<Color>(foreground),
-                ),
-              )
-            : Icon(
-                _icon,
-                color: foreground,
-                size: 28.0,
-              ),
+        child: FFButtonWidget(
+          onPressed: enabled ? _handlePressed : null,
+          text: _busy ? widget.busyText ?? widget.text : widget.text,
+          options: FFButtonOptions(
+            height: ExpatlioDesign.buttonHeight,
+            width: double.infinity,
+            color: ExpatlioDesign.primary,
+            disabledColor: ExpatlioDesign.inactive.withValues(alpha: 0.30),
+            textStyle: ExpatlioDesign.textStyle(
+              context,
+              color: Colors.white,
+              size: 17.0,
+              weight: FontWeight.w600,
+            ).copyWith(fontFamily: ExpatlioDesign.headingFontFamily),
+            elevation: 0,
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
+          ),
+        ),
       ),
     );
   }

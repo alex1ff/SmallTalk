@@ -80,7 +80,7 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0,
-          ExpatlioDesign.space56, ExpatlioDesign.space0, ExpatlioDesign.space0),
+          ExpatlioDesign.space0, ExpatlioDesign.space0, ExpatlioDesign.space0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.start,
@@ -90,9 +90,7 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
             constraints: BoxConstraints(
               maxHeight: MediaQuery.sizeOf(context).height * 0.9,
             ),
-            decoration: BoxDecoration(
-              color: ExpatlioDesign.card,
-            ),
+            decoration: ExpatlioDesign.sheetDecoration(),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -102,7 +100,6 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
                     widget.title,
                     'Страна',
                   ),
-                  onConfirm: _saveCountry,
                 ),
                 Flexible(
                   child: Padding(
@@ -133,6 +130,13 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
                       ),
                     ),
                   ),
+                ),
+                BottomSheetPrimaryButton(
+                  text: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Сохранить',
+                    enText: 'Save',
+                  ),
+                  onPressed: _saveCountry,
                 ),
               ].divide(SizedBox(height: ExpatlioDesign.space16)),
             ),

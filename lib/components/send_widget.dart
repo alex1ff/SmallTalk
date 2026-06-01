@@ -44,7 +44,7 @@ class _SendWidgetState extends State<SendWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -53,9 +53,8 @@ class _SendWidgetState extends State<SendWidget> {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.background,
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(
+                    color: ExpatlioDesign.background),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -64,7 +63,6 @@ class _SendWidgetState extends State<SendWidget> {
                       title: FFLocalizations.of(context).getText(
                         'olh1jz6w' /* Проверьте почту! */,
                       ),
-                      onConfirm: () => Navigator.pop(context),
                     ),
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(
@@ -87,7 +85,13 @@ class _SendWidgetState extends State<SendWidget> {
                             ),
                       ),
                     ),
-                    const SizedBox(height: ExpatlioDesign.space32),
+                    BottomSheetPrimaryButton(
+                      text: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Готово',
+                        enText: 'Done',
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
                   ].divide(SizedBox(height: ExpatlioDesign.space24)),
                 ),
               ),

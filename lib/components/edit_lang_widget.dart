@@ -77,7 +77,7 @@ class _EditLangWidgetState extends State<EditLangWidget> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0,
-          ExpatlioDesign.space56, ExpatlioDesign.space0, ExpatlioDesign.space0),
+          ExpatlioDesign.space0, ExpatlioDesign.space0, ExpatlioDesign.space0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.start,
@@ -87,9 +87,7 @@ class _EditLangWidgetState extends State<EditLangWidget> {
             constraints: BoxConstraints(
               maxHeight: MediaQuery.sizeOf(context).height * 0.9,
             ),
-            decoration: BoxDecoration(
-              color: ExpatlioDesign.card,
-            ),
+            decoration: ExpatlioDesign.sheetDecoration(),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -99,7 +97,6 @@ class _EditLangWidgetState extends State<EditLangWidget> {
                     widget.title,
                     'Язык',
                   ),
-                  onConfirm: _saveLang,
                 ),
                 Flexible(
                   child: Padding(
@@ -132,6 +129,13 @@ class _EditLangWidgetState extends State<EditLangWidget> {
                       ),
                     ),
                   ),
+                ),
+                BottomSheetPrimaryButton(
+                  text: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Сохранить',
+                    enText: 'Save',
+                  ),
+                  onPressed: _saveLang,
                 ),
               ].divide(SizedBox(height: ExpatlioDesign.space16)),
             ),

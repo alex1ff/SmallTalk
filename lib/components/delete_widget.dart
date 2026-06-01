@@ -1,4 +1,5 @@
 import '/auth/firebase_auth/auth_util.dart';
+import '/components/bottom_sheet_header.dart';
 import '/components/button/button_widget.dart';
 import '/components/wrapper.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
@@ -48,7 +49,7 @@ class _DeleteWidgetState extends State<DeleteWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -57,13 +58,20 @@ class _DeleteWidgetState extends State<DeleteWidget> {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.card,
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    const Padding(
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space24,
+                        ExpatlioDesign.space16,
+                        ExpatlioDesign.space24,
+                        ExpatlioDesign.space0,
+                      ),
+                      child: BottomSheetHandle(),
+                    ),
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(
                           ExpatlioDesign.space8,

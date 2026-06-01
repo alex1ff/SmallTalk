@@ -9,6 +9,7 @@ import 'package:mime_type/mime_type.dart';
 import 'package:video_player/video_player.dart';
 
 import '../auth/firebase_auth/auth_util.dart';
+import '/components/bottom_sheet_header.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'flutter_flow_util.dart';
@@ -82,62 +83,45 @@ Future<List<SelectedFile>?> selectMediaWithSourceBottomSheet({
           );
   final mediaSource = await showModalBottomSheet<MediaSource>(
       context: context,
-      backgroundColor: backgroundColor,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!kIsWeb) ...[
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                    ExpatlioDesign.space0,
-                    ExpatlioDesign.space8,
-                    ExpatlioDesign.space0,
-                    ExpatlioDesign.space0),
-                child: ListTile(
-                  title: Text(
-                    'Choose Source',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.getFont(
-                      pickerFontFamily,
-                      color: textColor.applyAlpha(0.65),
-                      fontWeight: FontWeight.w500,
-                      fontSize: 20,
-                    ),
-                  ),
-                  tileColor: backgroundColor,
-                  dense: false,
+        return Container(
+          decoration: ExpatlioDesign.sheetDecoration(color: backgroundColor),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!kIsWeb) ...[
+                const BottomSheetHeader(title: 'Choose Source'),
+                const Divider(),
+              ],
+              if (allowPhoto && allowVideo) ...[
+                createUploadMediaListTile(
+                  'Gallery (Photo)',
+                  MediaSource.photoGallery,
                 ),
-              ),
-              const Divider(),
+                const Divider(),
+                createUploadMediaListTile(
+                  'Gallery (Video)',
+                  MediaSource.videoGallery,
+                ),
+              ] else if (allowPhoto)
+                createUploadMediaListTile(
+                  'Gallery',
+                  MediaSource.photoGallery,
+                )
+              else
+                createUploadMediaListTile(
+                  'Gallery',
+                  MediaSource.videoGallery,
+                ),
+              if (!kIsWeb) ...[
+                const Divider(),
+                createUploadMediaListTile('Camera', MediaSource.camera),
+                const Divider(),
+              ],
+              const SizedBox(height: ExpatlioDesign.space12),
             ],
-            if (allowPhoto && allowVideo) ...[
-              createUploadMediaListTile(
-                'Gallery (Photo)',
-                MediaSource.photoGallery,
-              ),
-              const Divider(),
-              createUploadMediaListTile(
-                'Gallery (Video)',
-                MediaSource.videoGallery,
-              ),
-            ] else if (allowPhoto)
-              createUploadMediaListTile(
-                'Gallery',
-                MediaSource.photoGallery,
-              )
-            else
-              createUploadMediaListTile(
-                'Gallery',
-                MediaSource.videoGallery,
-              ),
-            if (!kIsWeb) ...[
-              const Divider(),
-              createUploadMediaListTile('Camera', MediaSource.camera),
-              const Divider(),
-            ],
-            const SizedBox(height: ExpatlioDesign.space12),
-          ],
+          ),
         );
       });
   if (mediaSource == null) {

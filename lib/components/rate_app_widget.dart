@@ -80,7 +80,7 @@ class _RateAppWidgetState extends State<RateAppWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -89,9 +89,7 @@ class _RateAppWidgetState extends State<RateAppWidget> {
             children: [
               Expanded(
                 child: Container(
-                  decoration: BoxDecoration(
-                    color: ExpatlioDesign.card,
-                  ),
+                  decoration: ExpatlioDesign.sheetDecoration(),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -109,8 +107,6 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                                 ),
                           'Как общее впечатление?',
                         ),
-                        onConfirm: _submitReview,
-                        showConfirm: false,
                       ),
                       Expanded(
                         child: Padding(

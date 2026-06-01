@@ -16,6 +16,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
+import '/components/bottom_sheet_header.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
@@ -112,31 +113,37 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
       padding: MediaQuery.viewInsetsOf(context),
       child: Container(
         decoration: ExpatlioDesign.sheetDecoration(),
-        padding: const EdgeInsets.fromLTRB(
-            ExpatlioDesign.space24,
-            ExpatlioDesign.space16,
-            ExpatlioDesign.space24,
-            ExpatlioDesign.space24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: theme.alternate,
-                  borderRadius:
-                      BorderRadius.circular(ExpatlioDesign.radiusCapsule),
-                ),
-              ),
+            BottomSheetHeader(
+              title: success != null
+                  ? FFLocalizations.of(context).getVariableText(
+                      ruText: 'Промокод активирован',
+                      enText: 'Promo code redeemed',
+                    )
+                  : FFLocalizations.of(context).getVariableText(
+                      ruText: 'Введите промокод',
+                      enText: 'Enter a promo code',
+                    ),
             ),
             const SizedBox(height: ExpatlioDesign.space16),
-            if (success != null)
-              ..._buildSuccess(theme, success)
-            else
-              ..._buildForm(theme),
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space24,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space24,
+                ExpatlioDesign.space24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: success != null
+                    ? _buildSuccess(theme, success)
+                    : _buildForm(theme),
+              ),
+            ),
           ],
         ),
       ),
@@ -144,15 +151,6 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
   }
 
   List<Widget> _buildForm(FlutterFlowTheme theme) => [
-        Text(
-          FFLocalizations.of(context).getVariableText(
-            ruText: 'Введите промокод',
-            enText: 'Enter a promo code',
-          ),
-          textAlign: TextAlign.center,
-          style: ExpatlioDesign.bottomSheetTitleStyle(context),
-        ),
-        const SizedBox(height: ExpatlioDesign.space8),
         Text(
           FFLocalizations.of(context).getVariableText(
             ruText: 'Промокод добавит подарочные минуты на ваш счёт',
@@ -237,15 +235,6 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
           color: theme.primary,
         ),
         const SizedBox(height: ExpatlioDesign.space12),
-        Text(
-          FFLocalizations.of(context).getVariableText(
-            ruText: 'Промокод активирован',
-            enText: 'Promo code redeemed',
-          ),
-          textAlign: TextAlign.center,
-          style: ExpatlioDesign.bottomSheetTitleStyle(context),
-        ),
-        const SizedBox(height: ExpatlioDesign.space8),
         Text(
           _buildSuccessMessage(info),
           textAlign: TextAlign.center,

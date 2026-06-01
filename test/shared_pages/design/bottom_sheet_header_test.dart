@@ -17,39 +17,67 @@ void main() {
     );
   }
 
-  testWidgets('bottom sheet header action buttons are 48px', (tester) async {
+  testWidgets('bottom sheet header uses handle and has no icon actions',
+      (tester) async {
     await tester.pumpWidget(
       buildHarness(
-        BottomSheetHeader(
-          title: 'Title',
-          onConfirm: () {},
+        const BottomSheetHeader(title: 'Title'),
+      ),
+    );
+
+    expect(find.text('Title'), findsOneWidget);
+    expect(find.byType(BottomSheetHandle), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
+    expect(find.byIcon(Icons.check_rounded), findsNothing);
+  });
+
+  testWidgets('bottom sheet header centers handle and title across full width',
+      (tester) async {
+    await tester.pumpWidget(
+      buildHarness(
+        const SizedBox(
+          width: 320,
+          child: BottomSheetHeader(title: 'Centered title'),
         ),
       ),
     );
 
-    final closeButton = find.ancestor(
-      of: find.byIcon(Icons.close_rounded),
-      matching: find.byType(InkWell),
+    final sheetCenterX = tester.getCenter(find.byType(BottomSheetHeader)).dx;
+
+    expect(tester.getSize(find.byType(BottomSheetHeader)).width, 320);
+    expect(
+      tester.getCenter(find.byType(BottomSheetHandle)).dx,
+      moreOrLessEquals(sheetCenterX),
     );
-    final confirmButton = find.ancestor(
-      of: find.byIcon(Icons.check_rounded),
-      matching: find.byType(InkWell),
+    expect(
+      tester.getCenter(find.text('Centered title')).dx,
+      moreOrLessEquals(sheetCenterX),
+    );
+  });
+
+  testWidgets('bottom sheet primary button spans available sheet width',
+      (tester) async {
+    await tester.pumpWidget(
+      buildHarness(
+        const SizedBox(
+          width: 320,
+          child: BottomSheetPrimaryButton(text: 'Done', onPressed: null),
+        ),
+      ),
     );
 
-    expect(closeButton, findsOneWidget);
-    expect(confirmButton, findsOneWidget);
-    expect(tester.getSize(closeButton), const Size(48.0, 48.0));
-    expect(tester.getSize(confirmButton), const Size(48.0, 48.0));
+    expect(tester.getSize(find.byType(BottomSheetPrimaryButton)).width, 320);
+    expect(
+      tester.getSize(find.byType(FFButtonWidget)).width,
+      320 - ExpatlioDesign.space24 * 2,
+    );
   });
 
   testWidgets('promo sheet title matches the standard bottom sheet title',
       (tester) async {
     await tester.pumpWidget(
       buildHarness(
-        const BottomSheetHeader(
-          title: 'Standard title',
-          showConfirm: false,
-        ),
+        const BottomSheetHeader(title: 'Standard title'),
       ),
     );
 
@@ -78,7 +106,7 @@ void main() {
     expect(button.options.textStyle?.color, Colors.white);
   });
 
-  testWidgets('bottom sheet header close button dismisses modal sheet',
+  testWidgets('bottom sheet primary button dismisses modal sheet',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -92,9 +120,15 @@ void main() {
                   isScrollControlled: true,
                   backgroundColor: Colors.transparent,
                   context: context,
-                  builder: (context) => BottomSheetHeader(
-                    title: 'Title',
-                    onConfirm: () {},
+                  builder: (context) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const BottomSheetHeader(title: 'Title'),
+                      BottomSheetPrimaryButton(
+                        text: 'Done',
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
                   ),
                 );
               },
@@ -110,7 +144,7 @@ void main() {
 
     expect(find.byType(BottomSheetHeader), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
 
     expect(find.byType(BottomSheetHeader), findsNothing);
@@ -129,11 +163,12 @@ void main() {
     expect(bottomSheetTheme.clipBehavior, Clip.antiAlias);
   });
 
-  test('header circle button does not receive visual color overrides', () {
+  test('bottom sheet header does not use legacy circle icon actions', () {
     final source =
         File('lib/components/bottom_sheet_header.dart').readAsStringSync();
 
-    expect(source, isNot(contains('fillColor')));
-    expect(source, isNot(contains('iconColor')));
+    expect(source, isNot(contains('Icons.close_rounded')));
+    expect(source, isNot(contains('Icons.check_rounded')));
+    expect(source, isNot(contains('CircleBorder')));
   });
 }

@@ -86,7 +86,7 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -94,15 +94,13 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.background,
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(
+                    color: ExpatlioDesign.background),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     BottomSheetHeader(
                       title: 'Юх-ху!',
-                      onConfirm: () => Navigator.pop(context),
                     ),
                     Stack(
                       alignment: AlignmentDirectional(1.15, -1.2),
@@ -291,7 +289,13 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: ExpatlioDesign.space32),
+                    BottomSheetPrimaryButton(
+                      text: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Готово',
+                        enText: 'Done',
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
                   ].divide(SizedBox(height: ExpatlioDesign.space24)),
                 ),
               ),

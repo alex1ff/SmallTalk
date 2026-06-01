@@ -98,9 +98,7 @@ class _EditNameWidgetState extends State<EditNameWidget> {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.9,
           ),
-          decoration: BoxDecoration(
-            color: ExpatlioDesign.card,
-          ),
+          decoration: ExpatlioDesign.sheetDecoration(),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -109,7 +107,6 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                 title: FFLocalizations.of(context).getText(
                   'rivukcpq' /* Имя */,
                 ),
-                onConfirm: _saveName,
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
@@ -173,7 +170,13 @@ class _EditNameWidgetState extends State<EditNameWidget> {
                   ),
                 ),
               ),
-              const SizedBox(height: ExpatlioDesign.space32),
+              BottomSheetPrimaryButton(
+                text: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Сохранить',
+                  enText: 'Save',
+                ),
+                onPressed: _saveName,
+              ),
             ].divide(SizedBox(height: ExpatlioDesign.space16)),
           ),
         ),

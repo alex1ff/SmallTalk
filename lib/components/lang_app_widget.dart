@@ -62,7 +62,7 @@ class _LangAppWidgetState extends State<LangAppWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -72,9 +72,7 @@ class _LangAppWidgetState extends State<LangAppWidget> {
               Flexible(
                 child: Container(
                   width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: ExpatlioDesign.card,
-                  ),
+                  decoration: ExpatlioDesign.sheetDecoration(),
                   child: Padding(
                     padding: EdgeInsetsDirectional.fromSTEB(
                         ExpatlioDesign.space8,
@@ -89,7 +87,6 @@ class _LangAppWidgetState extends State<LangAppWidget> {
                           title: FFLocalizations.of(context).getText(
                             '2wr6p6ar' /* Язык приложения */,
                           ),
-                          onConfirm: _saveLanguage,
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
@@ -127,6 +124,13 @@ class _LangAppWidgetState extends State<LangAppWidget> {
                               );
                             },
                           ),
+                        ),
+                        BottomSheetPrimaryButton(
+                          text: FFLocalizations.of(context).getVariableText(
+                            ruText: 'Сохранить',
+                            enText: 'Save',
+                          ),
+                          onPressed: _saveLanguage,
                         ),
                       ],
                     ),

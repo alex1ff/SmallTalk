@@ -81,7 +81,7 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0,
-          ExpatlioDesign.space56, ExpatlioDesign.space0, ExpatlioDesign.space0),
+          ExpatlioDesign.space0, ExpatlioDesign.space0, ExpatlioDesign.space0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.start,
@@ -91,9 +91,7 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
             constraints: BoxConstraints(
               maxHeight: MediaQuery.sizeOf(context).height * 0.9,
             ),
-            decoration: BoxDecoration(
-              color: ExpatlioDesign.card,
-            ),
+            decoration: ExpatlioDesign.sheetDecoration(),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -102,7 +100,6 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                   title: FFLocalizations.of(context).getText(
                     '2sp7ybe9' /* Цели изучения языка */,
                   ),
-                  onConfirm: _saveTarget,
                 ),
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(
@@ -263,7 +260,13 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                     ],
                   ),
                 ),
-                const SizedBox(height: ExpatlioDesign.space32),
+                BottomSheetPrimaryButton(
+                  text: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Сохранить',
+                    enText: 'Save',
+                  ),
+                  onPressed: _saveTarget,
+                ),
               ].divide(SizedBox(height: ExpatlioDesign.space16)),
             ),
           ),

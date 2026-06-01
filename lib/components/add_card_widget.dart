@@ -69,9 +69,8 @@ class _AddCardWidgetState extends State<AddCardWidget> {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.9,
           ),
-          decoration: BoxDecoration(
-            color: ExpatlioDesign.background,
-          ),
+          decoration:
+              ExpatlioDesign.sheetDecoration(color: ExpatlioDesign.background),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -80,7 +79,6 @@ class _AddCardWidgetState extends State<AddCardWidget> {
                 title: FFLocalizations.of(context).getText(
                   '6wfkgk3t' /* Добавить способ вывода */,
                 ),
-                onConfirm: _saveCard,
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
@@ -140,7 +138,13 @@ class _AddCardWidgetState extends State<AddCardWidget> {
                   ),
                 ),
               ),
-              const SizedBox(height: ExpatlioDesign.space32),
+              BottomSheetPrimaryButton(
+                text: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Сохранить',
+                  enText: 'Save',
+                ),
+                onPressed: _saveCard,
+              ),
             ].divide(SizedBox(height: ExpatlioDesign.space16)),
           ),
         ),

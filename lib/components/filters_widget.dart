@@ -216,7 +216,7 @@ class _FiltersWidgetState extends State<FiltersWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -226,9 +226,8 @@ class _FiltersWidgetState extends State<FiltersWidget> {
               Flexible(
                 child: Container(
                   width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: ExpatlioDesign.background,
-                  ),
+                  decoration: ExpatlioDesign.sheetDecoration(
+                      color: ExpatlioDesign.background),
                   child: Padding(
                     padding: EdgeInsetsDirectional.fromSTEB(
                         ExpatlioDesign.space8,
@@ -243,7 +242,6 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                           title: FFLocalizations.of(context).getText(
                             '507c1jln' /* Фильтры */,
                           ),
-                          onConfirm: () => Navigator.pop(context),
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
@@ -420,6 +418,13 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                               ExpatlioDesign.space12,
                               ExpatlioDesign.space0),
                           child: _buildPreferredPartnerLevelSelector(context),
+                        ),
+                        BottomSheetPrimaryButton(
+                          text: FFLocalizations.of(context).getVariableText(
+                            ruText: 'Готово',
+                            enText: 'Done',
+                          ),
+                          onPressed: () => Navigator.pop(context),
                         ),
                       ],
                     ),

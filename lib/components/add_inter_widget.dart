@@ -252,9 +252,8 @@ class _AddInterWidgetState extends State<AddInterWidget> {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.9,
           ),
-          decoration: BoxDecoration(
-            color: ExpatlioDesign.background,
-          ),
+          decoration:
+              ExpatlioDesign.sheetDecoration(color: ExpatlioDesign.background),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -263,13 +262,11 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                 title: FFLocalizations.of(context).getText(
                   'doo4eaqe' /* Добавить интервал */,
                 ),
-                onClose: () => Navigator.pop(context, false),
-                onConfirm: _saveInterval,
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
                     ExpatlioDesign.space8,
-                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space16,
                     ExpatlioDesign.space8,
                     ExpatlioDesign.space0),
                 child: Container(
@@ -439,7 +436,13 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                   ),
                 ),
               ),
-              const SizedBox(height: ExpatlioDesign.space32),
+              BottomSheetPrimaryButton(
+                text: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Добавить',
+                  enText: 'Add',
+                ),
+                onPressed: _saveInterval,
+              ),
             ],
           ),
         ),

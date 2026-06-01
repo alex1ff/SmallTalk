@@ -81,9 +81,7 @@ class _EditAboutWidgetState extends State<EditAboutWidget> {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.9,
           ),
-          decoration: BoxDecoration(
-            color: ExpatlioDesign.card,
-          ),
+          decoration: ExpatlioDesign.sheetDecoration(),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -92,7 +90,6 @@ class _EditAboutWidgetState extends State<EditAboutWidget> {
                 title: FFLocalizations.of(context).getText(
                   'v997ihxn' /* Расскажите о себе */,
                 ),
-                onConfirm: _saveAbout,
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
@@ -154,7 +151,13 @@ class _EditAboutWidgetState extends State<EditAboutWidget> {
                   ),
                 ),
               ),
-              const SizedBox(height: ExpatlioDesign.space32),
+              BottomSheetPrimaryButton(
+                text: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Сохранить',
+                  enText: 'Save',
+                ),
+                onPressed: _saveAbout,
+              ),
             ].divide(SizedBox(height: ExpatlioDesign.space16)),
           ),
         ),

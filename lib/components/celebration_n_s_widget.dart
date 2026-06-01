@@ -45,7 +45,7 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -54,9 +54,8 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.background,
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(
+                    color: ExpatlioDesign.background),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -65,7 +64,6 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                       title: FFLocalizations.of(context).getText(
                         'r89oxs81' /* Юх-ху! */,
                       ),
-                      onConfirm: () => Navigator.pop(context),
                     ),
                     Stack(
                       alignment: AlignmentDirectional(1.15, -1.2),
@@ -403,7 +401,13 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: ExpatlioDesign.space32),
+                    BottomSheetPrimaryButton(
+                      text: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Готово',
+                        enText: 'Done',
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
                   ].divide(SizedBox(height: ExpatlioDesign.space24)),
                 ),
               ),

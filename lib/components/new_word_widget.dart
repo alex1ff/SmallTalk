@@ -412,11 +412,13 @@ class _NewWordWidgetState extends State<NewWordWidget> {
         curve: Curves.elasticOut,
         width: double.infinity,
         height: _model.size,
-        decoration: BoxDecoration(),
+        decoration: ExpatlioDesign.sheetDecoration(
+          color: FlutterFlowTheme.of(context).primaryBackground,
+        ),
         child: Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space40,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Row(
@@ -434,8 +436,8 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                             widget.word,
                             'Слово',
                           ),
-                          showConfirm: false,
                         ),
+                        const SizedBox(height: ExpatlioDesign.space16),
                         Flexible(
                           child: ClipRRect(
                             borderRadius: BorderRadius.only(

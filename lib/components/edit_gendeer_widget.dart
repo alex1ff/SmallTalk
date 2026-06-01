@@ -76,9 +76,7 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.9,
           ),
-          decoration: BoxDecoration(
-            color: ExpatlioDesign.card,
-          ),
+          decoration: ExpatlioDesign.sheetDecoration(),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -87,7 +85,6 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
                 title: FFLocalizations.of(context).getText(
                   '06nighy4' /* Как вы себя идентифицируете? */,
                 ),
-                onConfirm: _saveGender,
               ),
               Flexible(
                 child: Padding(
@@ -162,7 +159,13 @@ class _EditGendeerWidgetState extends State<EditGendeerWidget> {
                   ),
                 ),
               ),
-              const SizedBox(height: ExpatlioDesign.space32),
+              BottomSheetPrimaryButton(
+                text: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Сохранить',
+                  enText: 'Save',
+                ),
+                onPressed: _saveGender,
+              ),
             ].divide(SizedBox(height: ExpatlioDesign.space16)),
           ),
         ),

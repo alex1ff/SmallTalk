@@ -73,7 +73,7 @@ class _AcquaintanceNSSTARTWidgetState extends State<AcquaintanceNSSTARTWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -82,9 +82,8 @@ class _AcquaintanceNSSTARTWidgetState extends State<AcquaintanceNSSTARTWidget> {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.background,
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(
+                    color: ExpatlioDesign.background),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -93,7 +92,6 @@ class _AcquaintanceNSSTARTWidgetState extends State<AcquaintanceNSSTARTWidget> {
                       title: FFLocalizations.of(context).getText(
                         'zngmaqpc' /* Станьте носителем языка */,
                       ),
-                      showConfirm: false,
                     ),
                     Stack(
                       alignment: AlignmentDirectional(1.15, -1.2),

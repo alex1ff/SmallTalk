@@ -50,7 +50,7 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
         Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space0,
-              ExpatlioDesign.space56,
+              ExpatlioDesign.space0,
               ExpatlioDesign.space0,
               ExpatlioDesign.space0),
           child: Column(
@@ -59,9 +59,8 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
             children: [
               Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: ExpatlioDesign.background,
-                ),
+                decoration: ExpatlioDesign.sheetDecoration(
+                    color: ExpatlioDesign.background),
                 child: Builder(
                   builder: (context) {
                     if (widget.done ?? false) {
@@ -73,7 +72,6 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                             title: FFLocalizations.of(context).getText(
                               'pi17owq7' /* Юх-ху! */,
                             ),
-                            onConfirm: () => Navigator.pop(context),
                           ),
                           Stack(
                             alignment: AlignmentDirectional(1.15, -1.2),
@@ -405,7 +403,13 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: ExpatlioDesign.space32),
+                          BottomSheetPrimaryButton(
+                            text: FFLocalizations.of(context).getVariableText(
+                              ruText: 'Готово',
+                              enText: 'Done',
+                            ),
+                            onPressed: () => Navigator.pop(context),
+                          ),
                         ].divide(SizedBox(height: ExpatlioDesign.space24)),
                       );
                     } else {
@@ -417,7 +421,6 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                             title: FFLocalizations.of(context).getText(
                               'mc34azc3' /* Юх-ху! */,
                             ),
-                            onConfirm: () => Navigator.pop(context),
                           ),
                           Stack(
                             alignment: AlignmentDirectional(1.15, -1.2),
@@ -738,7 +741,13 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: ExpatlioDesign.space32),
+                          BottomSheetPrimaryButton(
+                            text: FFLocalizations.of(context).getVariableText(
+                              ruText: 'Готово',
+                              enText: 'Done',
+                            ),
+                            onPressed: () => Navigator.pop(context),
+                          ),
                         ].divide(SizedBox(height: ExpatlioDesign.space24)),
                       );
                     }

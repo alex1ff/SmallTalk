@@ -53,9 +53,8 @@ class _EditCardWidgetState extends State<EditCardWidget> {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.9,
           ),
-          decoration: BoxDecoration(
-            color: ExpatlioDesign.background,
-          ),
+          decoration:
+              ExpatlioDesign.sheetDecoration(color: ExpatlioDesign.background),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -64,7 +63,6 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                 title: FFLocalizations.of(context).getText(
                   'o063iu8b' /* Изменение способов вывода */,
                 ),
-                onConfirm: () => Navigator.pop(context),
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
@@ -175,7 +173,13 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                   },
                 ),
               ),
-              const SizedBox(height: ExpatlioDesign.space32),
+              BottomSheetPrimaryButton(
+                text: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Готово',
+                  enText: 'Done',
+                ),
+                onPressed: () => Navigator.pop(context),
+              ),
             ].divide(SizedBox(height: ExpatlioDesign.space16)),
           ),
         ),
