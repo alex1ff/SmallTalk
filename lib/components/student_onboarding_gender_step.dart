@@ -24,9 +24,9 @@ class StudentOnboardingGenderStep extends StatelessWidget {
       child: SingleChildScrollView(
         key: const ValueKey<String>('student_onboarding_step_gender'),
         padding: const EdgeInsetsDirectional.fromSTEB(
-            ExpatlioDesign.space12,
+            ExpatlioDesign.pagePadding,
             ExpatlioDesign.space32,
-            ExpatlioDesign.space12,
+            ExpatlioDesign.pagePadding,
             ExpatlioDesign.space112),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -278,7 +278,7 @@ class _StudentGenderSelector extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: ExpatlioDesign.background,
                     borderRadius:
-                        BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+                        BorderRadius.circular(ExpatlioDesign.controlRadius),
                   ),
                 ),
               ),
@@ -338,7 +338,7 @@ class _StudentGenderSelectorItem extends StatelessWidget {
       focusColor: Colors.transparent,
       hoverColor: Colors.transparent,
       highlightColor: Colors.transparent,
-      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
       onTap: onTap,
       child: Container(
         width: double.infinity,

@@ -17,7 +17,7 @@ class ProfileAvatarPicker extends StatelessWidget {
     return Center(
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

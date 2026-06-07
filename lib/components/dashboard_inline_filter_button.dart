@@ -31,7 +31,7 @@ class DashboardInlineFilterButton extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
         onTap: () async => onTap(context),
         child: Container(
           height: 45.0,
@@ -43,7 +43,7 @@ class DashboardInlineFilterButton extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: ExpatlioDesign.card,
-            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
             border: Border.all(
               color: active
                   ? ExpatlioDesign.primary.withValues(alpha: 0.22)
@@ -124,7 +124,7 @@ class DashboardInlineFilterButton extends StatelessWidget {
                 child: clearVisible
                     ? InkWell(
                         borderRadius:
-                            BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+                            BorderRadius.circular(ExpatlioDesign.radiusSmall),
                         onTap: onClear,
                         child: Icon(
                           Icons.close_rounded,

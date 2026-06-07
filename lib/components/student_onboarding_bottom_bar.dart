@@ -259,13 +259,10 @@ class _StudentOnboardingActionButton extends StatelessWidget {
                       text,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'sf pro display',
-                            color: palette.content,
-                            fontSize: 15.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.w700,
-                          ),
+                      style: ExpatlioDesign.buttonTextStyle(
+                        context,
+                        color: palette.content,
+                      ),
                     ),
             ),
           ),

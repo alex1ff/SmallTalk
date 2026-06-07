@@ -50,12 +50,15 @@ class Wrapper extends StatelessWidget {
   const Wrapper.keyboardAware({
     super.key,
     required this.child,
-    this.padding = const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space8,
-        ExpatlioDesign.space0, ExpatlioDesign.space8, ExpatlioDesign.space32),
-    EdgeInsetsGeometry keyboardPadding = const EdgeInsetsDirectional.fromSTEB(
-        ExpatlioDesign.space8,
+    this.padding = const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.pagePadding,
         ExpatlioDesign.space0,
-        ExpatlioDesign.space8,
+        ExpatlioDesign.pagePadding,
+        ExpatlioDesign.space32),
+    EdgeInsetsGeometry keyboardPadding = const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.pagePadding,
+        ExpatlioDesign.space0,
+        ExpatlioDesign.pagePadding,
         ExpatlioDesign.space8),
     this.margin = EdgeInsets.zero,
     this.alignment,

@@ -98,9 +98,9 @@ class _AcquaintanceNSSTARTWidgetState extends State<AcquaintanceNSSTARTWidget> {
                       children: [
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space8,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space20,
-                              ExpatlioDesign.space8,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space0),
                           child: Container(
                             width: double.infinity,

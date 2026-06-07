@@ -101,9 +101,9 @@ class _EditLangWidgetState extends State<EditLangWidget> {
                 Flexible(
                   child: Padding(
                     padding: EdgeInsetsDirectional.fromSTEB(
-                        ExpatlioDesign.space8,
+                        ExpatlioDesign.pagePadding,
                         ExpatlioDesign.space0,
-                        ExpatlioDesign.space8,
+                        ExpatlioDesign.pagePadding,
                         ExpatlioDesign.space0),
                     child: SingleChildScrollView(
                       primary: false,

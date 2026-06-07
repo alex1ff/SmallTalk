@@ -23,9 +23,9 @@ class ProfileSaveBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         minimum: const EdgeInsets.fromLTRB(
-            ExpatlioDesign.space24,
+            ExpatlioDesign.pagePadding,
             ExpatlioDesign.space12,
-            ExpatlioDesign.space24,
+            ExpatlioDesign.pagePadding,
             ExpatlioDesign.space12),
         child: FFButtonWidget(
           onPressed: onSave,
@@ -39,12 +39,7 @@ class ProfileSaveBar extends StatelessWidget {
             color: ExpatlioDesign.primary,
             elevation: 0.0,
             borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
-            textStyle: ExpatlioDesign.textStyle(
-              context,
-              color: Colors.white,
-              size: 17.0,
-              weight: FontWeight.w700,
-            ),
+            textStyle: ExpatlioDesign.buttonTextStyle(context),
           ),
           showLoadingIndicator: false,
         ),

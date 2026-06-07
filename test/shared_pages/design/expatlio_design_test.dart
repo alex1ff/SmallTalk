@@ -61,6 +61,84 @@ void main() {
     expect(textTheme.labelLarge?.fontFamily, ExpatlioDesign.fontFamily);
   });
 
+  test('app palette keeps brand purple and uses Apple system colors', () {
+    final theme = ExpatlioDesign.lightTheme();
+    final flutterFlowTheme = LightModeTheme();
+
+    expect(ExpatlioDesign.primary, const Color(0xFF7430E8));
+    expect(ExpatlioDesign.primaryEnd, ExpatlioDesign.primary);
+    expect(ExpatlioDesign.background, ExpatlioDesign.systemGroupedBackground);
+    expect(
+        ExpatlioDesign.card, ExpatlioDesign.secondarySystemGroupedBackground);
+    expect(ExpatlioDesign.text, ExpatlioDesign.label);
+    expect(ExpatlioDesign.muted, ExpatlioDesign.secondaryLabel);
+    expect(ExpatlioDesign.inactive, ExpatlioDesign.systemGray);
+    expect(ExpatlioDesign.disabled, ExpatlioDesign.tertiaryLabel);
+    expect(ExpatlioDesign.border, ExpatlioDesign.opaqueSeparator);
+    expect(ExpatlioDesign.separator, const Color(0x493C3C43));
+    expect(ExpatlioDesign.mutedSurface, ExpatlioDesign.secondarySystemFill);
+    expect(ExpatlioDesign.systemBackground, const Color(0xFFFFFFFF));
+    expect(ExpatlioDesign.systemGroupedBackground, const Color(0xFFF2F2F7));
+    expect(ExpatlioDesign.secondarySystemGroupedBackground,
+        const Color(0xFFFFFFFF));
+    expect(ExpatlioDesign.label, const Color(0xFF000000));
+    expect(ExpatlioDesign.secondaryLabel, const Color(0x993C3C43));
+    expect(ExpatlioDesign.tertiaryLabel, const Color(0x4C3C3C43));
+    expect(ExpatlioDesign.quaternaryLabel, const Color(0x2D3C3C43));
+    expect(ExpatlioDesign.placeholderText, const Color(0x4C3C3C43));
+    expect(ExpatlioDesign.opaqueSeparator, const Color(0xFFC6C6C8));
+    expect(ExpatlioDesign.systemFill, const Color(0x33787880));
+    expect(ExpatlioDesign.secondarySystemFill, const Color(0x28787880));
+    expect(ExpatlioDesign.tertiarySystemFill, const Color(0x1E767680));
+    expect(ExpatlioDesign.quaternarySystemFill, const Color(0x14747480));
+    expect(ExpatlioDesign.systemGray, const Color(0xFF8E8E93));
+    expect(ExpatlioDesign.systemGray2, const Color(0xFFAEAEB2));
+    expect(ExpatlioDesign.systemGray3, const Color(0xFFC7C7CC));
+    expect(ExpatlioDesign.systemGray4, const Color(0xFFD1D1D6));
+    expect(ExpatlioDesign.systemGray5, const Color(0xFFE5E5EA));
+    expect(ExpatlioDesign.systemGray6, const Color(0xFFF2F2F7));
+    expect(ExpatlioDesign.info, const Color(0xFF0088FF));
+    expect(ExpatlioDesign.success, const Color(0xFF34C759));
+    expect(ExpatlioDesign.warning, const Color(0xFFFFCC00));
+    expect(ExpatlioDesign.orange, const Color(0xFFFF8D28));
+    expect(ExpatlioDesign.danger, const Color(0xFFFF383C));
+
+    expect(theme.scaffoldBackgroundColor, ExpatlioDesign.background);
+    expect(theme.colorScheme.primary, ExpatlioDesign.primary);
+    expect(theme.colorScheme.secondary, ExpatlioDesign.info);
+    expect(theme.colorScheme.error, ExpatlioDesign.danger);
+    expect(flutterFlowTheme.secondary, ExpatlioDesign.info);
+  });
+
+  testWidgets('Cool heading styles use one visual weight', (tester) async {
+    final textTheme = ExpatlioDesign.textTheme();
+    late TextStyle sectionTitleStyle;
+    late TextStyle bottomSheetTitleStyle;
+    late TextStyle flutterFlowTitleStyle;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ExpatlioDesign.lightTheme(),
+        home: Builder(
+          builder: (context) {
+            sectionTitleStyle = ExpatlioDesign.sectionTitleStyle(context);
+            bottomSheetTitleStyle =
+                ExpatlioDesign.bottomSheetTitleStyle(context);
+            flutterFlowTitleStyle = FlutterFlowTheme.of(context).titleLarge;
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+
+    expect(textTheme.displayLarge?.fontWeight, FontWeight.normal);
+    expect(textTheme.headlineLarge?.fontWeight, FontWeight.normal);
+    expect(textTheme.titleLarge?.fontWeight, FontWeight.normal);
+    expect(sectionTitleStyle.fontWeight, FontWeight.normal);
+    expect(bottomSheetTitleStyle.fontWeight, FontWeight.normal);
+    expect(flutterFlowTitleStyle.fontWeight, FontWeight.normal);
+  });
+
   test('basic page header uses shared title bar height', () {
     expect(BasicPageHeader.height, ExpatlioDesign.pageHeaderHeight);
   });
@@ -113,6 +191,53 @@ void main() {
       ExpatlioDesign.cardPadding,
       const EdgeInsets.all(ExpatlioDesign.space16),
     );
+  });
+
+  test('screen and bottom sheet outer gutters use 16 point page padding', () {
+    const badEdgeTokens =
+        r'(?:space4|space8|space12|itemSpacing|compactSpacing)';
+    final badRootScrollOrWrapperGutterPattern = RegExp(
+      r'(?:SingleChildScrollView|ListView(?:\.builder)?|CustomScrollView|Wrapper)'
+      r'\([\s\S]{0,300}?padding:\s*(?:const\s*)?'
+      r'EdgeInsetsDirectional\.fromSTEB\(\s*ExpatlioDesign\.'
+      '$badEdgeTokens\\b',
+    );
+    final badScrollParentGutterPattern = RegExp(
+      r'Padding\(\s*padding:\s*(?:const\s*)?'
+      r'EdgeInsetsDirectional\.fromSTEB\(\s*ExpatlioDesign\.'
+      '$badEdgeTokens\\b'
+      r'[\s\S]{0,400}?child:\s*SingleChildScrollView',
+    );
+    final badSheetBodyGutterPattern = RegExp(
+      r'BottomSheetHeader\([\s\S]{0,300}?Padding\(\s*padding:\s*'
+      r'(?:const\s*)?EdgeInsetsDirectional\.fromSTEB\(\s*ExpatlioDesign\.'
+      '$badEdgeTokens\\b',
+    );
+    final violations = <String>[];
+
+    for (final directory in const [
+      'lib/authorization',
+      'lib/shared_pages',
+      'lib/students_pages',
+      'lib/teachers_pages',
+      'lib/components',
+    ]) {
+      for (final entity in Directory(directory).listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) {
+          continue;
+        }
+
+        final source = entity.readAsStringSync();
+        if (badRootScrollOrWrapperGutterPattern.hasMatch(source) ||
+            badScrollParentGutterPattern.hasMatch(source) ||
+            badSheetBodyGutterPattern.hasMatch(source)) {
+          violations.add(entity.path);
+        }
+      }
+    }
+
+    expect(violations, isEmpty);
+    expect(ExpatlioDesign.pagePadding, 16.0);
   });
 
   test('design radius tokens define one app shape scale', () {

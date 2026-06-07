@@ -34,9 +34,9 @@ class StudentOnboardingLevelStep extends StatelessWidget {
     return SingleChildScrollView(
       key: const ValueKey<String>('student_onboarding_step_level'),
       padding: EdgeInsetsDirectional.fromSTEB(
-        ExpatlioDesign.space8,
+        ExpatlioDesign.pagePadding,
         showTitle ? ExpatlioDesign.space32 : ExpatlioDesign.space0,
-        ExpatlioDesign.space8,
+        ExpatlioDesign.pagePadding,
         ExpatlioDesign.space112,
       ),
       child: Column(
@@ -45,9 +45,9 @@ class StudentOnboardingLevelStep extends StatelessWidget {
           if (showTitle)
             Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space12,
                   ExpatlioDesign.space0,
-                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space0),
               child: AutoSizeText(
                 title ??
@@ -146,7 +146,7 @@ class StudentOnboardingLevelStep extends StatelessWidget {
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
                               borderRadius: BorderRadius.circular(
-                                  ExpatlioDesign.radiusCapsule),
+                                  ExpatlioDesign.radiusSmall),
                             ),
                           ),
                           Padding(
@@ -320,8 +320,7 @@ class _LevelTick extends StatelessWidget {
                   : FlutterFlowTheme.of(context).secondaryBackground,
               shape: BoxShape.circle,
               border: Border.all(
-                color:
-                    isSelected ? const Color(0xFF6657E6) : Colors.transparent,
+                color: isSelected ? ExpatlioDesign.primary : Colors.transparent,
                 width: 6.0,
               ),
             ),

@@ -518,12 +518,12 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
         onTap: () => _setCaptionLogsExpanded(!isExpanded),
         child: Ink(
           decoration: BoxDecoration(
             color: theme.primaryBackground.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
             border: Border.all(
               color: theme.primaryText.withValues(alpha: 0.08),
               width: 1.0,
@@ -1055,7 +1055,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
           Container(
             decoration: BoxDecoration(
               color: ExpatlioDesign.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
             ),
             padding: const EdgeInsetsDirectional.fromSTEB(
                 ExpatlioDesign.space12,

@@ -23,9 +23,9 @@ class _BottomSheetHeaderState extends State<BottomSheetHeader> {
       width: double.infinity,
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.space24,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space16,
-          ExpatlioDesign.space24,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space0,
         ),
         child: Column(
@@ -106,9 +106,9 @@ class _BottomSheetPrimaryButtonState extends State<BottomSheetPrimaryButton> {
       width: double.infinity,
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.space24,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space16,
-          ExpatlioDesign.space24,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space24,
         ),
         child: FFButtonWidget(
@@ -119,14 +119,9 @@ class _BottomSheetPrimaryButtonState extends State<BottomSheetPrimaryButton> {
             width: double.infinity,
             color: ExpatlioDesign.primary,
             disabledColor: ExpatlioDesign.inactive.withValues(alpha: 0.30),
-            textStyle: ExpatlioDesign.textStyle(
-              context,
-              color: Colors.white,
-              size: 17.0,
-              weight: FontWeight.w600,
-            ).copyWith(fontFamily: ExpatlioDesign.headingFontFamily),
+            textStyle: ExpatlioDesign.buttonTextStyle(context),
             elevation: 0,
-            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
           ),
         ),
       ),

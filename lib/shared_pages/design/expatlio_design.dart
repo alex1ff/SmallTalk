@@ -5,22 +5,52 @@ class ExpatlioDesign {
 
   static const String fontFamily = 'sf pro display';
   static const String headingFontFamily = 'Cool';
+  static const FontWeight headingFontWeight = FontWeight.normal;
 
-  static const Color background = Color(0xFFF5F5F7);
-  static const Color card = Color(0xFFFFFFFF);
-  static const Color text = Color(0xFF1D1D1F);
-  static const Color muted = Color(0xFF6E6E73);
-  static const Color inactive = Color(0xFFAEAEB2);
-  static const Color border = Color(0xFFE5E5EA);
-  static const Color mutedSurface = Color(0xFFF2F2F7);
+  static const Color systemBackground = Color(0xFFFFFFFF);
+  static const Color secondarySystemBackground = Color(0xFFF2F2F7);
+  static const Color tertiarySystemBackground = Color(0xFFFFFFFF);
+  static const Color systemGroupedBackground = Color(0xFFF2F2F7);
+  static const Color secondarySystemGroupedBackground = Color(0xFFFFFFFF);
+  static const Color tertiarySystemGroupedBackground = Color(0xFFF2F2F7);
+  static const Color label = Color(0xFF000000);
+  static const Color secondaryLabel = Color(0x993C3C43);
+  static const Color tertiaryLabel = Color(0x4C3C3C43);
+  static const Color quaternaryLabel = Color(0x2D3C3C43);
+  static const Color placeholderText = Color(0x4C3C3C43);
+  static const Color separator = Color(0x493C3C43);
+  static const Color opaqueSeparator = Color(0xFFC6C6C8);
+  static const Color systemFill = Color(0x33787880);
+  static const Color secondarySystemFill = Color(0x28787880);
+  static const Color tertiarySystemFill = Color(0x1E767680);
+  static const Color quaternarySystemFill = Color(0x14747480);
+  static const Color systemGray = Color(0xFF8E8E93);
+  static const Color systemGray2 = Color(0xFFAEAEB2);
+  static const Color systemGray3 = Color(0xFFC7C7CC);
+  static const Color systemGray4 = Color(0xFFD1D1D6);
+  static const Color systemGray5 = Color(0xFFE5E5EA);
+  static const Color systemGray6 = Color(0xFFF2F2F7);
+  static const Color systemRed = Color(0xFFFF383C);
+  static const Color systemOrange = Color(0xFFFF8D28);
+  static const Color systemYellow = Color(0xFFFFCC00);
+  static const Color systemGreen = Color(0xFF34C759);
+  static const Color systemBlue = Color(0xFF0088FF);
+  static const Color background = systemGroupedBackground;
+  static const Color card = secondarySystemGroupedBackground;
+  static const Color text = label;
+  static const Color muted = secondaryLabel;
+  static const Color inactive = systemGray;
+  static const Color disabled = tertiaryLabel;
+  static const Color border = opaqueSeparator;
+  static const Color mutedSurface = secondarySystemFill;
   static const Color primary = Color(0xFF7430E8);
   static const Color primaryPressed = Color(0xFF5F24C8);
-  static const Color primaryEnd = Color(0xFFB23DE8);
-  static const Color danger = Color(0xFFEF4444);
-  static const Color orange = Color(0xFFEA580C);
-  static const Color success = Color(0xFF22C55E);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color info = primary;
+  static const Color primaryEnd = primary;
+  static const Color danger = systemRed;
+  static const Color orange = systemOrange;
+  static const Color success = systemGreen;
+  static const Color warning = systemYellow;
+  static const Color info = systemBlue;
 
   static const double space0 = 0.0;
   static const double space4 = 4.0;
@@ -62,6 +92,7 @@ class ExpatlioDesign {
   static const double pageHeaderHeight = 52.0;
   static const double pageHeaderTitleSize = 17.0;
   static const double buttonHeight = 52.0;
+  static const double buttonTextSize = 16.0;
   static const double formFieldHeight = 48.0;
   static const EdgeInsetsDirectional pageScrollPadding =
       EdgeInsetsDirectional.fromSTEB(
@@ -78,7 +109,7 @@ class ExpatlioDesign {
 
   static const List<BoxShadow> cardShadow = [
     BoxShadow(
-      color: Color(0x0D000000),
+      color: Color(0x0A000000),
       blurRadius: 20.0,
       offset: Offset(0.0, 8.0),
     ),
@@ -90,12 +121,13 @@ class ExpatlioDesign {
     end: AlignmentDirectional(1.0, 0.0),
   );
 
-  static Border cardBorder({Color color = border}) => Border.all(color: color);
+  static Border cardBorder({Color color = Colors.transparent}) =>
+      Border.all(color: color);
 
   static BoxDecoration cardDecoration({
     Color color = card,
     double radius = cardRadius,
-    Color borderColor = border,
+    Color borderColor = Colors.transparent,
     bool shadow = false,
   }) {
     return BoxDecoration(
@@ -107,7 +139,7 @@ class ExpatlioDesign {
   }
 
   static BoxDecoration formGroupDecoration({double radius = cardRadius}) {
-    return cardDecoration(radius: radius);
+    return cardDecoration(radius: radius, borderColor: Colors.transparent);
   }
 
   static BoxDecoration sheetDecoration({Color color = card}) {
@@ -120,7 +152,7 @@ class ExpatlioDesign {
 
   static BoxDecoration softPrimaryDecoration({double radius = controlRadius}) {
     return BoxDecoration(
-      color: primary.withValues(alpha: 0.08),
+      color: primary.withValues(alpha: 0.10),
       borderRadius: BorderRadius.circular(radius),
     );
   }
@@ -146,9 +178,29 @@ class ExpatlioDesign {
     return textStyle(
       context,
       size: bottomSheetTitleSize,
-      weight: FontWeight.normal,
+      weight: headingFontWeight,
       height: 1.24,
     ).copyWith(fontFamily: headingFontFamily);
+  }
+
+  static TextStyle sectionTitleStyle(BuildContext context) {
+    return textStyle(
+      context,
+      size: 20.0,
+      weight: headingFontWeight,
+    ).copyWith(fontFamily: headingFontFamily);
+  }
+
+  static TextStyle buttonTextStyle(
+    BuildContext context, {
+    Color color = Colors.white,
+  }) {
+    return textStyle(
+      context,
+      color: color,
+      size: buttonTextSize,
+      weight: FontWeight.w600,
+    );
   }
 
   static TextStyle formTextStyle(
@@ -157,7 +209,7 @@ class ExpatlioDesign {
   }) {
     return textStyle(
       context,
-      color: enabled ? text : inactive.withValues(alpha: 0.55),
+      color: enabled ? text : disabled,
       size: 16.0,
       weight: FontWeight.w400,
     );
@@ -175,7 +227,7 @@ class ExpatlioDesign {
     return InputDecoration(
       isDense: true,
       filled: true,
-      fillColor: enabled ? mutedSurface : background,
+      fillColor: enabled ? mutedSurface : secondarySystemBackground,
       hintText: hintText,
       hintStyle: formTextStyle(context, enabled: false),
       constraints: maxLines > 1
@@ -189,12 +241,12 @@ class ExpatlioDesign {
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: borderRadius,
-        borderSide: const BorderSide(color: border, width: 1.0),
+        borderSide: const BorderSide(color: separator, width: 1.0),
       ),
       disabledBorder: OutlineInputBorder(
         borderRadius: borderRadius,
         borderSide: BorderSide(
-          color: border.withValues(alpha: 0.55),
+          color: separator,
           width: 1.0,
         ),
       ),
@@ -248,29 +300,21 @@ class ExpatlioDesign {
     const headingBase = TextStyle(
       fontFamily: headingFontFamily,
       color: text,
+      fontWeight: headingFontWeight,
       letterSpacing: 0,
       height: 1.18,
     );
 
     return TextTheme(
-      displayLarge:
-          headingBase.copyWith(fontSize: 34.0, fontWeight: FontWeight.w700),
-      displayMedium:
-          headingBase.copyWith(fontSize: 28.0, fontWeight: FontWeight.w700),
-      displaySmall:
-          headingBase.copyWith(fontSize: 22.0, fontWeight: FontWeight.w700),
-      headlineLarge:
-          headingBase.copyWith(fontSize: 20.0, fontWeight: FontWeight.w700),
-      headlineMedium:
-          headingBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w600),
-      headlineSmall:
-          headingBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w600),
-      titleLarge:
-          headingBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w600),
-      titleMedium:
-          headingBase.copyWith(fontSize: 16.0, fontWeight: FontWeight.w600),
-      titleSmall:
-          headingBase.copyWith(fontSize: 15.0, fontWeight: FontWeight.w600),
+      displayLarge: headingBase.copyWith(fontSize: 34.0),
+      displayMedium: headingBase.copyWith(fontSize: 28.0),
+      displaySmall: headingBase.copyWith(fontSize: 22.0),
+      headlineLarge: headingBase.copyWith(fontSize: 20.0),
+      headlineMedium: headingBase.copyWith(fontSize: 17.0),
+      headlineSmall: headingBase.copyWith(fontSize: 17.0),
+      titleLarge: headingBase.copyWith(fontSize: 17.0),
+      titleMedium: headingBase.copyWith(fontSize: 16.0),
+      titleSmall: headingBase.copyWith(fontSize: 15.0),
       bodyLarge: bodyBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w400),
       bodyMedium:
           bodyBase.copyWith(fontSize: 17.0, fontWeight: FontWeight.w400),
@@ -290,7 +334,7 @@ class ExpatlioDesign {
       brightness: Brightness.light,
     ).copyWith(
       primary: primary,
-      secondary: primaryEnd,
+      secondary: info,
       tertiary: orange,
       surface: card,
       onSurface: text,
@@ -298,6 +342,12 @@ class ExpatlioDesign {
     );
 
     final textTheme = ExpatlioDesign.textTheme();
+    const themedButtonTextStyle = TextStyle(
+      fontFamily: fontFamily,
+      fontSize: buttonTextSize,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.0,
+    );
     final controlShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(controlRadius),
     );
@@ -313,8 +363,8 @@ class ExpatlioDesign {
       colorScheme: colorScheme,
       textTheme: textTheme,
       primaryTextTheme: textTheme,
-      dividerColor: border,
-      disabledColor: inactive,
+      dividerColor: separator,
+      disabledColor: disabled,
       visualDensity: VisualDensity.standard,
       splashColor: primary.withValues(alpha: 0.08),
       highlightColor: primary.withValues(alpha: 0.05),
@@ -336,7 +386,7 @@ class ExpatlioDesign {
         shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(cardRadius),
-          side: const BorderSide(color: border),
+          side: const BorderSide(color: Colors.transparent),
         ),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
@@ -362,7 +412,7 @@ class ExpatlioDesign {
         isDense: true,
         filled: true,
         fillColor: mutedSurface,
-        hintStyle: textTheme.bodyMedium?.copyWith(color: inactive),
+        hintStyle: textTheme.bodyMedium?.copyWith(color: placeholderText),
         contentPadding: const EdgeInsetsDirectional.fromSTEB(
           ExpatlioDesign.space16,
           ExpatlioDesign.space12,
@@ -371,7 +421,7 @@ class ExpatlioDesign {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(controlRadius),
-          borderSide: const BorderSide(color: border),
+          borderSide: const BorderSide(color: separator),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(controlRadius),
@@ -387,7 +437,7 @@ class ExpatlioDesign {
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(controlRadius),
-          borderSide: BorderSide(color: border.withValues(alpha: 0.55)),
+          borderSide: const BorderSide(color: separator),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -406,11 +456,11 @@ class ExpatlioDesign {
           shadowColor: const WidgetStatePropertyAll(Colors.transparent),
           surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
           shape: WidgetStatePropertyAll(buttonShape),
-          textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
+          textStyle: WidgetStatePropertyAll(themedButtonTextStyle),
           foregroundColor: const WidgetStatePropertyAll(Colors.white),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) {
-              return inactive.withValues(alpha: 0.30);
+              return tertiarySystemFill;
             }
             if (states.contains(WidgetState.pressed)) {
               return primaryPressed;
@@ -430,7 +480,7 @@ class ExpatlioDesign {
                 ExpatlioDesign.space0),
           ),
           shape: WidgetStatePropertyAll(buttonShape),
-          textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
+          textStyle: WidgetStatePropertyAll(themedButtonTextStyle),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -444,9 +494,9 @@ class ExpatlioDesign {
                 ExpatlioDesign.space0),
           ),
           shape: WidgetStatePropertyAll(buttonShape),
-          side: const WidgetStatePropertyAll(BorderSide(color: border)),
+          side: const WidgetStatePropertyAll(BorderSide(color: separator)),
           foregroundColor: const WidgetStatePropertyAll(text),
-          textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
+          textStyle: WidgetStatePropertyAll(themedButtonTextStyle),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -461,7 +511,7 @@ class ExpatlioDesign {
           ),
           shape: WidgetStatePropertyAll(controlShape),
           foregroundColor: const WidgetStatePropertyAll(primary),
-          textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
+          textStyle: WidgetStatePropertyAll(themedButtonTextStyle),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
@@ -473,16 +523,16 @@ class ExpatlioDesign {
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: mutedSurface,
+        backgroundColor: secondarySystemFill,
         selectedColor: primary.withValues(alpha: 0.12),
-        disabledColor: inactive.withValues(alpha: 0.20),
+        disabledColor: tertiarySystemFill,
         labelStyle: textTheme.labelMedium!,
         secondaryLabelStyle: textTheme.labelMedium!.copyWith(color: primary),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(controlRadius),
-          side: const BorderSide(color: border),
+          side: const BorderSide(color: separator),
         ),
-        side: const BorderSide(color: border),
+        side: const BorderSide(color: separator),
         padding: const EdgeInsets.symmetric(horizontal: ExpatlioDesign.space12),
       ),
       listTileTheme: ListTileThemeData(
@@ -499,7 +549,7 @@ class ExpatlioDesign {
         shape: controlShape,
       ),
       dividerTheme: const DividerThemeData(
-        color: border,
+        color: separator,
         thickness: 1.0,
         space: 1.0,
       ),

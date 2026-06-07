@@ -23,11 +23,9 @@ class StudentPayRestorePurchasesButton extends StatelessWidget {
             )
           : Text(
               'Восстановить покупки',
-              style: ExpatlioDesign.textStyle(
+              style: ExpatlioDesign.buttonTextStyle(
                 context,
                 color: ExpatlioDesign.primary,
-                size: 15.0,
-                weight: FontWeight.w600,
               ),
             ),
     );

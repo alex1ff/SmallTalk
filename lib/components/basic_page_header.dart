@@ -40,16 +40,24 @@ class BasicPageHeader extends StatelessWidget {
                   alignment: AlignmentDirectional.centerStart,
                   child: Padding(
                     padding: const EdgeInsetsDirectional.only(
-                      start: ExpatlioDesign.compactSpacing,
+                      start: ExpatlioDesign.pagePadding,
                     ),
-                    child: IconButton(
-                      onPressed: onBack ?? () => context.safePop(),
-                      icon: const Icon(
-                        Icons.arrow_back,
-                        color: ExpatlioDesign.text,
-                        size: 24.0,
+                    child: SizedBox(
+                      width: 44.0,
+                      height: 44.0,
+                      child: InkWell(
+                        borderRadius:
+                            BorderRadius.circular(ExpatlioDesign.controlRadius),
+                        onTap: onBack ?? () => context.safePop(),
+                        child: const Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Icon(
+                            Icons.arrow_back,
+                            color: ExpatlioDesign.text,
+                            size: 24.0,
+                          ),
+                        ),
                       ),
-                      splashRadius: 22.0,
                     ),
                   ),
                 ),
@@ -75,7 +83,7 @@ class BasicPageHeader extends StatelessWidget {
                   alignment: AlignmentDirectional.centerEnd,
                   child: Padding(
                     padding: const EdgeInsetsDirectional.only(
-                      end: ExpatlioDesign.compactSpacing,
+                      end: ExpatlioDesign.pagePadding,
                     ),
                     child: trailing,
                   ),

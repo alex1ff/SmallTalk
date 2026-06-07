@@ -66,9 +66,9 @@ class _EditCardWidgetState extends State<EditCardWidget> {
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.pagePadding,
                     ExpatlioDesign.space8,
-                    ExpatlioDesign.space8,
-                    ExpatlioDesign.space8,
+                    ExpatlioDesign.pagePadding,
                     ExpatlioDesign.space8),
                 child: StreamBuilder<List<CardsRecord>>(
                   stream: _model.cardsStream,
@@ -108,7 +108,7 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                     color: FlutterFlowTheme.of(context)
                                         .secondaryBackground,
                                     borderRadius: BorderRadius.circular(
-                                        ExpatlioDesign.radiusExtraLarge),
+                                        ExpatlioDesign.controlRadius),
                                   ),
                                   child: Align(
                                     alignment: AlignmentDirectional(0.0, 0.0),
@@ -140,7 +140,7 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                   ),
                                 ),
                                 FlutterFlowIconButton(
-                                  borderRadius: ExpatlioDesign.radiusExtraLarge,
+                                  borderRadius: ExpatlioDesign.controlRadius,
                                   buttonSize: 52.0,
                                   icon: Icon(
                                     FFIcons.ktrash03,

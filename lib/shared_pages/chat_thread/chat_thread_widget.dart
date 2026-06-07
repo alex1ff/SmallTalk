@@ -543,8 +543,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required bool isReadByPartner,
   }) {
     final bubbleColor =
-        isCurrentUser ? const Color(0xFFEDE3FF) : ExpatlioDesign.card;
-    const textColor = ExpatlioDesign.text;
+        isCurrentUser ? ExpatlioDesign.primary : ExpatlioDesign.card;
+    final textColor = isCurrentUser ? Colors.white : ExpatlioDesign.text;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -621,9 +621,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             isReadByPartner
                                 ? Icons.done_all_rounded
                                 : Icons.done_rounded,
-                            color: isReadByPartner
-                                ? ExpatlioDesign.primary
-                                : textColor.withValues(alpha: 0.45),
+                            color: textColor.withValues(
+                                alpha: isReadByPartner ? 0.88 : 0.45),
                             size: 14.0,
                           ),
                         ],
@@ -675,9 +674,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
     return DecoratedBox(
       decoration: const BoxDecoration(
-        color: ExpatlioDesign.background,
+        color: ExpatlioDesign.card,
         border: Border(
-          bottom: BorderSide(color: ExpatlioDesign.border, width: 1.0),
+          bottom: BorderSide(color: ExpatlioDesign.separator, width: 1.0),
         ),
       ),
       child: SafeArea(
@@ -733,7 +732,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                   start: ExpatlioDesign.space4),
                               child: Icon(
                                 Icons.star_rounded,
-                                color: Color(0xFFFFC107),
+                                color: ExpatlioDesign.warning,
                                 size: 17.0,
                               ),
                             ),
@@ -878,8 +877,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+        color: ExpatlioDesign.mutedSurface,
         shape: BoxShape.circle,
+        border: Border.all(color: ExpatlioDesign.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: normalizedPhotoUrl.isNotEmpty
@@ -912,7 +912,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         maxLines: 1,
         style: ExpatlioDesign.textStyle(
           context,
-          color: ExpatlioDesign.primary,
+          color: ExpatlioDesign.muted,
           size: 13.0,
           weight: FontWeight.w700,
         ),
@@ -992,168 +992,160 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
           backgroundColor: ExpatlioDesign.background,
           body: Stack(
             children: [
-              Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                    ExpatlioDesign.space8,
-                    ExpatlioDesign.space0,
-                    ExpatlioDesign.space8,
-                    ExpatlioDesign.space0),
-                child: Column(
-                  children: [
-                    StreamBuilder<UserPublicProfilesRecord?>(
-                      stream: _watchPublicProfile(partnerRef),
-                      builder: (context, partnerSnapshot) {
-                        if (partnerSnapshot.hasError) {
+              Column(
+                children: [
+                  StreamBuilder<UserPublicProfilesRecord?>(
+                    stream: _watchPublicProfile(partnerRef),
+                    builder: (context, partnerSnapshot) {
+                      if (partnerSnapshot.hasError) {
+                        debugPrint(
+                          'ChatThreadWidget: partner public profile stream failed for ${partnerRef.path}: ${partnerSnapshot.error}',
+                        );
+                      }
+
+                      return AuthUserStreamWidget(
+                        builder: (context) {
+                          final isFriend = userHasFriend(
+                            currentUserDocument,
+                            partnerRef,
+                          );
+
+                          return _buildHeader(
+                            context,
+                            conversation: conversation,
+                            partnerProfile: partnerSnapshot.hasError
+                                ? null
+                                : partnerSnapshot.data,
+                            partnerRef: partnerRef,
+                            isFriend: isFriend,
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  Expanded(
+                    child: StreamBuilder<List<MessagesRecord>>(
+                      stream: _watchMessages(conversation.reference),
+                      builder: (context, messagesSnapshot) {
+                        if (messagesSnapshot.hasError) {
                           debugPrint(
-                            'ChatThreadWidget: partner public profile stream failed for ${partnerRef.path}: ${partnerSnapshot.error}',
+                            'ChatThreadWidget: messages stream error for ${conversation.reference.path}: ${messagesSnapshot.error}',
+                          );
+                          return _buildMessagesUnavailableState(
+                            context,
+                            error: messagesSnapshot.error,
                           );
                         }
 
-                        return AuthUserStreamWidget(
-                          builder: (context) {
-                            final isFriend = userHasFriend(
-                              currentUserDocument,
-                              partnerRef,
+                        if (!messagesSnapshot.hasData) {
+                          return Center(
+                            child: SizedBox(
+                              width: 50.0,
+                              height: 50.0,
+                              child: SpinKitCircle(
+                                color: FlutterFlowTheme.of(context).secondary,
+                                size: 50.0,
+                              ),
+                            ),
+                          );
+                        }
+
+                        final messages = messagesSnapshot.data!;
+                        _canLoadOlderMessages =
+                            messages.length >= _messageLimit;
+
+                        if (messages.isEmpty) {
+                          return Center(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.all(ExpatlioDesign.space24),
+                              child: Text(
+                                FFLocalizations.of(context).getVariableText(
+                                  ruText:
+                                      'Чат открыт. Напишите первое сообщение.',
+                                  enText:
+                                      'The chat is open. Send the first message.',
+                                ),
+                                textAlign: TextAlign.center,
+                                style: FlutterFlowTheme.of(context)
+                                    .bodyMedium
+                                    .override(
+                                      fontFamily: 'sf pro display',
+                                      color: FlutterFlowTheme.of(context)
+                                          .secondaryText,
+                                      fontSize: 15.0,
+                                      letterSpacing: 0.0,
+                                    ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        return ListView.builder(
+                          controller: _messagesScrollController,
+                          reverse: true,
+                          padding: const EdgeInsetsDirectional.fromSTEB(
+                            ExpatlioDesign.pagePadding,
+                            ExpatlioDesign.space12,
+                            ExpatlioDesign.pagePadding,
+                            ExpatlioDesign.space112,
+                          ),
+                          itemCount: messages.length,
+                          itemBuilder: (context, index) {
+                            final message = messages[index];
+                            final itemChildren = <Widget>[];
+                            if (_shouldShowDateDivider(
+                              messages,
+                              index,
+                            )) {
+                              itemChildren.add(
+                                _buildDateDivider(
+                                  context,
+                                  message.createdAt!,
+                                ),
+                              );
+                            }
+
+                            if (messageIsCallEvent(message)) {
+                              itemChildren.add(
+                                _buildCallEventMessageCard(
+                                  context,
+                                  message: message,
+                                ),
+                              );
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: itemChildren,
+                              );
+                            }
+
+                            final isCurrentUser =
+                                message.senderId == currentUserUid;
+                            final partnerReadAt =
+                                conversation.lastReadAtByUserId[partnerRef.id];
+                            final isReadByPartner = isCurrentUser &&
+                                message.createdAt != null &&
+                                partnerReadAt != null &&
+                                !partnerReadAt.isBefore(message.createdAt!);
+                            itemChildren.add(
+                              _buildMessageBubble(
+                                context,
+                                message: message,
+                                isCurrentUser: isCurrentUser,
+                                isReadByPartner: isReadByPartner,
+                              ),
                             );
 
-                            return _buildHeader(
-                              context,
-                              conversation: conversation,
-                              partnerProfile: partnerSnapshot.hasError
-                                  ? null
-                                  : partnerSnapshot.data,
-                              partnerRef: partnerRef,
-                              isFriend: isFriend,
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: itemChildren,
                             );
                           },
                         );
                       },
                     ),
-                    Expanded(
-                      child: StreamBuilder<List<MessagesRecord>>(
-                        stream: _watchMessages(conversation.reference),
-                        builder: (context, messagesSnapshot) {
-                          if (messagesSnapshot.hasError) {
-                            debugPrint(
-                              'ChatThreadWidget: messages stream error for ${conversation.reference.path}: ${messagesSnapshot.error}',
-                            );
-                            return _buildMessagesUnavailableState(
-                              context,
-                              error: messagesSnapshot.error,
-                            );
-                          }
-
-                          if (!messagesSnapshot.hasData) {
-                            return Center(
-                              child: SizedBox(
-                                width: 50.0,
-                                height: 50.0,
-                                child: SpinKitCircle(
-                                  color: FlutterFlowTheme.of(context).secondary,
-                                  size: 50.0,
-                                ),
-                              ),
-                            );
-                          }
-
-                          final messages = messagesSnapshot.data!;
-                          _canLoadOlderMessages =
-                              messages.length >= _messageLimit;
-
-                          if (messages.isEmpty) {
-                            return Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(
-                                    ExpatlioDesign.space24),
-                                child: Text(
-                                  FFLocalizations.of(context).getVariableText(
-                                    ruText:
-                                        'Чат открыт. Напишите первое сообщение.',
-                                    enText:
-                                        'The chat is open. Send the first message.',
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryText,
-                                        fontSize: 15.0,
-                                        letterSpacing: 0.0,
-                                      ),
-                                ),
-                              ),
-                            );
-                          }
-
-                          return ListView.builder(
-                            controller: _messagesScrollController,
-                            reverse: true,
-                            padding: const EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space12,
-                              ExpatlioDesign.space12,
-                              ExpatlioDesign.space12,
-                              ExpatlioDesign.space112,
-                            ),
-                            itemCount: messages.length,
-                            itemBuilder: (context, index) {
-                              final message = messages[index];
-                              final itemChildren = <Widget>[];
-                              if (_shouldShowDateDivider(
-                                messages,
-                                index,
-                              )) {
-                                itemChildren.add(
-                                  _buildDateDivider(
-                                    context,
-                                    message.createdAt!,
-                                  ),
-                                );
-                              }
-
-                              if (messageIsCallEvent(message)) {
-                                itemChildren.add(
-                                  _buildCallEventMessageCard(
-                                    context,
-                                    message: message,
-                                  ),
-                                );
-                                return Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: itemChildren,
-                                );
-                              }
-
-                              final isCurrentUser =
-                                  message.senderId == currentUserUid;
-                              final partnerReadAt = conversation
-                                  .lastReadAtByUserId[partnerRef.id];
-                              final isReadByPartner = isCurrentUser &&
-                                  message.createdAt != null &&
-                                  partnerReadAt != null &&
-                                  !partnerReadAt.isBefore(message.createdAt!);
-                              itemChildren.add(
-                                _buildMessageBubble(
-                                  context,
-                                  message: message,
-                                  isCurrentUser: isCurrentUser,
-                                  isReadByPartner: isReadByPartner,
-                                ),
-                              );
-
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: itemChildren,
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
               Align(
                 alignment: AlignmentDirectional.bottomCenter,
@@ -1172,9 +1164,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                   ),
                   child: Padding(
                     padding: const EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space12,
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space32,
                     ),
                     child: Row(

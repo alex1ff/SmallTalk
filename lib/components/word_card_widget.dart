@@ -106,7 +106,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                       decoration: BoxDecoration(
                         color: ExpatlioDesign.background,
                         borderRadius:
-                            BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+                            BorderRadius.circular(ExpatlioDesign.controlRadius),
                       ),
                       child: Icon(
                         FFIcons.kexpand01,
@@ -155,7 +155,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       FlutterFlowIconButton(
-                        borderRadius: ExpatlioDesign.radiusCapsule,
+                        borderRadius: ExpatlioDesign.controlRadius,
                         buttonSize: 40.0,
                         fillColor: ExpatlioDesign.background,
                         icon: Icon(

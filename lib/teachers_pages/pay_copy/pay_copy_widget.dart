@@ -3,6 +3,7 @@ import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
 import '/components/empty/empty_widget.dart';
+import '/components/segmented_tab_bar.dart';
 import '/components/trans/trans_widget.dart';
 import '/components/wrapper.dart';
 import '/flutter_flow/flutter_flow_animations.dart';
@@ -205,9 +206,9 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
               children: [
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space0,
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space0),
                   child: SingleChildScrollView(
                     child: Column(
@@ -249,9 +250,9 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                 children: [
                                   Padding(
                                     padding: EdgeInsetsDirectional.fromSTEB(
-                                        ExpatlioDesign.space12,
                                         ExpatlioDesign.space0,
-                                        ExpatlioDesign.space8,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space0,
                                         ExpatlioDesign.space0),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
@@ -515,20 +516,22 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                   mainAxisSize: MainAxisSize.min,
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    FlutterFlowIconButton(
-                                      borderRadius: ExpatlioDesign.radiusMedium,
-                                      buttonSize: 35,
-                                      fillColor: FlutterFlowTheme.of(context)
-                                          .secondaryBackground,
-                                      icon: Icon(
+                                    Container(
+                                      width: 35,
+                                      height: 35,
+                                      decoration: BoxDecoration(
+                                        color: FlutterFlowTheme.of(context)
+                                            .secondaryBackground,
+                                        borderRadius: BorderRadius.circular(
+                                          ExpatlioDesign.radiusMedium,
+                                        ),
+                                      ),
+                                      child: Icon(
                                         Icons.add_sharp,
                                         color: FlutterFlowTheme.of(context)
                                             .primaryText,
                                         size: 18,
                                       ),
-                                      onPressed: () {
-                                        print('IconButton pressed ...');
-                                      },
                                     ),
                                     Text(
                                       FFLocalizations.of(context).getText(
@@ -554,7 +557,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space0,
                               ExpatlioDesign.space40,
                               ExpatlioDesign.space0,
                               ExpatlioDesign.space0),
@@ -577,190 +580,23 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                               ExpatlioDesign.space12,
                               ExpatlioDesign.space0,
                               ExpatlioDesign.space0),
-                          child: Container(
-                            width: double.infinity,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: FlutterFlowTheme.of(context)
-                                  .primaryBackground,
-                              borderRadius: BorderRadius.circular(
-                                  ExpatlioDesign.radiusCapsule),
-                              border: Border.all(
-                                color: FlutterFlowTheme.of(context)
-                                    .secondaryBackground,
+                          child: ExpatlioSegmentedTabBar(
+                            labels: [
+                              FFLocalizations.of(context).getText(
+                                'njy9zp1m' /* Все */,
                               ),
-                            ),
-                            child: Padding(
-                              padding: EdgeInsets.all(ExpatlioDesign.space4),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.max,
-                                children: [
-                                  Expanded(
-                                    child: InkWell(
-                                      splashColor: Colors.transparent,
-                                      focusColor: Colors.transparent,
-                                      hoverColor: Colors.transparent,
-                                      highlightColor: Colors.transparent,
-                                      onTap: () async {
-                                        _model.replenishment = 0;
-                                        safeSetState(() {});
-                                      },
-                                      child: Container(
-                                        width: double.infinity,
-                                        height: 100,
-                                        decoration: BoxDecoration(
-                                          color: valueOrDefault<Color>(
-                                            _model.replenishment == 0
-                                                ? FlutterFlowTheme.of(context)
-                                                    .secondaryBackground
-                                                : Colors.transparent,
-                                            FlutterFlowTheme.of(context)
-                                                .secondaryBackground,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                              ExpatlioDesign.radiusExtraLarge),
-                                          shape: BoxShape.rectangle,
-                                        ),
-                                        child: Align(
-                                          alignment: AlignmentDirectional(0, 0),
-                                          child: Text(
-                                            FFLocalizations.of(context).getText(
-                                              'njy9zp1m' /* Все */,
-                                            ),
-                                            style: FlutterFlowTheme.of(context)
-                                                .bodyMedium
-                                                .override(
-                                                  fontFamily: 'sf pro display',
-                                                  color: valueOrDefault<Color>(
-                                                    _model.replenishment == 0
-                                                        ? FlutterFlowTheme.of(
-                                                                context)
-                                                            .primaryText
-                                                        : FlutterFlowTheme.of(
-                                                                context)
-                                                            .secondaryText,
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryText,
-                                                  ),
-                                                  fontSize: 15,
-                                                  letterSpacing: 0.0,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: InkWell(
-                                      splashColor: Colors.transparent,
-                                      focusColor: Colors.transparent,
-                                      hoverColor: Colors.transparent,
-                                      highlightColor: Colors.transparent,
-                                      onTap: () async {
-                                        _model.replenishment = 1;
-                                        safeSetState(() {});
-                                      },
-                                      child: Container(
-                                        width: double.infinity,
-                                        height: 100,
-                                        decoration: BoxDecoration(
-                                          color: valueOrDefault<Color>(
-                                            _model.replenishment == 1
-                                                ? FlutterFlowTheme.of(context)
-                                                    .secondaryBackground
-                                                : Colors.transparent,
-                                            Colors.transparent,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                              ExpatlioDesign.radiusExtraLarge),
-                                          shape: BoxShape.rectangle,
-                                        ),
-                                        child: Align(
-                                          alignment: AlignmentDirectional(0, 0),
-                                          child: Text(
-                                            FFLocalizations.of(context).getText(
-                                              'hc7flvjs' /* Пополнения */,
-                                            ),
-                                            style: FlutterFlowTheme.of(context)
-                                                .bodyMedium
-                                                .override(
-                                                  fontFamily: 'sf pro display',
-                                                  color: valueOrDefault<Color>(
-                                                    _model.replenishment == 1
-                                                        ? FlutterFlowTheme.of(
-                                                                context)
-                                                            .primaryText
-                                                        : FlutterFlowTheme.of(
-                                                                context)
-                                                            .secondaryText,
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                  ),
-                                                  fontSize: 15,
-                                                  letterSpacing: 0.0,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: InkWell(
-                                      splashColor: Colors.transparent,
-                                      focusColor: Colors.transparent,
-                                      hoverColor: Colors.transparent,
-                                      highlightColor: Colors.transparent,
-                                      onTap: () async {
-                                        _model.replenishment = 2;
-                                        safeSetState(() {});
-                                      },
-                                      child: Container(
-                                        width: double.infinity,
-                                        height: 100,
-                                        decoration: BoxDecoration(
-                                          color: valueOrDefault<Color>(
-                                            _model.replenishment == 2
-                                                ? FlutterFlowTheme.of(context)
-                                                    .secondaryBackground
-                                                : Colors.transparent,
-                                            Colors.transparent,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                              ExpatlioDesign.radiusExtraLarge),
-                                          shape: BoxShape.rectangle,
-                                        ),
-                                        child: Align(
-                                          alignment: AlignmentDirectional(0, 0),
-                                          child: Text(
-                                            FFLocalizations.of(context).getText(
-                                              'f5efiq3t' /* Списания */,
-                                            ),
-                                            style: FlutterFlowTheme.of(context)
-                                                .bodyMedium
-                                                .override(
-                                                  fontFamily: 'sf pro display',
-                                                  color: valueOrDefault<Color>(
-                                                    _model.replenishment == 2
-                                                        ? FlutterFlowTheme.of(
-                                                                context)
-                                                            .primaryText
-                                                        : FlutterFlowTheme.of(
-                                                                context)
-                                                            .secondaryText,
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                  ),
-                                                  fontSize: 15,
-                                                  letterSpacing: 0.0,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                              FFLocalizations.of(context).getText(
+                                'hc7flvjs' /* Пополнения */,
                               ),
-                            ),
+                              FFLocalizations.of(context).getText(
+                                'f5efiq3t' /* Списания */,
+                              ),
+                            ],
+                            selectedIndex: _model.replenishment,
+                            onChanged: (index) {
+                              _model.replenishment = index;
+                              safeSetState(() {});
+                            },
                           ),
                         ),
                         Padding(
@@ -854,7 +690,11 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                           ),
                         ),
                       ]
-                          .addToStart(SizedBox(height: ExpatlioDesign.space112))
+                          .addToStart(SizedBox(
+                            height: MediaQuery.paddingOf(context).top +
+                                BasicPageHeader.height +
+                                ExpatlioDesign.space16,
+                          ))
                           .addToEnd(SizedBox(height: ExpatlioDesign.space112)),
                     ),
                   ),
@@ -892,9 +732,9 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                         ),
                         child: Wrapper(
                           padding: const EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space8,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space12,
-                              ExpatlioDesign.space8,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space32),
                           child: ButtonWidget(
                             text: FFLocalizations.of(context).getText(
@@ -917,39 +757,28 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                       formatType: FormatType.decimal,
                                       decimalType: DecimalType.automatic,
                                     ),
-                                    style: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .override(
-                                          fontFamily: 'sf pro display',
-                                          color: FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                          fontSize: 17.0,
-                                          letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
-                                        ),
+                                    style: ExpatlioDesign.buttonTextStyle(
+                                      context,
+                                      color: FlutterFlowTheme.of(context)
+                                          .primaryBackground,
+                                    ),
                                   ),
                                   TextSpan(
                                     text: FFLocalizations.of(context).getText(
                                       'lv5jpiff' /* ₽ */,
                                     ),
-                                    style: TextStyle(
-                                      fontFamily: 'Cool',
+                                    style: ExpatlioDesign.buttonTextStyle(
+                                      context,
                                       color: FlutterFlowTheme.of(context)
                                           .primaryBackground,
-                                      fontSize: 16,
                                     ),
                                   )
                                 ],
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'Cool',
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryText,
-                                      fontSize: 17.0,
-                                      letterSpacing: 0.0,
-                                      fontWeight: FontWeight.normal,
-                                    ),
+                                style: ExpatlioDesign.buttonTextStyle(
+                                  context,
+                                  color: FlutterFlowTheme.of(context)
+                                      .primaryBackground,
+                                ),
                               ),
                             ),
                             action: () async {

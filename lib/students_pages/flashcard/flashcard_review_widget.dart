@@ -196,8 +196,12 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
       mainAxisSize: MainAxisSize.max,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: ExpatlioDesign.space12),
+          padding: const EdgeInsets.only(
+            top: ExpatlioDesign.space12,
+            bottom: ExpatlioDesign.space12,
+          ),
           child: Text(
+            key: const Key('flashcardProgressText'),
             FFLocalizations.of(context).getVariableText(
               ruText:
                   'Осталось ${_queue.length} • Завершено $_completedCards из ${widget.entries.length}',
@@ -340,7 +344,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                   decoration: BoxDecoration(
                     color: accentColor.withValues(alpha: 0.08),
                     borderRadius:
-                        BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+                        BorderRadius.circular(ExpatlioDesign.controlRadius),
                   ),
                   child: Text(
                     _directionLabel(context, entry.direction),
@@ -579,13 +583,10 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                 ruText: 'Не помню',
                 enText: 'I forgot',
               ),
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'sf pro display',
-                    color: const Color(0xFFFF3B30),
-                    fontSize: 16.0,
-                    letterSpacing: 0.0,
-                    fontWeight: FontWeight.w600,
-                  ),
+              style: ExpatlioDesign.buttonTextStyle(
+                context,
+                color: const Color(0xFFFF3B30),
+              ),
             ),
           ),
         ),
@@ -617,13 +618,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                       ruText: 'Помню',
                       enText: 'I remember',
                     ),
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          color: Colors.white,
-                          fontSize: 16.0,
-                          letterSpacing: 0.0,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    style: ExpatlioDesign.buttonTextStyle(context),
                   ),
           ),
         ),

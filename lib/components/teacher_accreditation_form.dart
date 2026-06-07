@@ -287,7 +287,7 @@ class _TeacherAccreditationChoice extends StatelessWidget {
   Widget build(BuildContext context) {
     final foreground = selected ? Colors.white : ExpatlioDesign.text;
     return InkWell(
-      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsetsDirectional.fromSTEB(
@@ -298,7 +298,7 @@ class _TeacherAccreditationChoice extends StatelessWidget {
         decoration: BoxDecoration(
           color:
               selected ? ExpatlioDesign.primary : ExpatlioDesign.mutedSurface,
-          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
           border: Border.all(
             color: selected ? ExpatlioDesign.primary : ExpatlioDesign.border,
           ),

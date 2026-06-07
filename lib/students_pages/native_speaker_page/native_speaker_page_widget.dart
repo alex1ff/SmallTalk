@@ -724,9 +724,9 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 ),
                                 child: Wrapper(
                                   padding: const EdgeInsetsDirectional.fromSTEB(
-                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.pagePadding,
                                     ExpatlioDesign.space12,
-                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.pagePadding,
                                     ExpatlioDesign.space12,
                                   ),
                                   child: ButtonWidget(
@@ -831,9 +831,9 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         ),
         child: Wrapper(
           padding: const EdgeInsetsDirectional.fromSTEB(
-              ExpatlioDesign.space8,
+              ExpatlioDesign.pagePadding,
               ExpatlioDesign.space12,
-              ExpatlioDesign.space8,
+              ExpatlioDesign.pagePadding,
               ExpatlioDesign.space32),
           child: ButtonWidget(
             text: FFLocalizations.of(context).getText(

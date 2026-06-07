@@ -37,9 +37,9 @@ class PendingTeacherReviewBottomSheet extends StatelessWidget {
                     const SizedBox(height: ExpatlioDesign.space16),
                     Padding(
                       padding: const EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.space8,
+                          ExpatlioDesign.pagePadding,
                           ExpatlioDesign.space0,
-                          ExpatlioDesign.space8,
+                          ExpatlioDesign.pagePadding,
                           ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,

@@ -286,7 +286,7 @@ class _TransWidgetState extends State<TransWidget> {
       height: 60.0,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
         border: Border.all(
           color: ExpatlioDesign.background,
         ),

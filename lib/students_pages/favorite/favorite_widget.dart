@@ -5,6 +5,7 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
+import '/components/segmented_tab_bar.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/chat_call_event_presentation.dart';
@@ -274,7 +275,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           height: ExpatlioDesign.pageHeaderHeight,
           child: Padding(
             padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: ExpatlioDesign.itemSpacing,
+              horizontal: ExpatlioDesign.pagePadding,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.max,
@@ -309,50 +310,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
-  Widget _chatTabButton(
-    BuildContext context, {
-    required int index,
-    required String label,
-  }) {
-    final selected = _selectedChatTabIndex == index;
-
-    return Expanded(
-      child: InkWell(
-        splashColor: Colors.transparent,
-        focusColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-        onTap: () async {
-          if (_selectedChatTabIndex == index) {
-            return;
-          }
-          setState(() => _selectedChatTabIndex = index);
-        },
-        child: Container(
-          width: double.infinity,
-          height: 36.0,
-          decoration: BoxDecoration(
-            color: selected ? ExpatlioDesign.card : Colors.transparent,
-            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
-            shape: BoxShape.rectangle,
-          ),
-          child: Align(
-            alignment: const AlignmentDirectional(0.0, 0.0),
-            child: Text(
-              label,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: selected ? ExpatlioDesign.text : ExpatlioDesign.muted,
-                size: 14.0,
-                weight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildChatsTabBar(BuildContext context) {
     return Padding(
       padding: const EdgeInsetsDirectional.fromSTEB(
@@ -361,37 +318,19 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
         ExpatlioDesign.pagePadding,
         ExpatlioDesign.itemSpacing,
       ),
-      child: Container(
-        width: double.infinity,
-        height: 38.0,
-        decoration: BoxDecoration(
-          color: ExpatlioDesign.mutedSurface,
-          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(ExpatlioDesign.space4),
-          child: Row(
-            mainAxisSize: MainAxisSize.max,
-            children: [
-              _chatTabButton(
-                context,
-                index: 0,
-                label: FFLocalizations.of(context).getVariableText(
-                  ruText: 'Все',
-                  enText: 'All',
-                ),
-              ),
-              _chatTabButton(
-                context,
-                index: 1,
-                label: FFLocalizations.of(context).getVariableText(
-                  ruText: 'Друзья',
-                  enText: 'Friends',
-                ),
-              ),
-            ],
+      child: ExpatlioSegmentedTabBar(
+        labels: [
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Все',
+            enText: 'All',
           ),
-        ),
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Друзья',
+            enText: 'Friends',
+          ),
+        ],
+        selectedIndex: _selectedChatTabIndex,
+        onChanged: (index) => setState(() => _selectedChatTabIndex = index),
       ),
     );
   }
@@ -443,7 +382,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
             decoration: BoxDecoration(
               color: Colors.transparent,
               border: const Border(
-                bottom: BorderSide(color: ExpatlioDesign.border),
+                bottom: BorderSide(color: ExpatlioDesign.separator),
               ),
             ),
             child: Padding(
@@ -459,8 +398,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     width: 52.0,
                     height: 52.0,
                     decoration: BoxDecoration(
-                      color: ExpatlioDesign.mutedSurface,
+                      color: ExpatlioDesign.card,
                       shape: BoxShape.circle,
+                      border: Border.all(color: ExpatlioDesign.border),
                       image: partnerPhotoUrl.isNotEmpty
                           ? DecorationImage(
                               fit: BoxFit.cover,
@@ -522,7 +462,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                             start: ExpatlioDesign.space8),
                                         child: Icon(
                                           Icons.star_rounded,
-                                          color: Color(0xFFFFC107),
+                                          color: ExpatlioDesign.warning,
                                           size: 18.0,
                                         ),
                                       ),
@@ -570,7 +510,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                           ),
                           style: ExpatlioDesign.textStyle(
                             context,
-                            color: ExpatlioDesign.muted,
+                            color: ExpatlioDesign.inactive,
                             size: 12.0,
                             weight: FontWeight.w400,
                           ),
@@ -578,7 +518,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                         const SizedBox(height: ExpatlioDesign.space8),
                         Icon(
                           Icons.chevron_right_rounded,
-                          color: FlutterFlowTheme.of(context).secondaryText,
+                          color: ExpatlioDesign.inactive,
                           size: 18.0,
                         ),
                       ],
@@ -697,7 +637,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       decoration: BoxDecoration(
         color: Colors.transparent,
         border: const Border(
-          bottom: BorderSide(color: ExpatlioDesign.border),
+          bottom: BorderSide(color: ExpatlioDesign.separator),
         ),
       ),
       child: Padding(
@@ -712,7 +652,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
             placeholder(
               width: 54.0,
               height: 54.0,
-              radius: 20.0,
+              radius: ExpatlioDesign.radiusCapsule,
             ),
             Expanded(
               child: Padding(

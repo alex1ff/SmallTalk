@@ -103,9 +103,9 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
                 ),
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space0,
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space0),
                   child: Column(
                     mainAxisSize: MainAxisSize.max,

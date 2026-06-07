@@ -82,9 +82,9 @@ class _AddCardWidgetState extends State<AddCardWidget> {
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
-                    ExpatlioDesign.space8,
+                    ExpatlioDesign.pagePadding,
                     ExpatlioDesign.space0,
-                    ExpatlioDesign.space8,
+                    ExpatlioDesign.pagePadding,
                     ExpatlioDesign.space0),
                 child: Form(
                   key: _model.formKey,

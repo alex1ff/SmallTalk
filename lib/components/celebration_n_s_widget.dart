@@ -37,6 +37,55 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
     super.dispose();
   }
 
+  Widget _buildNextStep(
+    BuildContext context, {
+    required String ruText,
+    required String enText,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.max,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space0,
+              ExpatlioDesign.space8,
+              ExpatlioDesign.space0),
+          child: Container(
+            width: 20.0,
+            height: 20.0,
+            decoration: BoxDecoration(
+              color: FlutterFlowTheme.of(context).primary,
+              shape: BoxShape.circle,
+            ),
+            child: Align(
+              alignment: AlignmentDirectional(0.0, 0.0),
+              child: Icon(
+                FFIcons.kcheck,
+                color: FlutterFlowTheme.of(context).primaryBackground,
+                size: 12.0,
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: ruText,
+              enText: enText,
+            ),
+            style: FlutterFlowTheme.of(context).bodyMedium.override(
+                  fontFamily: 'sf pro display',
+                  fontSize: 15.0,
+                  letterSpacing: 0.0,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -70,9 +119,9 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                       children: [
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space8,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space20,
-                              ExpatlioDesign.space8,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space0),
                           child: Container(
                             width: double.infinity,
@@ -80,7 +129,7 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
                               borderRadius: BorderRadius.circular(
-                                  ExpatlioDesign.radiusCapsule),
+                                  ExpatlioDesign.cardRadius),
                             ),
                             child: Padding(
                               padding: EdgeInsets.all(ExpatlioDesign.space24),
@@ -185,54 +234,11 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                                         ExpatlioDesign.space12,
                                         ExpatlioDesign.space0,
                                         ExpatlioDesign.space0),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.max,
-                                      children: [
-                                        Padding(
-                                          padding:
-                                              EdgeInsetsDirectional.fromSTEB(
-                                                  ExpatlioDesign.space0,
-                                                  ExpatlioDesign.space0,
-                                                  ExpatlioDesign.space8,
-                                                  ExpatlioDesign.space0),
-                                          child: Container(
-                                            width: 20.0,
-                                            height: 20.0,
-                                            decoration: BoxDecoration(
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .primary,
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: Align(
-                                              alignment: AlignmentDirectional(
-                                                  0.0, 0.0),
-                                              child: Icon(
-                                                FFIcons.kcheck,
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryBackground,
-                                                size: 12.0,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          FFLocalizations.of(context)
-                                              .getVariableText(
-                                            ruText: 'Мы проверяем вашу заявку',
-                                            enText:
-                                                'We’re reviewing your application',
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ],
+                                    child: _buildNextStep(
+                                      context,
+                                      ruText: 'Мы проверяем вашу заявку',
+                                      enText:
+                                          'We’re reviewing your application',
                                     ),
                                   ),
                                   Padding(
@@ -241,112 +247,12 @@ class _CelebrationNSWidgetState extends State<CelebrationNSWidget> {
                                         ExpatlioDesign.space12,
                                         ExpatlioDesign.space0,
                                         ExpatlioDesign.space0),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.max,
-                                      children: [
-                                        Padding(
-                                          padding:
-                                              EdgeInsetsDirectional.fromSTEB(
-                                                  ExpatlioDesign.space0,
-                                                  ExpatlioDesign.space0,
-                                                  ExpatlioDesign.space8,
-                                                  ExpatlioDesign.space0),
-                                          child: Container(
-                                            width: 20.0,
-                                            height: 20.0,
-                                            decoration: BoxDecoration(
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .primary,
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: Align(
-                                              alignment: AlignmentDirectional(
-                                                  0.0, 0.0),
-                                              child: Icon(
-                                                FFIcons.kcheck,
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryBackground,
-                                                size: 12.0,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          FFLocalizations.of(context)
-                                              .getVariableText(
-                                            ruText:
-                                                'После одобрения вы сможете зарабатывать на разговорах',
-                                            enText:
-                                                'After approval, you’ll be able to earn from calls',
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        ExpatlioDesign.space0,
-                                        ExpatlioDesign.space12,
-                                        ExpatlioDesign.space0,
-                                        ExpatlioDesign.space0),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.max,
-                                      children: [
-                                        Padding(
-                                          padding:
-                                              EdgeInsetsDirectional.fromSTEB(
-                                                  ExpatlioDesign.space0,
-                                                  ExpatlioDesign.space0,
-                                                  ExpatlioDesign.space8,
-                                                  ExpatlioDesign.space0),
-                                          child: Container(
-                                            width: 20.0,
-                                            height: 20.0,
-                                            decoration: BoxDecoration(
-                                              color:
-                                                  FlutterFlowTheme.of(context)
-                                                      .primary,
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: Align(
-                                              alignment: AlignmentDirectional(
-                                                  0.0, 0.0),
-                                              child: Icon(
-                                                FFIcons.kcheck,
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryBackground,
-                                                size: 12.0,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          FFLocalizations.of(context)
-                                              .getVariableText(
-                                            ruText:
-                                                'После одобрения вы сможете получать отзывы и рейтинг',
-                                            enText:
-                                                'After approval, you’ll be able to receive reviews and ratings',
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ],
+                                    child: _buildNextStep(
+                                      context,
+                                      ruText:
+                                          'После одобрения вы сможете принимать звонки, получать отзывы и зарабатывать',
+                                      enText:
+                                          'After approval, you’ll be able to accept calls, receive reviews, and earn',
                                     ),
                                   ),
                                   Padding(

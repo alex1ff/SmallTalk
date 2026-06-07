@@ -1,4 +1,3 @@
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
@@ -80,13 +79,14 @@ class _ButtonWidgetState extends State<ButtonWidget> {
       showsSpinner ? widget.loadingText ?? widget.text : widget.text,
       '-',
     );
-    final opacity = !widget.enabled
-        ? 0.45
-        : showsSpinner
-            ? 0.75
-            : _isBusy
-                ? 0.9
-                : 1.0;
+    final opacity = showsSpinner
+        ? 0.75
+        : _isBusy
+            ? 0.9
+            : 1.0;
+    final backgroundColor = widget.enabled
+        ? ExpatlioDesign.primary
+        : ExpatlioDesign.inactive.withValues(alpha: 0.30);
     return AnimatedOpacity(
       duration: _animationDuration,
       opacity: opacity,
@@ -99,15 +99,8 @@ class _ButtonWidgetState extends State<ButtonWidget> {
         child: Container(
           height: ExpatlioDesign.buttonHeight,
           decoration: BoxDecoration(
-            gradient: ExpatlioDesign.primaryGradient,
+            color: backgroundColor,
             borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x227430E8),
-                blurRadius: 18.0,
-                offset: Offset(0.0, 8.0),
-              ),
-            ],
           ),
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
@@ -145,13 +138,7 @@ class _ButtonWidgetState extends State<ButtonWidget> {
                     textAlign: widget.trailingContent != null && !showsSpinner
                         ? TextAlign.start
                         : TextAlign.center,
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          color: Colors.white,
-                          fontSize: 17.0,
-                          letterSpacing: 0.0,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    style: ExpatlioDesign.buttonTextStyle(context),
                   ),
                 ),
                 if (widget.trailingContent != null && !showsSpinner) ...[

@@ -259,9 +259,9 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                 ),
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space0,
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space0),
                   child: AnimatedSwitcher(
                     duration: _pageTransitionDuration,

@@ -54,7 +54,7 @@ class _PairReviewInfoCard extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
       ),
       child: Padding(
         padding: const EdgeInsets.all(ExpatlioDesign.space16),

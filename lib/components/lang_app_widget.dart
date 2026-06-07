@@ -75,9 +75,9 @@ class _LangAppWidgetState extends State<LangAppWidget> {
                   decoration: ExpatlioDesign.sheetDecoration(),
                   child: Padding(
                     padding: EdgeInsetsDirectional.fromSTEB(
-                        ExpatlioDesign.space8,
                         ExpatlioDesign.space0,
-                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space0,
                         ExpatlioDesign.space32),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -90,9 +90,9 @@ class _LangAppWidgetState extends State<LangAppWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space0,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space24,
-                              ExpatlioDesign.space0,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space0),
                           child: Builder(
                             builder: (context) {

@@ -107,9 +107,9 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                       children: [
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space8,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space20,
-                              ExpatlioDesign.space8,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space0),
                           child: Container(
                             width: double.infinity,
@@ -117,7 +117,7 @@ class _CelebrationTopUpWidgetState extends State<CelebrationTopUpWidget> {
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
                               borderRadius: BorderRadius.circular(
-                                  ExpatlioDesign.radiusCapsule),
+                                  ExpatlioDesign.cardRadius),
                             ),
                             child: Padding(
                               padding: EdgeInsets.all(ExpatlioDesign.space24),

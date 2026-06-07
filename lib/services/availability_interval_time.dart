@@ -20,6 +20,27 @@ class AvailabilityIntervalDraft {
   final int endMinutes;
 }
 
+class AvailabilityIntervalRange {
+  const AvailabilityIntervalRange({
+    required this.startMinutes,
+    required this.endMinutes,
+  });
+
+  final int startMinutes;
+  final int endMinutes;
+
+  bool get isValid => endMinutes > startMinutes;
+
+  @override
+  bool operator ==(Object other) =>
+      other is AvailabilityIntervalRange &&
+      startMinutes == other.startMinutes &&
+      endMinutes == other.endMinutes;
+
+  @override
+  int get hashCode => Object.hash(startMinutes, endMinutes);
+}
+
 DateTime availabilityIntervalDay(DateTime value) {
   return DateTime(value.year, value.month, value.day);
 }
@@ -113,6 +134,93 @@ String formatAvailabilityIntervalTime(DateTime value) {
   final hours = value.hour.toString().padLeft(2, '0');
   final minutes = value.minute.toString().padLeft(2, '0');
   return '$hours:$minutes';
+}
+
+int? parseAvailabilityIntervalMinutes(String? rawValue) {
+  final match = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(rawValue ?? '');
+  if (match == null) {
+    return null;
+  }
+
+  final hours = int.tryParse(match.group(1)!);
+  final minutes = int.tryParse(match.group(2)!);
+  if (hours == null ||
+      minutes == null ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+}
+
+String formatAvailabilityIntervalMinutes(int minutes) {
+  final validMinutes = clampAvailabilityIntervalMinutes(
+    minutes,
+    min: 0,
+    max: kAvailabilityIntervalLastMinuteOfDay,
+  );
+  final hours = (validMinutes ~/ 60).toString().padLeft(2, '0');
+  final minute = (validMinutes % 60).toString().padLeft(2, '0');
+  return '$hours:$minute';
+}
+
+List<AvailabilityIntervalRange> mergeAvailabilityIntervalRanges(
+  Iterable<AvailabilityIntervalRange> intervals,
+) {
+  final sortedIntervals = intervals
+      .map(
+        (interval) => AvailabilityIntervalRange(
+          startMinutes: clampAvailabilityIntervalMinutes(
+            interval.startMinutes,
+            min: 0,
+            max: kAvailabilityIntervalLastMinuteOfDay,
+          ),
+          endMinutes: clampAvailabilityIntervalMinutes(
+            interval.endMinutes,
+            min: 0,
+            max: kAvailabilityIntervalLastMinuteOfDay,
+          ),
+        ),
+      )
+      .where((interval) => interval.isValid)
+      .toList()
+    ..sort((a, b) {
+      final startComparison = a.startMinutes.compareTo(b.startMinutes);
+      if (startComparison != 0) {
+        return startComparison;
+      }
+      return a.endMinutes.compareTo(b.endMinutes);
+    });
+
+  if (sortedIntervals.isEmpty) {
+    return const [];
+  }
+
+  final mergedIntervals = <AvailabilityIntervalRange>[];
+  for (final interval in sortedIntervals) {
+    if (mergedIntervals.isEmpty) {
+      mergedIntervals.add(interval);
+      continue;
+    }
+
+    final previous = mergedIntervals.last;
+    if (interval.startMinutes <= previous.endMinutes) {
+      mergedIntervals[mergedIntervals.length - 1] = AvailabilityIntervalRange(
+        startMinutes: previous.startMinutes,
+        endMinutes: interval.endMinutes > previous.endMinutes
+            ? interval.endMinutes
+            : previous.endMinutes,
+      );
+      continue;
+    }
+
+    mergedIntervals.add(interval);
+  }
+
+  return mergedIntervals;
 }
 
 AvailabilityIntervalDraft updateAvailabilityIntervalDraft({

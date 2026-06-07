@@ -84,9 +84,9 @@ class _EditLevelWidgetState extends State<EditLevelWidget> {
                 decoration: ExpatlioDesign.sheetDecoration(),
                 child: Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.space8,
                       ExpatlioDesign.space0,
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0,
                       ExpatlioDesign.space0),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -100,9 +100,9 @@ class _EditLevelWidgetState extends State<EditLevelWidget> {
                       ),
                       Padding(
                         padding: EdgeInsetsDirectional.fromSTEB(
-                            ExpatlioDesign.space0,
+                            ExpatlioDesign.pagePadding,
                             ExpatlioDesign.space32,
-                            ExpatlioDesign.space0,
+                            ExpatlioDesign.pagePadding,
                             ExpatlioDesign.space0),
                         child: Stack(
                           alignment: AlignmentDirectional(0.0, 1.0),
@@ -378,7 +378,7 @@ Native */
                                           color: FlutterFlowTheme.of(context)
                                               .primaryBackground,
                                           borderRadius: BorderRadius.circular(
-                                              ExpatlioDesign.radiusCapsule),
+                                              ExpatlioDesign.radiusSmall),
                                         ),
                                       ),
                                       Padding(
@@ -446,11 +446,12 @@ Native */
                                                             _model.level ==
                                                                     Level
                                                                         .Beginner
-                                                                ? Color(
-                                                                    0xFF6657E6)
+                                                                ? ExpatlioDesign
+                                                                    .primary
                                                                 : Colors
                                                                     .transparent,
-                                                            Color(0xFF6657E6),
+                                                            ExpatlioDesign
+                                                                .primary,
                                                           ),
                                                           width: 6.0,
                                                         ),
@@ -548,11 +549,12 @@ Native */
                                                               _model.level ==
                                                                       Level
                                                                           .Basic
-                                                                  ? Color(
-                                                                      0xFF6657E6)
+                                                                  ? ExpatlioDesign
+                                                                      .primary
                                                                   : Colors
                                                                       .transparent,
-                                                              Color(0xFF6657E6),
+                                                              ExpatlioDesign
+                                                                  .primary,
                                                             ),
                                                             width: 6.0,
                                                           ),
@@ -656,11 +658,12 @@ Native */
                                                               _model.level ==
                                                                       Level
                                                                           .Intermediate
-                                                                  ? Color(
-                                                                      0xFF6657E6)
+                                                                  ? ExpatlioDesign
+                                                                      .primary
                                                                   : Colors
                                                                       .transparent,
-                                                              Color(0xFF6657E6),
+                                                              ExpatlioDesign
+                                                                  .primary,
                                                             ),
                                                             width: 6.0,
                                                           ),
@@ -750,11 +753,12 @@ Native */
                                                               Color>(
                                                             _model.level ==
                                                                     Level.Fluent
-                                                                ? Color(
-                                                                    0xFF6657E6)
+                                                                ? ExpatlioDesign
+                                                                    .primary
                                                                 : Colors
                                                                     .transparent,
-                                                            Color(0xFF6657E6),
+                                                            ExpatlioDesign
+                                                                .primary,
                                                           ),
                                                           width: 6.0,
                                                         ),

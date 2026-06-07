@@ -125,7 +125,7 @@ class LightModeTheme extends FlutterFlowTheme {
   Color get tertiaryColor => tertiary;
 
   late Color primary = ExpatlioDesign.primary;
-  late Color secondary = ExpatlioDesign.primaryEnd;
+  late Color secondary = ExpatlioDesign.info;
   late Color tertiary = ExpatlioDesign.orange;
   late Color alternate = ExpatlioDesign.border;
   late Color primaryText = ExpatlioDesign.text;
@@ -133,8 +133,8 @@ class LightModeTheme extends FlutterFlowTheme {
   late Color primaryBackground = ExpatlioDesign.card;
   late Color secondaryBackground = ExpatlioDesign.background;
   late Color accent1 = const Color(0x1A7430E8);
-  late Color accent2 = const Color(0x1AB23DE8);
-  late Color accent3 = const Color(0x1AF97316);
+  late Color accent2 = const Color(0x1A0088FF);
+  late Color accent3 = const Color(0x1AFF8D28);
   late Color accent4 = const Color(0xCCFFFFFF);
   late Color success = ExpatlioDesign.success;
   late Color warning = ExpatlioDesign.warning;
@@ -212,11 +212,11 @@ class ThemeTypography extends Typography {
     );
   }
 
-  TextStyle _headingStyle(Color color, double size, FontWeight weight) {
+  TextStyle _headingStyle(Color color, double size) {
     return _style(
       color,
       size,
-      weight,
+      ExpatlioDesign.headingFontWeight,
       height: 1.18,
       fontFamily: ExpatlioDesign.headingFontFamily,
     );
@@ -224,40 +224,31 @@ class ThemeTypography extends Typography {
 
   String get displayLargeFamily => ExpatlioDesign.headingFontFamily;
   bool get displayLargeIsCustom => true;
-  TextStyle get displayLarge =>
-      _headingStyle(theme.primaryText, 34.0, FontWeight.w700);
+  TextStyle get displayLarge => _headingStyle(theme.primaryText, 34.0);
   String get displayMediumFamily => ExpatlioDesign.headingFontFamily;
   bool get displayMediumIsCustom => true;
-  TextStyle get displayMedium =>
-      _headingStyle(theme.primaryText, 28.0, FontWeight.w700);
+  TextStyle get displayMedium => _headingStyle(theme.primaryText, 28.0);
   String get displaySmallFamily => ExpatlioDesign.headingFontFamily;
   bool get displaySmallIsCustom => true;
-  TextStyle get displaySmall =>
-      _headingStyle(theme.primaryText, 22.0, FontWeight.w700);
+  TextStyle get displaySmall => _headingStyle(theme.primaryText, 22.0);
   String get headlineLargeFamily => ExpatlioDesign.headingFontFamily;
   bool get headlineLargeIsCustom => true;
-  TextStyle get headlineLarge =>
-      _headingStyle(theme.primaryText, 20.0, FontWeight.w700);
+  TextStyle get headlineLarge => _headingStyle(theme.primaryText, 20.0);
   String get headlineMediumFamily => ExpatlioDesign.headingFontFamily;
   bool get headlineMediumIsCustom => true;
-  TextStyle get headlineMedium =>
-      _headingStyle(theme.primaryText, 17.0, FontWeight.w600);
+  TextStyle get headlineMedium => _headingStyle(theme.primaryText, 17.0);
   String get headlineSmallFamily => ExpatlioDesign.headingFontFamily;
   bool get headlineSmallIsCustom => true;
-  TextStyle get headlineSmall =>
-      _headingStyle(theme.primaryText, 17.0, FontWeight.w600);
+  TextStyle get headlineSmall => _headingStyle(theme.primaryText, 17.0);
   String get titleLargeFamily => ExpatlioDesign.headingFontFamily;
   bool get titleLargeIsCustom => true;
-  TextStyle get titleLarge =>
-      _headingStyle(theme.primaryText, 17.0, FontWeight.w600);
+  TextStyle get titleLarge => _headingStyle(theme.primaryText, 17.0);
   String get titleMediumFamily => ExpatlioDesign.headingFontFamily;
   bool get titleMediumIsCustom => true;
-  TextStyle get titleMedium =>
-      _headingStyle(theme.primaryText, 16.0, FontWeight.w600);
+  TextStyle get titleMedium => _headingStyle(theme.primaryText, 16.0);
   String get titleSmallFamily => ExpatlioDesign.headingFontFamily;
   bool get titleSmallIsCustom => true;
-  TextStyle get titleSmall =>
-      _headingStyle(theme.primaryText, 15.0, FontWeight.w600);
+  TextStyle get titleSmall => _headingStyle(theme.primaryText, 15.0);
   String get labelLargeFamily => ExpatlioDesign.fontFamily;
   bool get labelLargeIsCustom => true;
   TextStyle get labelLarge =>

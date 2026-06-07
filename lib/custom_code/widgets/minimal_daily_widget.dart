@@ -4445,7 +4445,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 vertical: ExpatlioDesign.space8),
             decoration: BoxDecoration(
               color: labelColor,
-              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.24),
                 width: 0.5,
@@ -4685,7 +4685,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       constraints: const BoxConstraints(minWidth: 22),
       decoration: BoxDecoration(
         color: const Color(0xFF2F80ED),
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusSmall),
         border: Border.all(color: Colors.black, width: 1.2),
       ),
       child: Text(

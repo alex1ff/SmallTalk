@@ -122,7 +122,7 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                         FlutterFlowTheme.of(context).primary,
                                       ),
                                       borderRadius: BorderRadius.circular(
-                                          ExpatlioDesign.radiusCapsule),
+                                          ExpatlioDesign.controlRadius),
                                     ),
                                     child: Align(
                                       alignment: AlignmentDirectional(0.0, 0.0),
@@ -174,7 +174,7 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                         FlutterFlowTheme.of(context).primary,
                                       ),
                                       borderRadius: BorderRadius.circular(
-                                          ExpatlioDesign.radiusCapsule),
+                                          ExpatlioDesign.controlRadius),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
@@ -236,7 +236,7 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                         FlutterFlowTheme.of(context).primary,
                                       ),
                                       borderRadius: BorderRadius.circular(
-                                          ExpatlioDesign.radiusCapsule),
+                                          ExpatlioDesign.controlRadius),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
@@ -298,7 +298,7 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                         FlutterFlowTheme.of(context).primary,
                                       ),
                                       borderRadius: BorderRadius.circular(
-                                          ExpatlioDesign.radiusCapsule),
+                                          ExpatlioDesign.controlRadius),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
@@ -360,7 +360,7 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                         FlutterFlowTheme.of(context).primary,
                                       ),
                                       borderRadius: BorderRadius.circular(
-                                          ExpatlioDesign.radiusCapsule),
+                                          ExpatlioDesign.controlRadius),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,
@@ -422,7 +422,7 @@ class _MyRewWidgetState extends State<MyRewWidget> {
                                         FlutterFlowTheme.of(context).primary,
                                       ),
                                       borderRadius: BorderRadius.circular(
-                                          ExpatlioDesign.radiusCapsule),
+                                          ExpatlioDesign.controlRadius),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.max,

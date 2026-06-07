@@ -104,9 +104,9 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
                 Flexible(
                   child: Padding(
                     padding: EdgeInsetsDirectional.fromSTEB(
-                        ExpatlioDesign.space8,
+                        ExpatlioDesign.pagePadding,
                         ExpatlioDesign.space0,
-                        ExpatlioDesign.space8,
+                        ExpatlioDesign.pagePadding,
                         ExpatlioDesign.space0),
                     child: SingleChildScrollView(
                       primary: false,

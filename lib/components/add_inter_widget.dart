@@ -81,6 +81,44 @@ class _AddInterWidgetState extends State<AddInterWidget> {
 
   String _formatTime(DateTime value) => formatAvailabilityIntervalTime(value);
 
+  AvailabilityIntervalRange? _rangeFromInterval(IntervalsStruct interval) {
+    final startMinutes = parseAvailabilityIntervalMinutes(interval.start);
+    final endMinutes = parseAvailabilityIntervalMinutes(interval.end);
+    if (startMinutes == null || endMinutes == null) {
+      return null;
+    }
+
+    final range = AvailabilityIntervalRange(
+      startMinutes: startMinutes,
+      endMinutes: endMinutes,
+    );
+    return range.isValid ? range : null;
+  }
+
+  IntervalsStruct _intervalFromRange(AvailabilityIntervalRange range) {
+    return IntervalsStruct(
+      start: formatAvailabilityIntervalMinutes(range.startMinutes),
+      end: formatAvailabilityIntervalMinutes(range.endMinutes),
+    );
+  }
+
+  List<IntervalsStruct> _mergeIntervalsWithSelection(
+    List<IntervalsStruct> currentIntervals,
+  ) {
+    final ranges = <AvailabilityIntervalRange>[
+      for (final interval in currentIntervals)
+        if (_rangeFromInterval(interval) case final range?) range,
+      AvailabilityIntervalRange(
+        startMinutes: _selectedStartMinutes,
+        endMinutes: _selectedEndMinutes,
+      ),
+    ];
+
+    return mergeAvailabilityIntervalRanges(ranges)
+        .map(_intervalFromRange)
+        .toList();
+  }
+
   void _setInterval({
     required DateTime start,
     required DateTime end,
@@ -155,28 +193,31 @@ class _AddInterWidgetState extends State<AddInterWidget> {
       return;
     }
 
-    final availabilityUpdate = createUsersRecordData(
-      availabilityToday: createAvailabilityTodayStruct(
-        enabled: true,
-        fieldValues: {
-          'intervals': FieldValue.arrayUnion([
-            getIntervalsFirestoreData(
-              updateIntervalsStruct(
-                IntervalsStruct(
-                  start: _model.timeStart,
-                  end: _model.timeEnd,
-                ),
-                clearUnsetFields: false,
-              ),
-              true,
-            )
-          ]),
-        },
-        clearUnsetFields: false,
-      ),
-    );
-    availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
-    await currentUserReference!.update(availabilityUpdate);
+    final userRef = currentUserReference;
+    if (userRef == null) {
+      return;
+    }
+
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(userRef);
+      final latestIntervals = snapshot.exists && snapshot.data() != null
+          ? UsersRecord.fromSnapshot(snapshot).availabilityToday.intervals
+          : currentUserDocument?.availabilityToday.intervals ?? const [];
+      final mergedIntervals = _mergeIntervalsWithSelection(
+        latestIntervals.toList(),
+      );
+      final availabilityUpdate = createUsersRecordData(
+        availabilityToday: createAvailabilityTodayStruct(
+          enabled: true,
+          fieldValues: {
+            'intervals': getIntervalsListFirestoreData(mergedIntervals),
+          },
+          clearUnsetFields: false,
+        ),
+      );
+      availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
+      transaction.update(userRef, availabilityUpdate);
+    });
     if (mounted) {
       Navigator.pop(context, true);
     }
@@ -201,8 +242,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
             color: isSelected
                 ? const Color(0xFFF7EEF6)
                 : FlutterFlowTheme.of(context).primaryBackground,
-            borderRadius:
-                BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
             border: Border.all(
               color: isSelected
                   ? FlutterFlowTheme.of(context).primaryText
@@ -265,9 +305,9 @@ class _AddInterWidgetState extends State<AddInterWidget> {
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
-                    ExpatlioDesign.space8,
+                    ExpatlioDesign.pagePadding,
                     ExpatlioDesign.space16,
-                    ExpatlioDesign.space8,
+                    ExpatlioDesign.pagePadding,
                     ExpatlioDesign.space0),
                 child: Container(
                   width: double.infinity,
@@ -275,7 +315,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                   decoration: BoxDecoration(
                     color: ExpatlioDesign.card,
                     borderRadius:
-                        BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+                        BorderRadius.circular(ExpatlioDesign.cardRadius),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.max,
@@ -347,9 +387,9 @@ class _AddInterWidgetState extends State<AddInterWidget> {
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
-                    ExpatlioDesign.space8,
+                    ExpatlioDesign.pagePadding,
                     ExpatlioDesign.space12,
-                    ExpatlioDesign.space8,
+                    ExpatlioDesign.pagePadding,
                     ExpatlioDesign.space0),
                 child: Row(
                   children: [
@@ -376,9 +416,9 @@ class _AddInterWidgetState extends State<AddInterWidget> {
               ),
               Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
-                    ExpatlioDesign.space8,
+                    ExpatlioDesign.pagePadding,
                     ExpatlioDesign.space20,
-                    ExpatlioDesign.space8,
+                    ExpatlioDesign.pagePadding,
                     ExpatlioDesign.space0),
                 child: Container(
                   width: double.infinity,

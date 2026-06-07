@@ -26,18 +26,18 @@ class NativeSpeakerOnboardingPhotoStep extends StatelessWidget {
     return SingleChildScrollView(
       key: const ValueKey<String>('native_speaker_onboarding_step_photo'),
       padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.space8,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space32,
-          ExpatlioDesign.space8,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space112),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
                 ExpatlioDesign.space0,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: Text(
               FFLocalizations.of(context).getVariableText(

@@ -68,9 +68,9 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                     ),
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.space8,
+                          ExpatlioDesign.pagePadding,
                           ExpatlioDesign.space0,
-                          ExpatlioDesign.space8,
+                          ExpatlioDesign.pagePadding,
                           ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,
@@ -99,7 +99,7 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                                     end: AlignmentDirectional(0, 1.0),
                                   ),
                                   borderRadius: BorderRadius.circular(
-                                      ExpatlioDesign.radiusCapsule),
+                                      ExpatlioDesign.cardRadius),
                                 ),
                                 child: Align(
                                   alignment: AlignmentDirectional(0.0, 0.0),
@@ -164,14 +164,10 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                             ruText: 'У меня есть промокод',
                             enText: 'I have a promo code',
                           ),
-                          style:
-                              FlutterFlowTheme.of(context).titleSmall.override(
-                                    fontFamily: 'sf pro display',
-                                    color: FlutterFlowTheme.of(context).primary,
-                                    fontSize: 15.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                          style: ExpatlioDesign.buttonTextStyle(
+                            context,
+                            color: FlutterFlowTheme.of(context).primary,
+                          ),
                         ),
                       ),
                     ),

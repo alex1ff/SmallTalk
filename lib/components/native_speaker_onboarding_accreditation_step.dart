@@ -56,18 +56,18 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
         'native_speaker_onboarding_step_accreditation',
       ),
       padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.space8,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space32,
-          ExpatlioDesign.space8,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space112),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
                 ExpatlioDesign.space0,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: Text(
               FFLocalizations.of(context).getVariableText(
@@ -85,9 +85,9 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space4,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: Text(
               FFLocalizations.of(context).getVariableText(
@@ -106,9 +106,9 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space32,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: Text(
               isRu ? 'Опыт преподавания' : 'Teaching experience',
@@ -122,9 +122,9 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space12,
-                ExpatlioDesign.space12,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: Wrap(
               spacing: ExpatlioDesign.space8,
@@ -142,9 +142,9 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space24,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: Text(
               isRu ? 'Подтверждение квалификации' : 'Qualification proof',
@@ -158,9 +158,9 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space4,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: Text(
               FFLocalizations.of(context).getVariableText(
@@ -179,9 +179,9 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space12,
-                ExpatlioDesign.space12,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: Wrap(
               spacing: ExpatlioDesign.space8,
@@ -205,9 +205,9 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
           if (requiresEvidenceFiles) ...[
             Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space24,
-                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space0),
               child: Text(
                 isRu ? 'Файлы подтверждения' : 'Supporting files',
@@ -221,9 +221,9 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space4,
-                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space0),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
@@ -242,16 +242,15 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space12,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space0),
               child: InkWell(
                 key: const ValueKey<String>(
                   'native_speaker_accreditation_upload_button',
                 ),
-                borderRadius:
-                    BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
                 onTap: isPickingFiles || isUploadingFiles ? null : onPickFiles,
                 child: Container(
                   width: double.infinity,
@@ -263,7 +262,7 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: ExpatlioDesign.card,
                     borderRadius:
-                        BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+                        BorderRadius.circular(ExpatlioDesign.cardRadius),
                     border: Border.all(
                       color: FlutterFlowTheme.of(context).alternate,
                     ),
@@ -310,9 +309,9 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
                 localQualificationFiles.isNotEmpty)
               Padding(
                 padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space0,
                     ExpatlioDesign.space12,
-                    ExpatlioDesign.space12,
-                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space0,
                     ExpatlioDesign.space0),
                 child: Column(
                   children: [
@@ -377,7 +376,7 @@ class _NativeSpeakerAccreditationChoice extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = FlutterFlowTheme.of(context);
     return InkWell(
-      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+      borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsetsDirectional.fromSTEB(
@@ -387,7 +386,7 @@ class _NativeSpeakerAccreditationChoice extends StatelessWidget {
             ExpatlioDesign.space12),
         decoration: BoxDecoration(
           color: selected ? theme.primaryText : theme.primaryBackground,
-          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
           border: Border.all(
             color: selected ? theme.primaryText : theme.alternate,
           ),
@@ -431,7 +430,7 @@ class _NativeSpeakerEvidenceFileTile extends StatelessWidget {
           ExpatlioDesign.space12),
       decoration: BoxDecoration(
         color: theme.primaryBackground,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
         border: Border.all(color: theme.alternate),
       ),
       child: Row(

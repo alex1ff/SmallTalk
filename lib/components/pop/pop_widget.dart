@@ -51,8 +51,7 @@ class _PopWidgetState extends State<PopWidget> {
     final hasText = text.isNotEmpty;
     final primaryText = hasHeader ? header : text;
     final secondaryText = hasHeader && hasText ? text : null;
-    final cardBorderRadius =
-        BorderRadius.circular(ExpatlioDesign.radiusExtraLarge);
+    final cardBorderRadius = BorderRadius.circular(ExpatlioDesign.cardRadius);
 
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space20,

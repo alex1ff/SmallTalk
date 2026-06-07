@@ -8,7 +8,6 @@ import '/components/profile_edit_fields.dart';
 import '/components/profile_save_bar.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/upload_data.dart';
-import '/components/edit_about_widget.dart';
 import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'dart:async';
@@ -50,6 +49,8 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
   bool _isPurposeMenuOpen = false;
   bool _hasUnsavedNameChange = false;
   bool _isSyncingUserSnapshot = false;
+  Timer? _aboutSaveDebounce;
+  String _lastSavedAboutText = '';
 
   @override
   void initState() {
@@ -86,7 +87,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     _model.aboutTextController ??= TextEditingController(
       text: valueOrDefault(currentUserDocument?.aboutMe, ''),
     );
+    _lastSavedAboutText = _model.aboutTextController?.text ?? '';
+    _model.aboutTextController?.addListener(_handleAboutTextChanged);
     _model.aboutFocusNode ??= FocusNode();
+    _model.aboutFocusNode?.addListener(_handleAboutFocusChanged);
 
     _model.nSLangTextController ??= TextEditingController();
     _model.nSLangFocusNode ??= FocusNode();
@@ -104,8 +108,12 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
 
   @override
   void dispose() {
+    unawaited(_saveAboutIfNeeded(showError: false));
+    _aboutSaveDebounce?.cancel();
     _model.nameTextController1?.removeListener(_handleNameTextChanged);
     _model.nameTextController2?.removeListener(_handleNameTextChanged);
+    _model.aboutTextController?.removeListener(_handleAboutTextChanged);
+    _model.aboutFocusNode?.removeListener(_handleAboutFocusChanged);
     _model.dispose();
     super.dispose();
   }
@@ -125,6 +133,8 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     _model.levelLTextController?.text = _localizedLevel(_selectedLevel);
     _model.targTextController?.text = _formatPurpose(_selectedPurpose);
     _model.genderTextController2?.text = _localizedGender(_selectedGender);
+    _lastSavedAboutText = valueOrDefault(currentUserDocument?.aboutMe, '');
+    _model.aboutTextController?.text = _lastSavedAboutText;
     _model.nSLangTextController?.text =
         _localizedLanguage(currentUserDocument?.languageInstructionNS);
     _selectedInstructionLanguage = currentUserDocument?.languageInstructionNS;
@@ -158,6 +168,70 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       safeSetState(() => _hasUnsavedNameChange = value);
     } else {
       _hasUnsavedNameChange = value;
+    }
+  }
+
+  void _handleAboutTextChanged() {
+    if (_isSyncingUserSnapshot ||
+        currentUserDocument?.role == UserRole.student) {
+      return;
+    }
+
+    _aboutSaveDebounce?.cancel();
+    _aboutSaveDebounce = Timer(const Duration(milliseconds: 700), () {
+      unawaited(_saveAboutIfNeeded());
+    });
+  }
+
+  void _handleAboutFocusChanged() {
+    if (_model.aboutFocusNode?.hasFocus ?? false) {
+      return;
+    }
+
+    _aboutSaveDebounce?.cancel();
+    unawaited(_saveAboutIfNeeded());
+  }
+
+  Future<bool> _saveAboutIfNeeded({bool showError = true}) async {
+    final about = _model.aboutTextController?.text.trim() ?? '';
+    if (about == _lastSavedAboutText.trim() ||
+        currentUserReference == null ||
+        currentUserDocument?.role == UserRole.student) {
+      return true;
+    }
+
+    try {
+      await currentUserReference!.update(createUsersRecordData(aboutMe: about));
+      _lastSavedAboutText = about;
+      return true;
+    } catch (error) {
+      if (showError && mounted) {
+        await actions.showTopNotification(
+          context,
+          'Не удалось сохранить описание',
+          '',
+          true,
+        );
+      }
+      return false;
+    }
+  }
+
+  Future<void> _runOptimisticProfileUpdate({
+    required VoidCallback apply,
+    required VoidCallback restore,
+    required Future<void> Function() persist,
+    required String errorMessage,
+  }) async {
+    safeSetState(apply);
+    try {
+      await persist();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      safeSetState(restore);
+      await actions.showTopNotification(context, errorMessage, '', true);
     }
   }
 
@@ -217,26 +291,6 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       return purpose.first;
     }
     return '${purpose.first}, +${purpose.length - 1}';
-  }
-
-  Future<void> _showEditSheet(Widget child) async {
-    await showModalBottomSheet(
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      context: context,
-      builder: (context) {
-        return GestureDetector(
-          onTap: () {
-            FocusScope.of(context).unfocus();
-            FocusManager.instance.primaryFocus?.unfocus();
-          },
-          child: Padding(
-            padding: MediaQuery.viewInsetsOf(context),
-            child: child,
-          ),
-        );
-      },
-    ).then((value) => safeSetState(() {}));
   }
 
   Future<void> _pickPhoto() async {
@@ -323,6 +377,11 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       await currentUserReference!.update(createUsersRecordData(
         displayName: name,
       ));
+    }
+
+    final aboutSaved = await _saveAboutIfNeeded();
+    if (!aboutSaved) {
+      return;
     }
 
     if (mounted) {
@@ -572,21 +631,29 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       return;
     }
 
-    if (!_sameCountry(selected, currentUserDocument?.countryNS)) {
-      await currentUserReference!.update(createUsersRecordData(
-        countryNS: updateCountryStruct(
-          selected,
-          clearUnsetFields: false,
-        ),
-      ));
-    }
-    if (!mounted) {
-      return;
-    }
-    safeSetState(() {
-      _selectedCountry = selected;
-      _model.countryNSTextController?.text = _localizedCountry(selected);
-    });
+    await _runOptimisticProfileUpdate(
+      apply: () {
+        _selectedCountry = selected;
+        _model.countryNSTextController?.text = _localizedCountry(selected);
+      },
+      restore: () {
+        _selectedCountry = currentCountry;
+        _model.countryNSTextController?.text =
+            _localizedCountry(currentCountry);
+      },
+      persist: () async {
+        if (_sameCountry(selected, currentUserDocument?.countryNS)) {
+          return;
+        }
+        await currentUserReference!.update(createUsersRecordData(
+          countryNS: updateCountryStruct(
+            selected,
+            clearUnsetFields: false,
+          ),
+        ));
+      },
+      errorMessage: 'Не удалось обновить страну',
+    );
   }
 
   Future<void> _editLearningLanguage(BuildContext anchorContext) async {
@@ -612,19 +679,28 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       return;
     }
 
-    await currentUserReference!.update(createUsersRecordData(
-      learningLanguage: updateLanguageStruct(
-        selected,
-        clearUnsetFields: false,
-      ),
-    ));
-    if (!mounted) {
-      return;
-    }
-    safeSetState(() {
-      _selectedLearningLanguage = selected;
-      _model.langLTextController?.text = _localizedLanguage(selected);
-    });
+    await _runOptimisticProfileUpdate(
+      apply: () {
+        _selectedLearningLanguage = selected;
+        _model.langLTextController?.text = _localizedLanguage(selected);
+      },
+      restore: () {
+        _selectedLearningLanguage = currentLanguage;
+        _model.langLTextController?.text = _localizedLanguage(currentLanguage);
+      },
+      persist: () async {
+        if (_sameLanguage(selected, currentUserDocument?.learningLanguage)) {
+          return;
+        }
+        await currentUserReference!.update(createUsersRecordData(
+          learningLanguage: updateLanguageStruct(
+            selected,
+            clearUnsetFields: false,
+          ),
+        ));
+      },
+      errorMessage: 'Не удалось обновить язык изучения',
+    );
   }
 
   Future<void> _editLevel(BuildContext anchorContext) async {
@@ -717,18 +793,6 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     });
   }
 
-  Future<void> _editAbout() async {
-    await _showEditSheet(
-      EditAboutWidget(
-        action: (about) async {
-          safeSetState(() {
-            _model.aboutTextController?.text = about;
-          });
-        },
-      ),
-    );
-  }
-
   Future<void> _editInstructionLanguage(BuildContext anchorContext) async {
     final currentLanguage = _selectedInstructionLanguage ??
         currentUserDocument?.languageInstructionNS;
@@ -752,19 +816,29 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       return;
     }
 
-    await currentUserReference!.update(createUsersRecordData(
-      languageInstructionNS: updateLanguageStruct(
-        selected,
-        clearUnsetFields: false,
-      ),
-    ));
-    if (!mounted) {
-      return;
-    }
-    safeSetState(() {
-      _selectedInstructionLanguage = selected;
-      _model.nSLangTextController?.text = _localizedLanguage(selected);
-    });
+    await _runOptimisticProfileUpdate(
+      apply: () {
+        _selectedInstructionLanguage = selected;
+        _model.nSLangTextController?.text = _localizedLanguage(selected);
+      },
+      restore: () {
+        _selectedInstructionLanguage = currentLanguage;
+        _model.nSLangTextController?.text = _localizedLanguage(currentLanguage);
+      },
+      persist: () async {
+        if (_sameLanguage(
+            selected, currentUserDocument?.languageInstructionNS)) {
+          return;
+        }
+        await currentUserReference!.update(createUsersRecordData(
+          languageInstructionNS: updateLanguageStruct(
+            selected,
+            clearUnsetFields: false,
+          ),
+        ));
+      },
+      errorMessage: 'Не удалось обновить язык обучения',
+    );
   }
 
   Future<void> _editNativeLanguage(BuildContext anchorContext) async {
@@ -790,19 +864,29 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       return;
     }
 
-    await currentUserReference!.update(createUsersRecordData(
-      nativeLanguageNS: updateLanguageStruct(
-        selected,
-        clearUnsetFields: false,
-      ),
-    ));
-    if (!mounted) {
-      return;
-    }
-    safeSetState(() {
-      _selectedNativeLanguage = selected;
-      _model.nSLang2TextController?.text = _localizedLanguage(selected);
-    });
+    await _runOptimisticProfileUpdate(
+      apply: () {
+        _selectedNativeLanguage = selected;
+        _model.nSLang2TextController?.text = _localizedLanguage(selected);
+      },
+      restore: () {
+        _selectedNativeLanguage = currentLanguage;
+        _model.nSLang2TextController?.text =
+            _localizedLanguage(currentLanguage);
+      },
+      persist: () async {
+        if (_sameLanguage(selected, currentUserDocument?.nativeLanguageNS)) {
+          return;
+        }
+        await currentUserReference!.update(createUsersRecordData(
+          nativeLanguageNS: updateLanguageStruct(
+            selected,
+            clearUnsetFields: false,
+          ),
+        ));
+      },
+      errorMessage: 'Не удалось обновить родной язык',
+    );
   }
 
   @override
@@ -863,7 +947,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                                 ),
                                 style: ExpatlioDesign.textStyle(
                                   context,
-                                  color: const Color(0xFF8C8C8C),
+                                  color: ExpatlioDesign.inactive,
                                   size: 14.0,
                                   weight: FontWeight.w700,
                                 ),
@@ -871,11 +955,11 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                               const SizedBox(height: ExpatlioDesign.space12),
                               Container(
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: ExpatlioDesign.card,
                                   borderRadius: BorderRadius.circular(
                                       ExpatlioDesign.radiusLarge),
                                   border: Border.all(
-                                    color: const Color(0xFFE8E8E8),
+                                    color: ExpatlioDesign.border,
                                     width: 1.0,
                                   ),
                                 ),
@@ -972,12 +1056,13 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         menuOpen: _isGenderMenuOpen,
         onTap: (fieldContext) => _editGender(fieldContext, false),
       ),
-      ProfileReadOnlyField(
+      ProfileMultilineTextField(
         label: FFLocalizations.of(context).getText('53sloz8g' /* О себе */),
-        value: _model.aboutTextController?.text ?? '',
-        onTap: (_) => _editAbout(),
-        showDropdownIcon: false,
-        maxLines: 2,
+        controller: _model.aboutTextController,
+        focusNode: _model.aboutFocusNode,
+        hintText: FFLocalizations.of(context).getText(
+          'tjmgsp1u' /* Люблю готовить, изучаю испанск... */,
+        ),
       ),
       ProfileReadOnlyField(
         label: FFLocalizations.of(context).getText(

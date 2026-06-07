@@ -206,7 +206,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
         border: Border.all(
           color: FlutterFlowTheme.of(context).alternate,
           width: 0.8,
@@ -823,7 +823,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                                       height: 35.0,
                                                                                       decoration: BoxDecoration(
                                                                                         color: ExpatlioDesign.card,
-                                                                                        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+                                                                                        borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
                                                                                       ),
                                                                                       child: Padding(
                                                                                         padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space12, ExpatlioDesign.space0, ExpatlioDesign.space12, ExpatlioDesign.space0),

@@ -63,6 +63,29 @@ void main() {
     await FFLocalizations.initialize();
   });
 
+  testWidgets('progress text has top spacing', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        FlashcardReviewWidget(
+          entries: [
+            _entry(
+              id: 'one',
+              prompt: 'hello',
+              answer: 'привет',
+              stage: 1,
+            ),
+          ],
+          onRemembered: (entry, {required hadAnyMiss}) async {},
+        ),
+      ),
+    );
+
+    expect(
+      tester.getTopLeft(find.byKey(const Key('flashcardProgressText'))).dy,
+      greaterThanOrEqualTo(12.0),
+    );
+  });
+
   testWidgets(
       'answer actions are available immediately and there is no reveal button',
       (tester) async {

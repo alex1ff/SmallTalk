@@ -78,9 +78,9 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                             children: [
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.pagePadding,
                                     ExpatlioDesign.space20,
-                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.pagePadding,
                                     ExpatlioDesign.space0),
                                 child: Container(
                                   width: double.infinity,
@@ -88,7 +88,7 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                     color: FlutterFlowTheme.of(context)
                                         .primaryBackground,
                                     borderRadius: BorderRadius.circular(
-                                        ExpatlioDesign.radiusCapsule),
+                                        ExpatlioDesign.cardRadius),
                                   ),
                                   child: Padding(
                                     padding:
@@ -427,9 +427,9 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                             children: [
                               Padding(
                                 padding: EdgeInsetsDirectional.fromSTEB(
-                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.pagePadding,
                                     ExpatlioDesign.space20,
-                                    ExpatlioDesign.space8,
+                                    ExpatlioDesign.pagePadding,
                                     ExpatlioDesign.space0),
                                 child: Container(
                                   width: double.infinity,
@@ -437,7 +437,7 @@ class _CelebrationSTWidgetState extends State<CelebrationSTWidget> {
                                     color: FlutterFlowTheme.of(context)
                                         .primaryBackground,
                                     borderRadius: BorderRadius.circular(
-                                        ExpatlioDesign.radiusCapsule),
+                                        ExpatlioDesign.cardRadius),
                                   ),
                                   child: Padding(
                                     padding:

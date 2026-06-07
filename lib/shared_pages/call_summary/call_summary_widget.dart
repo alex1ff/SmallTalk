@@ -292,9 +292,9 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
 
         return Wrapper(
           padding: const EdgeInsetsDirectional.fromSTEB(
-              ExpatlioDesign.space8,
+              ExpatlioDesign.pagePadding,
               ExpatlioDesign.space32,
-              ExpatlioDesign.space8,
+              ExpatlioDesign.pagePadding,
               ExpatlioDesign.space0),
           child: ButtonWidget(
             text: FFLocalizations.of(context).getVariableText(
@@ -489,7 +489,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
     required VoidCallback onTap,
     required Color activeBackgroundColor,
     required Color activeIconColor,
-    Color activeBorderColor = const Color(0xFF7B2FF2),
+    Color activeBorderColor = ExpatlioDesign.primary,
   }) {
     return InkWell(
       splashColor: Colors.transparent,
@@ -582,49 +582,22 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
   Widget _buildTopBar(BuildContext context) {
     return SizedBox(
       height: 44.0,
-      child: Row(
-        children: [
-          InkWell(
-            splashColor: Colors.transparent,
-            focusColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            borderRadius:
-                BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
-            onTap: _navigateToHome,
-            child: Container(
-              width: 44.0,
-              height: 44.0,
-              decoration: BoxDecoration(
-                color: FlutterFlowTheme.of(context).secondaryBackground,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.close_rounded,
-                color: ExpatlioDesign.text,
-                size: 22.0,
-              ),
-            ),
+      child: Center(
+        child: Text(
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Звонок завершён · ${_formattedCallDuration()}',
+            enText: 'Call ended · ${_formattedCallDuration()}',
           ),
-          Expanded(
-            child: Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Звонок завершён · ${_formattedCallDuration()}',
-                enText: 'Call ended · ${_formattedCallDuration()}',
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: _summaryTextStyle(
-                context,
-                fontSize: 15.0,
-                color: ExpatlioDesign.muted,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: _summaryTextStyle(
+            context,
+            fontSize: 15.0,
+            color: ExpatlioDesign.muted,
+            fontWeight: FontWeight.w500,
           ),
-          const SizedBox(width: ExpatlioDesign.space40),
-        ],
+        ),
       ),
     );
   }

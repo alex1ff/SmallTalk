@@ -100,13 +100,14 @@ class _FFButtonWidgetState extends State<FFButtonWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final defaultTextStyle = ExpatlioDesign.textStyle(
-      context,
-      color: Colors.white,
-      size: 16.0,
-      weight: FontWeight.w600,
+    final textStyle =
+        (widget.options.textStyle ?? ExpatlioDesign.buttonTextStyle(context))
+            .copyWith(
+      fontFamily: ExpatlioDesign.fontFamily,
+      fontSize: ExpatlioDesign.buttonTextSize,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.0,
     );
-    final textStyle = widget.options.textStyle ?? defaultTextStyle;
     final borderRadius = widget.options.borderRadius ??
         BorderRadius.circular(ExpatlioDesign.buttonRadius);
     final borderSide = widget.options.borderSide ?? BorderSide.none;

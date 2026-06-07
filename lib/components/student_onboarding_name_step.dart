@@ -21,16 +21,16 @@ class StudentOnboardingNameStep extends StatelessWidget {
     return SingleChildScrollView(
       key: const ValueKey<String>('student_onboarding_step_name'),
       padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.space8,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space32,
-          ExpatlioDesign.space8,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space112),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding:
-                const EdgeInsetsDirectional.only(start: ExpatlioDesign.space12),
+                const EdgeInsetsDirectional.only(start: ExpatlioDesign.space0),
             child: Text(
               FFLocalizations.of(context).getVariableText(
                 ruText: 'Как вас зовут?',
@@ -46,7 +46,7 @@ class StudentOnboardingNameStep extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space4,
                 ExpatlioDesign.space0,
                 ExpatlioDesign.space0),

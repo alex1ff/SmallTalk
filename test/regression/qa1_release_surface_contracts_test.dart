@@ -328,6 +328,19 @@ void main() {
       );
     });
 
+    test('native speaker celebration next steps stay compact', () {
+      final celebration = _source(
+        'lib/components/celebration_n_s_widget.dart',
+      );
+
+      expect(
+        RegExp('После одобрения вы сможете').allMatches(celebration).length,
+        1,
+      );
+      expect(celebration, contains('Expanded('));
+      expect(celebration, contains('child: Text('));
+    });
+
     test('celebration confetti does not intercept bottom sheet actions', () {
       final studentCelebration = _source(
         'lib/components/celebration_s_t_widget.dart',

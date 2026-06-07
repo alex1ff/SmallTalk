@@ -22,18 +22,18 @@ class NativeSpeakerOnboardingAboutMeStep extends StatelessWidget {
     return SingleChildScrollView(
       key: const ValueKey<String>('native_speaker_onboarding_step_about_me'),
       padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.space8,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space32,
-          ExpatlioDesign.space8,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space112),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
                 ExpatlioDesign.space0,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: AutoSizeText(
               FFLocalizations.of(context).getVariableText(
@@ -53,9 +53,9 @@ class NativeSpeakerOnboardingAboutMeStep extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space4,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: Text(
               FFLocalizations.of(context).getVariableText(

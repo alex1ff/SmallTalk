@@ -74,9 +74,9 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                     ),
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.space8,
+                          ExpatlioDesign.pagePadding,
                           ExpatlioDesign.space0,
-                          ExpatlioDesign.space8,
+                          ExpatlioDesign.pagePadding,
                           ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,
@@ -98,7 +98,7 @@ class _LogoutWidgetState extends State<LogoutWidget> {
                                   gradient: LinearGradient(
                                     colors: [
                                       FlutterFlowTheme.of(context).error,
-                                      Color(0xFFFFC100)
+                                      ExpatlioDesign.warning
                                     ],
                                     stops: [0.0, 1.0],
                                     begin: AlignmentDirectional(0.0, -1.0),

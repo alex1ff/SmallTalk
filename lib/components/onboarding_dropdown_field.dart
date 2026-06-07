@@ -28,7 +28,7 @@ class OnboardingDropdownField extends StatelessWidget {
       child: InkWell(
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
         onTap: () async => onTap(context),
         child: Container(
           height: ExpatlioDesign.formFieldHeight,
@@ -38,7 +38,7 @@ class OnboardingDropdownField extends StatelessWidget {
                 : active
                     ? ExpatlioDesign.primary.withValues(alpha: 0.08)
                     : ExpatlioDesign.mutedSurface,
-            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
             border: Border.all(
               color: active
                   ? ExpatlioDesign.primary.withValues(alpha: 0.22)

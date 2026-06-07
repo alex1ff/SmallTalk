@@ -71,9 +71,9 @@ class _StatsWidgetState extends State<StatsWidget> {
                 ),
                 Padding(
                   padding: EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space16,
-                      ExpatlioDesign.space8,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space0),
                   child: StreamBuilder<List<StatsRecord>>(
                     stream: _model.statsStream,

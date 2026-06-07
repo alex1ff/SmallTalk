@@ -74,9 +74,9 @@ class _DeleteWidgetState extends State<DeleteWidget> {
                     ),
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.space8,
+                          ExpatlioDesign.pagePadding,
                           ExpatlioDesign.space0,
-                          ExpatlioDesign.space8,
+                          ExpatlioDesign.pagePadding,
                           ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,

@@ -199,7 +199,7 @@ class _FavWidgetState extends State<FavWidget> {
                               children: [
                                 Icon(
                                   FFIcons.kstar012,
-                                  color: Color(0xFFFFC100),
+                                  color: ExpatlioDesign.warning,
                                   size: 13.0,
                                 ),
                                 Text(

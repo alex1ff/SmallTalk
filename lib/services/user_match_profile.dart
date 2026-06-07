@@ -153,6 +153,11 @@ bool canUseNativeSpeakerShell(UsersRecord? user) =>
     user?.role == UserRole.native_speaker &&
     (isUserApprovedTeacher(user) || hasPendingTeacherVerification(user));
 
+// Profile balance is a teacher-track state. Money-moving screens stay
+// approved-only through canAccessTeacherSurfaces.
+bool shouldShowTeacherProfileBalance(UsersRecord? user) =>
+    canUseNativeSpeakerShell(user);
+
 bool canAccessTeacherSurfaces(UsersRecord? user) =>
     user?.role == UserRole.native_speaker && isUserApprovedTeacher(user);
 

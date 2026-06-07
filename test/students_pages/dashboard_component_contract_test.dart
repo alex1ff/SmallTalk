@@ -23,4 +23,12 @@ void main() {
     expect(source, isNot(contains('class _OrbitingAvatarsCta')));
     expect(source, isNot(contains('size: 62.0')));
   });
+
+  test('student dashboard filters use design control radius', () {
+    final source = File('lib/components/dashboard_inline_filter_button.dart')
+        .readAsStringSync();
+
+    expect(source, contains('ExpatlioDesign.controlRadius'));
+    expect(source, isNot(contains('ExpatlioDesign.radiusCapsule')));
+  });
 }

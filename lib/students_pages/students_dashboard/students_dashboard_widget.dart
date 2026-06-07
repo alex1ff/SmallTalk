@@ -3,12 +3,12 @@ import '/components/celebration_s_t_widget.dart';
 import '/components/celebration_top_up_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/availability_schedule_card.dart';
 import '/components/dashboard_inline_filter_button.dart';
 import '/components/orbiting_avatars_cta.dart';
 import '/components/profile_dropdown_menu_item.dart';
 import '/components/student_availability_switch_control.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/permissions_util.dart';
@@ -826,212 +826,42 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
   Widget _buildAvailabilitySection(BuildContext context) {
     return AuthUserStreamWidget(
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: double.infinity,
-            height: 60.0,
-            decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryBackground,
-              borderRadius:
-                  BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
-            ),
-            child: Padding(
-              padding: ExpatlioDesign.cardPadding,
-              child: Row(
-                mainAxisSize: MainAxisSize.max,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    FFLocalizations.of(context).getText(
-                      'n1zbzn9y' /* Доступен сегодня */,
-                    ),
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          fontSize: 16.0,
-                          letterSpacing: 0.0,
-                          fontWeight: FontWeight.normal,
-                        ),
-                  ),
-                  _buildAvailabilitySwitch(),
-                ],
-              ),
-            ),
-          ),
-          if (_effectiveAvailabilityEnabled) ...[
-            const SizedBox(height: ExpatlioDesign.compactSpacing),
-            Builder(
-              builder: (context) {
-                final intervals =
-                    currentUserDocument?.availabilityToday.intervals.toList() ??
-                        [];
+      builder: (context) {
+        final intervals =
+            currentUserDocument?.availabilityToday.intervals.toList() ?? [];
 
-                return ListView.separated(
-                  padding: EdgeInsets.zero,
-                  primary: false,
-                  shrinkWrap: true,
-                  scrollDirection: Axis.vertical,
-                  itemCount: intervals.length,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(height: ExpatlioDesign.compactSpacing),
-                  itemBuilder: (context, intervalsIndex) {
-                    final intervalsItem = intervals[intervalsIndex];
-                    return Container(
-                      width: double.infinity,
-                      height: 60.0,
-                      decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).primaryBackground,
-                        borderRadius: BorderRadius.circular(
-                            ExpatlioDesign.radiusExtraLarge),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(ExpatlioDesign.space4),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.max,
-                          children: [
-                            Container(
-                              width: 52.0,
-                              height: 52.0,
-                              decoration: BoxDecoration(
-                                color: ExpatlioDesign.mutedSurface,
-                                borderRadius: BorderRadius.circular(
-                                    ExpatlioDesign.radiusExtraLarge),
-                              ),
-                              child: Align(
-                                alignment: AlignmentDirectional(0.0, 0.0),
-                                child: Icon(
-                                  FFIcons.kclock,
-                                  color:
-                                      FlutterFlowTheme.of(context).primaryText,
-                                  size: 20.0,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    ExpatlioDesign.space12,
-                                    ExpatlioDesign.space0,
-                                    ExpatlioDesign.space0,
-                                    ExpatlioDesign.space0),
-                                child: Text(
-                                  '${intervalsItem.start} - ${intervalsItem.end}',
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        fontSize: 16.0,
-                                        letterSpacing: 0.0,
-                                      ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            FlutterFlowIconButton(
-                              borderRadius: ExpatlioDesign.radiusExtraLarge,
-                              buttonSize: 52.0,
-                              icon: Icon(
-                                FFIcons.ktrash03,
-                                color: FlutterFlowTheme.of(context).error,
-                                size: 18.0,
-                              ),
-                              onPressed: () async {
-                                final userRef = currentUserReference;
-                                if (userRef == null) {
-                                  return;
-                                }
+        return AvailabilityScheduleCard(
+          availabilityEnabled: _effectiveAvailabilityEnabled,
+          intervals: intervals,
+          switchControl: _buildAvailabilitySwitch(),
+          onAddInterval: () async {
+            await _openAddInterBottomSheet();
+          },
+          onRemoveInterval: (intervalsItem) async {
+            final userRef = currentUserReference;
+            if (userRef == null) {
+              return;
+            }
 
-                                await userRef.update(createUsersRecordData(
-                                  availabilityToday:
-                                      createAvailabilityTodayStruct(
-                                    fieldValues: {
-                                      'intervals': FieldValue.arrayRemove([
-                                        getIntervalsFirestoreData(
-                                          updateIntervalsStruct(
-                                            intervalsItem,
-                                            clearUnsetFields: false,
-                                          ),
-                                          true,
-                                        )
-                                      ]),
-                                    },
-                                    clearUnsetFields: false,
-                                  ),
-                                ));
-                              },
-                            ),
-                          ],
-                        ),
+            await userRef.update(createUsersRecordData(
+              availabilityToday: createAvailabilityTodayStruct(
+                fieldValues: {
+                  'intervals': FieldValue.arrayRemove([
+                    getIntervalsFirestoreData(
+                      updateIntervalsStruct(
+                        intervalsItem,
+                        clearUnsetFields: false,
                       ),
-                    );
-                  },
-                );
-              },
-            ),
-            const SizedBox(height: ExpatlioDesign.compactSpacing),
-            InkWell(
-              splashColor: Colors.transparent,
-              focusColor: Colors.transparent,
-              hoverColor: Colors.transparent,
-              highlightColor: Colors.transparent,
-              onTap: () async {
-                await _openAddInterBottomSheet();
-              },
-              child: Container(
-                width: double.infinity,
-                height: 60.0,
-                decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).primaryBackground,
-                  borderRadius:
-                      BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
-                  border: Border.all(
-                    color: FlutterFlowTheme.of(context).secondaryBackground,
-                  ),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(ExpatlioDesign.space4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      FlutterFlowIconButton(
-                        borderRadius: ExpatlioDesign.radiusMedium,
-                        buttonSize: 35.0,
-                        fillColor:
-                            FlutterFlowTheme.of(context).secondaryBackground,
-                        icon: Icon(
-                          Icons.add_sharp,
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          size: 18.0,
-                        ),
-                        onPressed: () async {
-                          await _openAddInterBottomSheet();
-                        },
-                      ),
-                      Text(
-                        FFLocalizations.of(context).getText(
-                          'ws9tu06c' /* Добавить интервал */,
-                        ),
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'sf pro display',
-                              color: FlutterFlowTheme.of(context).primaryText,
-                              fontSize: 15.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FontWeight.w500,
-                            ),
-                      ),
-                    ].divide(
-                      const SizedBox(width: ExpatlioDesign.compactSpacing),
-                    ),
-                  ),
-                ),
+                      true,
+                    )
+                  ]),
+                },
+                clearUnsetFields: false,
               ),
-            ),
-          ],
-        ],
-      ),
+            ));
+          },
+        );
+      },
     );
   }
 
@@ -1107,15 +937,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
         onTap: _handleStartConversation,
         child: Container(
           width: 240.0,
           height: 60.0,
           decoration: BoxDecoration(
             gradient: ExpatlioDesign.primaryGradient,
-            borderRadius:
-                BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x267430E8),
@@ -1441,7 +1270,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               color: FlutterFlowTheme.of(context)
                                   .primaryBackground,
                               borderRadius: BorderRadius.circular(
-                                  ExpatlioDesign.radiusCapsule),
+                                  ExpatlioDesign.cardRadius),
                               border: Border.all(
                                 color: FlutterFlowTheme.of(context)
                                     .secondaryBackground,
@@ -1860,17 +1689,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                           },
                                           child: Text(
                                             'У меня есть промокод',
-                                            style: FlutterFlowTheme.of(context)
-                                                .titleSmall
-                                                .override(
-                                                  fontFamily: 'sf pro display',
-                                                  color: FlutterFlowTheme.of(
-                                                          context)
+                                            style:
+                                                ExpatlioDesign.buttonTextStyle(
+                                              context,
+                                              color:
+                                                  FlutterFlowTheme.of(context)
                                                       .primary,
-                                                  fontSize: 15.0,
-                                                  letterSpacing: 0.0,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1887,7 +1712,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                             color: FlutterFlowTheme.of(context)
                                                 .secondaryBackground,
                                             borderRadius: BorderRadius.circular(
-                                                ExpatlioDesign.radiusCapsule),
+                                                ExpatlioDesign.controlRadius),
                                           ),
                                           child: Padding(
                                             padding: EdgeInsets.all(
@@ -2333,16 +2158,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                             FFLocalizations.of(context).getText(
                               'lffx4k7x' /* Статистика за сегодня */,
                             ),
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'Cool',
-                                  color:
-                                      FlutterFlowTheme.of(context).primaryText,
-                                  fontSize: 22.0,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.normal,
-                                ),
+                            style: ExpatlioDesign.sectionTitleStyle(context)
+                                .copyWith(
+                              color: FlutterFlowTheme.of(context).primaryText,
+                            ),
                           ),
                         ),
                         Padding(

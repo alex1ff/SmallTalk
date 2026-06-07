@@ -82,5 +82,49 @@ void main() {
       expect(draft.startMinutes, 10 * 60);
       expect(draft.endMinutes, 10 * 60 + kAvailabilityIntervalMinuteStep);
     });
+
+    test('merges overlapping and touching availability intervals', () {
+      final intervals = mergeAvailabilityIntervalRanges([
+        const AvailabilityIntervalRange(
+          startMinutes: 21 * 60,
+          endMinutes: 22 * 60,
+        ),
+        const AvailabilityIntervalRange(
+          startMinutes: 14 * 60,
+          endMinutes: 21 * 60,
+        ),
+      ]);
+
+      expect(intervals, [
+        const AvailabilityIntervalRange(
+          startMinutes: 14 * 60,
+          endMinutes: 22 * 60,
+        ),
+      ]);
+    });
+
+    test('keeps availability intervals separate when there is a gap', () {
+      final intervals = mergeAvailabilityIntervalRanges([
+        const AvailabilityIntervalRange(
+          startMinutes: 21 * 60,
+          endMinutes: 22 * 60,
+        ),
+        const AvailabilityIntervalRange(
+          startMinutes: 14 * 60,
+          endMinutes: 20 * 60,
+        ),
+      ]);
+
+      expect(intervals, [
+        const AvailabilityIntervalRange(
+          startMinutes: 14 * 60,
+          endMinutes: 20 * 60,
+        ),
+        const AvailabilityIntervalRange(
+          startMinutes: 21 * 60,
+          endMinutes: 22 * 60,
+        ),
+      ]);
+    });
   });
 }

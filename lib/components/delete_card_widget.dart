@@ -75,9 +75,9 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                     ),
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.space8,
+                          ExpatlioDesign.pagePadding,
                           ExpatlioDesign.space0,
-                          ExpatlioDesign.space8,
+                          ExpatlioDesign.pagePadding,
                           ExpatlioDesign.space0),
                       child: Container(
                         width: double.infinity,

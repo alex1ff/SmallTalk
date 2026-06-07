@@ -859,7 +859,7 @@ class _WaitingForTeacherPageWidgetState
                           ),
                       elevation: 0.0,
                       borderRadius:
-                          BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+                          BorderRadius.circular(ExpatlioDesign.buttonRadius),
                     ),
                     showLoadingIndicator: _isCancelling,
                   ),

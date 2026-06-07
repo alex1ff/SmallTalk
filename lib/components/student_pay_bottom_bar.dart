@@ -67,13 +67,10 @@ class StudentPayBottomBar extends StatelessWidget {
                             ? 'Выбрать ${plan.title} · $price/${plan.periodLabel}'
                             : 'Повторить загрузку',
                         textAlign: TextAlign.center,
-                        style: ExpatlioDesign.textStyle(
+                        style: ExpatlioDesign.buttonTextStyle(
                           context,
                           color: ExpatlioDesign.card,
-                          size: 16.0,
-                          weight: FontWeight.w700,
-                          height: 1.2,
-                        ),
+                        ).copyWith(height: 1.2),
                       ),
               ),
             ),

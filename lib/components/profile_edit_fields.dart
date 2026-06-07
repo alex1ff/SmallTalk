@@ -141,6 +141,66 @@ class ProfileReadOnlyField extends StatelessWidget {
   }
 }
 
+class ProfileMultilineTextField extends StatelessWidget {
+  const ProfileMultilineTextField({
+    super.key,
+    required this.label,
+    required this.controller,
+    required this.focusNode,
+    this.hintText,
+    this.minLines = 4,
+    this.maxLines = 8,
+  });
+
+  final String label;
+  final TextEditingController? controller;
+  final FocusNode? focusNode;
+  final String? hintText;
+  final int minLines;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ProfileFieldLabel(text: label),
+        const SizedBox(height: ExpatlioDesign.space8),
+        TextFormField(
+          controller: controller,
+          focusNode: focusNode,
+          autofocus: false,
+          textCapitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.newline,
+          textAlignVertical: TextAlignVertical.top,
+          obscureText: false,
+          decoration: ExpatlioDesign.formFieldDecoration(
+            context,
+            hintText: hintText,
+            maxLines: minLines,
+          ),
+          style: ExpatlioDesign.formTextStyle(context),
+          minLines: minLines,
+          maxLines: maxLines,
+          cursorColor: ExpatlioDesign.primary,
+          enableInteractiveSelection: true,
+          inputFormatters: [
+            if (!isAndroid && !isiOS)
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                return TextEditingValue(
+                  selection: newValue.selection,
+                  text: newValue.text.toCapitalization(
+                    TextCapitalization.sentences,
+                  ),
+                );
+              }),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _ProfileFieldLabel extends StatelessWidget {
   const _ProfileFieldLabel({required this.text});
 

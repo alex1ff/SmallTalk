@@ -230,9 +230,9 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                       color: ExpatlioDesign.background),
                   child: Padding(
                     padding: EdgeInsetsDirectional.fromSTEB(
-                        ExpatlioDesign.space8,
                         ExpatlioDesign.space0,
-                        ExpatlioDesign.space8,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space0,
                         ExpatlioDesign.space32),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -245,7 +245,7 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space12,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space24,
                               ExpatlioDesign.space0,
                               ExpatlioDesign.space0),
@@ -266,9 +266,9 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space0,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space12,
-                              ExpatlioDesign.space0,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space0),
                           child: AuthUserStreamWidget(
                             builder: (context) => wrapWithModel(
@@ -314,7 +314,7 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space12,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space40,
                               ExpatlioDesign.space0,
                               ExpatlioDesign.space0),
@@ -335,9 +335,9 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space0,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space12,
-                              ExpatlioDesign.space0,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space0),
                           child: AuthUserStreamWidget(
                             builder: (context) => wrapWithModel(
@@ -391,7 +391,7 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space12,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space40,
                               ExpatlioDesign.space0,
                               ExpatlioDesign.space0),
@@ -413,9 +413,9 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space12,
-                              ExpatlioDesign.space12,
-                              ExpatlioDesign.space12,
+                              ExpatlioDesign.pagePadding,
                               ExpatlioDesign.space0),
                           child: _buildPreferredPartnerLevelSelector(context),
                         ),

@@ -4,8 +4,11 @@ import '/index.dart';
 import '/services/user_match_profile.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'nav_bar_model.dart';
 export 'nav_bar_model.dart';
+
+const _chatIconAsset = 'assets/images/message-circle-01.svg';
 
 class NavBarWidget extends StatefulWidget {
   const NavBarWidget({
@@ -65,7 +68,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           ),
         ),
         _NavBarDestination(
-          icon: Icons.chat_bubble_outline_rounded,
+          svgAsset: _chatIconAsset,
           label: FFLocalizations.of(context).getVariableText(
             ruText: 'Чаты',
             enText: 'Chats',
@@ -97,7 +100,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         ),
       ),
       _NavBarDestination(
-        icon: Icons.chat_bubble_outline_rounded,
+        svgAsset: _chatIconAsset,
         label: FFLocalizations.of(context).getVariableText(
           ruText: 'Чаты',
           enText: 'Chats',
@@ -194,7 +197,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
             color: ExpatlioDesign.card,
             border: Border(
               top: BorderSide(
-                color: ExpatlioDesign.border,
+                color: ExpatlioDesign.separator,
                 width: 1,
               ),
             ),
@@ -231,16 +234,12 @@ class _NavBarWidgetState extends State<NavBarWidget> {
                           height: 34,
                           decoration: BoxDecoration(
                             color: selected
-                                ? ExpatlioDesign.primary.withValues(alpha: 0.10)
+                                ? ExpatlioDesign.primary.withValues(alpha: 0.12)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(
                                 ExpatlioDesign.radiusMedium),
                           ),
-                          child: Icon(
-                            destination.icon,
-                            color: color,
-                            size: 22,
-                          ),
+                          child: _buildDestinationIcon(destination, color),
                         ),
                         const SizedBox(height: ExpatlioDesign.space4),
                         Text(
@@ -265,14 +264,36 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       ),
     );
   }
+
+  Widget _buildDestinationIcon(_NavBarDestination destination, Color color) {
+    final svgAsset = destination.svgAsset;
+    if (svgAsset != null) {
+      return Center(
+        child: SvgPicture.asset(
+          svgAsset,
+          width: 22,
+          height: 22,
+          colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+        ),
+      );
+    }
+
+    return Icon(
+      destination.icon,
+      color: color,
+      size: 22,
+    );
+  }
 }
 
 class _NavBarDestination {
   const _NavBarDestination({
-    required this.icon,
     required this.label,
+    this.icon,
+    this.svgAsset,
   });
 
-  final IconData icon;
+  final IconData? icon;
   final String label;
+  final String? svgAsset;
 }

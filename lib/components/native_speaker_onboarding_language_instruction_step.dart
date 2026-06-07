@@ -22,16 +22,19 @@ class NativeSpeakerOnboardingLanguageInstructionStep extends StatelessWidget {
       key: const ValueKey<String>(
         'native_speaker_onboarding_step_language_instruction',
       ),
-      padding: const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space8,
-          ExpatlioDesign.space32, ExpatlioDesign.space8, ExpatlioDesign.space0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.space32,
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.space0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
                 ExpatlioDesign.space0,
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space0),
             child: AutoSizeText(
               FFLocalizations.of(context).getVariableText(
@@ -50,7 +53,7 @@ class NativeSpeakerOnboardingLanguageInstructionStep extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
+                ExpatlioDesign.space0,
                 ExpatlioDesign.space4,
                 ExpatlioDesign.space0,
                 ExpatlioDesign.space0),

@@ -388,8 +388,11 @@ class _WoedWidgetState extends State<WoedWidget> {
     final translationText = _primaryTranslationText();
 
     return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space8,
-          ExpatlioDesign.space0, ExpatlioDesign.space8, ExpatlioDesign.space0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.space0,
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.space0),
       child: Container(
         decoration: BoxDecoration(
           color: ExpatlioDesign.card,
@@ -586,7 +589,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                                           color: FlutterFlowTheme.of(context)
                                               .primaryBackground,
                                           borderRadius: BorderRadius.circular(
-                                              ExpatlioDesign.radiusCapsule),
+                                              ExpatlioDesign.controlRadius),
                                         ),
                                         child: Padding(
                                           padding: const EdgeInsetsDirectional
@@ -961,7 +964,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                           children: [
                             if (_canManageDictionary)
                               FlutterFlowIconButton(
-                                borderRadius: ExpatlioDesign.radiusCapsule,
+                                borderRadius: ExpatlioDesign.controlRadius,
                                 buttonSize: 60.0,
                                 fillColor: Colors.white,
                                 icon: Icon(

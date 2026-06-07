@@ -791,7 +791,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                   .primary,
                                             ),
                                             borderRadius: BorderRadius.circular(
-                                                ExpatlioDesign.radiusCapsule),
+                                                ExpatlioDesign.controlRadius),
                                           ),
                                           child: Align(
                                             alignment:
@@ -850,7 +850,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                   .primary,
                                             ),
                                             borderRadius: BorderRadius.circular(
-                                                ExpatlioDesign.radiusCapsule),
+                                                ExpatlioDesign.controlRadius),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
@@ -918,7 +918,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                   .primary,
                                             ),
                                             borderRadius: BorderRadius.circular(
-                                                ExpatlioDesign.radiusCapsule),
+                                                ExpatlioDesign.controlRadius),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
@@ -986,7 +986,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                   .primary,
                                             ),
                                             borderRadius: BorderRadius.circular(
-                                                ExpatlioDesign.radiusCapsule),
+                                                ExpatlioDesign.controlRadius),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
@@ -1054,7 +1054,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                   .primary,
                                             ),
                                             borderRadius: BorderRadius.circular(
-                                                ExpatlioDesign.radiusCapsule),
+                                                ExpatlioDesign.controlRadius),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
@@ -1122,7 +1122,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                   .primary,
                                             ),
                                             borderRadius: BorderRadius.circular(
-                                                ExpatlioDesign.radiusCapsule),
+                                                ExpatlioDesign.controlRadius),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,

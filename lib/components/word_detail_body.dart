@@ -315,7 +315,7 @@ class _InfoCard extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
         border: Border.all(color: ExpatlioDesign.border),
       ),
       padding: const EdgeInsetsDirectional.fromSTEB(

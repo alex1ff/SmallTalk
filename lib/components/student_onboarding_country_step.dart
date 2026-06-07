@@ -19,8 +19,11 @@ class StudentOnboardingCountryStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       key: const ValueKey<String>('student_onboarding_step_country'),
-      padding: const EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space8,
-          ExpatlioDesign.space0, ExpatlioDesign.space8, ExpatlioDesign.space0),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.space0,
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.space0),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.max,
@@ -29,9 +32,9 @@ class StudentOnboardingCountryStep extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space32,
-                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space0),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
@@ -49,9 +52,9 @@ class StudentOnboardingCountryStep extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space4,
-                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space0,
                   ExpatlioDesign.space0),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
