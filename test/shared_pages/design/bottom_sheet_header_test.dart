@@ -69,7 +69,7 @@ void main() {
     expect(tester.getSize(find.byType(BottomSheetPrimaryButton)).width, 320);
     expect(
       tester.getSize(find.byType(FFButtonWidget)).width,
-      320 - ExpatlioDesign.space24 * 2,
+      320 - ExpatlioDesign.pagePadding * 2,
     );
   });
 
