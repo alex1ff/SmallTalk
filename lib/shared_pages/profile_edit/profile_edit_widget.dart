@@ -5,7 +5,6 @@ import '/backend/schema/enums/enums.dart';
 import '/components/profile_avatar_picker.dart';
 import '/components/profile_dropdown_menu_item.dart';
 import '/components/profile_edit_fields.dart';
-import '/components/profile_save_bar.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/upload_data.dart';
 import '/components/basic_page_header.dart';
@@ -47,9 +46,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
   bool _isNativeLanguageMenuOpen = false;
   bool _isLevelMenuOpen = false;
   bool _isPurposeMenuOpen = false;
-  bool _hasUnsavedNameChange = false;
   bool _isSyncingUserSnapshot = false;
+  Timer? _nameSaveDebounce;
   Timer? _aboutSaveDebounce;
+  String _lastSavedNameText = '';
   String _lastSavedAboutText = '';
 
   @override
@@ -59,8 +59,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
 
     _model.nameTextController1 ??=
         TextEditingController(text: currentUserDisplayName);
+    _lastSavedNameText = currentUserDisplayName.trim();
     _model.nameTextController1?.addListener(_handleNameTextChanged);
     _model.nameFocusNode1 ??= FocusNode();
+    _model.nameFocusNode1?.addListener(_handleNameFocusChanged);
 
     _model.genderTextController1 ??= TextEditingController();
     _model.genderFocusNode1 ??= FocusNode();
@@ -80,6 +82,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         TextEditingController(text: currentUserDisplayName);
     _model.nameTextController2?.addListener(_handleNameTextChanged);
     _model.nameFocusNode2 ??= FocusNode();
+    _model.nameFocusNode2?.addListener(_handleNameFocusChanged);
 
     _model.genderTextController2 ??= TextEditingController();
     _model.genderFocusNode2 ??= FocusNode();
@@ -108,10 +111,14 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
 
   @override
   void dispose() {
+    unawaited(_saveNameIfNeeded(showError: false));
     unawaited(_saveAboutIfNeeded(showError: false));
+    _nameSaveDebounce?.cancel();
     _aboutSaveDebounce?.cancel();
     _model.nameTextController1?.removeListener(_handleNameTextChanged);
     _model.nameTextController2?.removeListener(_handleNameTextChanged);
+    _model.nameFocusNode1?.removeListener(_handleNameFocusChanged);
+    _model.nameFocusNode2?.removeListener(_handleNameFocusChanged);
     _model.aboutTextController?.removeListener(_handleAboutTextChanged);
     _model.aboutFocusNode?.removeListener(_handleAboutFocusChanged);
     _model.dispose();
@@ -133,6 +140,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     _model.levelLTextController?.text = _localizedLevel(_selectedLevel);
     _model.targTextController?.text = _formatPurpose(_selectedPurpose);
     _model.genderTextController2?.text = _localizedGender(_selectedGender);
+    _lastSavedNameText = currentUserDisplayName.trim();
     _lastSavedAboutText = valueOrDefault(currentUserDocument?.aboutMe, '');
     _model.aboutTextController?.text = _lastSavedAboutText;
     _model.nSLangTextController?.text =
@@ -143,31 +151,74 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     _selectedNativeLanguage = currentUserDocument?.nativeLanguageNS;
     _model.countryNSTextController?.text = _localizedCountry(_selectedCountry);
     _isSyncingUserSnapshot = false;
-    _hasUnsavedNameChange = _hasNameChange();
   }
 
   void _handleNameTextChanged() {
     if (_isSyncingUserSnapshot) {
       return;
     }
-    _setNameDirtyState(_hasNameChange());
+    _nameSaveDebounce?.cancel();
+    _nameSaveDebounce = Timer(const Duration(milliseconds: 700), () {
+      unawaited(_saveNameIfNeeded());
+    });
   }
 
-  bool _hasNameChange() {
-    final isStudent = currentUserDocument?.role == UserRole.student;
-    final controller =
-        isStudent ? _model.nameTextController1 : _model.nameTextController2;
-    return (controller?.text.trim() ?? '') != currentUserDisplayName.trim();
-  }
-
-  void _setNameDirtyState(bool value) {
-    if (_hasUnsavedNameChange == value) {
+  void _handleNameFocusChanged() {
+    if ((_model.nameFocusNode1?.hasFocus ?? false) ||
+        (_model.nameFocusNode2?.hasFocus ?? false)) {
       return;
     }
-    if (mounted) {
-      safeSetState(() => _hasUnsavedNameChange = value);
-    } else {
-      _hasUnsavedNameChange = value;
+
+    _nameSaveDebounce?.cancel();
+    unawaited(_saveNameIfNeeded());
+  }
+
+  TextEditingController? _currentNameController() {
+    final isStudent = currentUserDocument?.role == UserRole.student;
+    return isStudent ? _model.nameTextController1 : _model.nameTextController2;
+  }
+
+  Future<bool> _saveNameIfNeeded({bool showError = true}) async {
+    final name = _currentNameController()?.text.trim() ?? '';
+    if (name == _lastSavedNameText || currentUserReference == null) {
+      return true;
+    }
+
+    if (name.isEmpty) {
+      if (showError && mounted) {
+        await actions.showTopNotification(
+          context,
+          'Пожалуйста, представьтесь',
+          '',
+          true,
+        );
+      }
+      return false;
+    }
+
+    if (!functions.isValidName(name)) {
+      if (showError && mounted) {
+        await actions.showTopNotification(context, 'Неверное имя', '', true);
+      }
+      return false;
+    }
+
+    try {
+      await currentUserReference!.update(createUsersRecordData(
+        displayName: name,
+      ));
+      _lastSavedNameText = name;
+      return true;
+    } catch (error) {
+      if (showError && mounted) {
+        await actions.showTopNotification(
+          context,
+          'Не удалось сохранить имя',
+          '',
+          true,
+        );
+      }
+      return false;
     }
   }
 
@@ -349,43 +400,6 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       await currentUserReference!.update(
         createUsersRecordData(photoUrl: _model.uploadedFileUrl_uploadData4bs),
       );
-    }
-  }
-
-  Future<void> _saveAndClose() async {
-    final isStudent = currentUserDocument?.role == UserRole.student;
-    final controller =
-        isStudent ? _model.nameTextController1 : _model.nameTextController2;
-    final name = controller?.text.trim() ?? '';
-
-    if (name.isEmpty) {
-      await actions.showTopNotification(
-        context,
-        'Пожалуйста, представьтесь',
-        '',
-        true,
-      );
-      return;
-    }
-
-    if (!functions.isValidName(name)) {
-      await actions.showTopNotification(context, 'Неверное имя', '', true);
-      return;
-    }
-
-    if (name != currentUserDisplayName) {
-      await currentUserReference!.update(createUsersRecordData(
-        displayName: name,
-      ));
-    }
-
-    final aboutSaved = await _saveAboutIfNeeded();
-    if (!aboutSaved) {
-      return;
-    }
-
-    if (mounted) {
-      context.safePop();
     }
   }
 
@@ -899,9 +913,6 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       child: Scaffold(
         key: scaffoldKey,
         backgroundColor: const Color(0xFFFBFBFB),
-        bottomNavigationBar: _hasUnsavedNameChange
-            ? ProfileSaveBar(onSave: _saveAndClose)
-            : null,
         body: AuthUserStreamWidget(
           builder: (context) {
             if (!_hasSyncedUserSnapshot && currentUserDocument != null) {
@@ -913,7 +924,6 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
               });
             }
             final isStudent = currentUserDocument?.role == UserRole.student;
-            final contentBottomPadding = _hasUnsavedNameChange ? 104.0 : 24.0;
             return Column(
               children: [
                 BasicPageHeader(
@@ -933,7 +943,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
                             ExpatlioDesign.pagePadding,
                             ExpatlioDesign.space24,
                             ExpatlioDesign.pagePadding,
-                            contentBottomPadding,
+                            ExpatlioDesign.space24,
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,

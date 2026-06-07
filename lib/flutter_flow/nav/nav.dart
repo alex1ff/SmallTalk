@@ -264,6 +264,12 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             builder: (context, params) => BlackListWidget(),
           ),
           FFRoute(
+            name: MyCallsWidget.routeName,
+            path: MyCallsWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => MyCallsWidget(),
+          ),
+          FFRoute(
             name: MyRewNSWidget.routeName,
             path: MyRewNSWidget.routePath,
             requireAuth: true,
@@ -333,13 +339,6 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
               requireAuth: true,
               noTransition: true,
               builder: (context, params) => WordsWidget(),
-            ),
-            FFRoute(
-              name: MyCallsWidget.routeName,
-              path: MyCallsWidget.routePath,
-              requireAuth: true,
-              noTransition: true,
-              builder: (context, params) => MyCallsWidget(),
             ),
             FFRoute(
               name: FavoriteWidget.routeName,

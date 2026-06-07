@@ -151,6 +151,30 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
+  String _formatProfileMinutes(String rawValue) {
+    final trimmed = rawValue.trim();
+    if (trimmed.isEmpty) {
+      return '0';
+    }
+
+    final minutesMatch = RegExp(r'^(\d+)\s*:').firstMatch(trimmed);
+    if (minutesMatch != null) {
+      return minutesMatch.group(1) ?? '0';
+    }
+
+    final numericMatch = RegExp(r'^(\d+(?:[.,]\d+)?)').firstMatch(trimmed);
+    if (numericMatch == null) {
+      return trimmed;
+    }
+
+    final value = double.tryParse(numericMatch.group(1)!.replaceAll(',', '.'));
+    if (value == null) {
+      return trimmed;
+    }
+
+    return value.floor().toString();
+  }
+
   Future<void> _showRateAppSheet() async {
     await showModalBottomSheet(
       useRootNavigator: true,
@@ -624,6 +648,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     try {
       final result = await sendCustomEmailVerification(
         locale: FFLocalizations.of(context).languageCode,
+        fallbackToFirebaseDefault: false,
       );
       if (!mounted) {
         return;
@@ -1251,15 +1276,9 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       highlightColor: Colors.transparent,
       borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
       onTap: onTap,
-      child: Container(
+      child: SizedBox(
         height: 44,
-        decoration: ExpatlioDesign.cardDecoration(radius: 12),
-        padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.space0,
-          ExpatlioDesign.space0,
-          ExpatlioDesign.itemSpacing,
-          ExpatlioDesign.space0,
-        ),
+        width: double.infinity,
         child: Row(
           children: [
             Icon(icon, color: ExpatlioDesign.primary, size: 16),
@@ -1455,7 +1474,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             final allTimeStats = stats.isNotEmpty ? stats.first : null;
             final calls = allTimeStats?.totalCalls ??
                 (currentUserDocument?.totalCalls ?? 0).toString();
-            final minutes = allTimeStats?.totalMinutes ?? '0';
+            final minutes =
+                _formatProfileMinutes(allTimeStats?.totalMinutes ?? '0');
             final earned = allTimeStats?.totalEarned ?? '0';
 
             return Column(

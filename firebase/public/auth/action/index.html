@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="light">
+    <title>Expatlio email verification</title>
+    <style>
+      :root {
+        --background: #f2f2f7;
+        --card: #ffffff;
+        --text: #000000;
+        --muted: rgba(60, 60, 67, 0.6);
+        --border: #e5e5ea;
+        --primary: #7430e8;
+        --primary-pressed: #5f24c8;
+        --danger: #ff383c;
+        --success: #34c759;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background: var(--background);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+          "Segoe UI", Roboto, Arial, sans-serif;
+      }
+
+      .page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: max(24px, env(safe-area-inset-top)) 16px
+          max(24px, env(safe-area-inset-bottom));
+      }
+
+      .panel {
+        width: min(100%, 430px);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 22px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 28px;
+      }
+
+      .brand-mark {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        background: var(--primary);
+        color: #ffffff;
+        font-size: 24px;
+        font-weight: 800;
+      }
+
+      .brand-name {
+        font-size: 19px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .status-icon {
+        width: 58px;
+        height: 58px;
+        display: grid;
+        place-items: center;
+        margin-bottom: 18px;
+        border-radius: 18px;
+        background: rgba(116, 48, 232, 0.1);
+        color: var(--primary);
+      }
+
+      .status-icon[data-state="success"] {
+        background: rgba(52, 199, 89, 0.12);
+        color: var(--success);
+      }
+
+      .status-icon[data-state="error"] {
+        background: rgba(255, 56, 60, 0.12);
+        color: var(--danger);
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 30px;
+        line-height: 1.12;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.5;
+      }
+
+      .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      button,
+      a.button {
+        width: 100%;
+        min-height: 52px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 16px;
+        padding: 14px 18px;
+        background: var(--primary);
+        color: #ffffff;
+        font: inherit;
+        font-size: 16px;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      button:active,
+      a.button:active {
+        background: var(--primary-pressed);
+      }
+
+      .secondary {
+        background: rgba(116, 48, 232, 0.1);
+        color: var(--primary);
+      }
+
+      .secondary:active {
+        background: rgba(116, 48, 232, 0.16);
+      }
+
+      .spinner {
+        width: 22px;
+        height: 22px;
+        border: 3px solid rgba(116, 48, 232, 0.2);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="panel" aria-live="polite">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">E</div>
+          <div class="brand-name">Expatlio</div>
+        </div>
+
+        <div id="statusIcon" class="status-icon" aria-hidden="true">
+          <div class="spinner"></div>
+        </div>
+        <h1 id="title">Подтверждаем email</h1>
+        <p id="message">Проверяем ссылку. Это займёт пару секунд.</p>
+
+        <div class="actions">
+          <button id="openAppButton" type="button" hidden>
+            Открыть Expatlio
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://www.gstatic.com/firebasejs/12.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.12.0/firebase-auth-compat.js"></script>
+    <script>
+      (function () {
+        var fallbackAppUrl = "smalltalk://smalltalk.com/?emailVerified=1";
+        var params = new URLSearchParams(window.location.search);
+        var mode = params.get("mode");
+        var actionCode = params.get("oobCode");
+        var apiKey = params.get("apiKey") ||
+          "AIzaSyBRCxuTmxzNF973BXtuR_JT_MraioaHH34";
+        var appUrl = safeAppUrl(params.get("continueUrl"));
+
+        var title = document.getElementById("title");
+        var message = document.getElementById("message");
+        var statusIcon = document.getElementById("statusIcon");
+        var openAppButton = document.getElementById("openAppButton");
+
+        openAppButton.addEventListener("click", openApp);
+
+        if (mode !== "verifyEmail" || !actionCode) {
+          showError(
+            "Ссылка не распознана",
+            "Проверьте письмо и откройте актуальную ссылку подтверждения.",
+          );
+          return;
+        }
+
+        firebase.initializeApp({
+          apiKey: apiKey,
+          authDomain: "smalltalk-2109b.firebaseapp.com",
+          projectId: "smalltalk-2109b",
+          appId: "1:1024626146715:web:63189c0ffd3746bc6bf53e",
+        });
+
+        firebase.auth().applyActionCode(actionCode)
+          .then(function () {
+            showSuccess();
+            if (isMobileBrowser()) {
+              window.setTimeout(openApp, 900);
+            }
+          })
+          .catch(function () {
+            showError(
+              "Не удалось подтвердить email",
+              "Ссылка уже использована или срок действия истёк. Отправьте новое письмо из профиля.",
+            );
+          });
+
+        function showSuccess() {
+          statusIcon.dataset.state = "success";
+          statusIcon.innerHTML = checkIcon();
+          title.textContent = "Email подтверждён";
+          message.textContent =
+            "Сейчас попробуем открыть приложение. Если оно не открылось автоматически, нажмите кнопку ниже.";
+          openAppButton.hidden = false;
+        }
+
+        function showError(nextTitle, nextMessage) {
+          statusIcon.dataset.state = "error";
+          statusIcon.innerHTML = errorIcon();
+          title.textContent = nextTitle;
+          message.textContent = nextMessage;
+          openAppButton.hidden = false;
+        }
+
+        function openApp() {
+          window.location.assign(appUrl);
+        }
+
+        function safeAppUrl(rawValue) {
+          try {
+            var url = new URL(rawValue || fallbackAppUrl);
+            if (url.protocol === "smalltalk:" && url.hostname === "smalltalk.com") {
+              return url.toString();
+            }
+          } catch (error) {
+            return fallbackAppUrl;
+          }
+
+          return fallbackAppUrl;
+        }
+
+        function isMobileBrowser() {
+          return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        }
+
+        function checkIcon() {
+          return '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        }
+
+        function errorIcon() {
+          return '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        }
+      })();
+    </script>
+  </body>
+</html>

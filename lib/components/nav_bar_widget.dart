@@ -187,6 +187,9 @@ class _NavBarWidgetState extends State<NavBarWidget> {
 
   Widget _buildExpatlioNavBar(BuildContext context) {
     final destinations = _destinations(context);
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final bottomButtonPadding =
+        (35.0 - bottomInset).clamp(0.0, 35.0).toDouble();
 
     return Material(
       color: ExpatlioDesign.card,
@@ -206,7 +209,9 @@ class _NavBarWidgetState extends State<NavBarWidget> {
             ExpatlioDesign.space8,
             ExpatlioDesign.space8,
             ExpatlioDesign.space8,
-            ExpatlioDesign.space8,
+            ExpatlioDesign.space0,
+          ).copyWith(
+            bottom: bottomButtonPadding,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,

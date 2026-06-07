@@ -865,6 +865,31 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     );
   }
 
+  Widget _buildAnimatedAvailabilitySection(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        final progress = MediaQuery.disableAnimationsOf(context) ? 1.0 : value;
+
+        return Opacity(
+          opacity: progress,
+          child: Transform.translate(
+            offset: Offset(0.0, (1.0 - progress) * 18.0),
+            child: child,
+          ),
+        );
+      },
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: _buildAvailabilitySection(context),
+      ),
+    );
+  }
+
   Future<void> _handleStartConversation() async {
     if (!hasActiveSubscription(currentUserDocument)) {
       await showModalBottomSheet(
@@ -906,12 +931,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final orbitHeight = constraints.maxHeight.clamp(250.0, 320.0);
+        final orbitHeight = constraints.maxHeight.clamp(250.0, 440.0);
 
         return Center(
           child: SizedBox(
             width: double.infinity,
-            height: orbitHeight,
+            height: orbitHeight.toDouble(),
             child: OrbitingAvatarsCta(
               avatars: avatars,
               action: Column(
@@ -919,6 +944,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                 children: [
                   _buildStartSearchButton(context),
                   const SizedBox(height: ExpatlioDesign.itemSpacing),
+                  _buildAnimatedAvailabilitySection(context),
                   _buildPartnerCountText(
                     context: context,
                     preferredLocation: preferredLocation,
@@ -994,71 +1020,66 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done &&
             !snapshot.hasData) {
-          return Text(
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'считаем людей рядом',
-              enText: 'counting nearby people',
-            ),
-            style: ExpatlioDesign.textStyle(
-              context,
-              color: ExpatlioDesign.muted,
-              size: 13.0,
-              weight: FontWeight.w400,
+          return Padding(
+            padding: const EdgeInsets.only(top: ExpatlioDesign.itemSpacing),
+            child: Text(
+              FFLocalizations.of(context).getVariableText(
+                ruText: 'считаем людей рядом',
+                enText: 'counting nearby people',
+              ),
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.muted,
+                size: 13.0,
+                weight: FontWeight.w400,
+              ),
             ),
           );
         }
 
         final count = snapshot.data;
-        if (count == null) {
-          return Text(
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'количество людей недоступно',
-              enText: 'people count unavailable',
-            ),
-            style: ExpatlioDesign.textStyle(
-              context,
-              color: ExpatlioDesign.muted,
-              size: 13.0,
-              weight: FontWeight.w400,
-            ),
-          );
+        if (count == null || count <= 0) {
+          return const SizedBox.shrink();
         }
 
-        return RichText(
-          textScaler: MediaQuery.of(context).textScaler,
-          text: TextSpan(
-            children: [
-              TextSpan(
-                text: FFLocalizations.of(context).getVariableText(
-                  ruText: 'рядом с вами ',
-                  enText: 'near you ',
+        return Padding(
+          padding: const EdgeInsets.only(top: ExpatlioDesign.itemSpacing),
+          child: RichText(
+            textScaler: MediaQuery.of(context).textScaler,
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: FFLocalizations.of(context).getVariableText(
+                    ruText: 'рядом с вами ',
+                    enText: 'near you ',
+                  ),
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: ExpatlioDesign.muted,
+                    size: 13.0,
+                    weight: FontWeight.w400,
+                  ),
                 ),
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: ExpatlioDesign.muted,
-                  size: 13.0,
-                  weight: FontWeight.w400,
+                TextSpan(
+                  text: count.toString(),
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: ExpatlioDesign.success,
+                    size: 13.0,
+                    weight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              TextSpan(
-                text: count.toString(),
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: ExpatlioDesign.success,
-                  size: 13.0,
-                  weight: FontWeight.w700,
+                TextSpan(
+                  text: ' ${_partnerCountNoun(context, count)}',
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: ExpatlioDesign.muted,
+                    size: 13.0,
+                    weight: FontWeight.w400,
+                  ),
                 ),
-              ),
-              TextSpan(
-                text: ' ${_partnerCountNoun(context, count)}',
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: ExpatlioDesign.muted,
-                  size: 13.0,
-                  weight: FontWeight.w400,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -1090,8 +1111,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
               fit: BoxFit.contain,
             ),
             const SizedBox(height: ExpatlioDesign.space32),
-            _buildAvailabilitySection(context),
-            const SizedBox(height: ExpatlioDesign.itemSpacing),
             Row(
               children: [
                 Expanded(

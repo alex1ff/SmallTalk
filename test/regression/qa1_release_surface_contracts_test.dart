@@ -31,6 +31,11 @@ void main() {
       expect(source, isNot(contains('partnerSnapshot.connectionState')));
       expect(source,
           isNot(contains('initialData: const _ConversationsLoadState()')));
+      expect(source, contains('_conversationStateCacheByUid'));
+      expect(
+          source, contains('_cachedConversationsStateForUser(currentUserUid)'));
+      expect(source, isNot(contains('_buildMessagesLoadingList')));
+      expect(source, isNot(contains('_conversationLoadingCard')));
       expect(source, contains('_conversationsStreamUid'));
       expect(source,
           contains('loadedConversations.sort(compareConversationsForInbox)'));

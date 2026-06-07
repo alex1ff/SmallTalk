@@ -60,6 +60,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
     try {
       final result = await sendCustomEmailVerification(
         locale: FFLocalizations.of(context).languageCode,
+        fallbackToFirebaseDefault: false,
       );
       if (!mounted || !result.sent) {
         return;

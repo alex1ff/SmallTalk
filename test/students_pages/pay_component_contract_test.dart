@@ -17,4 +17,13 @@ void main() {
     expect(pageSource, isNot(contains('class _BottomBar')));
     expect(pageSource, isNot(contains('class _RestorePurchasesButton')));
   });
+
+  test('pay bottom bar paints the bottom safe area', () {
+    final bottomBarSource =
+        File('lib/components/student_pay_bottom_bar.dart').readAsStringSync();
+
+    expect(bottomBarSource, contains('return Container('));
+    expect(bottomBarSource, contains('child: SafeArea('));
+    expect(bottomBarSource, isNot(contains('return SafeArea(')));
+  });
 }

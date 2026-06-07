@@ -33,14 +33,16 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 class SubscriptionApiKeys {
   const SubscriptionApiKeys._();
 
-  static const String _iosPublicFromEnv =
-      String.fromEnvironment('REVENUECAT_IOS_PUBLIC_KEY');
-  static const String _appStorePublicFromEnv =
-      String.fromEnvironment('REVENUECAT_APPSTORE_API_KEY');
-
   /// Public App Store SDK key. Safe to bundle in the app; never put the
   /// RevenueCat `sk_...` secret key here.
   static const String iosPublicFallback = 'appl_uOxpqrnmkxvmCHhFmxJqQePzjRA';
+
+  static const String _iosPublicFromEnv =
+      String.fromEnvironment('REVENUECAT_IOS_PUBLIC_KEY');
+  static const String _appStorePublicFromEnv = String.fromEnvironment(
+    'REVENUECAT_APPSTORE_API_KEY',
+    defaultValue: iosPublicFallback,
+  );
 
   static String get iosPublic => resolveRevenueCatPublicKey(
         primary: _iosPublicFromEnv,
@@ -49,10 +51,17 @@ class SubscriptionApiKeys {
         allowedPrefix: 'appl_',
       );
 
-  static const String androidPublic = String.fromEnvironment(
-    'REVENUECAT_ANDROID_PUBLIC_KEY',
-    defaultValue: 'goog_REPLACE_ME',
-  );
+  static const String _androidPublicFromEnv =
+      String.fromEnvironment('REVENUECAT_ANDROID_PUBLIC_KEY');
+  static const String _playStorePublicFromEnv =
+      String.fromEnvironment('REVENUECAT_PLAYSTORE_API_KEY');
+
+  static String get androidPublic => resolveRevenueCatPublicKey(
+        primary: _androidPublicFromEnv,
+        secondary: _playStorePublicFromEnv,
+        fallback: '',
+        allowedPrefix: 'goog_',
+      );
 }
 
 @visibleForTesting
@@ -80,11 +89,103 @@ String resolveRevenueCatPublicKey({
 const String kSubscriptionProEntitlementId = 'pro_access';
 
 /// Stable identifiers of our two products in App Store Connect / Google
-/// Play. Used when looking up packages inside the current Offering.
+/// Play. Used when matching packages returned by RevenueCat offerings.
 class SubscriptionProductIds {
   const SubscriptionProductIds._();
-  static const String monthly = 'smalltalk_monthly';
-  static const String quarterly = 'smalltalk_quarterly';
+  static const String monthly = 'expatlio_1_Month';
+  static const String quarterly = 'expatlio_3_Month';
+
+  static const Set<String> monthlyPackageIdentifiers = {
+    monthly,
+    r'$rc_monthly',
+    'monthly',
+  };
+
+  static const Set<String> quarterlyPackageIdentifiers = {
+    quarterly,
+    r'$rc_three_month',
+    r'$rc_3_month',
+    'three_month',
+    'quarterly',
+  };
+}
+
+@visibleForTesting
+String? subscriptionProductIdForPackage(Package package) {
+  final productId = package.storeProduct.identifier.trim();
+  if (productId == SubscriptionProductIds.monthly ||
+      productId == SubscriptionProductIds.quarterly) {
+    return productId;
+  }
+
+  final packageId = package.identifier.trim().toLowerCase();
+  if (SubscriptionProductIds.monthlyPackageIdentifiers.contains(packageId)) {
+    return SubscriptionProductIds.monthly;
+  }
+  if (SubscriptionProductIds.quarterlyPackageIdentifiers.contains(packageId)) {
+    return SubscriptionProductIds.quarterly;
+  }
+
+  switch (package.packageType) {
+    case PackageType.monthly:
+      return SubscriptionProductIds.monthly;
+    case PackageType.threeMonth:
+      return SubscriptionProductIds.quarterly;
+    case PackageType.unknown:
+    case PackageType.custom:
+    case PackageType.lifetime:
+    case PackageType.annual:
+    case PackageType.sixMonth:
+    case PackageType.twoMonth:
+    case PackageType.weekly:
+      return null;
+  }
+}
+
+@visibleForTesting
+List<Package> selectSubscriptionPackagesFromOfferings(Offerings offerings) {
+  final packagesByProductId = <String, Package>{};
+
+  for (final package in _candidatePackagesFromOfferings(offerings)) {
+    final productId = subscriptionProductIdForPackage(package);
+    if (productId == null || packagesByProductId.containsKey(productId)) {
+      continue;
+    }
+    packagesByProductId[productId] = package;
+  }
+
+  return [
+    if (packagesByProductId[SubscriptionProductIds.monthly] != null)
+      packagesByProductId[SubscriptionProductIds.monthly]!,
+    if (packagesByProductId[SubscriptionProductIds.quarterly] != null)
+      packagesByProductId[SubscriptionProductIds.quarterly]!,
+  ];
+}
+
+List<Package> _candidatePackagesFromOfferings(Offerings offerings) {
+  final candidates = <Package>[];
+  final seen = <String>{};
+
+  void addOfferingPackages(Offering? offering) {
+    if (offering == null) return;
+
+    for (final package in offering.availablePackages) {
+      final key =
+          '${offering.identifier}/${package.identifier}/${package.storeProduct.identifier}';
+      if (seen.add(key)) {
+        candidates.add(package);
+      }
+    }
+  }
+
+  // Match FlutterFlow's current-offering behavior first, then fall back to
+  // dashboard offerings if targeting/current offering is not ready yet.
+  addOfferingPackages(offerings.current);
+  for (final offering in offerings.all.values) {
+    addOfferingPackages(offering);
+  }
+
+  return candidates;
 }
 
 class SubscriptionService {
@@ -141,9 +242,10 @@ class SubscriptionService {
       final String apiKey = _resolveApiKey();
       if (_isPlaceholderKey(apiKey)) {
         debugPrint(
-          '⚠️ SubscriptionService: RevenueCat API key is a placeholder. '
-          'Set SubscriptionApiKeys.iosPublic / androidPublic before shipping.',
+          '⚠️ SubscriptionService: RevenueCat public API key is not set for '
+          'this platform. RevenueCat will stay disabled.',
         );
+        return;
       }
 
       await Purchases.configure(PurchasesConfiguration(apiKey));
@@ -199,6 +301,7 @@ class SubscriptionService {
     if (!_configured) {
       await configure();
     }
+    if (!_configured) return;
     if (firebaseUid.isEmpty) return;
     try {
       final result = await Purchases.logIn(firebaseUid);
@@ -222,43 +325,42 @@ class SubscriptionService {
     }
   }
 
-  /// Fetch RevenueCat current offering and return monthly + quarterly packages,
-  /// in the order the UI expects (monthly first, quarterly second).
+  /// Fetch RevenueCat offerings and return monthly + quarterly packages, in the
+  /// order the UI expects (monthly first, quarterly second).
   /// Returns an empty list if RC doesn't expose either expected product.
   Future<List<Package>> fetchSubscriptionPackages() async {
     try {
       if (!_configured) {
         await configure();
       }
+      if (!_configured) return const [];
 
       final offerings = await Purchases.getOfferings();
-      final current = offerings.current;
-      if (current == null) return const [];
+      _debugLogOfferings(offerings);
 
-      final List<Package> result = [];
-      for (final pkg in current.availablePackages) {
-        final productId = pkg.storeProduct.identifier;
-        if (productId == SubscriptionProductIds.monthly ||
-            productId == SubscriptionProductIds.quarterly) {
-          result.add(pkg);
-        }
-      }
-
-      // Sort: monthly first, then quarterly.
-      result.sort((a, b) {
-        final aIsMonthly =
-            a.storeProduct.identifier == SubscriptionProductIds.monthly;
-        final bIsMonthly =
-            b.storeProduct.identifier == SubscriptionProductIds.monthly;
-        if (aIsMonthly == bIsMonthly) return 0;
-        return aIsMonthly ? -1 : 1;
-      });
-      return result;
+      return selectSubscriptionPackagesFromOfferings(offerings);
     } catch (e, st) {
       debugPrint(
           '❌ SubscriptionService.fetchSubscriptionPackages failed: $e\n$st');
       return const [];
     }
+  }
+
+  void _debugLogOfferings(Offerings offerings) {
+    if (!kDebugMode) return;
+
+    final currentId = offerings.current?.identifier ?? 'none';
+    final packages = _candidatePackagesFromOfferings(offerings)
+        .map(
+          (package) => '${package.presentedOfferingContext.offeringIdentifier}:'
+              '${package.identifier}->${package.storeProduct.identifier}',
+        )
+        .join(', ');
+
+    debugPrint(
+      'ℹ️ SubscriptionService.offerings current=$currentId '
+      'all=[${offerings.all.keys.join(', ')}] packages=[$packages]',
+    );
   }
 
   /// Launch the native paywall and complete the purchase. Returns the
@@ -269,6 +371,7 @@ class SubscriptionService {
     if (!_configured) {
       await configure();
     }
+    if (!_configured) return null;
     try {
       final result = await Purchases.purchasePackage(package);
       _customerInfo = result;
@@ -306,6 +409,9 @@ class SubscriptionService {
   Future<CustomerInfo> restorePurchases() async {
     if (!_configured) {
       await configure();
+    }
+    if (!_configured) {
+      throw StateError('RevenueCat is not configured.');
     }
     try {
       final info = await Purchases.restorePurchases();

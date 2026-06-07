@@ -29,8 +29,8 @@ const PRO_ENTITLEMENT_ID = "pro_access";
 // / Google Play, this map only tells us how long to extend the subscription
 // when stacking purchases. Keep in sync with store products.
 const PRODUCT_PERIOD_MONTHS = {
-  "smalltalk_monthly": 1,
-  "smalltalk_quarterly": 3,
+  "expatlio_1_Month": 1,
+  "expatlio_3_Month": 3,
 };
 
 // Map RevenueCat store identifiers to internal short codes used in the

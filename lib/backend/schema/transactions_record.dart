@@ -97,7 +97,7 @@ class TransactionsRecord extends FirestoreRecord {
   // but kept as untyped Firestore data — only fields useful to the client
   // get typed getters here.
 
-  // "productId" field — "smalltalk_monthly" | "smalltalk_quarterly" | "trial".
+  // "productId" field — "expatlio_1_Month" | "expatlio_3_Month" | "trial".
   String? _productId;
   String get productId => _productId ?? '';
   bool hasProductId() => _productId != null;

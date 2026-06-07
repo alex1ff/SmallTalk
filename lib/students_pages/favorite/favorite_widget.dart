@@ -28,6 +28,8 @@ class FavoriteWidget extends StatefulWidget {
 class _FavoriteWidgetState extends State<FavoriteWidget> {
   late FavoriteModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  static final Map<String, _ConversationsLoadState>
+      _conversationStateCacheByUid = {};
   final _userFutureCache = <String, Future<UserPublicProfilesRecord?>>{};
   String? _conversationsStreamUid;
   Stream<_ConversationsLoadState>? _conversationsStream;
@@ -164,10 +166,21 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           .where((conversation) => conversation.isUnlocked)
           .toList();
       loadedConversations.sort(compareConversationsForInbox);
-      return _ConversationsLoadState(conversations: loadedConversations);
+      final loadedState = _ConversationsLoadState(
+        conversations: List<ConversationsRecord>.unmodifiable(
+          loadedConversations,
+        ),
+      );
+      _conversationStateCacheByUid[currentUid] = loadedState;
+      return loadedState;
     });
     return _conversationsStream!;
   }
+
+  _ConversationsLoadState? _cachedConversationsStateForUser(
+    String currentUid,
+  ) =>
+      _conversationStateCacheByUid[currentUid];
 
   DocumentReference? _otherParticipantRef(ConversationsRecord conversation) {
     final currentRef = currentUserReference;
@@ -558,7 +571,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     final friendPaths = friends.map((reference) => reference.path).toSet();
 
     if (conversationsLoading) {
-      return _buildMessagesLoadingList(context);
+      return const SizedBox.shrink();
     }
 
     if (conversationsLoadFailed) {
@@ -604,101 +617,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
-  Widget _buildMessagesLoadingList(BuildContext context) {
-    return ListView.builder(
-      padding:
-          const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space112),
-      itemCount: 4,
-      itemBuilder: (context, index) => _conversationLoadingCard(context),
-    );
-  }
-
-  Widget _conversationLoadingCard(BuildContext context) {
-    const placeholderColor = ExpatlioDesign.mutedSurface;
-
-    Widget placeholder({
-      required double width,
-      required double height,
-      required double radius,
-    }) {
-      return Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: placeholderColor,
-          borderRadius: BorderRadius.circular(radius),
-        ),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      margin: EdgeInsets.zero,
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        border: const Border(
-          bottom: BorderSide(color: ExpatlioDesign.separator),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.pagePadding,
-          ExpatlioDesign.itemSpacing,
-          ExpatlioDesign.pagePadding,
-          ExpatlioDesign.itemSpacing,
-        ),
-        child: Row(
-          children: [
-            placeholder(
-              width: 54.0,
-              height: 54.0,
-              radius: ExpatlioDesign.radiusCapsule,
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.itemSpacing,
-                  ExpatlioDesign.space0,
-                  ExpatlioDesign.space0,
-                  ExpatlioDesign.space0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    placeholder(
-                      width: 140.0,
-                      height: 14.0,
-                      radius: 20.0,
-                    ),
-                    const SizedBox(height: ExpatlioDesign.compactSpacing),
-                    placeholder(
-                      width: 210.0,
-                      height: 12.0,
-                      radius: 20.0,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsetsDirectional.only(
-                start: ExpatlioDesign.itemSpacing,
-              ),
-              child: placeholder(
-                width: 42.0,
-                height: 12.0,
-                radius: 20.0,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildFriendsTabContent(
     BuildContext context, {
+    required bool conversationsLoading,
     required List<DocumentReference> friends,
     required List<ConversationsRecord> conversations,
   }) {
@@ -711,6 +632,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           ),
         )
         .toList();
+
+    if (conversationsLoading) {
+      return const SizedBox.shrink();
+    }
 
     if (friendConversations.isEmpty) {
       return _buildEmptyListState(
@@ -807,6 +732,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
                 return StreamBuilder<_ConversationsLoadState>(
                   stream: _watchConversationsForUser(currentUserUid),
+                  initialData: _cachedConversationsStateForUser(currentUserUid),
                   builder: (context, conversationsSnapshot) {
                     if (conversationsSnapshot.hasError) {
                       debugPrint(
@@ -844,6 +770,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                               child: showFriendsTab
                                   ? _buildFriendsTabContent(
                                       context,
+                                      conversationsLoading:
+                                          conversationsLoading,
                                       friends: friends,
                                       conversations: conversations,
                                     )

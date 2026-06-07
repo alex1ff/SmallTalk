@@ -1,6 +1,5 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
-import '/components/app_loading_indicator.dart';
 import '/components/dictionary_word_row.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_words_bar.dart';
@@ -33,14 +32,15 @@ class _WordsWidgetState extends State<WordsWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => WordsModel());
+    final userRef = currentUserReference;
+    _model.userCacheKey = userRef?.path;
     _model.wordsStream = queryUserWordsRecord(
-      parent: currentUserReference,
+      parent: userRef,
     );
     _model.wordReviewsStream = queryWordReviewsRecord(
-      parent: currentUserReference,
+      parent: userRef,
     );
 
-    final userRef = currentUserReference;
     if (userRef != null) {
       unawaited(
         FlashcardReviewRepository.ensureWordReviewsBackfilled(
@@ -130,8 +130,12 @@ class _WordsWidgetState extends State<WordsWidget> {
         backgroundColor: ExpatlioDesign.background,
         body: StreamBuilder<List<WordReviewsRecord>>(
           stream: _model.wordReviewsStream,
+          initialData: _model.cachedWordReviews,
           builder: (context, reviewSnapshot) {
             final reviews = reviewSnapshot.data ?? const <WordReviewsRecord>[];
+            if (reviewSnapshot.hasData) {
+              _model.cacheWordReviews(reviews);
+            }
             final dueCount = _dueWordsCount(reviews);
             final hasDueWords = dueCount > 0;
 
@@ -164,14 +168,14 @@ class _WordsWidgetState extends State<WordsWidget> {
                     Expanded(
                       child: StreamBuilder<List<UserWordsRecord>>(
                         stream: _model.wordsStream,
+                        initialData: _model.cachedWords,
                         builder: (context, snapshot) {
-                          if (!snapshot.hasData) {
-                            return const Center(
-                              child: AppLoadingIndicator(),
-                            );
+                          final words = snapshot.data;
+                          if (words == null) {
+                            return const SizedBox.shrink();
                           }
+                          _model.cacheWords(words);
 
-                          final words = snapshot.data!;
                           if (words.isEmpty) {
                             return Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(

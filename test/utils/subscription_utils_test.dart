@@ -11,14 +11,14 @@ void main() {
 
   SubscriptionStruct activeSub() => SubscriptionStruct(
         entitlementId: 'pro_access',
-        productId: 'smalltalk_monthly',
+        productId: 'expatlio_1_Month',
         periodMonths: 1,
         expiresAt: futureExpiry,
       );
 
   SubscriptionStruct expiredSub() => SubscriptionStruct(
         entitlementId: 'pro_access',
-        productId: 'smalltalk_monthly',
+        productId: 'expatlio_1_Month',
         expiresAt: pastExpiry,
       );
 
@@ -134,8 +134,10 @@ void main() {
       // Compose the user record manually via the subscription struct;
       // daysUntilExpiry takes UsersRecord, so we test via the helper's
       // private logic by going through isSubscriptionActive instead.
-      expect(isSubscriptionActive(SubscriptionStruct(expiresAt: expiry),
-              now: reference), isTrue);
+      expect(
+          isSubscriptionActive(SubscriptionStruct(expiresAt: expiry),
+              now: reference),
+          isTrue);
     });
   });
 }
