@@ -60,6 +60,7 @@ class _PayWidgetState extends State<PayWidget> {
 
   StudentPayPlanKind _selected = StudentPayPlanKind.quarterly;
   Map<String, Package> _packagesByProductId = const {};
+  Map<String, StoreProduct> _storeProductsByProductId = const {};
   bool _isLoadingPackages = true;
   bool _isPurchasing = false;
   bool _isRestoringPurchases = false;
@@ -85,6 +86,9 @@ class _PayWidgetState extends State<PayWidget> {
   Package? get _selectedPackage =>
       _packagesByProductId[_selectedPlan.productId];
 
+  StoreProduct? get _selectedStoreProduct =>
+      _storeProductsByProductId[_selectedPlan.productId];
+
   Future<void> _loadPackages() async {
     if (mounted) {
       safeSetState(() {
@@ -93,13 +97,23 @@ class _PayWidgetState extends State<PayWidget> {
     }
 
     List<Package> packages;
+    List<StoreProduct> storeProducts = const [];
     try {
       packages = await SubscriptionService.instance
           .fetchSubscriptionPackages()
           .timeout(const Duration(seconds: 20), onTimeout: () => const []);
+      storeProducts = packages.map((package) => package.storeProduct).toList();
+      final productsByProductId =
+          mapSubscriptionStoreProductsByProductId(storeProducts);
+      if (productsByProductId.length < SubscriptionProductIds.all.length) {
+        storeProducts = await SubscriptionService.instance
+            .fetchSubscriptionStoreProducts()
+            .timeout(const Duration(seconds: 20), onTimeout: () => const []);
+      }
     } catch (e, st) {
       debugPrint('⚠️ PayWidget._loadPackages failed: $e\n$st');
       packages = const [];
+      storeProducts = const [];
       if (mounted) {
         _showSnackBar('Не удалось загрузить тарифы. Попробуйте еще раз.');
       }
@@ -111,6 +125,8 @@ class _PayWidgetState extends State<PayWidget> {
 
     safeSetState(() {
       _packagesByProductId = mapSubscriptionPackagesByProductId(packages);
+      _storeProductsByProductId =
+          mapSubscriptionStoreProductsByProductId(storeProducts);
       _isLoadingPackages = false;
     });
   }
@@ -120,11 +136,16 @@ class _PayWidgetState extends State<PayWidget> {
     if (package != null) {
       return package.storeProduct.priceString;
     }
+    final storeProduct = _storeProductsByProductId[plan.productId];
+    if (storeProduct != null) {
+      return storeProduct.priceString;
+    }
     return _isLoadingPackages ? 'Загрузка...' : 'Недоступно';
   }
 
   bool _hasPackageFor(StudentPayPlan plan) =>
-      _packagesByProductId.containsKey(plan.productId);
+      _packagesByProductId.containsKey(plan.productId) ||
+      _storeProductsByProductId.containsKey(plan.productId);
 
   Future<void> _purchaseSelectedPlan() async {
     if (_isPurchasing || _isLoadingPackages) {
@@ -132,15 +153,17 @@ class _PayWidgetState extends State<PayWidget> {
     }
 
     Package? package = _selectedPackage;
-    if (package == null) {
+    StoreProduct? storeProduct = _selectedStoreProduct;
+    if (package == null && storeProduct == null) {
       await _loadPackages();
       if (!mounted) {
         return;
       }
       package = _selectedPackage;
+      storeProduct = _selectedStoreProduct;
     }
 
-    if (package == null) {
+    if (package == null && storeProduct == null) {
       _showSnackBar('Покупки пока недоступны. Проверьте продукты RevenueCat.');
       return;
     }
@@ -150,7 +173,11 @@ class _PayWidgetState extends State<PayWidget> {
     });
 
     try {
-      final info = await SubscriptionService.instance.purchasePackage(package);
+      final info = package != null
+          ? await SubscriptionService.instance.purchasePackage(package)
+          : await SubscriptionService.instance.purchaseStoreProduct(
+              storeProduct!,
+            );
       if (!mounted || info == null) {
         return;
       }

@@ -97,6 +97,7 @@ class SubscriptionProductIds {
   const SubscriptionProductIds._();
   static const String monthly = 'expatlio_1_Month';
   static const String quarterly = 'expatlio_3_Month';
+  static const List<String> all = [monthly, quarterly];
 
   static const Set<String> monthlyPackageIdentifiers = {
     'expatlio_1_month',
@@ -111,6 +112,15 @@ class SubscriptionProductIds {
     'three_month',
     'quarterly',
   };
+}
+
+String? subscriptionProductIdForStoreProduct(StoreProduct product) {
+  final productId = product.identifier.trim();
+  if (productId == SubscriptionProductIds.monthly ||
+      productId == SubscriptionProductIds.quarterly) {
+    return productId;
+  }
+  return null;
 }
 
 @visibleForTesting
@@ -143,6 +153,21 @@ String? subscriptionProductIdForPackage(Package package) {
     case PackageType.weekly:
       return null;
   }
+}
+
+Map<String, StoreProduct> mapSubscriptionStoreProductsByProductId(
+  Iterable<StoreProduct> products,
+) {
+  final productsByProductId = <String, StoreProduct>{};
+
+  for (final product in products) {
+    final productId = subscriptionProductIdForStoreProduct(product);
+    if (productId != null) {
+      productsByProductId.putIfAbsent(productId, () => product);
+    }
+  }
+
+  return productsByProductId;
 }
 
 Map<String, Package> mapSubscriptionPackagesByProductId(
@@ -361,9 +386,31 @@ class SubscriptionService {
     }
   }
 
-  void _debugLogOfferings(Offerings offerings) {
-    if (!kDebugMode) return;
+  /// Fetch products directly from StoreKit / Play Billing. This is a fallback
+  /// for cases where RevenueCat returns the offering metadata but the SDK does
+  /// not map packages into available offerings.
+  Future<List<StoreProduct>> fetchSubscriptionStoreProducts() async {
+    try {
+      if (!_configured) {
+        await configure();
+      }
+      if (!_configured) return const [];
 
+      final products = await Purchases.getProducts(
+        SubscriptionProductIds.all,
+        productCategory: ProductCategory.subscription,
+      );
+      _debugLogStoreProducts(products);
+      return products;
+    } catch (e, st) {
+      debugPrint(
+        '❌ SubscriptionService.fetchSubscriptionStoreProducts failed: $e\n$st',
+      );
+      return const [];
+    }
+  }
+
+  void _debugLogOfferings(Offerings offerings) {
     final currentId = offerings.current?.identifier ?? 'none';
     final packages = _candidatePackagesFromOfferings(offerings)
         .map(
@@ -378,6 +425,16 @@ class SubscriptionService {
     );
   }
 
+  void _debugLogStoreProducts(List<StoreProduct> products) {
+    final productLog = products
+        .map((product) => '${product.identifier}:${product.priceString}')
+        .join(', ');
+    debugPrint(
+      'ℹ️ SubscriptionService.storeProducts requested='
+      '[${SubscriptionProductIds.all.join(', ')}] products=[$productLog]',
+    );
+  }
+
   /// Launch the native paywall and complete the purchase. Returns the
   /// updated CustomerInfo on success, or `null` if the user cancelled.
   /// Throws `PlatformException` on unexpected errors so callers can show
@@ -388,10 +445,12 @@ class SubscriptionService {
     }
     if (!_configured) return null;
     try {
-      final result = await Purchases.purchasePackage(package);
-      _customerInfo = result;
-      _customerInfoController.add(result);
-      return result;
+      final result = await Purchases.purchase(
+        PurchaseParams.package(package),
+      );
+      _customerInfo = result.customerInfo;
+      _customerInfoController.add(result.customerInfo);
+      return result.customerInfo;
     } on PlatformException catch (e) {
       final errorCode = PurchasesErrorHelper.getErrorCode(e);
       if (errorCode == PurchasesErrorCode.purchaseCancelledError) {
@@ -399,6 +458,32 @@ class SubscriptionService {
       }
       debugPrint(
         '❌ SubscriptionService.purchasePackage failed: code=$errorCode '
+        'message=${e.message}',
+      );
+      rethrow;
+    }
+  }
+
+  /// Purchase a store product fetched directly via Purchases.getProducts.
+  Future<CustomerInfo?> purchaseStoreProduct(StoreProduct product) async {
+    if (!_configured) {
+      await configure();
+    }
+    if (!_configured) return null;
+    try {
+      final result = await Purchases.purchase(
+        PurchaseParams.storeProduct(product),
+      );
+      _customerInfo = result.customerInfo;
+      _customerInfoController.add(result.customerInfo);
+      return result.customerInfo;
+    } on PlatformException catch (e) {
+      final errorCode = PurchasesErrorHelper.getErrorCode(e);
+      if (errorCode == PurchasesErrorCode.purchaseCancelledError) {
+        return null;
+      }
+      debugPrint(
+        '❌ SubscriptionService.purchaseStoreProduct failed: code=$errorCode '
         'message=${e.message}',
       );
       rethrow;

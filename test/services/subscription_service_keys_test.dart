@@ -215,6 +215,26 @@ void main() {
         'app_store_monthly_product',
       );
     });
+
+    test('maps direct StoreKit products by product id', () {
+      final monthly = _storeProduct(SubscriptionProductIds.monthly);
+      final quarterly = _storeProduct(SubscriptionProductIds.quarterly);
+      final unrelated = _storeProduct('other_product');
+
+      final productsByProductId = mapSubscriptionStoreProductsByProductId([
+        unrelated,
+        monthly,
+        quarterly,
+      ]);
+
+      expect(
+        productsByProductId.keys,
+        [
+          SubscriptionProductIds.monthly,
+          SubscriptionProductIds.quarterly,
+        ],
+      );
+    });
   });
 }
 
@@ -236,6 +256,17 @@ Package _package({
       'USD',
     ),
     PresentedOfferingContext(offeringId, null, null),
+  );
+}
+
+StoreProduct _storeProduct(String productId) {
+  return StoreProduct(
+    productId,
+    'Description',
+    'Title',
+    1,
+    r'$1.00',
+    'USD',
   );
 }
 
