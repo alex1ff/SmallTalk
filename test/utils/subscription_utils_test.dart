@@ -10,14 +10,14 @@ void main() {
   final pastExpiry = DateTime.parse('2026-05-10T00:00:00Z');
 
   SubscriptionStruct activeSub() => SubscriptionStruct(
-        entitlementId: 'pro_access',
+        entitlementId: 'Expatlio Pro',
         productId: 'expatlio_1_Month',
         periodMonths: 1,
         expiresAt: futureExpiry,
       );
 
   SubscriptionStruct expiredSub() => SubscriptionStruct(
-        entitlementId: 'pro_access',
+        entitlementId: 'Expatlio Pro',
         productId: 'expatlio_1_Month',
         expiresAt: pastExpiry,
       );

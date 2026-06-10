@@ -86,7 +86,10 @@ String resolveRevenueCatPublicKey({
 /// Entitlement ID configured in RevenueCat dashboard. Must match the value
 /// in firebase/custom_cloud_functions/revenue_cat_webhook.js and
 /// grant_promo_entitlement.js (PRO_ENTITLEMENT_ID).
-const String kSubscriptionProEntitlementId = 'pro_access';
+const String kSubscriptionProEntitlementId = 'Expatlio Pro';
+
+/// Offering ID configured in RevenueCat dashboard for the subscription screen.
+const String kSubscriptionOfferingId = 'subscriptions';
 
 /// Stable identifiers of our two products in App Store Connect / Google
 /// Play. Used when matching packages returned by RevenueCat offerings.
@@ -188,8 +191,10 @@ List<Package> _candidatePackagesFromOfferings(Offerings offerings) {
     }
   }
 
-  // Match FlutterFlow's current-offering behavior first, then fall back to
-  // dashboard offerings if targeting/current offering is not ready yet.
+  // The RevenueCat dashboard offering for this app is `subscriptions`.
+  // Prefer it explicitly because `current` can be null or point elsewhere
+  // when targeting/paywall rules are not configured for the user yet.
+  addOfferingPackages(offerings.getOffering(kSubscriptionOfferingId));
   addOfferingPackages(offerings.current);
   for (final offering in offerings.all.values) {
     addOfferingPackages(offering);
@@ -220,7 +225,7 @@ class SubscriptionService {
   /// entitlement changes (e.g., refresh "Subscription active until X").
   Stream<CustomerInfo> get customerInfoStream => _customerInfoController.stream;
 
-  /// True iff the user has the `pro_access` entitlement active right now.
+  /// True iff the user has the paid entitlement active right now.
   /// Use this for ephemeral UI state — the persistent gating signal is
   /// users.subscription.expiresAt (mirrored by the webhook).
   bool get hasActiveEntitlement {

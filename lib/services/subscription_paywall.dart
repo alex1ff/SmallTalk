@@ -39,10 +39,10 @@ enum PaywallOutcome {
 class SubscriptionPaywall {
   const SubscriptionPaywall._();
 
-  /// Present the paywall configured in RevenueCat for the `pro_access`
+  /// Present the paywall configured in RevenueCat for the subscription offering
   /// entitlement. Returns the outcome so callers can react.
   static Future<PaywallOutcome> present({
-    String? offeringIdentifier,
+    String? offeringIdentifier = kSubscriptionOfferingId,
   }) async {
     // Make sure RC is configured. configure() is a no-op when already done.
     await SubscriptionService.instance.configure();

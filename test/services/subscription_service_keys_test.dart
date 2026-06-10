@@ -111,6 +111,59 @@ void main() {
       );
     });
 
+    test('prefers the dashboard subscriptions offering over current offering',
+        () {
+      final staleMonthly = _package(
+        packageId: 'stale_monthly',
+        productId: SubscriptionProductIds.monthly,
+        packageType: PackageType.custom,
+        offeringId: 'current',
+      );
+      final staleQuarterly = _package(
+        packageId: 'stale_quarterly',
+        productId: SubscriptionProductIds.quarterly,
+        packageType: PackageType.custom,
+        offeringId: 'current',
+      );
+      final monthly = _package(
+        packageId: r'$rc_monthly',
+        productId: SubscriptionProductIds.monthly,
+        packageType: PackageType.monthly,
+        offeringId: kSubscriptionOfferingId,
+      );
+      final quarterly = _package(
+        packageId: r'$rc_three_month',
+        productId: SubscriptionProductIds.quarterly,
+        packageType: PackageType.threeMonth,
+        offeringId: kSubscriptionOfferingId,
+      );
+      final offerings = Offerings(
+        {
+          kSubscriptionOfferingId: _offering(
+            kSubscriptionOfferingId,
+            [monthly, quarterly],
+          ),
+          'current': _offering(
+            'current',
+            [staleMonthly, staleQuarterly],
+          ),
+        },
+        current: _offering(
+          'current',
+          [staleMonthly, staleQuarterly],
+        ),
+      );
+
+      expect(
+        selectSubscriptionPackagesFromOfferings(offerings)
+            .map((package) => package.identifier),
+        [
+          r'$rc_monthly',
+          r'$rc_three_month',
+        ],
+      );
+    });
+
     test('matches FlutterFlow package identifiers when product ids differ', () {
       final monthly = _package(
         packageId: SubscriptionProductIds.monthly,

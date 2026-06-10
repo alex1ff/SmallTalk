@@ -23,7 +23,7 @@ const revenueCatWebhookSecret = defineSecret("REVENUECAT_WEBHOOK_SECRET");
 
 // Entitlement that grants access to the product. Must match the
 // Entitlement ID configured in RevenueCat dashboard.
-const PRO_ENTITLEMENT_ID = "pro_access";
+const PRO_ENTITLEMENT_ID = "Expatlio Pro";
 
 // Product → period (months) map. Source of truth lives in App Store Connect
 // / Google Play, this map only tells us how long to extend the subscription

@@ -35,7 +35,7 @@ const {defineSecret} = require("firebase-functions/params");
 
 const revenueCatSecretApiKey = defineSecret("REVENUECAT_SECRET_API_KEY");
 
-const PRO_ENTITLEMENT_ID = "pro_access";
+const PRO_ENTITLEMENT_ID = "Expatlio Pro";
 const REVENUECAT_API_BASE = "https://api.revenuecat.com/v1";
 const REQUEST_TIMEOUT_MS = 15000;
 
