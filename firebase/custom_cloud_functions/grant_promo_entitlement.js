@@ -33,7 +33,7 @@ const admin = require("firebase-admin");
 const axios = require("axios");
 const {defineSecret} = require("firebase-functions/params");
 
-const revenueCatSecretApiKey = defineSecret("REVENUECAT_SECRET_API_KEY");
+const revenueCatSecretKey = defineSecret("REVENUECAT_SECRET_KEY");
 
 const PRO_ENTITLEMENT_ID = "Expatlio Pro";
 const REVENUECAT_API_BASE = "https://api.revenuecat.com/v1";
@@ -51,6 +51,23 @@ const ALLOWED_DURATIONS = new Set([
   "lifetime",
 ]);
 
+function firebaseRuntimeConfig() {
+  try {
+    return functions.config?.() || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function getRevenueCatSecretKey() {
+  const runtimeConfig = firebaseRuntimeConfig();
+  return process.env.REVENUECAT_SECRET_KEY ||
+    revenueCatSecretKey.value() ||
+    runtimeConfig.revenuecat?.secret_key ||
+    runtimeConfig.revenuecat?.api_key ||
+    "";
+}
+
 function buildRequestBody({duration, customDays}) {
   if (customDays && Number.isFinite(customDays) && customDays > 0) {
     const startMs = Date.now();
@@ -66,7 +83,7 @@ function buildRequestBody({duration, customDays}) {
 
 exports.grantPromoEntitlement = functions
     .runWith({
-      secrets: [revenueCatSecretApiKey],
+      secrets: [revenueCatSecretKey],
       timeoutSeconds: 30,
       memory: "256MB",
     })
@@ -120,9 +137,9 @@ exports.grantPromoEntitlement = functions
         );
       }
 
-      const apiKey = revenueCatSecretApiKey.value();
+      const apiKey = getRevenueCatSecretKey();
       if (!apiKey) {
-        console.error("❌ REVENUECAT_SECRET_API_KEY not configured");
+        console.error("❌ REVENUECAT_SECRET_KEY not configured");
         throw new functions.https.HttpsError(
             "failed-precondition",
             "RevenueCat is not configured on the server",

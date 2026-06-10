@@ -38,7 +38,7 @@ test("secret readiness derives required secret names from deployment gate", () =
     "DAILY_WEBHOOK_SECRET",
     "DEEPGRAM_API_KEY",
     "RESEND_API_KEY",
-    "REVENUECAT_SECRET_API_KEY",
+    "REVENUECAT_SECRET_KEY",
     "REVENUECAT_WEBHOOK_SECRET",
   ]);
 });

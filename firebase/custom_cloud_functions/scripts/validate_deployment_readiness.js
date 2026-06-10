@@ -83,7 +83,7 @@ const REQUIRED_FUNCTIONS = [
   {
     id: "grantPromoEntitlement",
     trigger: "callable",
-    secrets: ["REVENUECAT_SECRET_API_KEY"],
+    secrets: ["REVENUECAT_SECRET_KEY"],
   },
   {id: "redeemPromoCode", trigger: "callable"},
   {
@@ -103,7 +103,7 @@ const SECRET_ENV_KEYS = [
   "DAILY_DOMAIN",
   "DAILY_WEBHOOK_SECRET",
   "DEEPGRAM_API_KEY",
-  "REVENUECAT_SECRET_API_KEY",
+  "REVENUECAT_SECRET_KEY",
   "REVENUECAT_AUTH_HEADER",
   "REVENUECAT_WEBHOOK_SECRET",
   "RESEND_API_KEY",

@@ -119,7 +119,7 @@ test("deployment readiness rejects secret values in plain env vars", () => {
     environmentVariables: {
       DAILY_API_KEY: "not printed by report",
       APNS_KEY: "also not printed",
-      REVENUECAT_SECRET_API_KEY: "also not printed",
+      REVENUECAT_SECRET_KEY: "also not printed",
     },
     secrets: ["DAILY_API_KEY"],
   }));
@@ -138,7 +138,7 @@ test("deployment readiness rejects secret values in plain env vars", () => {
   ));
   assert.ok(failures.some((failure) =>
     failure.id === "acceptCall" &&
-      /REVENUECAT_SECRET_API_KEY/.test(failure.message),
+      /REVENUECAT_SECRET_KEY/.test(failure.message),
   ));
   assert.doesNotMatch(JSON.stringify(failures), /not printed/);
   assert.doesNotMatch(JSON.stringify(failures), /also not printed/);
