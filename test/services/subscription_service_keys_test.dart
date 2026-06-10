@@ -113,14 +113,14 @@ void main() {
 
     test('matches FlutterFlow package identifiers when product ids differ', () {
       final monthly = _package(
-        packageId: r'$rc_monthly',
+        packageId: SubscriptionProductIds.monthly,
         productId: 'app_store_monthly_product',
-        packageType: PackageType.monthly,
+        packageType: PackageType.custom,
       );
       final quarterly = _package(
-        packageId: r'$rc_three_month',
+        packageId: SubscriptionProductIds.quarterly,
         productId: 'app_store_quarterly_product',
-        packageType: PackageType.threeMonth,
+        packageType: PackageType.custom,
       );
 
       expect(
@@ -130,6 +130,36 @@ void main() {
       expect(
         subscriptionProductIdForPackage(quarterly),
         SubscriptionProductIds.quarterly,
+      );
+    });
+
+    test('maps packages by plan id even when store product ids differ', () {
+      final monthly = _package(
+        packageId: SubscriptionProductIds.monthly,
+        productId: 'app_store_monthly_product',
+        packageType: PackageType.custom,
+      );
+      final quarterly = _package(
+        packageId: SubscriptionProductIds.quarterly,
+        productId: 'app_store_quarterly_product',
+        packageType: PackageType.custom,
+      );
+
+      final packagesByProductId =
+          mapSubscriptionPackagesByProductId([monthly, quarterly]);
+
+      expect(
+        packagesByProductId.keys,
+        [
+          SubscriptionProductIds.monthly,
+          SubscriptionProductIds.quarterly,
+        ],
+      );
+      expect(
+        packagesByProductId[SubscriptionProductIds.monthly]
+            ?.storeProduct
+            .identifier,
+        'app_store_monthly_product',
       );
     });
   });

@@ -19,33 +19,24 @@ class WordDetailBody extends StatelessWidget {
     final sourceSynonyms = content.sourceSynonyms;
 
     return SingleChildScrollView(
-      padding: const EdgeInsetsDirectional.fromSTEB(
+      padding: EdgeInsetsDirectional.fromSTEB(
           ExpatlioDesign.space20,
           ExpatlioDesign.space32,
           ExpatlioDesign.space20,
-          ExpatlioDesign.space40),
+          ExpatlioDesign.space40 + MediaQuery.paddingOf(context).bottom),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Flexible(
-                child: Text(
-                  content.sourceText,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    size: 36.0,
-                    weight: FontWeight.w800,
-                    height: 1.0,
-                  ),
-                ),
-              ),
-              const SizedBox(width: ExpatlioDesign.space16),
-              const _PronunciationButton(),
-            ],
+          Text(
+            content.sourceText,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: ExpatlioDesign.textStyle(
+              context,
+              size: 36.0,
+              weight: FontWeight.w800,
+              height: 1.0,
+            ),
           ),
           if (content.transcription.isNotEmpty)
             Padding(
@@ -273,28 +264,6 @@ class _SynonymChip extends StatelessWidget {
             weight: FontWeight.w500,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _PronunciationButton extends StatelessWidget {
-  const _PronunciationButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 46.0,
-      height: 46.0,
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.primary.withValues(alpha: 0.10),
-        shape: BoxShape.circle,
-      ),
-      alignment: Alignment.center,
-      child: const Icon(
-        Icons.volume_up_rounded,
-        color: ExpatlioDesign.primary,
-        size: 26.0,
       ),
     );
   }

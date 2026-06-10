@@ -830,36 +830,55 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         final intervals =
             currentUserDocument?.availabilityToday.intervals.toList() ?? [];
 
-        return AvailabilityScheduleCard(
-          availabilityEnabled: _effectiveAvailabilityEnabled,
-          intervals: intervals,
-          switchControl: _buildAvailabilitySwitch(),
-          onAddInterval: () async {
-            await _openAddInterBottomSheet();
-          },
-          onRemoveInterval: (intervalsItem) async {
-            final userRef = currentUserReference;
-            if (userRef == null) {
-              return;
-            }
-
-            await userRef.update(createUsersRecordData(
-              availabilityToday: createAvailabilityTodayStruct(
-                fieldValues: {
-                  'intervals': FieldValue.arrayRemove([
-                    getIntervalsFirestoreData(
-                      updateIntervalsStruct(
-                        intervalsItem,
-                        clearUnsetFields: false,
-                      ),
-                      true,
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _effectiveAvailabilityEnabled
+                  ? FFLocalizations.of(context).getVariableText(
+                      ruText: 'Вы доступны для звонков',
+                      enText: 'Are you available for calls',
                     )
-                  ]),
-                },
-                clearUnsetFields: false,
-              ),
-            ));
-          },
+                  : FFLocalizations.of(context).getVariableText(
+                      ruText: 'Вы не доступны для звонков',
+                      enText: 'You are not available for calls',
+                    ),
+              style: ExpatlioDesign.sectionTitleStyle(context),
+            ),
+            const SizedBox(height: ExpatlioDesign.space4),
+            AvailabilityScheduleCard(
+              availabilityEnabled: _effectiveAvailabilityEnabled,
+              intervals: intervals,
+              switchControl: _buildAvailabilitySwitch(),
+              onAddInterval: () async {
+                await _openAddInterBottomSheet();
+              },
+              onRemoveInterval: (intervalsItem) async {
+                final userRef = currentUserReference;
+                if (userRef == null) {
+                  return;
+                }
+
+                await userRef.update(createUsersRecordData(
+                  availabilityToday: createAvailabilityTodayStruct(
+                    fieldValues: {
+                      'intervals': FieldValue.arrayRemove([
+                        getIntervalsFirestoreData(
+                          updateIntervalsStruct(
+                            intervalsItem,
+                            clearUnsetFields: false,
+                          ),
+                          true,
+                        )
+                      ]),
+                    },
+                    clearUnsetFields: false,
+                  ),
+                ));
+              },
+            ),
+          ],
         );
       },
     );
@@ -931,28 +950,37 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final orbitHeight = constraints.maxHeight.clamp(250.0, 440.0);
+        final availableHeight = constraints.maxHeight.toDouble();
+        final compact = availableHeight < 460.0;
+        final orbitHeight = compact
+            ? availableHeight.clamp(150.0, 180.0)
+            : math.min(220.0, availableHeight * 0.42);
+        final estimatedContentHeight = orbitHeight + ExpatlioDesign.space32;
+        final topInset = math.max(
+          ExpatlioDesign.space0,
+          (availableHeight - estimatedContentHeight) / 2.0,
+        );
 
-        return Center(
-          child: SizedBox(
-            width: double.infinity,
-            height: orbitHeight.toDouble(),
-            child: OrbitingAvatarsCta(
-              avatars: avatars,
-              action: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildStartSearchButton(context),
-                  const SizedBox(height: ExpatlioDesign.itemSpacing),
-                  _buildAnimatedAvailabilitySection(context),
-                  _buildPartnerCountText(
-                    context: context,
-                    preferredLocation: preferredLocation,
-                    selectedPartnerLevel: selectedPartnerLevel,
-                  ),
-                ],
+        return SizedBox(
+          width: double.infinity,
+          height: availableHeight,
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              SizedBox(height: topInset),
+              SizedBox(
+                height: orbitHeight,
+                child: OrbitingAvatarsCta(
+                  avatars: avatars,
+                  action: _buildStartSearchButton(context),
+                ),
               ),
-            ),
+              _buildPartnerCountText(
+                context: context,
+                preferredLocation: preferredLocation,
+                selectedPartnerLevel: selectedPartnerLevel,
+              ),
+            ],
           ),
         );
       },
@@ -1110,7 +1138,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
               height: 72.0,
               fit: BoxFit.contain,
             ),
-            const SizedBox(height: ExpatlioDesign.space32),
+            const SizedBox(height: ExpatlioDesign.space24),
+            _buildAnimatedAvailabilitySection(context),
+            const SizedBox(height: ExpatlioDesign.space16),
             Row(
               children: [
                 Expanded(

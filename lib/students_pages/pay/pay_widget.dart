@@ -110,10 +110,7 @@ class _PayWidgetState extends State<PayWidget> {
     }
 
     safeSetState(() {
-      _packagesByProductId = {
-        for (final package in packages)
-          package.storeProduct.identifier: package,
-      };
+      _packagesByProductId = mapSubscriptionPackagesByProductId(packages);
       _isLoadingPackages = false;
     });
   }

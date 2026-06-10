@@ -108,7 +108,7 @@ class _WordsWidgetState extends State<WordsWidget> {
   }
 
   Future<void> _openWordPage(UserWordsRecord wordDoc) async {
-    await Navigator.of(context).push<void>(
+    await Navigator.of(context, rootNavigator: true).push<void>(
       MaterialPageRoute(
         builder: (_) => WordDetailWidget(
           initialWord: wordDoc,

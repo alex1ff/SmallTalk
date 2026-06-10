@@ -11,6 +11,8 @@ void main() {
     expect(pageSource, contains('StudentPayPlanCard('));
     expect(pageSource, contains('StudentPayBottomBar('));
     expect(pageSource, contains('StudentPayRestorePurchasesButton('));
+    expect(
+        pageSource, contains('mapSubscriptionPackagesByProductId(packages)'));
     expect(pageSource, isNot(contains('class _PlanCard')));
     expect(pageSource, isNot(contains('class _SelectionIndicator')));
     expect(pageSource, isNot(contains('class _FeatureLine')));

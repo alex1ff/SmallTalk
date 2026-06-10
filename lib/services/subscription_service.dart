@@ -96,13 +96,13 @@ class SubscriptionProductIds {
   static const String quarterly = 'expatlio_3_Month';
 
   static const Set<String> monthlyPackageIdentifiers = {
-    monthly,
+    'expatlio_1_month',
     r'$rc_monthly',
     'monthly',
   };
 
   static const Set<String> quarterlyPackageIdentifiers = {
-    quarterly,
+    'expatlio_3_month',
     r'$rc_three_month',
     r'$rc_3_month',
     'three_month',
@@ -142,17 +142,27 @@ String? subscriptionProductIdForPackage(Package package) {
   }
 }
 
-@visibleForTesting
-List<Package> selectSubscriptionPackagesFromOfferings(Offerings offerings) {
+Map<String, Package> mapSubscriptionPackagesByProductId(
+  Iterable<Package> packages,
+) {
   final packagesByProductId = <String, Package>{};
 
-  for (final package in _candidatePackagesFromOfferings(offerings)) {
+  for (final package in packages) {
     final productId = subscriptionProductIdForPackage(package);
-    if (productId == null || packagesByProductId.containsKey(productId)) {
-      continue;
+    if (productId != null) {
+      packagesByProductId.putIfAbsent(productId, () => package);
     }
-    packagesByProductId[productId] = package;
   }
+
+  return packagesByProductId;
+}
+
+@visibleForTesting
+List<Package> selectSubscriptionPackagesFromOfferings(Offerings offerings) {
+  final packagesByProductId =
+      mapSubscriptionPackagesByProductId(_candidatePackagesFromOfferings(
+    offerings,
+  ));
 
   return [
     if (packagesByProductId[SubscriptionProductIds.monthly] != null)
