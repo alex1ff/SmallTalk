@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 
 // Импорт для навигации и backend
 import '/backend/backend.dart';
+import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/nav/nav.dart';
 import '/flutter_flow/permissions_util.dart';
 
@@ -36,6 +37,8 @@ class VoIPService {
   bool _initializing = false;
   StreamSubscription<String>? _tokenRefreshSub;
   StreamSubscription<RemoteMessage>? _foregroundMessageSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _incomingNotificationSub;
   StreamSubscription<CallEvent?>? _callKitSubscription;
   Timer? _sessionPruneTimer;
   final Map<String, DateTime> _sessionStateTouchedAt = {};
@@ -44,6 +47,7 @@ class VoIPService {
   final Set<String> _handledCallKitAcceptIds = {};
   final Map<String, DateTime> _recentAcceptBySession = {};
   final Map<String, int> _sessionStateGenerations = {};
+  final Set<String> _handledNotificationIds = {};
   String? _lastAcceptedSessionId;
   bool _lastAcceptedIsTutor = false;
   String? _lastNavigatedSessionId;
@@ -65,6 +69,7 @@ class VoIPService {
   bool _prefetchInProgress = false;
   final Map<String, String> _sessionCallKitIds = {};
   String? _lastCallKitId;
+  String? _notificationListenerUserId;
   static const Duration _sessionStateTtl = Duration(minutes: 10);
   static const Duration _sessionStatePruneInterval = Duration(minutes: 2);
 
@@ -266,6 +271,7 @@ class VoIPService {
 
       // 5. Пытаемся получить PushKit токен (iOS) если доступен
       await _syncPushKitToken();
+      _startIncomingNotificationListener();
 
       _initialized = true;
       debugPrint('✅ VoIPService: Initialized successfully');
@@ -274,6 +280,147 @@ class VoIPService {
     } finally {
       _initializing = false;
     }
+  }
+
+  void _startIncomingNotificationListener() {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    if (_incomingNotificationSub != null &&
+        _notificationListenerUserId == userId) {
+      return;
+    }
+
+    unawaited(_incomingNotificationSub?.cancel());
+    _notificationListenerUserId = userId;
+    _incomingNotificationSub = _firestore
+        .collection('notifications')
+        .where('recipientId', isEqualTo: userId)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        for (final change in snapshot.docChanges) {
+          if (change.type == DocumentChangeType.removed) {
+            continue;
+          }
+          unawaited(_handleIncomingNotification(change.doc, userId));
+        }
+      },
+      onError: (error) {
+        debugPrint(
+            '⚠️ VoIPService: Incoming notification listener failed: $error');
+      },
+    );
+  }
+
+  String? _nonEmptyString(dynamic value) {
+    if (value == null) return null;
+    final trimmed = value.toString().trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  Map<String, dynamic> _mapFrom(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return <String, dynamic>{};
+  }
+
+  DateTime? _dateTimeFromFirestoreValue(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
+  }
+
+  bool _incomingNotificationIsCurrent(Map<String, dynamic> data) {
+    final type = _nonEmptyString(data['type']);
+    final status = _nonEmptyString(data['status']);
+    if (type != NotificationType.incoming_call.name || status != 'sent') {
+      return false;
+    }
+
+    final expiresAt = _dateTimeFromFirestoreValue(data['expiresAt']);
+    if (expiresAt != null && !expiresAt.isAfter(DateTime.now())) {
+      return false;
+    }
+
+    return _nonEmptyString(data['sessionId']) != null;
+  }
+
+  Future<Map<String, dynamic>?> _loadCurrentIncomingSessionData({
+    required String sessionId,
+    required String userId,
+  }) async {
+    try {
+      final sessionDoc =
+          await _firestore.collection('videoSessions').doc(sessionId).get();
+      if (!sessionDoc.exists) {
+        return null;
+      }
+
+      final sessionData = sessionDoc.data();
+      if (sessionData == null) {
+        return null;
+      }
+
+      final status = _nonEmptyString(sessionData['status']);
+      final currentTutorId = _nonEmptyString(sessionData['currentTutorId']);
+      if (status != 'searching' || currentTutorId != userId) {
+        return null;
+      }
+
+      return sessionData;
+    } catch (error) {
+      debugPrint(
+          '⚠️ VoIPService: Failed to validate incoming notification: $error');
+      return null;
+    }
+  }
+
+  Future<void> _handleIncomingNotification(
+    DocumentSnapshot<Map<String, dynamic>> notificationDoc,
+    String userId,
+  ) async {
+    final notificationData = notificationDoc.data();
+    if (notificationData == null ||
+        !_incomingNotificationIsCurrent(notificationData)) {
+      return;
+    }
+
+    final sessionId = _nonEmptyString(notificationData['sessionId']);
+    if (sessionId == null ||
+        _handledNotificationIds.contains(notificationDoc.id) ||
+        _sessionCallKitIds.containsKey(sessionId) ||
+        _hasProtectedLiveSessionState(sessionId)) {
+      return;
+    }
+
+    final sessionData = await _loadCurrentIncomingSessionData(
+      sessionId: sessionId,
+      userId: userId,
+    );
+    if (sessionData == null) {
+      return;
+    }
+
+    _handledNotificationIds.add(notificationDoc.id);
+    final notificationStudentInfo = _mapFrom(notificationData['studentInfo']);
+    final sessionStudentInfo = _mapFrom(sessionData['studentInfo']);
+    final callerName = _nonEmptyString(notificationStudentInfo['name']) ??
+        _nonEmptyString(sessionStudentInfo['name']) ??
+        'Unknown Caller';
+    final callerPhoto = _nonEmptyString(notificationStudentInfo['photo']) ??
+        _nonEmptyString(sessionStudentInfo['photo']);
+
+    debugPrint('📞 VoIPService: Firestore incoming call notification received');
+    await showIncomingCall(
+      sessionId: sessionId,
+      callerName: callerName,
+      callerId: _nonEmptyString(sessionData['studentId']) ?? '',
+      callerPhoto: callerPhoto,
+    );
   }
 
   void _resetInMemoryState() {
@@ -285,6 +432,7 @@ class VoIPService {
     _handledCallKitAcceptIds.clear();
     _recentAcceptBySession.clear();
     _sessionStateGenerations.clear();
+    _handledNotificationIds.clear();
     _sessionCallKitIds.clear();
     _processAcceptClaimedAtBySession.clear();
 
@@ -308,6 +456,7 @@ class VoIPService {
     _prefetchedTokenFetchedAt = null;
     _prefetchInProgress = false;
     _lastCallKitId = null;
+    _notificationListenerUserId = null;
   }
 
   void _startSessionPruneTimer() {
@@ -413,6 +562,12 @@ class VoIPService {
     _foregroundMessageSub = null;
     if (foregroundSub != null) {
       await foregroundSub.cancel();
+    }
+
+    final notificationSub = _incomingNotificationSub;
+    _incomingNotificationSub = null;
+    if (notificationSub != null) {
+      await notificationSub.cancel();
     }
 
     final callKitSub = _callKitSubscription;

@@ -119,6 +119,14 @@ void main() {
       );
       expect(
         appDelegateSource,
+        contains('private var voipRegistry: PKPushRegistry?'),
+      );
+      expect(
+        appDelegateSource,
+        isNot(contains('let voipRegistry: PKPushRegistry')),
+      );
+      expect(
+        appDelegateSource,
         contains('if let existingUuid = UUID(uuidString: trimmed)'),
       );
       expect(
@@ -216,6 +224,28 @@ void main() {
       );
       expect(acceptCallIndex, greaterThanOrEqualTo(0));
       expect(tutorNavigateIndex, greaterThan(acceptCallIndex));
+    });
+
+    test('VoIP service listens to assigned Firestore call notifications', () {
+      final source = _source('lib/services/voip_service.dart');
+
+      expect(source, contains('_incomingNotificationSub'));
+      expect(source, contains('_startIncomingNotificationListener()'));
+      expect(source, contains("collection('notifications')"));
+      expect(source, contains(".where('recipientId', isEqualTo: userId)"));
+      expect(source, contains("NotificationType.incoming_call.name"));
+      expect(source, contains("status != 'sent'"));
+      expect(
+          source, contains('_dateTimeFromFirestoreValue(data[\'expiresAt\'])'));
+      expect(source, contains("collection('videoSessions').doc(sessionId)"));
+      expect(source,
+          contains("status != 'searching' || currentTutorId != userId"));
+      expect(
+        source,
+        contains('Firestore incoming call notification received'),
+      );
+      expect(source, contains('await showIncomingCall('));
+      expect(source, contains('await notificationSub.cancel();'));
     });
 
     test('Daily token refresh keeps room URL and token paired', () {

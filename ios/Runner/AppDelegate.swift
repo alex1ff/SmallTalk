@@ -24,16 +24,17 @@ private func deterministicCallKitId(for rawValue: String?) -> String {
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, PKPushRegistryDelegate {
+  private var voipRegistry: PKPushRegistry?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
 
-    let mainQueue = DispatchQueue.main
-    let voipRegistry: PKPushRegistry = PKPushRegistry(queue: mainQueue)
-    voipRegistry.delegate = self
-    voipRegistry.desiredPushTypes = [PKPushType.voIP]
+    voipRegistry = PKPushRegistry(queue: DispatchQueue.main)
+    voipRegistry?.delegate = self
+    voipRegistry?.desiredPushTypes = [PKPushType.voIP]
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
