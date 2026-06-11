@@ -179,7 +179,6 @@ exports.claimRegistrationGift = functions
                   createdAt: admin.firestore.FieldValue.serverTimestamp(),
                   type: "bonus",
                   status: "completed",
-                  amount_ST: 0,
                   minutesPurchased: REGISTRATION_GIFT_MINUTES,
                   source: "registration",
                 },

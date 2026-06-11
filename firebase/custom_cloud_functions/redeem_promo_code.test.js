@@ -75,12 +75,6 @@ test("resolvePromoGift reads new-style minutesGifted + validForDays", () => {
   assert.deepEqual(gift, {minutesGifted: 30, validForDays: 3});
 });
 
-test("resolvePromoGift falls back to legacy value_samll_talk (×10)", () => {
-  const gift = resolvePromoGift({value_samll_talk: 2});
-  // 2 SmallTalks = 20 minutes; validForDays defaults to 1
-  assert.deepEqual(gift, {minutesGifted: 20, validForDays: 1});
-});
-
 test("resolvePromoGift defaults validForDays to 1 when missing", () => {
   const gift = resolvePromoGift({minutesGifted: 15});
   assert.deepEqual(gift, {minutesGifted: 15, validForDays: 1});
@@ -89,16 +83,12 @@ test("resolvePromoGift defaults validForDays to 1 when missing", () => {
 test("resolvePromoGift returns null when there's no gift", () => {
   assert.equal(resolvePromoGift({validForDays: 7}), null);
   assert.equal(resolvePromoGift({minutesGifted: 0, validForDays: 7}), null);
+  assert.equal(resolvePromoGift({value_samll_talk: 2}), null);
   assert.equal(resolvePromoGift({}), null);
   assert.equal(resolvePromoGift(null), null);
 });
 
-test("resolvePromoGift prefers new fields over legacy", () => {
-  // Both set → new fields win.
-  const gift = resolvePromoGift({
-    minutesGifted: 5,
-    validForDays: 2,
-    value_samll_talk: 99,
-  });
+test("resolvePromoGift ignores removed legacy value_samll_talk field", () => {
+  const gift = resolvePromoGift({minutesGifted: 5, validForDays: 2});
   assert.deepEqual(gift, {minutesGifted: 5, validForDays: 2});
 });

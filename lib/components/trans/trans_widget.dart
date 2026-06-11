@@ -102,10 +102,28 @@ class _TransWidgetState extends State<TransWidget> {
     return ExpatlioDesign.muted;
   }
 
-  String _amountLabel() {
+  String _formatCompactNumber(num value) {
+    final doubleValue = value.toDouble();
+    if (doubleValue == doubleValue.roundToDouble()) {
+      return doubleValue.toStringAsFixed(0);
+    }
+    return doubleValue.toStringAsFixed(1);
+  }
+
+  String _amountLabel(BuildContext context) {
+    final giftMinutes = widget.trans?.minutesPurchased ?? 0;
+    final isGiftMinutesTransaction =
+        widget.trans?.type == TypeTransactions.promocode ||
+            (widget.trans?.type == TypeTransactions.bonus && giftMinutes > 0);
+    if (isGiftMinutesTransaction) {
+      final minutes = widget.trans?.minutesPurchased ?? 0;
+      return '+${_formatCompactNumber(minutes)} ${FFLocalizations.of(context).getVariableText(
+        ruText: 'мин',
+        enText: 'min',
+      )}';
+    }
     if ((widget.trans?.type == TypeTransactions.purchase) ||
-        (widget.trans?.type == TypeTransactions.bonus) ||
-        (widget.trans?.type == TypeTransactions.promocode)) {
+        (widget.trans?.type == TypeTransactions.bonus)) {
       return '+${widget.trans?.amountST.toString()} ST';
     } else if (widget.trans?.type == TypeTransactions.call_charge) {
       return '-${widget.trans?.amountST.toString()} ST';
@@ -397,7 +415,7 @@ class _TransWidgetState extends State<TransWidget> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    _amountLabel(),
+                    _amountLabel(context),
                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'sf pro display',
                           color: _amountColor(context),

@@ -3,14 +3,13 @@
 // Callable that grants gift minutes to the authenticated user against a
 // promo code stored in the `promoCodes` Firestore collection.
 //
-// Promo code schema (new fields, alongside legacy):
+// Promo code schema:
 //   promoCodes/{id} = {
 //     code: string,            // case-insensitive lookup key
 //     isActive: bool,
 //     expiredDate: timestamp,  // when the code itself expires
 //     usageLimit: int,         // total redemptions allowed (across users)
 //     usageCount: int,         // server-incremented
-//     // NEW for the gift-minutes flow:
 //     minutesGifted: int,      // free minutes added to user.giftMinutes
 //     validForDays: int,       // TTL of the granted gift bucket
 //   }
@@ -61,18 +60,10 @@ function isPromoExhausted(promoData) {
 
 // Resolves the gift (minutesGifted, validForDays) from a promo document.
 // Returns null if the promo doesn't carry a valid gift.
-// Falls back to legacy `value_samll_talk` (one SmallTalk = 10 minutes)
-// when the new fields are missing.
 function resolvePromoGift(promoData) {
   if (!promoData) return null;
-  let minutesGifted = Number(promoData.minutesGifted);
+  const minutesGifted = Number(promoData.minutesGifted);
   let validForDays = Number(promoData.validForDays);
-  if (!Number.isFinite(minutesGifted) || minutesGifted <= 0) {
-    const legacyValueST = Number(promoData.value_samll_talk);
-    if (Number.isFinite(legacyValueST) && legacyValueST > 0) {
-      minutesGifted = legacyValueST * 10;
-    }
-  }
   if (!Number.isFinite(validForDays) || validForDays <= 0) {
     validForDays = 1;
   }
@@ -227,7 +218,6 @@ exports.redeemPromoCode = functions
             status: "completed",
             promoCodeDocRef: promoRef,
             promoCode: promo.code || rawCode,
-            amount_ST: 0,
             minutesPurchased: minutesGifted,
           });
 
