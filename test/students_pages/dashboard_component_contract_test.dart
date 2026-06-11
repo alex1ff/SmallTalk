@@ -35,6 +35,22 @@ void main() {
     expect(source, isNot(contains('people count unavailable')));
   });
 
+  test('student dashboard start search accepts subscription or gift minutes',
+      () {
+    final source = File(
+            'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
+        .readAsStringSync();
+
+    expect(
+      RegExp(r'canStartCall\(\s*currentUserDocument\s*\)').allMatches(source),
+      hasLength(2),
+    );
+    expect(
+      source,
+      isNot(contains('hasActiveSubscription(currentUserDocument)')),
+    );
+  });
+
   test('student dashboard filters use design control radius', () {
     final source = File('lib/components/dashboard_inline_filter_button.dart')
         .readAsStringSync();

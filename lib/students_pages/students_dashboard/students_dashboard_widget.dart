@@ -17,8 +17,8 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/components/no_balance_widget.dart';
 import '/components/promo_redeem_widget.dart';
 import '/components/fav_widget.dart';
-// ─── SUBSCRIPTION REWORK ─ subscription state helpers (hasActiveSubscription,
-// formatExpiryDate). Replaces gating by balanceST.
+// ─── SUBSCRIPTION REWORK ─ subscription state helpers. Replaces gating by
+// balanceST; call start uses canStartCall so promo gift minutes unlock access.
 import '/utils/subscription_utils.dart';
 import '/components/add_inter_widget.dart';
 import '/index.dart';
@@ -910,7 +910,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   }
 
   Future<void> _handleStartConversation() async {
-    if (!hasActiveSubscription(currentUserDocument)) {
+    if (!canStartCall(currentUserDocument)) {
       await showModalBottomSheet(
         useRootNavigator: true,
         isScrollControlled: true,
@@ -1990,9 +1990,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                         highlightColor: Colors.transparent,
                                         onTap: () async {
                                           // ─── SUBSCRIPTION REWORK ────
-                                          // Gate by active subscription
-                                          // instead of legacy balanceST.
-                                          if (!hasActiveSubscription(
+                                          // Gate by active subscription or gift
+                                          // minutes instead of legacy balanceST.
+                                          if (!canStartCall(
                                               currentUserDocument)) {
                                             // ──────────────────────────
                                             await showModalBottomSheet(
