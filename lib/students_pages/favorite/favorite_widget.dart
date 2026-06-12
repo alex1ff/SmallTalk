@@ -47,18 +47,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
-  String _publicProfileDisplayName(
-    BuildContext context,
-    UserPublicProfilesRecord? profile,
-  ) {
-    final displayName = profile?.displayName.trim();
-    if (displayName != null && displayName.isNotEmpty) {
-      return displayName;
-    }
-
+  String _fallbackPartnerDisplayName(BuildContext context) {
     return FFLocalizations.of(context).getVariableText(
-      ruText: 'Пользователь',
-      enText: 'User',
+      ruText: 'Собеседник',
+      enText: 'Conversation partner',
     );
   }
 
@@ -113,7 +105,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   }
 
   String _partnerDisplayName(
-    BuildContext context,
     ConversationsRecord conversation,
     DocumentReference partnerRef,
     UserPublicProfilesRecord? profile,
@@ -129,7 +120,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       return conversationDisplayName;
     }
 
-    return _publicProfileDisplayName(context, profile);
+    return '';
   }
 
   String _partnerPhotoUrl(
@@ -143,6 +134,17 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     }
 
     return _conversationParticipantPhotoUrl(conversation, partnerRef);
+  }
+
+  Widget _buildChatPartnerNamePlaceholder() {
+    return Container(
+      width: 96.0,
+      height: 18.0,
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.mutedSurface,
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+      ),
+    );
   }
 
   Stream<_ConversationsLoadState> _watchConversationsForUser(
@@ -369,7 +371,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
         final partner = partnerSnapshot.hasError ? null : partnerSnapshot.data;
         final partnerDisplayName = _partnerDisplayName(
-          context,
           conversation,
           partnerRef,
           partner,
@@ -379,6 +380,14 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           partnerRef,
           partner,
         );
+        final partnerIdentityLoading =
+            partnerSnapshot.connectionState == ConnectionState.waiting &&
+                !partnerSnapshot.hasError &&
+                partnerDisplayName.isEmpty &&
+                partnerPhotoUrl.isEmpty;
+        final visiblePartnerDisplayName = partnerDisplayName.isNotEmpty
+            ? partnerDisplayName
+            : _fallbackPartnerDisplayName(context);
         final unread =
             conversationIsUnreadForUser(conversation, currentUserUid);
         final subtitle = _conversationSubtitle(context, conversation);
@@ -411,7 +420,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     width: 52.0,
                     height: 52.0,
                     decoration: BoxDecoration(
-                      color: ExpatlioDesign.card,
+                      color: partnerIdentityLoading
+                          ? ExpatlioDesign.mutedSurface
+                          : ExpatlioDesign.card,
                       shape: BoxShape.circle,
                       border: Border.all(color: ExpatlioDesign.border),
                       image: partnerPhotoUrl.isNotEmpty
@@ -425,10 +436,11 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                             )
                           : null,
                     ),
-                    child: partnerPhotoUrl.isEmpty
+                    child: partnerPhotoUrl.isEmpty && !partnerIdentityLoading
                         ? Center(
                             child: Text(
-                              partnerDisplayName.characters.first.toUpperCase(),
+                              visiblePartnerDisplayName.characters.first
+                                  .toUpperCase(),
                               style: ExpatlioDesign.textStyle(
                                 context,
                                 color: ExpatlioDesign.muted,
@@ -457,17 +469,19 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                 child: Row(
                                   children: [
                                     Flexible(
-                                      child: Text(
-                                        partnerDisplayName,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: ExpatlioDesign.textStyle(
-                                          context,
-                                          size: 16.0,
-                                          weight: unread
-                                              ? FontWeight.w700
-                                              : FontWeight.w600,
-                                        ),
-                                      ),
+                                      child: partnerIdentityLoading
+                                          ? _buildChatPartnerNamePlaceholder()
+                                          : Text(
+                                              visiblePartnerDisplayName,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: ExpatlioDesign.textStyle(
+                                                context,
+                                                size: 16.0,
+                                                weight: unread
+                                                    ? FontWeight.w700
+                                                    : FontWeight.w600,
+                                              ),
+                                            ),
                                     ),
                                     if (isFriend)
                                       const Padding(

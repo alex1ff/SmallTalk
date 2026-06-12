@@ -72,7 +72,6 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
               return _buildLoadingState(context);
             }
 
-            final userField = _isTeacher ? 'tutorId' : 'studentId';
             final contentTopPadding = MediaQuery.paddingOf(context).top +
                 BasicPageHeader.height +
                 ExpatlioDesign.sectionSpacing;
@@ -90,8 +89,8 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
                     stream: queryVideoSessionsRecord(
                       queryBuilder: (videoSessionsRecord) =>
                           videoSessionsRecord.where(
-                        userField,
-                        isEqualTo: currentUserUid,
+                        'participantIds',
+                        arrayContains: currentUserUid,
                       ),
                     ),
                     builder: (context, snapshot) {

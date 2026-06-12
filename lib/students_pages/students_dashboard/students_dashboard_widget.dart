@@ -972,13 +972,18 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                 height: orbitHeight,
                 child: OrbitingAvatarsCta(
                   avatars: avatars,
-                  action: _buildStartSearchButton(context),
+                  action: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildStartSearchButton(context),
+                      _buildPartnerCountText(
+                        context: context,
+                        preferredLocation: preferredLocation,
+                        selectedPartnerLevel: selectedPartnerLevel,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              _buildPartnerCountText(
-                context: context,
-                preferredLocation: preferredLocation,
-                selectedPartnerLevel: selectedPartnerLevel,
               ),
             ],
           ),

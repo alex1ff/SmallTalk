@@ -4,12 +4,10 @@ import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
 import '/components/pair_review_content.dart';
 import '/components/review_card/review_card_widget.dart';
-import '/components/wrapper.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
-import '/shared_pages/chat_thread/open_chat_thread.dart';
 import '/index.dart';
 import '/services/user_match_profile.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -246,72 +244,6 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
             child: ReviewCardWidget(
               rewDoc: reviewRecord,
             ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildOpenChatCta(BuildContext context) {
-    final currentRef = currentUserReference;
-    final targetRef = widget.userRef;
-    if (currentRef == null ||
-        targetRef == null ||
-        currentUserUid.isEmpty ||
-        targetRef.id.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final conversationRef = conversationReferenceForPairId(
-      canonicalConversationPairId(currentUserUid, targetRef.id),
-    );
-
-    return StreamBuilder<List<ConversationsRecord>>(
-      stream: queryConversationsRecord(
-        queryBuilder: (query) => query.where(
-          FieldPath(['participantMap', currentUserUid]),
-          isEqualTo: true,
-        ),
-      ),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const SizedBox.shrink();
-        }
-
-        ConversationsRecord? conversation;
-        for (final candidate in snapshot.data!) {
-          if (candidate.pairId == conversationRef.id) {
-            conversation = candidate;
-            break;
-          }
-        }
-
-        if (conversation == null || !conversation.isUnlocked) {
-          return const SizedBox.shrink();
-        }
-
-        return Wrapper(
-          padding: const EdgeInsetsDirectional.fromSTEB(
-              ExpatlioDesign.pagePadding,
-              ExpatlioDesign.space32,
-              ExpatlioDesign.pagePadding,
-              ExpatlioDesign.space0),
-          child: ButtonWidget(
-            text: FFLocalizations.of(context).getVariableText(
-              ruText: 'Открыть чат',
-              enText: 'Open chat',
-            ),
-            loadingText: FFLocalizations.of(context).getVariableText(
-              ruText: 'Открываем...',
-              enText: 'Opening...',
-            ),
-            busyStyle: ButtonBusyStyle.spinner,
-            action: () async {
-              await openChatThread(
-                context,
-                conversationRef: conversationRef,
-              );
-            },
           ),
         );
       },
@@ -919,7 +851,6 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   const SizedBox(
                                       height: ExpatlioDesign.space20),
                                   _buildReviewSection(context),
-                                  _buildOpenChatCta(context),
                                 ],
                               ),
                             ),

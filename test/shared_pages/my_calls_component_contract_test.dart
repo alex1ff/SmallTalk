@@ -13,6 +13,33 @@ void main() {
     expect(pageSource, contains('AppLoadingIndicator()'));
   });
 
+  test('my calls page queries sessions by participant membership', () {
+    final pageSource = File('lib/shared_pages/my_calls/my_calls_widget.dart')
+        .readAsStringSync();
+
+    expect(pageSource, contains("'participantIds'"));
+    expect(pageSource, contains('arrayContains: currentUserUid'));
+    expect(
+      pageSource,
+      isNot(contains("final userField = _isTeacher ? 'tutorId' : 'studentId'")),
+    );
+  });
+
+  test('call history card resolves counterpart independent of current role', () {
+    final cardSource =
+        File('lib/components/call_history_card.dart').readAsStringSync();
+
+    expect(cardSource, contains('resolveSessionReviewParticipant('));
+    expect(
+      cardSource,
+      isNot(
+        contains(
+          'isTeacher ? session.studentInfo.name : session.tutorInfo.name',
+        ),
+      ),
+    );
+  });
+
   test('my calls route uses a regular page route for iOS swipe back', () {
     final navSource = File('lib/flutter_flow/nav/nav.dart').readAsStringSync();
     final shellRouteIndex = navSource.indexOf('ShellRoute(');

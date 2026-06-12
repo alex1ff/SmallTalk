@@ -173,6 +173,85 @@ void main() {
       );
     });
 
+    test('session limit warning stays inside timer badge', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+
+      expect(
+        RegExp(r'_CallCheckpointNotice\(\s*minutes:\s*-1').hasMatch(source),
+        isFalse,
+      );
+
+      final warningStart =
+          source.indexOf('void _maybeShowSessionLimitWarning()');
+      final autoEndStart =
+          source.indexOf('void _maybeAutoEndAtSessionLimit()', warningStart);
+      expect(warningStart, greaterThanOrEqualTo(0));
+      expect(autoEndStart, greaterThan(warningStart));
+
+      final warningSource = source.substring(warningStart, autoEndStart);
+      expect(
+        warningSource,
+        contains('_sessionLimitWarningShownFor = expiresAt;'),
+      );
+      expect(warningSource, isNot(contains('_showCallCheckpointNotice')));
+
+      final badgeStart = source.indexOf('Widget _buildCallDurationBadge()');
+      final noticeOverlayStart = source.indexOf(
+        'Widget _buildCallCheckpointNoticeOverlay',
+        badgeStart,
+      );
+      expect(badgeStart, greaterThanOrEqualTo(0));
+      expect(noticeOverlayStart, greaterThan(badgeStart));
+
+      final badgeSource = source.substring(badgeStart, noticeOverlayStart);
+      expect(badgeSource, contains("'Осталась 1 минута до лимита'"));
+      expect(badgeSource, contains(": 'до лимита'"));
+    });
+
+    test('call chat keyboard layout keeps composer clear of overlays', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+
+      expect(
+          source, contains('final isChatKeyboardActive = _state.isChatOpen'));
+      expect(source, contains('if (!isChatKeyboardActive)'));
+      expect(
+        source,
+        contains('_chatFocusNode.addListener(_handleChatFocusChanged);'),
+      );
+      expect(
+        source,
+        contains('_chatFocusNode.removeListener(_handleChatFocusChanged);'),
+      );
+
+      final adaptivePanelStart =
+          source.indexOf('Widget _buildAdaptiveChatPanel({');
+      final chatPanelStart =
+          source.indexOf('Widget _buildChatPanel({', adaptivePanelStart);
+      expect(adaptivePanelStart, greaterThanOrEqualTo(0));
+      expect(chatPanelStart, greaterThan(adaptivePanelStart));
+
+      final adaptivePanelSource =
+          source.substring(adaptivePanelStart, chatPanelStart);
+      expect(adaptivePanelSource, contains('keyboardAlreadyReducedHeight'));
+      expect(
+        adaptivePanelSource,
+        contains('height: isWideChat || isChatKeyboardActive ? null'),
+      );
+      expect(adaptivePanelSource, isNot(contains('AnimatedPadding')));
+
+      final emptyStateStart = source.indexOf('Widget _buildEmptyChatState()');
+      final messagesStart =
+          source.indexOf('Widget _buildChatMessages()', emptyStateStart);
+      expect(emptyStateStart, greaterThanOrEqualTo(0));
+      expect(messagesStart, greaterThan(emptyStateStart));
+
+      final emptyStateSource = source.substring(emptyStateStart, messagesStart);
+      expect(emptyStateSource, contains('SingleChildScrollView'));
+      expect(emptyStateSource, contains('ConstrainedBox'));
+    });
+
     test('connected billing marker requires Daily verification backend', () {
       final markConnectedSource =
           _source('firebase/custom_cloud_functions/mark_session_connected.js');
@@ -522,6 +601,8 @@ void main() {
       expect(source, contains("ruText: 'Больше не соединять сегодня'"));
       expect(source, contains("ruText: 'Добавить в чёрный список'"));
       expect(source, contains("ruText: 'Оставить отзыв'"));
+      expect(source, isNot(contains("ruText: 'Открыть чат'")));
+      expect(source, isNot(contains('openChatThread(')));
       expect(source, isNot(contains('AI-обратная связь')));
     });
 

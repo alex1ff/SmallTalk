@@ -22,9 +22,67 @@ class CallHistoryCard extends StatelessWidget {
     return formatSessionStartedAtForCard(context, session);
   }
 
+  SessionReviewParticipantResolution get _participantResolution =>
+      resolveSessionReviewParticipant(
+        sessionData: session.snapshotData,
+        currentUserId: currentUserUid,
+      );
+
+  bool _counterpartUsesStudentInfo(String? counterpartId) {
+    return counterpartId != null &&
+        counterpartId.isNotEmpty &&
+        counterpartId == session.studentId.trim();
+  }
+
+  bool _counterpartUsesTutorInfo(String? counterpartId) {
+    final responderIds = <String>{
+      session.tutorId.trim(),
+      resolveSessionResponderId(session.snapshotData) ?? '',
+    }..remove('');
+
+    return counterpartId != null &&
+        counterpartId.isNotEmpty &&
+        responderIds.contains(counterpartId);
+  }
+
+  String _fallbackName() {
+    if (isTeacher) {
+      return session.studentInfo.name.trim();
+    }
+    return session.tutorInfo.name.trim();
+  }
+
+  String _fallbackPhotoUrl() {
+    if (isTeacher) {
+      return session.studentInfo.photo.trim();
+    }
+    return session.tutorInfo.photo.trim();
+  }
+
+  String _rawCounterpartName() {
+    final counterpartId = _participantResolution.counterpartUserId;
+    if (_counterpartUsesStudentInfo(counterpartId)) {
+      return session.studentInfo.name.trim();
+    }
+    if (_counterpartUsesTutorInfo(counterpartId)) {
+      return session.tutorInfo.name.trim();
+    }
+    return _fallbackName();
+  }
+
+  String _rawCounterpartPhotoUrl() {
+    final counterpartId = _participantResolution.counterpartUserId;
+    if (_counterpartUsesStudentInfo(counterpartId)) {
+      return session.studentInfo.photo.trim();
+    }
+    if (_counterpartUsesTutorInfo(counterpartId)) {
+      return session.tutorInfo.photo.trim();
+    }
+    return _fallbackPhotoUrl();
+  }
+
   String _displayName(BuildContext context) {
-    final rawName =
-        (isTeacher ? session.studentInfo.name : session.tutorInfo.name).trim();
+    final rawName = _rawCounterpartName();
     if (rawName.isNotEmpty) {
       return rawName;
     }
@@ -35,8 +93,7 @@ class CallHistoryCard extends StatelessWidget {
     );
   }
 
-  String _photoUrl() =>
-      (isTeacher ? session.studentInfo.photo : session.tutorInfo.photo).trim();
+  String _photoUrl() => _rawCounterpartPhotoUrl();
 
   bool get _currentUserWasCaller {
     final requesterId = resolveSessionRequesterId(session.snapshotData);

@@ -504,8 +504,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _chatFocusNode.addListener(_handleChatFocusChanged);
     _deepgramCredential = _configuredDeepgramCredentialFor(widget);
     _initializeWidget();
+  }
+
+  void _handleChatFocusChanged() {
+    if (!mounted || _disposed) return;
+    setState(() {});
   }
 
   /// Initialize widget with proper error handling
@@ -3382,14 +3388,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     _sessionLimitWarningShownFor = expiresAt;
-    _showCallCheckpointNotice(
-      const _CallCheckpointNotice(
-        minutes: -1,
-        title: 'Осталась 1 минута',
-        subtitle: 'Звонок завершится по лимиту, если продление не одобрено.',
-        accentColor: Color(0xFFFFB020),
-      ),
-    );
   }
 
   void _maybeAutoEndAtSessionLimit() {
@@ -3622,6 +3620,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               ? constraints.maxWidth
               : MediaQuery.sizeOf(context).width;
           final isWideChat = viewportWidth >= _chatWideBreakpoint;
+          final isChatKeyboardActive = _state.isChatOpen &&
+              (_chatFocusNode.hasFocus ||
+                  MediaQuery.viewInsetsOf(context).bottom > 0);
           final showRemoteVideo = _hasRemoteVideoReady();
           final showPip = showRemoteVideo &&
               _localVideoController != null &&
@@ -3717,6 +3718,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 _buildAdaptiveChatPanel(
                   constraints: constraints,
                   isWideChat: isWideChat,
+                  isChatKeyboardActive: isChatKeyboardActive,
                 ),
 
               // Status indicators
@@ -3729,12 +3731,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 ),
 
               // Controls
-              Positioned(
-                bottom: 35,
-                left: 0,
-                right: 0,
-                child: RepaintBoundary(child: _buildControls()),
-              ),
+              if (!isChatKeyboardActive)
+                Positioned(
+                  bottom: 35,
+                  left: 0,
+                  right: 0,
+                  child: RepaintBoundary(child: _buildControls()),
+                ),
 
               // Error display
               if (_state.error != null &&
@@ -3874,11 +3877,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                     if (hasCountdown) ...[
                       const SizedBox(height: ExpatlioDesign.space4),
                       Text(
-                        'до лимита',
+                        isWarning ? 'Осталась 1 минута до лимита' : 'до лимита',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.72),
+                          color: (isWarning ? accentColor : Colors.white)
+                              .withValues(alpha: isWarning ? 0.95 : 0.72),
                           fontSize: 11.0,
-                          fontWeight: FontWeight.w500,
+                          fontWeight:
+                              isWarning ? FontWeight.w600 : FontWeight.w500,
                           letterSpacing: 0.2,
                           height: 1.0,
                         ),
@@ -4703,23 +4708,33 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildAdaptiveChatPanel({
     required BoxConstraints constraints,
     required bool isWideChat,
+    required bool isChatKeyboardActive,
   }) {
-    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
-    final bottomOffset = 110.0;
+    final mediaQuery = MediaQuery.of(context);
+    final viewInsetsBottom = mediaQuery.viewInsets.bottom;
+    final keyboardAlreadyReducedHeight = viewInsetsBottom > 0 &&
+        constraints.maxHeight <=
+            mediaQuery.size.height - (viewInsetsBottom * 0.5);
+    final bottomOffset = isChatKeyboardActive
+        ? (keyboardAlreadyReducedHeight ? 16.0 : viewInsetsBottom + 16.0)
+        : 110.0;
+    final mobileTopOffset = isChatKeyboardActive
+        ? math.max(16.0, mediaQuery.padding.top + 12.0)
+        : null;
     final mobilePanelHeight =
         (constraints.maxHeight * 0.44).clamp(260.0, 360.0).toDouble();
 
     return Positioned(
-      top: isWideChat ? 20 : null,
+      top: isWideChat ? 20 : mobileTopOffset,
       right: 16,
       left: isWideChat ? null : 16,
       width: isWideChat ? 360 : null,
-      height: isWideChat ? null : mobilePanelHeight,
+      height: isWideChat || isChatKeyboardActive ? null : mobilePanelHeight,
       bottom: bottomOffset,
-      child: AnimatedPadding(
+      child: AnimatedSize(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
-        padding: EdgeInsets.only(bottom: viewInsetsBottom),
+        alignment: Alignment.bottomCenter,
         child: RepaintBoundary(
           child: _buildChatPanel(isWideChat: isWideChat),
         ),
@@ -4843,51 +4858,67 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   Widget _buildEmptyChatState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: ExpatlioDesign.space24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
-                borderRadius:
-                    BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
-              ),
-              child: const Icon(
-                Icons.chat_bubble_outline,
-                color: Colors.white70,
-                size: 28,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: ExpatlioDesign.space12),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: math.max(
+                0,
+                constraints.maxHeight - (ExpatlioDesign.space12 * 2),
               ),
             ),
-            const SizedBox(height: ExpatlioDesign.space16),
-            const Text(
-              'Сообщения появятся здесь',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: ExpatlioDesign.space24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(
+                            ExpatlioDesign.radiusExtraLarge),
+                      ),
+                      child: const Icon(
+                        Icons.chat_bubble_outline,
+                        color: Colors.white70,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(height: ExpatlioDesign.space16),
+                    const Text(
+                      'Сообщения появятся здесь',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: ExpatlioDesign.space8),
+                    Text(
+                      _hasRemoteParticipantPresent()
+                          ? 'Напишите первое сообщение собеседнику.'
+                          : 'Дождитесь подключения второго участника, чтобы начать чат.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.68),
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: ExpatlioDesign.space8),
-            Text(
-              _hasRemoteParticipantPresent()
-                  ? 'Напишите первое сообщение собеседнику.'
-                  : 'Дождитесь подключения второго участника, чтобы начать чат.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.68),
-                fontSize: 13,
-                height: 1.35,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -5414,6 +5445,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _resetCallCheckpointNotice(clearHistory: true);
     _callDurationNotifier.dispose();
     _callCheckpointNoticeNotifier.dispose();
+    _chatFocusNode.removeListener(_handleChatFocusChanged);
     _chatFocusNode.unfocus();
     _chatTextController.clear();
 

@@ -28,7 +28,11 @@ void main() {
         source,
         contains('FutureBuilder<UserPublicProfilesRecord?>'),
       );
-      expect(source, isNot(contains('partnerSnapshot.connectionState')));
+      expect(source, contains('partnerSnapshot.connectionState'));
+      expect(source, contains('final partnerIdentityLoading'));
+      expect(source, contains('_buildChatPartnerNamePlaceholder'));
+      expect(source, contains("ruText: 'Собеседник'"));
+      expect(source, isNot(contains("ruText: 'Пользователь'")));
       expect(source,
           isNot(contains('initialData: const _ConversationsLoadState()')));
       expect(source, contains('_conversationStateCacheByUid'));

@@ -503,6 +503,8 @@ async function ensureConversationCallEventForSession({
       return { status: "skipped_conversation_pair_mismatch" };
     }
 
+    const messageSnap = await transaction.get(messageRef);
+
     if (!conversationSnap.exists) {
       transaction.set(
         conversationRef,
@@ -534,7 +536,6 @@ async function ensureConversationCallEventForSession({
       { merge: true },
     );
 
-    const messageSnap = await transaction.get(messageRef);
     if (!messageSnap.exists) {
       transaction.set(messageRef, messagePayload);
     }
