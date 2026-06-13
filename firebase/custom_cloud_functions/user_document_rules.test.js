@@ -389,6 +389,194 @@ test("registration gift claim docs are admin-only", async () => {
   );
 });
 
+test("session participants can write only safe caption diagnostics", async () => {
+  const sessionId = "caption-diagnostic-session";
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc(`videoSessions/${sessionId}`).set({
+      studentId: "student-a",
+      tutorId: "teacher-a",
+      participantIds: ["student-a", "teacher-a"],
+      status: "in_call",
+    });
+  });
+
+  const participant = testEnv.authenticatedContext("student-a");
+  const otherParticipant = testEnv.authenticatedContext("teacher-a");
+  const outsider = testEnv.authenticatedContext("student-b");
+  const captionLogRef = participant
+    .firestore()
+    .doc(`videoSessions/${sessionId}/captionLogs/system_student-a_caption_token_unavailable`);
+  const otherParticipantCaptionLogRef = otherParticipant
+    .firestore()
+    .doc(`videoSessions/${sessionId}/captionLogs/system_teacher-a_caption_token_unavailable`);
+
+  const diagnosticData = (overrides = {}) => ({
+    speakerId: "system",
+    speakerName: "SmallTalk",
+    speakerRole: "system",
+    utteranceId: 0,
+    text: "Субтитры временно недоступны: не удалось получить токен распознавания.",
+    language: "ru",
+    source: "caption_runtime_diagnostic",
+    diagnosticCode: "caption_token_unavailable",
+    capturedAtClient: new Date("2026-06-12T09:00:00.000Z"),
+    createdAtServer: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    writerId: "student-a",
+    ...overrides,
+  });
+
+  await assertSucceeds(captionLogRef.set(diagnosticData()));
+  await assertSucceeds(captionLogRef.set(diagnosticData()));
+  await assertSucceeds(
+    otherParticipantCaptionLogRef.set(diagnosticData({
+      writerId: "teacher-a",
+    })),
+  );
+
+  await assertFails(
+    captionLogRef.set(diagnosticData({
+      text: "Deepgram 401 raw provider error",
+    })),
+  );
+
+  await assertFails(
+    otherParticipant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/system_student-a_caption_token_unavailable`)
+      .set(diagnosticData({
+        writerId: "teacher-a",
+      })),
+  );
+
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/system_student-a_deepgram_websocket_error`)
+      .set(diagnosticData({
+        speakerId: "student-a",
+        speakerName: "Student A",
+        speakerRole: "student",
+        diagnosticCode: "deepgram_websocket_error",
+        text: "Deepgram 401 raw provider error",
+      })),
+  );
+
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/system_student-a_deepgram_websocket_error`)
+      .set(diagnosticData({
+        diagnosticCode: "deepgram_websocket_error",
+      })),
+  );
+
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/system_raw_error`)
+      .set(diagnosticData({
+        text: "Deepgram 401 raw provider error",
+      })),
+  );
+
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/system_teacher-a_caption_token_unavailable`)
+      .set({
+        speakerId: "system",
+        speakerName: "SmallTalk",
+        speakerRole: "system",
+        utteranceId: 1,
+        text: "Deepgram 401 raw provider error",
+        language: "ru",
+        source: "peer_legacy_final",
+        capturedAtClient: new Date("2026-06-12T09:01:00.000Z"),
+        createdAtServer: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+        writerId: "student-a",
+      }),
+  );
+
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/system_teacher-a_caption_token_unavailable`)
+      .set({
+        speakerId: "student-a",
+        speakerName: "Student A",
+        speakerRole: "student",
+        utteranceId: 1,
+        text: "Self caption in reserved id",
+        language: "ru",
+        source: "local_deepgram_final",
+        capturedAtClient: new Date("2026-06-12T09:01:00.000Z"),
+        createdAtServer: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+        writerId: "student-a",
+      }),
+  );
+
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/system_spoofed`)
+      .set(diagnosticData({
+        speakerId: "teacher-a",
+      })),
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/teacher-a_1`)
+      .set({
+        speakerId: "teacher-a",
+        speakerName: "Teacher A",
+        speakerRole: "tutor",
+        utteranceId: 1,
+        text: "Existing peer caption",
+        language: "ru",
+        source: "peer_legacy_final",
+        capturedAtClient: new Date("2026-06-12T08:59:00.000Z"),
+        createdAtServer: new Date("2026-06-12T08:59:00.000Z"),
+        writerId: "student-a",
+      });
+  });
+
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/teacher-a_1`)
+      .set(diagnosticData()),
+  );
+
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/teacher-a_1`)
+      .set({
+        speakerId: "teacher-a",
+        speakerName: "Changed Teacher",
+        speakerRole: "tutor",
+        utteranceId: 1,
+        text: "Existing peer caption",
+        language: "ru",
+        source: "peer_legacy_final",
+        capturedAtClient: new Date("2026-06-12T09:01:00.000Z"),
+        createdAtServer: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+        writerId: "student-a",
+      }),
+  );
+
+  await assertFails(
+    outsider
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/system_student-b_caption_token_unavailable`)
+      .set(diagnosticData({
+        writerId: "student-b",
+      })),
+  );
+});
+
 test("signed-in users can query but not write public user profiles", async () => {
   const user = testEnv.authenticatedContext("student-a");
   const db = user.firestore();
@@ -416,6 +604,126 @@ test("signed-in users can query but not write public user profiles", async () =>
     db.doc("userPublicProfiles/teacher-a").update({
       display_name: "Tampered Teacher",
     }),
+  );
+});
+
+test("session participants can write bounded normal caption logs only for call participants", async () => {
+  const sessionId = "caption-normal-session";
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc(`videoSessions/${sessionId}`).set({
+      studentId: "student-a",
+      tutorId: "teacher-a",
+      participantIds: ["student-a", "teacher-a"],
+      status: "in_call",
+    });
+  });
+
+  const participant = testEnv.authenticatedContext("student-a");
+  const outsider = testEnv.authenticatedContext("student-b");
+  const localCaptionLogRef = participant
+    .firestore()
+    .doc(`videoSessions/${sessionId}/captionLogs/student-a_1`);
+  const peerCaptionLogRef = participant
+    .firestore()
+    .doc(`videoSessions/${sessionId}/captionLogs/teacher-a_2`);
+
+  const normalCaptionData = (overrides = {}) => ({
+    speakerId: "student-a",
+    speakerName: "Student A",
+    speakerRole: "student",
+    utteranceId: 1,
+    text: "Привет, это финальный локальный субтитр.",
+    language: "ru",
+    source: "local_deepgram_final",
+    capturedAtClient: new Date("2026-06-12T09:05:00.000Z"),
+    createdAtServer: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    writerId: "student-a",
+    confidence: 0.91,
+    ...overrides,
+  });
+
+  await assertSucceeds(localCaptionLogRef.set(normalCaptionData()));
+  await assertSucceeds(localCaptionLogRef.set(normalCaptionData({
+    text: "Обновленный финальный локальный субтитр.",
+    confidence: 0.86,
+  })));
+  await assertSucceeds(peerCaptionLogRef.set(normalCaptionData({
+    speakerId: "teacher-a",
+    speakerName: "Teacher A",
+    speakerRole: "tutor",
+    utteranceId: 2,
+    text: "Peer transcript from legacy app message.",
+    source: "peer_legacy_final",
+  })));
+  await assertSucceeds(peerCaptionLogRef.set(normalCaptionData({
+    speakerId: "teacher-a",
+    speakerName: "Teacher A",
+    speakerRole: "tutor",
+    utteranceId: 2,
+    text: "Updated peer transcript from legacy app message.",
+    source: "peer_legacy_final",
+  })));
+
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/student-a_999`)
+      .set(normalCaptionData()),
+  );
+  await assertFails(localCaptionLogRef.set(normalCaptionData({
+    utteranceId: 2,
+  })));
+  await assertFails(localCaptionLogRef.set(normalCaptionData({
+    speakerName: "Changed Student",
+  })));
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/student-a_2`)
+      .set(normalCaptionData({
+        speakerId: "teacher-a",
+        speakerName: "Teacher A",
+        speakerRole: "tutor",
+        utteranceId: 2,
+        source: "peer_legacy_final",
+      })),
+  );
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/student-b_3`)
+      .set(normalCaptionData({
+        speakerId: "student-b",
+        speakerName: "Student B",
+        speakerRole: "student",
+        utteranceId: 3,
+        source: "peer_legacy_final",
+      })),
+  );
+  await assertFails(peerCaptionLogRef.set(normalCaptionData({
+    speakerId: "student-a",
+    speakerName: "Student A",
+    speakerRole: "student",
+    utteranceId: 2,
+    source: "peer_legacy_final",
+  })));
+  await assertFails(localCaptionLogRef.set(normalCaptionData({
+    source: "caption_runtime_diagnostic",
+  })));
+  await assertFails(localCaptionLogRef.set(normalCaptionData({
+    debugRawError: "Deepgram 401 raw provider error",
+  })));
+  await assertFails(localCaptionLogRef.set(normalCaptionData({
+    text: "",
+  })));
+  await assertFails(
+    outsider
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/student-b_1`)
+      .set(normalCaptionData({
+        speakerId: "student-b",
+        writerId: "student-b",
+      })),
   );
 });
 

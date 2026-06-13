@@ -234,7 +234,8 @@ void main() {
 
       final adaptivePanelSource =
           source.substring(adaptivePanelStart, chatPanelStart);
-      expect(adaptivePanelSource, contains('keyboardAlreadyReducedHeight'));
+      expect(source, contains('keyboardAlreadyReducedHeight'));
+      expect(source, contains('_chatPanelBottomOffset('));
       expect(
         adaptivePanelSource,
         contains('height: isWideChat || isChatKeyboardActive ? null'),
@@ -250,6 +251,107 @@ void main() {
       final emptyStateSource = source.substring(emptyStateStart, messagesStart);
       expect(emptyStateSource, contains('SingleChildScrollView'));
       expect(emptyStateSource, contains('ConstrainedBox'));
+    });
+
+    test('Deepgram caption failures are visible and persisted safely', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+
+      expect(source, contains('String? captionIssueCode'));
+      expect(source, contains('String? captionIssueMessage'));
+      expect(source, contains('clearCaptionIssue'));
+      expect(source, contains('_reportCaptionRuntimeIssue('));
+      expect(source, contains('_clearCaptionRuntimeIssue()'));
+      expect(source, contains('_captionDiagnosticLogDocumentId('));
+      expect(source, contains('reportedSpecificStartIssue'));
+      expect(source, contains('sessionIdAtStart'));
+      expect(source, contains('_deepgramStreamGeneration'));
+      expect(source, contains('_isCurrentDeepgramStreamGeneration('));
+      expect(source, contains('_handleDeepgramAudioSinkFailure('));
+      expect(source,
+          contains('_syncDeepgramWithMicrophoneState(forceRefresh: true)'));
+      expect(source, contains('_closeStaleDeepgramRecorder(recorder)'));
+      expect(source, contains('_participantLogSpeakerId('));
+      expect(source, contains('participant?.info.userId?.trim()'));
+      expect(source, contains('unawaited(_stopDeepgramStreaming());'));
+      expect(source, contains("source: 'caption_runtime_diagnostic'"));
+      expect(source, contains('diagnosticCode: normalizedCode'));
+      expect(source, contains("speakerRole: 'system'"));
+      expect(source, contains("'Субтитры временно недоступны'"));
+      expect(source, contains("'caption_token_unavailable'"));
+      expect(source, contains("'deepgram_start_failed'"));
+      expect(source, contains("'deepgram_websocket_error'"));
+      expect(source, contains("'deepgram_error_frame'"));
+      expect(source, contains('_isDeepgramErrorFrame('));
+      expect(source, contains('_flushPendingCaptionLogs(force: true)'));
+
+      final credentialFailureIndex =
+          source.indexOf("'caption_token_unavailable'");
+      final credentialReturnIndex =
+          source.indexOf('return;', credentialFailureIndex);
+      expect(credentialFailureIndex, greaterThanOrEqualTo(0));
+      expect(credentialReturnIndex, greaterThan(credentialFailureIndex));
+
+      final rulesSource = _source('firebase/firestore.rules');
+      expect(rulesSource, contains('canWriteCaptionRuntimeDiagnostic'));
+      expect(rulesSource, contains('isSafeCaptionRuntimeDiagnosticText'));
+      expect(rulesSource, contains('isSafeCaptionRuntimeDiagnosticCode'));
+      expect(rulesSource, contains('isSafeCaptionRuntimeDiagnosticPair'));
+      expect(rulesSource, contains('isReservedCaptionDiagnosticLogId'));
+      expect(rulesSource, contains('usesReservedCaptionDiagnosticSpeaker'));
+      expect(rulesSource, contains('canWritePeerLegacyCaptionLogData'));
+      expect(rulesSource, contains('isOtherSessionParticipantId'));
+      expect(rulesSource, contains('isCaptionLogIdForSpeaker'));
+      expect(rulesSource,
+          contains("logId == data.speakerId + '_' + string(data.utteranceId)"));
+      expect(rulesSource,
+          contains('data.utteranceId == resource.data.utteranceId'));
+      expect(rulesSource, contains("'caption_runtime_diagnostic'"));
+      expect(rulesSource, contains("'local_deepgram_final'"));
+      expect(rulesSource, contains("'peer_legacy_final'"));
+      expect(rulesSource, contains("data.speakerId == 'system'"));
+      expect(rulesSource,
+          contains('data.speakerName == resource.data.speakerName'));
+      expect(
+          rulesSource, contains("logId == 'system_' + request.auth.uid + '_'"));
+      expect(
+          rulesSource,
+          contains(
+              "data.source in ['local_deepgram_final', 'peer_legacy_final']"));
+    });
+
+    test('caption overlay remains available while chat is open', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+
+      expect(source, contains('_captionOverlayBottomOffset('));
+      expect(source, contains('_captionOverlayTopOffset('));
+      expect(source, contains('_captionOverlayMaxHeight('));
+      expect(source, contains('_captionKeyboardChatPanelTopOffset('));
+      expect(source, contains('_chatPanelBottomOffset('));
+      expect(source, contains('reserveCaptionLane'));
+      expect(source, contains('_captionKeyboardLaneHeight'));
+      expect(source, contains('_captionKeyboardMinChatHeight'));
+      expect(source, contains('final captionOverlayBottomOffset'));
+      expect(source, contains('final captionOverlayTopOffset'));
+      expect(source, contains('final captionOverlayMaxHeight'));
+      expect(source, contains('final chatPanelBottomOffset'));
+      expect(source, contains('top: captionOverlayTopOffset'));
+      expect(source, contains('bottom: captionOverlayTopOffset == null'));
+      expect(source, contains('? captionOverlayBottomOffset'));
+      expect(source, contains('compact: captionOverlayTopOffset != null'));
+      expect(source, contains('maxHeight: captionOverlayMaxHeight'));
+      expect(source, contains('bottomOffset: chatPanelBottomOffset'));
+      expect(
+          source, contains('captionOverlayMaxHeight: captionOverlayMaxHeight'));
+      expect(source, contains('SingleChildScrollView'));
+      expect(source, isNot(contains('constraints.maxHeight - 260.0')));
+      expect(
+        source,
+        isNot(
+            contains('_state.connectionState == ConnectionState.connected &&\n'
+                '                  !_state.isChatOpen')),
+      );
     });
 
     test('connected billing marker requires Daily verification backend', () {

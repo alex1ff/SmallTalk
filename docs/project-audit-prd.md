@@ -1,6 +1,6 @@
 # Project Audit PRD
 
-Last updated: 2026-05-28
+Last updated: 2026-06-13
 
 ## Source Status
 
@@ -18,16 +18,16 @@ Review, optimize, and safely remediate the Flutter/Dart video call surface and d
 
 ## Current Tranche
 
-- tranche_id: VC-TR-022
-- review_round: 24
-- focus: Finish production secret/deployment readiness for the video-call backend surface.
-- priority: release-safety/deploy-safety
-- scope: Validate required Firebase Secret Manager entries, make the secret readiness gate tolerant of transient Firebase CLI metadata failures without exposing values, deploy only the readiness-gate `custom_cloud_functions`, clear stale plaintext Daily env metadata from `acceptCall`, and smoke-test the Daily/RevenueCat webhook endpoints.
+- tranche_id: VC-TR-023
+- review_round: 25
+- focus: Make in-call Deepgram caption failures visible, auditable, and lifecycle-safe.
+- priority: runtime-correctness/learning-surface
+- scope: Keep live captions available while the in-call chat is open, surface Deepgram token/start/WebSocket/audio failures in the call UI, persist safe system diagnostic records into `videoSessions/{sessionId}/captionLogs`, guard Deepgram start/stop against stale async work, and keep normal caption log ids/rules aligned with Firebase user ids so call details explain why subtitle logs are absent.
 
 ## Counters
 
-- bugs_found_total: 36
-- bugs_fixed_total: 36
+- bugs_found_total: 38
+- bugs_fixed_total: 38
 - bugs_open_total: 0
 - privacy_findings_open: 0
 - lifecycle_findings_open: 0
@@ -36,12 +36,13 @@ Review, optimize, and safely remediate the Flutter/Dart video call surface and d
 
 ## Acceptance Criteria
 
-- No Flutter UI or call overlay behavior changes are introduced.
-- Required Firebase secrets are present with enabled versions and the secret readiness gate passes.
-- The scoped readiness deploy completes without broad Firebase project deploy.
-- Deployment readiness passes for required function exports, trigger types, secret bindings, and plaintext secret-env checks.
-- Daily webhook verification POST returns 200 OK after redeploy.
-- RevenueCat webhook rejects unauthenticated requests and accepts authenticated ignored events after redeploy.
-- Customer-declined secret rotation is documented without storing secret values.
+- Deepgram credential/start/WebSocket/audio failures no longer disappear behind `kDebugMode` only.
+- Caption failures show a safe in-call subtitle status instead of a silent empty overlay.
+- Caption runtime failures persist safe system diagnostics under `captionLogs` without raw tokens or provider error payloads.
+- Firestore rules allow only bounded, writer-scoped runtime diagnostic records and exact-id normal caption logs from accepted call participants.
+- Deepgram streaming start/stop ignores stale session/credential/audio callbacks and retries when a credential arrives after initial mount.
+- Successful Deepgram streaming/transcripts clear stale caption failure state.
+- Captions remain renderable while chat is open and avoid the chat panel on mobile/wide layouts.
+- Regression coverage protects caption diagnostics and chat-open caption visibility.
 - Audit docs and inventory are updated after the tranche.
 - Reviewer gate completed with no P0-P2 blockers or accepted fixes documented.

@@ -57,6 +57,8 @@ class _CallState {
   final _ActiveCaption? localCaption;
   final Map<ParticipantId, _ActiveCaption> remoteCaptions;
   final bool isStreamingToDeepgram;
+  final String? captionIssueCode;
+  final String? captionIssueMessage;
   final bool isChatOpen;
   final int unreadChatCount;
   final List<_ChatMessage> chatMessages;
@@ -71,6 +73,8 @@ class _CallState {
     this.localCaption,
     this.remoteCaptions = const {},
     this.isStreamingToDeepgram = false,
+    this.captionIssueCode,
+    this.captionIssueMessage,
     this.isChatOpen = false,
     this.unreadChatCount = 0,
     this.chatMessages = const <_ChatMessage>[],
@@ -87,6 +91,9 @@ class _CallState {
     bool clearLocalCaption = false,
     Map<ParticipantId, _ActiveCaption>? remoteCaptions,
     bool? isStreamingToDeepgram,
+    String? captionIssueCode,
+    String? captionIssueMessage,
+    bool clearCaptionIssue = false,
     bool? isChatOpen,
     int? unreadChatCount,
     List<_ChatMessage>? chatMessages,
@@ -103,6 +110,12 @@ class _CallState {
       remoteCaptions: remoteCaptions ?? this.remoteCaptions,
       isStreamingToDeepgram:
           isStreamingToDeepgram ?? this.isStreamingToDeepgram,
+      captionIssueCode: clearCaptionIssue
+          ? null
+          : (captionIssueCode ?? this.captionIssueCode),
+      captionIssueMessage: clearCaptionIssue
+          ? null
+          : (captionIssueMessage ?? this.captionIssueMessage),
       isChatOpen: isChatOpen ?? this.isChatOpen,
       unreadChatCount: unreadChatCount ?? this.unreadChatCount,
       chatMessages: chatMessages ?? this.chatMessages,
@@ -238,6 +251,7 @@ class _CaptionLogEntry {
     required this.source,
     required this.capturedAtClient,
     this.confidence,
+    this.diagnosticCode,
   });
 
   final String logId;
@@ -250,6 +264,7 @@ class _CaptionLogEntry {
   final String source;
   final DateTime capturedAtClient;
   final double? confidence;
+  final String? diagnosticCode;
 
   Map<String, dynamic> toFirestoreData({
     required String writerId,
@@ -267,6 +282,7 @@ class _CaptionLogEntry {
         'createdAtServer': FieldValue.serverTimestamp(),
         'writerId': writerId,
         'confidence': confidence,
+        'diagnosticCode': diagnosticCode,
       }.withoutNulls,
     );
   }
@@ -446,6 +462,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   final Map<String, _CaptionLogEntry> _pendingCaptionLogEntries =
       <String, _CaptionLogEntry>{};
   final Set<String> _persistedCaptionLogIds = <String>{};
+  final Set<String> _reportedCaptionRuntimeIssueCodes = <String>{};
   Future<void> _captionLogFlushChain = Future<void>.value();
   double? _localCaptionConfidence;
 
@@ -456,6 +473,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _recorderOpen = false;
   bool _deepgramStopRequested = false;
   bool _deepgramStartInProgress = false;
+  int _deepgramStreamGeneration = 0;
   Future<void> _lifecycleTransitionChain = Future<void>.value();
   int _lifecycleTransitionId = 0;
 
@@ -476,6 +494,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   static const int _captionMaxVisibleCharacters = 72;
   static const int _captionLogFlushDebounceMs = 1000;
   static const int _captionLogBatchThreshold = 8;
+  static const double _captionKeyboardLaneHeight = 196.0;
+  static const double _captionKeyboardMinChatHeight = 120.0;
+  static const double _captionCompactMaxHeight = 128.0;
+  static const double _captionRegularMaxHeight = 180.0;
   static const int _remoteVideoGraceMs = 2000;
   static const int _deepgramFinalizeWaitMs = 250;
   static const int _deepgramCloseWaitMs = 100;
@@ -1258,6 +1280,24 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return fallback;
   }
 
+  String _participantLogSpeakerId(
+    ParticipantId participantId, {
+    required int utteranceId,
+  }) {
+    final participant = _callClient?.participants.all[participantId];
+    final userId = participant?.info.userId?.trim();
+    if (userId?.isNotEmpty == true) {
+      return userId!;
+    }
+
+    final participantSessionId = participantId.id.trim();
+    if (participantSessionId.isNotEmpty) {
+      return participantSessionId;
+    }
+
+    return 'remote_$utteranceId';
+  }
+
   String _localParticipantName() {
     final localUsername = _callClient?.participants.local.info.username?.trim();
     if (localUsername?.isNotEmpty == true) {
@@ -1740,6 +1780,18 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _canUseDeepgram();
   }
 
+  bool _isCurrentDeepgramStreamGeneration(
+    int generation,
+    String? sessionId,
+  ) {
+    return mounted &&
+        !_disposed &&
+        !_deepgramStopRequested &&
+        _deepgramStreamGeneration == generation &&
+        widget.sessionId?.trim() == sessionId &&
+        _shouldRunDeepgram();
+  }
+
   Future<void> _syncDeepgramWithMicrophoneState({
     bool forceRefresh = false,
   }) async {
@@ -2020,10 +2072,19 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (!_shouldRunDeepgram()) {
       return;
     }
+    final sessionIdAtStart = widget.sessionId?.trim();
     final credential = await _resolveDeepgramCredential(
       forceRefresh: forceRefresh,
     );
+    if (!_shouldRunDeepgram() || widget.sessionId?.trim() != sessionIdAtStart) {
+      return;
+    }
     if (credential == null) {
+      _reportCaptionRuntimeIssue(
+        code: 'caption_token_unavailable',
+        message:
+            'Субтитры временно недоступны: не удалось получить токен распознавания.',
+      );
       if (kDebugMode) print('Deepgram disabled: no credential available');
       return;
     }
@@ -2039,6 +2100,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return;
     }
 
+    final sessionIdAtStart = widget.sessionId?.trim();
+    final generation = ++_deepgramStreamGeneration;
+    var reportedSpecificStartIssue = false;
     try {
       _deepgramStartInProgress = true;
       _deepgramStopRequested = false;
@@ -2051,19 +2115,41 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       // Request microphone permission
       final permission = await Permission.microphone.request();
+      if (!_isCurrentDeepgramStreamGeneration(generation, sessionIdAtStart)) {
+        return;
+      }
       if (!permission.isGranted) {
+        _reportCaptionRuntimeIssue(
+          code: 'microphone_permission_denied',
+          message: 'Субтитры временно недоступны: нет доступа к микрофону.',
+        );
+        reportedSpecificStartIssue = true;
         throw Exception('Microphone permission denied');
       }
 
       // Initialize recorder
-      _recorder = FlutterSoundRecorder();
-      await _recorder!.openRecorder();
+      final recorder = FlutterSoundRecorder();
+      _recorder = recorder;
+      await recorder.openRecorder();
+      if (!_isCurrentDeepgramStreamGeneration(generation, sessionIdAtStart) ||
+          _recorder != recorder) {
+        await _closeStaleDeepgramRecorder(recorder);
+        return;
+      }
       _recorderOpen = true;
 
-      _recorder!.setSubscriptionDuration(const Duration(milliseconds: 100));
+      recorder.setSubscriptionDuration(const Duration(milliseconds: 100));
 
       // Initialize Deepgram WebSocket
-      await _initializeDeepgramWebSocket(credential);
+      await _initializeDeepgramWebSocket(
+        credential,
+        generation: generation,
+        sessionId: sessionIdAtStart,
+      );
+      if (!_isCurrentDeepgramStreamGeneration(generation, sessionIdAtStart)) {
+        await _stopDeepgramStreaming();
+        return;
+      }
 
       // Setup audio streaming
       _audioStreamController = StreamController<typed_data.Uint8List>();
@@ -2072,37 +2158,101 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _audioStreamSubscription = _trackSubscription(
         _audioStreamController!.stream.listen(
           (data) {
-            if (_deepgramChannel != null) {
-              _deepgramChannel!.sink.add(data);
+            if (!_isCurrentDeepgramStreamGeneration(
+              generation,
+              sessionIdAtStart,
+            )) {
+              return;
+            }
+            final channel = _deepgramChannel;
+            if (channel == null) {
+              return;
+            }
+            try {
+              channel.sink.add(data);
+            } catch (e) {
+              _handleDeepgramAudioSinkFailure(
+                e,
+                generation: generation,
+                sessionId: sessionIdAtStart,
+              );
             }
           },
           onError: (e) {
+            if (!_isCurrentDeepgramStreamGeneration(
+              generation,
+              sessionIdAtStart,
+            )) {
+              return;
+            }
+            _reportCaptionRuntimeIssue(
+              code: 'audio_stream_error',
+              message:
+                  'Субтитры временно недоступны: не удалось передать звук на распознавание.',
+            );
             if (kDebugMode) print('Audio stream error: $e');
           },
         ),
       );
 
       // Start recording
-      await _recorder!.startRecorder(
+      await recorder.startRecorder(
         toStream: _audioStreamController!.sink,
         codec: Codec.pcm16,
         sampleRate: 16000,
         numChannels: 1,
       );
+      if (!_isCurrentDeepgramStreamGeneration(generation, sessionIdAtStart)) {
+        await _stopDeepgramStreaming();
+        await _closeStaleDeepgramRecorder(recorder);
+        return;
+      }
 
       _updateState(_state.copyWith(isStreamingToDeepgram: true));
+      _clearCaptionRuntimeIssue();
 
       if (kDebugMode) print('Deepgram streaming started successfully');
     } catch (e) {
+      if (!reportedSpecificStartIssue &&
+          _isCurrentDeepgramStreamGeneration(generation, sessionIdAtStart)) {
+        _reportCaptionRuntimeIssue(
+          code: 'deepgram_start_failed',
+          message:
+              'Субтитры временно недоступны: не удалось запустить распознавание речи.',
+        );
+      }
       if (kDebugMode) print('Failed to start Deepgram streaming: $e');
       await _stopDeepgramStreaming();
     } finally {
-      _deepgramStartInProgress = false;
+      if (_deepgramStreamGeneration == generation) {
+        _deepgramStartInProgress = false;
+      }
+    }
+  }
+
+  Future<void> _closeStaleDeepgramRecorder(
+      FlutterSoundRecorder recorder) async {
+    try {
+      if (recorder.isRecording) {
+        await recorder.stopRecorder();
+      }
+      await recorder.closeRecorder();
+    } catch (e) {
+      if (kDebugMode) print('Error closing stale Deepgram recorder: $e');
+    } finally {
+      if (_recorder == recorder) {
+        _recorder = null;
+        _recorderOpen = false;
+      }
     }
   }
 
   /// Initialize Deepgram WebSocket connection
-  Future<void> _initializeDeepgramWebSocket(String credential) async {
+  Future<void> _initializeDeepgramWebSocket(
+    String credential, {
+    required int generation,
+    required String? sessionId,
+  }) async {
     final sanitizedCredential = credential.trim();
     final uri = Uri.https('api.deepgram.com', '/v1/listen', {
       'encoding': 'linear16',
@@ -2134,8 +2284,22 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     await _cancelTrackedSubscription(_deepgramMessageSubscription);
     _deepgramMessageSubscription = _trackSubscription(
       _deepgramChannel!.stream.listen(
-        _handleDeepgramMessage,
+        (message) {
+          if (!_isCurrentDeepgramStreamGeneration(generation, sessionId)) {
+            return;
+          }
+          _handleDeepgramMessage(message);
+        },
         onError: (e) {
+          if (!_isCurrentDeepgramStreamGeneration(generation, sessionId)) {
+            if (kDebugMode) print('Ignored stale Deepgram WebSocket error: $e');
+            return;
+          }
+          _reportCaptionRuntimeIssue(
+            code: 'deepgram_websocket_error',
+            message:
+                'Субтитры временно недоступны: соединение с распознаванием речи прервано.',
+          );
           if (kDebugMode) print('Deepgram WebSocket error: $e');
           if (!_deepgramStopRequested) {
             _restartDeepgramConnection();
@@ -2143,7 +2307,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         },
         onDone: () {
           if (kDebugMode) print('Deepgram WebSocket closed');
-          if (!_deepgramStopRequested) {
+          if (_isCurrentDeepgramStreamGeneration(generation, sessionId)) {
+            _reportCaptionRuntimeIssue(
+              code: 'deepgram_websocket_error',
+              message:
+                  'Субтитры временно недоступны: соединение с распознаванием речи прервано.',
+            );
             _restartDeepgramConnection();
           }
         },
@@ -2160,8 +2329,27 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     try {
-      final data = dart_convert.jsonDecode(message);
+      final decoded = dart_convert.jsonDecode(message);
+      if (decoded is! Map<String, dynamic>) {
+        _reportCaptionRuntimeIssue(
+          code: 'deepgram_message_parse_failed',
+          message:
+              'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
+        );
+        return;
+      }
+
+      final data = decoded;
       final type = data['type']?.toString();
+
+      if (_isDeepgramErrorFrame(data, type)) {
+        _reportCaptionRuntimeIssue(
+          code: 'deepgram_error_frame',
+          message:
+              'Субтитры временно недоступны: сервис распознавания вернул ошибку.',
+        );
+        return;
+      }
 
       if (type == 'UtteranceEnd') {
         _handleDeepgramUtteranceEnd();
@@ -2200,8 +2388,18 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         confidence: confidence,
       );
     } catch (e) {
+      _reportCaptionRuntimeIssue(
+        code: 'deepgram_message_parse_failed',
+        message:
+            'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
+      );
       if (kDebugMode) print('Failed to process Deepgram message: $e');
     }
+  }
+
+  bool _isDeepgramErrorFrame(Map<String, dynamic> data, String? type) {
+    final normalizedType = type?.trim().toLowerCase();
+    return normalizedType == 'error' || data.containsKey('error');
   }
 
   void _handleDeepgramTranscript({
@@ -2214,6 +2412,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return;
     }
 
+    _clearCaptionRuntimeIssue();
     _ensureLocalCaptionUtteranceStarted();
     if (confidence != null && (isFinalSegment || speechFinal)) {
       _localCaptionConfidence = confidence;
@@ -2457,9 +2656,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return;
     }
 
-    final speakerId = participantId.id.trim().isNotEmpty
-        ? participantId.id.trim()
-        : 'remote_$utteranceId';
+    final speakerId = _participantLogSpeakerId(
+      participantId,
+      utteranceId: utteranceId,
+    );
     final entry = _CaptionLogEntry(
       logId: _captionLogDocumentId(
         speakerId: speakerId,
@@ -2833,6 +3033,74 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return rawText.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
+  String _normalizeCaptionDiagnosticCode(String rawCode) {
+    return rawCode
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9_.-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+  }
+
+  void _reportCaptionRuntimeIssue({
+    required String code,
+    required String message,
+    bool persist = true,
+  }) {
+    final normalizedCode = _normalizeCaptionDiagnosticCode(code);
+    final normalizedMessage = _normalizeCaptionText(message);
+    if (normalizedCode.isEmpty || normalizedMessage.isEmpty) {
+      return;
+    }
+
+    if (mounted &&
+        !_disposed &&
+        (_state.captionIssueCode != normalizedCode ||
+            _state.captionIssueMessage != normalizedMessage)) {
+      _updateState(_state.copyWith(
+        captionIssueCode: normalizedCode,
+        captionIssueMessage: normalizedMessage,
+      ));
+    }
+
+    final writerId = _captionLogWriterId();
+    if (!persist ||
+        _reportedCaptionRuntimeIssueCodes.contains(normalizedCode) ||
+        _captionLogSessionRef() == null ||
+        writerId == null) {
+      return;
+    }
+
+    _reportedCaptionRuntimeIssueCodes.add(normalizedCode);
+    final now = DateTime.now();
+    _enqueueCaptionLogEntry(
+      _CaptionLogEntry(
+        logId: _captionDiagnosticLogDocumentId(
+          code: normalizedCode,
+          writerId: writerId,
+        ),
+        speakerId: 'system',
+        speakerName: 'SmallTalk',
+        speakerRole: 'system',
+        utteranceId: 0,
+        text: normalizedMessage,
+        language: widget.deepgramLanguage.trim(),
+        source: 'caption_runtime_diagnostic',
+        capturedAtClient: now,
+        diagnosticCode: normalizedCode,
+      ),
+    );
+    unawaited(_flushPendingCaptionLogs(force: true));
+  }
+
+  void _clearCaptionRuntimeIssue() {
+    if (!mounted || _disposed) return;
+    if (_state.captionIssueCode == null && _state.captionIssueMessage == null) {
+      return;
+    }
+    _updateState(_state.copyWith(clearCaptionIssue: true));
+  }
+
   bool _canPersistCaptionLogs() {
     return _captionLogSessionRef() != null && _captionLogWriterId() != null;
   }
@@ -2861,6 +3129,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     final normalizedSpeakerId =
         speakerId.trim().replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
     return '${normalizedSpeakerId}_$utteranceId';
+  }
+
+  String _captionDiagnosticLogDocumentId({
+    required String code,
+    required String writerId,
+  }) {
+    final normalizedCode = _normalizeCaptionDiagnosticCode(code);
+    return 'system_${writerId.trim()}_$normalizedCode';
   }
 
   String _localCaptionSpeakerRole() {
@@ -2932,6 +3208,37 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     });
   }
 
+  void _handleDeepgramAudioSinkFailure(
+    Object error, {
+    required int generation,
+    required String? sessionId,
+  }) {
+    if (!_isCurrentDeepgramStreamGeneration(generation, sessionId)) {
+      if (kDebugMode) print('Ignored stale Deepgram audio sink error: $error');
+      return;
+    }
+    _reportCaptionRuntimeIssue(
+      code: 'audio_stream_error',
+      message:
+          'Субтитры временно недоступны: не удалось передать звук на распознавание.',
+    );
+    if (kDebugMode) print('Deepgram audio sink error: $error');
+    if (_deepgramStopRequested) {
+      return;
+    }
+
+    _deepgramStopRequested = true;
+    _deepgramStreamGeneration++;
+    unawaited(() async {
+      await _stopDeepgramStreaming();
+      if (_shouldRunDeepgram()) {
+        await _startDeepgramStreamingWithResolvedCredential(
+          forceRefresh: true,
+        );
+      }
+    }());
+  }
+
   Future<void> _sendDeepgramControlMessage(String type) async {
     final channel = _deepgramChannel;
     if (channel == null) return;
@@ -2969,36 +3276,56 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return;
     }
 
-    try {
-      _deepgramStopRequested = true;
+    _deepgramStreamGeneration++;
+    _deepgramStopRequested = true;
 
-      await _cancelTrackedSubscription(_audioStreamSubscription);
-      _audioStreamSubscription = null;
-
-      if (_recorder?.isRecording ?? false) {
-        await _recorder!.stopRecorder();
+    Future<void> runCleanupStep(
+      String debugContext,
+      Future<void> Function() cleanup,
+    ) async {
+      try {
+        await cleanup();
+      } catch (e) {
+        if (kDebugMode) print('Error stopping Deepgram $debugContext: $e');
       }
-
-      if (_recorderOpen) {
-        await _recorder!.closeRecorder();
-        _recorderOpen = false;
-      }
-      _recorder = null;
-
-      await _gracefullyCloseDeepgramStream();
-      _deepgramChannel = null;
-      await _cancelTrackedSubscription(_deepgramMessageSubscription);
-      _deepgramMessageSubscription = null;
-
-      await _closeTrackedController(_audioStreamController);
-      _audioStreamController = null;
-      _deepgramStartInProgress = false;
-
-      _updateState(_state.copyWith(isStreamingToDeepgram: false));
-      _clearLocalCaptions();
-    } catch (e) {
-      if (kDebugMode) print('Error stopping Deepgram: $e');
     }
+
+    await runCleanupStep('audio subscription', () async {
+      await _cancelTrackedSubscription(_audioStreamSubscription);
+    });
+    _audioStreamSubscription = null;
+
+    await runCleanupStep('recorder', () async {
+      final recorder = _recorder;
+      if (recorder == null) {
+        return;
+      }
+      if (recorder.isRecording) {
+        await recorder.stopRecorder();
+      }
+      if (_recorderOpen) {
+        await recorder.closeRecorder();
+      }
+    });
+    _recorderOpen = false;
+    _recorder = null;
+
+    await runCleanupStep('websocket', _gracefullyCloseDeepgramStream);
+    _deepgramChannel = null;
+
+    await runCleanupStep('message subscription', () async {
+      await _cancelTrackedSubscription(_deepgramMessageSubscription);
+    });
+    _deepgramMessageSubscription = null;
+
+    await runCleanupStep('audio controller', () async {
+      await _closeTrackedController(_audioStreamController);
+    });
+    _audioStreamController = null;
+
+    _deepgramStartInProgress = false;
+    _updateState(_state.copyWith(isStreamingToDeepgram: false));
+    _clearLocalCaptions();
   }
 
   /// Handle app lifecycle changes
@@ -3093,8 +3420,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _configuredDeepgramCredentialFor(widget);
     if (oldConfiguredDeepgramCredential != newConfiguredDeepgramCredential) {
       _deepgramCredential = newConfiguredDeepgramCredential;
+      if (oldConfiguredDeepgramCredential == null &&
+          newConfiguredDeepgramCredential != null) {
+        unawaited(_syncDeepgramWithMicrophoneState(forceRefresh: true));
+      }
     }
     if (oldWidget.sessionId != widget.sessionId) {
+      unawaited(_stopDeepgramStreaming());
       _sessionStartedMarked = false;
       _dynamicMeetingToken = null;
       _dynamicRoomUrl = null;
@@ -3108,8 +3440,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _resetCallCheckpointNotice(clearHistory: true);
       _pendingCaptionLogEntries.clear();
       _persistedCaptionLogIds.clear();
+      _reportedCaptionRuntimeIssueCodes.clear();
       _cancelTrackedTimer(_captionLogFlushTimer);
       _captionLogFlushTimer = null;
+      _clearCaptionRuntimeIssue();
     }
     if (oldWidget.sessionExpiresAt != widget.sessionExpiresAt) {
       _sessionLimitWarningShownFor = null;
@@ -3616,6 +3950,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       color: Colors.black,
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final mediaQuery = MediaQuery.of(context);
           final viewportWidth = constraints.maxWidth.isFinite
               ? constraints.maxWidth
               : MediaQuery.sizeOf(context).width;
@@ -3624,10 +3959,37 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               (_chatFocusNode.hasFocus ||
                   MediaQuery.viewInsetsOf(context).bottom > 0);
           final showRemoteVideo = _hasRemoteVideoReady();
+          final hasCaptionOverlayContent = _hasCaptionOverlayContent();
           final showPip = showRemoteVideo &&
               _localVideoController != null &&
               _state.cameraEnabled &&
               !(_state.isChatOpen && isWideChat);
+          final captionOverlayTopOffset = _captionOverlayTopOffset(
+            mediaQuery: mediaQuery,
+            isWideChat: isWideChat,
+            isChatKeyboardActive: isChatKeyboardActive,
+          );
+          final captionOverlayBottomOffset = _captionOverlayBottomOffset(
+            constraints: constraints,
+            isWideChat: isWideChat,
+            isChatKeyboardActive: isChatKeyboardActive,
+          );
+          final captionOverlayRightInset = _captionOverlayRightInset(
+            isWideChat: isWideChat,
+          );
+          final chatPanelBottomOffset = _chatPanelBottomOffset(
+            constraints: constraints,
+            mediaQuery: mediaQuery,
+            isChatKeyboardActive: isChatKeyboardActive,
+          );
+          final captionOverlayMaxHeight = _captionOverlayMaxHeight(
+            constraints: constraints,
+            mediaQuery: mediaQuery,
+            isWideChat: isWideChat,
+            isChatKeyboardActive: isChatKeyboardActive,
+            chatPanelBottomOffset: chatPanelBottomOffset,
+            compact: captionOverlayTopOffset != null,
+          );
           final primaryVideoModeKey =
               ValueKey(showRemoteVideo ? 'remote-surface' : 'local-surface');
 
@@ -3703,13 +4065,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 ),
 
               // Captions overlay
-              if (_state.connectionState == ConnectionState.connected &&
-                  !_state.isChatOpen)
+              if (_state.connectionState == ConnectionState.connected)
                 Positioned(
-                  bottom: 160,
+                  top: captionOverlayTopOffset,
+                  bottom: captionOverlayTopOffset == null
+                      ? captionOverlayBottomOffset
+                      : null,
                   left: 16,
-                  right: 16,
-                  child: RepaintBoundary(child: _buildCaptionsOverlay()),
+                  right: captionOverlayRightInset,
+                  child: RepaintBoundary(
+                    child: _buildCaptionsOverlay(
+                      compact: captionOverlayTopOffset != null,
+                      maxHeight: captionOverlayMaxHeight,
+                    ),
+                  ),
                 ),
 
               // Chat panel
@@ -3719,6 +4088,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                   constraints: constraints,
                   isWideChat: isWideChat,
                   isChatKeyboardActive: isChatKeyboardActive,
+                  reserveCaptionLane: hasCaptionOverlayContent,
+                  bottomOffset: chatPanelBottomOffset,
+                  captionOverlayMaxHeight: captionOverlayMaxHeight,
                 ),
 
               // Status indicators
@@ -4338,16 +4710,36 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     );
   }
 
+  bool _hasCaptionOverlayContent() {
+    return _state.captionIssueMessage != null ||
+        _state.localCaption != null ||
+        _state.remoteCaptions.isNotEmpty;
+  }
+
   /// Build captions overlay with speaker separation
-  Widget _buildCaptionsOverlay() {
+  Widget _buildCaptionsOverlay({
+    bool compact = false,
+    double? maxHeight,
+  }) {
     final remoteEntry = _latestRemoteCaptionEntry();
     final localCaption = _state.localCaption;
-    if (remoteEntry == null && localCaption == null) {
+    final captionIssueMessage = _state.captionIssueMessage;
+    if (remoteEntry == null &&
+        localCaption == null &&
+        captionIssueMessage == null) {
       return const SizedBox.shrink();
     }
 
     final overlayChildren = <Widget>[];
+    if (captionIssueMessage != null) {
+      overlayChildren.add(
+        _buildCaptionIssueCard(message: captionIssueMessage),
+      );
+    }
     if (remoteEntry != null) {
+      if (overlayChildren.isNotEmpty) {
+        overlayChildren.add(const SizedBox(height: ExpatlioDesign.space12));
+      }
       overlayChildren.add(
         _buildCaptionCard(
           label: _participantDisplayName(remoteEntry.key),
@@ -4373,11 +4765,91 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 180),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: overlayChildren,
+      constraints: BoxConstraints(
+        maxHeight: maxHeight ??
+            (compact ? _captionCompactMaxHeight : _captionRegularMaxHeight),
+      ),
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: overlayChildren,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCaptionIssueCard({
+    required String message,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+          horizontal: ExpatlioDesign.space16, vertical: ExpatlioDesign.space12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.76),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+        border: Border.all(
+          color: const Color(0xFFFFB020).withValues(alpha: 0.34),
+          width: 0.9,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.24),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFB020).withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
+            ),
+            child: const Icon(
+              Icons.closed_caption_off_outlined,
+              color: Color(0xFFFFB020),
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: ExpatlioDesign.space12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Субтитры временно недоступны',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: ExpatlioDesign.space4),
+                Text(
+                  message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.72),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -4705,21 +5177,128 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     );
   }
 
-  Widget _buildAdaptiveChatPanel({
+  double _captionOverlayBottomOffset({
     required BoxConstraints constraints,
     required bool isWideChat,
     required bool isChatKeyboardActive,
   }) {
-    final mediaQuery = MediaQuery.of(context);
+    if (!_state.isChatOpen || isWideChat) {
+      return 160.0;
+    }
+
+    if (isChatKeyboardActive) {
+      return 24.0;
+    }
+
+    final mobilePanelHeight =
+        (constraints.maxHeight * 0.44).clamp(260.0, 360.0).toDouble();
+    return 110.0 + mobilePanelHeight + ExpatlioDesign.space16;
+  }
+
+  double? _captionOverlayTopOffset({
+    required MediaQueryData mediaQuery,
+    required bool isWideChat,
+    required bool isChatKeyboardActive,
+  }) {
+    if (!_state.isChatOpen || isWideChat || !isChatKeyboardActive) {
+      return null;
+    }
+    return math.max(16.0, mediaQuery.padding.top + ExpatlioDesign.space12);
+  }
+
+  double _captionOverlayRightInset({
+    required bool isWideChat,
+  }) {
+    if (_state.isChatOpen && isWideChat) {
+      return 392.0;
+    }
+    return 16.0;
+  }
+
+  double _captionOverlayMaxHeight({
+    required BoxConstraints constraints,
+    required MediaQueryData mediaQuery,
+    required bool isWideChat,
+    required bool isChatKeyboardActive,
+    required double chatPanelBottomOffset,
+    required bool compact,
+  }) {
+    final defaultMaxHeight =
+        compact ? _captionCompactMaxHeight : _captionRegularMaxHeight;
+    if (!_state.isChatOpen || isWideChat || !isChatKeyboardActive) {
+      return defaultMaxHeight;
+    }
+
+    final captionTop =
+        math.max(16.0, mediaQuery.padding.top + ExpatlioDesign.space12);
+    final availableCaptionHeight = constraints.maxHeight -
+        captionTop -
+        chatPanelBottomOffset -
+        _captionKeyboardMinChatHeight -
+        ExpatlioDesign.space12;
+    return math
+        .max(
+          56.0,
+          math.min(defaultMaxHeight, availableCaptionHeight),
+        )
+        .toDouble();
+  }
+
+  double _captionKeyboardChatPanelTopOffset({
+    required BoxConstraints constraints,
+    required MediaQueryData mediaQuery,
+    required double bottomOffset,
+    required double captionOverlayMaxHeight,
+  }) {
+    final captionTop =
+        math.max(16.0, mediaQuery.padding.top + ExpatlioDesign.space12);
+    final captionSafeTop =
+        captionTop + captionOverlayMaxHeight + ExpatlioDesign.space12;
+    final preferredTop = math.max(
+      captionSafeTop,
+      mediaQuery.padding.top + _captionKeyboardLaneHeight,
+    );
+    final maxTop =
+        constraints.maxHeight - bottomOffset - _captionKeyboardMinChatHeight;
+    if (maxTop < captionSafeTop) {
+      return captionSafeTop;
+    }
+    return math.min(preferredTop, maxTop).toDouble();
+  }
+
+  double _chatPanelBottomOffset({
+    required BoxConstraints constraints,
+    required MediaQueryData mediaQuery,
+    required bool isChatKeyboardActive,
+  }) {
     final viewInsetsBottom = mediaQuery.viewInsets.bottom;
     final keyboardAlreadyReducedHeight = viewInsetsBottom > 0 &&
         constraints.maxHeight <=
             mediaQuery.size.height - (viewInsetsBottom * 0.5);
-    final bottomOffset = isChatKeyboardActive
-        ? (keyboardAlreadyReducedHeight ? 16.0 : viewInsetsBottom + 16.0)
-        : 110.0;
+    if (isChatKeyboardActive) {
+      return keyboardAlreadyReducedHeight ? 16.0 : viewInsetsBottom + 16.0;
+    }
+    return 110.0;
+  }
+
+  Widget _buildAdaptiveChatPanel({
+    required BoxConstraints constraints,
+    required bool isWideChat,
+    required bool isChatKeyboardActive,
+    required bool reserveCaptionLane,
+    required double bottomOffset,
+    required double captionOverlayMaxHeight,
+  }) {
+    final mediaQuery = MediaQuery.of(context);
     final mobileTopOffset = isChatKeyboardActive
-        ? math.max(16.0, mediaQuery.padding.top + 12.0)
+        ? (reserveCaptionLane && !isWideChat
+            ? _captionKeyboardChatPanelTopOffset(
+                constraints: constraints,
+                mediaQuery: mediaQuery,
+                bottomOffset: bottomOffset,
+                captionOverlayMaxHeight: captionOverlayMaxHeight,
+              )
+            : math.max(16.0, mediaQuery.padding.top + 12.0))
         : null;
     final mobilePanelHeight =
         (constraints.maxHeight * 0.44).clamp(260.0, 360.0).toDouble();

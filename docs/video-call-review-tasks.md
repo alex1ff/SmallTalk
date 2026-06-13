@@ -1,6 +1,6 @@
 # Video Call Review Tasks
 
-Last updated: 2026-05-28
+Last updated: 2026-06-13
 
 ## Completed Tasks
 
@@ -166,10 +166,19 @@ Last updated: 2026-05-28
 - VC-TR-022: Cleared stale plaintext `DAILY_API_KEY`/`DAILY_DOMAIN` metadata from deployed `acceptCall` while keeping Secret Manager bindings.
 - VC-TR-022: Reran deployment readiness to PASS for 26 required functions and smoke-tested Daily and RevenueCat webhook endpoints after redeploy.
 - VC-TR-022: Documented the authorization/data-exposure reviewer recommendation to rotate chat-exposed operational secrets as customer-declined; no secret values are stored in repo docs.
+- VC-TR-023: Added safe in-call caption runtime issue state for Deepgram token, microphone permission, audio stream, WebSocket, start, and message-parse failures.
+- VC-TR-023: Persisted safe system `caption_runtime_diagnostic` records under `videoSessions/{sessionId}/captionLogs` so call details can explain missing subtitle logs.
+- VC-TR-023: Added a visible subtitle failure card in the call overlay without storing raw tokens or provider error payloads.
+- VC-TR-023: Kept captions renderable while the in-call chat is open, including keyboard-active mobile layout and wide right-side chat layout.
+- VC-TR-023: Guarded Deepgram start/stop, WebSocket, recorder, and audio sink callbacks with session generations so stale async work cannot wedge caption streaming.
+- VC-TR-023: Retried Deepgram streaming when a credential arrives after mount and stopped old streams when the call session changes.
+- VC-TR-023: Tightened Firestore caption log rules for writer-scoped diagnostics, exact normal log ids, immutable speaker/utterance fields, and safe peer logs keyed by Daily participant `userId`.
+- VC-TR-023: Added regression coverage for caption diagnostics and chat-open caption overlay contracts.
+- VC-TR-023: Completed the requested sub-agent review gate with an accepted reviewer score of 9.6/10, then applied agreed follow-up fixes for peer caption log ids and session-change cleanup.
 
 ## Open Tasks
 
-- Run final live QA on a real device/TestFlight: Daily call join/end, RevenueCat offerings/prices/purchase, Resend verification email, Deepgram captions/token, and webhook delivery.
+- Run final live QA on a real device/TestFlight: Daily call join/end, RevenueCat offerings/prices/purchase, Resend verification email, Deepgram caption token/transcript/log/error diagnostics, and webhook delivery.
 - Run/validate legacy VoIP token migration and public-profile backfill only when production mutation is approved.
 
 ## Blocked Tasks
@@ -179,7 +188,7 @@ Last updated: 2026-05-28
 
 ## Open Test Gaps
 
-- Manual mobile validation of Daily/Deepgram credential failure states and registration gift fallback messaging.
+- Manual mobile validation of Daily credential failure states, Deepgram caption token/transcript/log/error diagnostics, and registration gift fallback messaging.
 - Deployed/runtime validation that legacy VoIP migration drains existing production `users` fields and `backfill_user_public_profiles.js` fills existing `userPublicProfiles` after production mutation approval.
 
 ## Deferred Debt

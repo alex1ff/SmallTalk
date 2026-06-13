@@ -1,6 +1,6 @@
 # Project Audit Next Steps
 
-Last updated: 2026-05-29
+Last updated: 2026-06-13
 
 ## Next Recommended Tranche
 
@@ -8,7 +8,7 @@ No AI/translation tranche. Customer paused quick translation and AI feedback on 
 
 ## Priority Queue
 
-1. Final live QA: run a real/TestFlight call, verify RevenueCat current offering prices, unavailable/retry state, purchase, restore purchases, entitlement unlock/re-lock after expiration/cancelation, Resend verification email, Daily webhook delivery, and Deepgram caption token flow.
+1. Final live QA: run a real/TestFlight call, verify RevenueCat current offering prices, unavailable/retry state, purchase, restore purchases, entitlement unlock/re-lock after expiration/cancelation, Resend verification email, Daily webhook delivery, and Deepgram caption token/transcript/log flow.
 2. Production data maintenance: run/validate legacy VoIP token migration and public-profile backfill only when approved for production mutation.
 3. Runtime upgrade debt: plan Functions Node.js 20 -> Node.js 22 before the 2026-10-30 decommission date.
 4. Customer-approved feature work: pick the next approved feature that does not depend on the paused Translation/Gemini scope.
@@ -16,6 +16,7 @@ No AI/translation tranche. Customer paused quick translation and AI feedback on 
 
 ## Validation Debt
 
+- 2026-06-13 caption runtime tranche: `dart format`, `node --check firebase/custom_cloud_functions/user_document_rules.test.js`, `flutter analyze`, `flutter test test/regression/voip_call_surface_contracts_test.dart`, Firestore Emulator `user_document_rules.test.js`, full `flutter test`, inventory regeneration, and `git diff --check` passed after adding safe Deepgram failure diagnostics, strict `captionLogs` diagnostic/normal-log rules, lifecycle-guarded Deepgram streaming, credential-arrival retry, peer log id alignment, and chat-open caption overlay positioning. Real-device/TestFlight validation remains open for live Deepgram token, microphone, transcript, and post-call log behavior.
 - 2026-05-29 subscription UI tranche: `flutter analyze --no-pub`, targeted analyze for `subscription_service.dart`/`pay_widget.dart`/`no_balance_widget.dart`, `flutter test test/services/subscription_service_keys_test.dart test/utils/subscription_utils_test.dart`, and `git diff --check` passed. Direct widget/StoreKit sandbox coverage for RevenueCat current-offering prices, unavailable/retry UI, purchase, restore, no-balance CTA semantics, and entitlement unlock/re-lock remains manual/TestFlight QA debt because these flows depend on live App Store/RevenueCat state.
 - `flutter analyze lib/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart` passed after the student navigation token-fetch change.
 - `npx eslint` could not run because `firebase/custom_cloud_functions` has no ESLint config in this checkout.

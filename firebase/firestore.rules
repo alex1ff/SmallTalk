@@ -100,6 +100,202 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/videoSessions/$(sessionId)).data;
     }
 
+    function isSafeCaptionRuntimeDiagnosticText(text) {
+      return text in [
+        'Субтитры временно недоступны: не удалось получить токен распознавания.',
+        'Субтитры временно недоступны: нет доступа к микрофону.',
+        'Субтитры временно недоступны: не удалось передать звук на распознавание.',
+        'Субтитры временно недоступны: не удалось запустить распознавание речи.',
+        'Субтитры временно недоступны: соединение с распознаванием речи прервано.',
+        'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
+        'Субтитры временно недоступны: сервис распознавания вернул ошибку.'
+      ];
+    }
+
+    function isSafeCaptionRuntimeDiagnosticCode(code) {
+      return code in [
+        'caption_token_unavailable',
+        'microphone_permission_denied',
+        'audio_stream_error',
+        'deepgram_start_failed',
+        'deepgram_websocket_error',
+        'deepgram_message_parse_failed',
+        'deepgram_error_frame'
+      ];
+    }
+
+    function isSafeCaptionRuntimeDiagnosticPair(code, text) {
+      return (
+          code == 'caption_token_unavailable' &&
+          text == 'Субтитры временно недоступны: не удалось получить токен распознавания.'
+        ) ||
+        (
+          code == 'microphone_permission_denied' &&
+          text == 'Субтитры временно недоступны: нет доступа к микрофону.'
+        ) ||
+        (
+          code == 'audio_stream_error' &&
+          text == 'Субтитры временно недоступны: не удалось передать звук на распознавание.'
+        ) ||
+        (
+          code == 'deepgram_start_failed' &&
+          text == 'Субтитры временно недоступны: не удалось запустить распознавание речи.'
+        ) ||
+        (
+          code == 'deepgram_websocket_error' &&
+          text == 'Субтитры временно недоступны: соединение с распознаванием речи прервано.'
+        ) ||
+        (
+          code == 'deepgram_message_parse_failed' &&
+          text == 'Субтитры временно недоступны: не удалось обработать ответ распознавания.'
+        ) ||
+        (
+          code == 'deepgram_error_frame' &&
+          text == 'Субтитры временно недоступны: сервис распознавания вернул ошибку.'
+        );
+    }
+
+    function isReservedCaptionDiagnosticLogId(logId) {
+      return logId.matches('system_.*');
+    }
+
+    function usesReservedCaptionDiagnosticSpeaker(data) {
+      return data.speakerId == 'system' ||
+        data.speakerName == 'SmallTalk' ||
+        data.speakerRole == 'system';
+    }
+
+    function isSafeCaptionParticipantId(value) {
+      return value is string &&
+        value.size() > 0 &&
+        value.size() <= 128 &&
+        value.matches('[A-Za-z0-9_.-]+');
+    }
+
+    function isOtherSessionParticipantId(sessionData, speakerId) {
+      return isSafeCaptionParticipantId(speakerId) &&
+        speakerId != request.auth.uid &&
+        (
+          fieldEquals(sessionData, 'studentId', speakerId) ||
+          fieldEquals(sessionData, 'tutorId', speakerId) ||
+          fieldEquals(sessionData, 'currentTutorId', speakerId) ||
+          (
+            sessionData.participantIds is list &&
+            sessionData.participantIds.hasAny([speakerId])
+          )
+        );
+    }
+
+    function isCaptionLogIdForSpeaker(data, logId) {
+      return logId == data.speakerId + '_' + string(data.utteranceId);
+    }
+
+    function canWriteNonDiagnosticCaptionLogData(data, logId) {
+      return data.keys().hasOnly([
+          'speakerId',
+          'speakerName',
+          'speakerRole',
+          'utteranceId',
+          'text',
+          'language',
+          'source',
+          'capturedAtClient',
+          'createdAtServer',
+          'writerId',
+          'confidence'
+        ]) &&
+        data.source in ['local_deepgram_final', 'peer_legacy_final'] &&
+        isSafeCaptionParticipantId(data.speakerId) &&
+        data.speakerName is string &&
+        data.speakerName.size() > 0 &&
+        data.speakerName.size() <= 128 &&
+        data.speakerRole in ['student', 'tutor'] &&
+        data.utteranceId is int &&
+        data.utteranceId >= 0 &&
+        data.utteranceId <= 1000000 &&
+        data.text is string &&
+        data.text.size() > 0 &&
+        data.text.size() <= 4000 &&
+        data.language is string &&
+        data.language.size() <= 32 &&
+        data.capturedAtClient is timestamp &&
+        data.createdAtServer == request.time &&
+        (
+          !data.keys().hasAny(['confidence']) ||
+          (
+            data.confidence is number &&
+            data.confidence >= 0 &&
+            data.confidence <= 1
+          )
+        ) &&
+        isCaptionLogIdForSpeaker(data, logId) &&
+        !isReservedCaptionDiagnosticLogId(logId) &&
+        !usesReservedCaptionDiagnosticSpeaker(data);
+    }
+
+    function canWriteLocalCaptionLogData(data, logId) {
+      return canWriteNonDiagnosticCaptionLogData(data, logId) &&
+        data.source == 'local_deepgram_final' &&
+        data.speakerId == request.auth.uid;
+    }
+
+    function canWritePeerLegacyCaptionLogData(data, logId, sessionData) {
+      return canWriteNonDiagnosticCaptionLogData(data, logId) &&
+        data.source == 'peer_legacy_final' &&
+        isOtherSessionParticipantId(sessionData, data.speakerId);
+    }
+
+    function canWriteCaptionRuntimeDiagnostic(data, logId) {
+      return data.keys().hasOnly([
+          'speakerId',
+          'speakerName',
+          'speakerRole',
+          'utteranceId',
+          'text',
+          'language',
+          'source',
+          'capturedAtClient',
+          'createdAtServer',
+          'writerId',
+          'diagnosticCode'
+        ]) &&
+        data.source == 'caption_runtime_diagnostic' &&
+        data.diagnosticCode is string &&
+        isSafeCaptionRuntimeDiagnosticCode(data.diagnosticCode) &&
+        logId == 'system_' + request.auth.uid + '_' + data.diagnosticCode &&
+        data.speakerId == 'system' &&
+        data.speakerName == 'SmallTalk' &&
+        data.speakerRole == 'system' &&
+        data.utteranceId == 0 &&
+        data.text is string &&
+        isSafeCaptionRuntimeDiagnosticText(data.text) &&
+        isSafeCaptionRuntimeDiagnosticPair(data.diagnosticCode, data.text) &&
+        data.language is string &&
+        data.language.size() <= 32 &&
+        data.capturedAtClient is timestamp &&
+        data.createdAtServer == request.time;
+    }
+
+    function canWriteCaptionLogData(data, logId, sessionData) {
+      return data.writerId == request.auth.uid &&
+        (
+          canWriteLocalCaptionLogData(data, logId) ||
+          canWritePeerLegacyCaptionLogData(data, logId, sessionData) ||
+          canWriteCaptionRuntimeDiagnostic(data, logId)
+        );
+    }
+
+    function canUpdateCaptionLogData(data, logId, sessionData) {
+      return resource.data.writerId == request.auth.uid &&
+        data.writerId == resource.data.writerId &&
+        data.speakerId == resource.data.speakerId &&
+        data.speakerName == resource.data.speakerName &&
+        data.speakerRole == resource.data.speakerRole &&
+        data.utteranceId == resource.data.utteranceId &&
+        data.source == resource.data.source &&
+        canWriteCaptionLogData(data, logId, sessionData);
+    }
+
     function conversationData(pairId) {
       return get(/databases/$(database)/documents/conversations/$(pairId)).data;
     }
@@ -582,11 +778,17 @@ service cloud.firestore {
 
       match /captionLogs/{logId} {
         allow read: if isSessionParticipant(videoSessionData(sessionId));
-        allow create, update: if isSessionParticipant(videoSessionData(sessionId)) &&
-          request.resource.data.writerId == request.auth.uid &&
-          (
-            request.resource.data.speakerId == request.auth.uid ||
-            request.resource.data.source == 'peer_legacy_final'
+        allow create: if isSessionParticipant(videoSessionData(sessionId)) &&
+          canWriteCaptionLogData(
+            request.resource.data,
+            logId,
+            videoSessionData(sessionId)
+          );
+        allow update: if isSessionParticipant(videoSessionData(sessionId)) &&
+          canUpdateCaptionLogData(
+            request.resource.data,
+            logId,
+            videoSessionData(sessionId)
           );
         allow delete: if false;
       }
