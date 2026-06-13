@@ -1,11 +1,9 @@
 import '/backend/backend.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'review_card_model.dart';
 export 'review_card_model.dart';
 
@@ -25,6 +23,7 @@ class ReviewCardWidget extends StatefulWidget {
 
 class _ReviewCardWidgetState extends State<ReviewCardWidget> {
   static const _compactWidth = 325.0;
+  static const _avatarSize = 44.0;
 
   late ReviewCardModel _model;
   late Future<UserPublicProfilesRecord?> _userFuture;
@@ -66,6 +65,19 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
     );
   }
 
+  String _createdAtLabel(BuildContext context) {
+    final createdAt = widget.rewDoc?.createdAt;
+    if (createdAt == null) {
+      return '';
+    }
+
+    return dateTimeFormat(
+      "d/M/y",
+      createdAt,
+      locale: FFLocalizations.of(context).languageCode,
+    );
+  }
+
   @override
   void setState(VoidCallback callback) {
     super.setState(callback);
@@ -97,12 +109,16 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
   @override
   Widget build(BuildContext context) {
     final reviewComment = _normalizedComment();
+    final rating = widget.rewDoc?.rating.toDouble() ?? 0.0;
 
     return Container(
       width: widget.fullWidth ? double.infinity : _compactWidth,
-      decoration: ExpatlioDesign.cardDecoration(radius: 20.0),
+      constraints: const BoxConstraints(minHeight: 76.0),
+      decoration: ExpatlioDesign.cardDecoration(
+        radius: ExpatlioDesign.cardRadius,
+      ),
       child: Padding(
-        padding: EdgeInsets.all(ExpatlioDesign.space16),
+        padding: const EdgeInsets.all(ExpatlioDesign.space16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -115,104 +131,66 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
                   child: FutureBuilder<UserPublicProfilesRecord?>(
                     future: _userFuture,
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done) {
-                        return Center(
-                          child: SizedBox(
-                            width: 50.0,
-                            height: 50.0,
-                            child: SpinKitCircle(
-                              color: FlutterFlowTheme.of(context).secondary,
-                              size: 50.0,
+                      final containerUserPublicProfile = snapshot.data;
+                      final authorName = _reviewAuthorName(
+                        context,
+                        containerUserPublicProfile,
+                      );
+                      final photoUrl =
+                          containerUserPublicProfile?.photoUrl.trim() ?? '';
+
+                      return Row(
+                        mainAxisSize: MainAxisSize.max,
+                        children: [
+                          _ReviewAuthorAvatar(
+                            photoUrl: photoUrl,
+                            displayName: authorName,
+                            size: _avatarSize,
+                          ),
+                          const SizedBox(width: ExpatlioDesign.space12),
+                          Flexible(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  authorName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    size: 15.0,
+                                    weight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: ExpatlioDesign.space4),
+                                Text(
+                                  _createdAtLabel(context),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: ExpatlioDesign.muted,
+                                    size: 14.0,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        );
-                      }
-
-                      final containerUserPublicProfile = snapshot.data;
-
-                      return Container(
-                        decoration: BoxDecoration(),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.max,
-                          children: [
-                            Container(
-                              width: 45.0,
-                              height: 45.0,
-                              clipBehavior: Clip.antiAlias,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                              ),
-                              child: CachedNetworkImage(
-                                imageUrl:
-                                    containerUserPublicProfile?.photoUrl ?? '',
-                                fit: BoxFit.cover,
-                                memCacheWidth: 90,
-                                memCacheHeight: 90,
-                              ),
-                            ),
-                            Flexible(
-                              child: Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    ExpatlioDesign.space12,
-                                    ExpatlioDesign.space0,
-                                    ExpatlioDesign.space0,
-                                    ExpatlioDesign.space0),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.max,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _reviewAuthorName(
-                                        context,
-                                        containerUserPublicProfile,
-                                      ),
-                                      maxLines: 1,
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'sf pro display',
-                                            color: ExpatlioDesign.text,
-                                            fontSize: 15.0,
-                                            letterSpacing: 0.0,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    Text(
-                                      dateTimeFormat(
-                                        "d/M/y",
-                                        widget.rewDoc!.createdAt!,
-                                        locale: FFLocalizations.of(context)
-                                            .languageCode,
-                                      ),
-                                      style: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .override(
-                                            fontFamily: 'sf pro display',
-                                            color: FlutterFlowTheme.of(context)
-                                                .secondaryText,
-                                            fontSize: 15.0,
-                                            letterSpacing: 0.0,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                        ],
                       );
                     },
                   ),
                 ),
+                const SizedBox(width: ExpatlioDesign.space12),
                 RatingBarIndicator(
                   itemBuilder: (context, index) => Icon(
                     Icons.star_rounded,
-                    color: FlutterFlowTheme.of(context).warning,
+                    color: ExpatlioDesign.warning,
                   ),
                   direction: Axis.horizontal,
-                  rating: widget.rewDoc!.rating.toDouble(),
+                  rating: rating,
                   unratedColor: ExpatlioDesign.mutedSurface,
                   itemCount: 5,
                   itemSize: 18.0,
@@ -221,22 +199,86 @@ class _ReviewCardWidgetState extends State<ReviewCardWidget> {
             ),
             if (reviewComment != null)
               Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(
+                padding: const EdgeInsetsDirectional.fromSTEB(
                     ExpatlioDesign.space0,
                     ExpatlioDesign.space12,
                     ExpatlioDesign.space0,
                     ExpatlioDesign.space0),
                 child: Text(
                   reviewComment,
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'sf pro display',
-                        letterSpacing: 0.0,
-                      ),
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    size: 15.0,
+                  ).copyWith(height: 1.35),
                 ),
               ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ReviewAuthorAvatar extends StatelessWidget {
+  const _ReviewAuthorAvatar({
+    required this.photoUrl,
+    required this.displayName,
+    required this.size,
+  });
+
+  final String photoUrl;
+  final String displayName;
+  final double size;
+
+  String _initial() {
+    final normalizedName = displayName.trim();
+    if (normalizedName.isEmpty) {
+      return '?';
+    }
+
+    return normalizedName.characters.first.toUpperCase();
+  }
+
+  Widget _fallback(BuildContext context) {
+    return Container(
+      color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+      alignment: Alignment.center,
+      child: Text(
+        _initial(),
+        maxLines: 1,
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: ExpatlioDesign.primary,
+          size: 16.0,
+          weight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedPhotoUrl = photoUrl.trim();
+
+    return Container(
+      width: size,
+      height: size,
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(shape: BoxShape.circle),
+      child: normalizedPhotoUrl.isEmpty
+          ? _fallback(context)
+          : CachedNetworkImage(
+              imageUrl: normalizedPhotoUrl,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
+              memCacheWidth: (size * 2).round(),
+              memCacheHeight: (size * 2).round(),
+              placeholder: (context, _) => _fallback(context),
+              errorWidget: (context, _, __) => _fallback(context),
+            ),
     );
   }
 }

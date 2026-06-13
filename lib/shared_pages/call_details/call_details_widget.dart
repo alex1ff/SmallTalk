@@ -1432,46 +1432,32 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space0,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space0),
-              child: Text(
-                FFLocalizations.of(context).getVariableText(
-                  ruText: hasReviewed ? 'Отзыв оставлен' : 'Оставить отзыв',
-                  enText: hasReviewed ? 'Review submitted' : 'Leave feedback',
-                ),
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'Cool',
-                      fontSize: 22.0,
-                      letterSpacing: 0.0,
-                      fontWeight: FontWeight.normal,
-                    ),
+            Text(
+              FFLocalizations.of(context).getVariableText(
+                ruText: hasReviewed ? 'Отзыв оставлен' : 'Оставить отзыв',
+                enText: hasReviewed ? 'Review submitted' : 'Leave feedback',
               ),
+              style: FlutterFlowTheme.of(context).bodyMedium.override(
+                    fontFamily: 'Cool',
+                    fontSize: 22.0,
+                    letterSpacing: 0.0,
+                    fontWeight: FontWeight.normal,
+                  ),
             ),
             const SizedBox(height: ExpatlioDesign.space12),
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space0,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space0),
-              child: !snapshot.hasData && _model.reviewRefOverride == null
-                  ? _buildLoadingState(context)
-                  : PairReviewContent(
-                      hasReviewed: hasReviewed,
-                      reviewContent: resolvedReviewRef != null
-                          ? _buildStoredReview(
-                              context,
-                              reviewRef: resolvedReviewRef,
-                            )
-                          : null,
-                      reviewFallbackText: reviewAlreadyLeftMessage(context),
-                      formContent: _buildReviewForm(context, session),
-                    ),
-            ),
+            !snapshot.hasData && _model.reviewRefOverride == null
+                ? _buildLoadingState(context)
+                : PairReviewContent(
+                    hasReviewed: hasReviewed,
+                    reviewContent: resolvedReviewRef != null
+                        ? _buildStoredReview(
+                            context,
+                            reviewRef: resolvedReviewRef,
+                          )
+                        : null,
+                    reviewFallbackText: reviewAlreadyLeftMessage(context),
+                    formContent: _buildReviewForm(context, session),
+                  ),
           ],
         );
       },

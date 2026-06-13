@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
@@ -30,21 +29,46 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   final scaffoldKey = GlobalKey<ScaffoldState>();
   static final Map<String, _ConversationsLoadState>
       _conversationStateCacheByUid = {};
-  final _userFutureCache = <String, Future<UserPublicProfilesRecord?>>{};
+  static final Map<String, List<DocumentReference>> _friendsCacheByUid = {};
+  static final Map<String, Future<UserPublicProfilesRecord?>>
+      _userFutureCacheByUid = {};
+  static final Map<String, UserPublicProfilesRecord> _userProfileCacheByUid =
+      {};
   String? _conversationsStreamUid;
   Stream<_ConversationsLoadState>? _conversationsStream;
   int _selectedChatTabIndex = 0;
 
   Future<UserPublicProfilesRecord?> _getUserFuture(DocumentReference ref) {
-    return _userFutureCache.putIfAbsent(
-      ref.path,
+    return _userFutureCacheByUid.putIfAbsent(
+      ref.id,
       () => UserPublicProfilesRecord.maybeGetDocumentOnce(
         UserPublicProfilesRecord.collection.doc(ref.id),
-      ).catchError((Object error, StackTrace stackTrace) {
-        _userFutureCache.remove(ref.path);
+      ).then((profile) {
+        if (profile != null) {
+          _userProfileCacheByUid[ref.id] = profile;
+        }
+        return profile;
+      }).catchError((Object error, StackTrace stackTrace) {
+        _userFutureCacheByUid.remove(ref.id);
         throw error;
       }),
     );
+  }
+
+  UserPublicProfilesRecord? _cachedUserProfile(DocumentReference ref) =>
+      _userProfileCacheByUid[ref.id];
+
+  List<DocumentReference> _friendsForCurrentUser(String currentUid) {
+    final userDocument = currentUserDocument;
+    if (userDocument == null) {
+      return _friendsCacheByUid[currentUid] ?? const <DocumentReference>[];
+    }
+
+    final friends = resolveFriendsForUser(userDocument).toList(
+      growable: false,
+    );
+    _friendsCacheByUid[currentUid] = friends;
+    return friends;
   }
 
   String _fallbackPartnerDisplayName(BuildContext context) {
@@ -134,17 +158,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     }
 
     return _conversationParticipantPhotoUrl(conversation, partnerRef);
-  }
-
-  Widget _buildChatPartnerNamePlaceholder() {
-    return Container(
-      width: 96.0,
-      height: 18.0,
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.mutedSurface,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
-      ),
-    );
   }
 
   Stream<_ConversationsLoadState> _watchConversationsForUser(
@@ -268,19 +281,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
-  Widget _buildLoadingState(BuildContext context) {
-    return Center(
-      child: SizedBox(
-        width: 50.0,
-        height: 50.0,
-        child: SpinKitCircle(
-          color: FlutterFlowTheme.of(context).secondary,
-          size: 50.0,
-        ),
-      ),
-    );
-  }
-
   Widget _buildHeader(BuildContext context) {
     return Container(
       color: ExpatlioDesign.background,
@@ -362,6 +362,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
     return FutureBuilder<UserPublicProfilesRecord?>(
       future: _getUserFuture(partnerRef),
+      initialData: _cachedUserProfile(partnerRef),
       builder: (context, partnerSnapshot) {
         if (partnerSnapshot.hasError) {
           debugPrint(
@@ -369,7 +370,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           );
         }
 
-        final partner = partnerSnapshot.hasError ? null : partnerSnapshot.data;
+        final partner = partnerSnapshot.hasError
+            ? _cachedUserProfile(partnerRef)
+            : partnerSnapshot.data;
         final partnerDisplayName = _partnerDisplayName(
           conversation,
           partnerRef,
@@ -380,11 +383,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           partnerRef,
           partner,
         );
-        final partnerIdentityLoading =
-            partnerSnapshot.connectionState == ConnectionState.waiting &&
-                !partnerSnapshot.hasError &&
-                partnerDisplayName.isEmpty &&
-                partnerPhotoUrl.isEmpty;
         final visiblePartnerDisplayName = partnerDisplayName.isNotEmpty
             ? partnerDisplayName
             : _fallbackPartnerDisplayName(context);
@@ -420,9 +418,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     width: 52.0,
                     height: 52.0,
                     decoration: BoxDecoration(
-                      color: partnerIdentityLoading
-                          ? ExpatlioDesign.mutedSurface
-                          : ExpatlioDesign.card,
+                      color: ExpatlioDesign.card,
                       shape: BoxShape.circle,
                       border: Border.all(color: ExpatlioDesign.border),
                       image: partnerPhotoUrl.isNotEmpty
@@ -436,7 +432,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                             )
                           : null,
                     ),
-                    child: partnerPhotoUrl.isEmpty && !partnerIdentityLoading
+                    child: partnerPhotoUrl.isEmpty
                         ? Center(
                             child: Text(
                               visiblePartnerDisplayName.characters.first
@@ -469,19 +465,17 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                 child: Row(
                                   children: [
                                     Flexible(
-                                      child: partnerIdentityLoading
-                                          ? _buildChatPartnerNamePlaceholder()
-                                          : Text(
-                                              visiblePartnerDisplayName,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: ExpatlioDesign.textStyle(
-                                                context,
-                                                size: 16.0,
-                                                weight: unread
-                                                    ? FontWeight.w700
-                                                    : FontWeight.w600,
-                                              ),
-                                            ),
+                                      child: Text(
+                                        visiblePartnerDisplayName,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: ExpatlioDesign.textStyle(
+                                          context,
+                                          size: 16.0,
+                                          weight: unread
+                                              ? FontWeight.w700
+                                              : FontWeight.w600,
+                                        ),
+                                      ),
                                     ),
                                     if (isFriend)
                                       const Padding(
@@ -634,6 +628,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   Widget _buildFriendsTabContent(
     BuildContext context, {
     required bool conversationsLoading,
+    required bool friendsLoading,
     required List<DocumentReference> friends,
     required List<ConversationsRecord> conversations,
   }) {
@@ -647,7 +642,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
         )
         .toList();
 
-    if (conversationsLoading) {
+    if (conversationsLoading || friendsLoading) {
       return const SizedBox.shrink();
     }
 
@@ -737,16 +732,34 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           children: [
             AuthUserStreamWidget(
               builder: (context) {
-                if (currentUserUid.isEmpty || currentUserDocument == null) {
-                  return _buildLoadingState(context);
+                final currentUid = currentUserUid;
+                final hasCurrentUserDocument = currentUserDocument != null;
+                final hasCachedFriends =
+                    _friendsCacheByUid.containsKey(currentUid);
+
+                if (currentUid.isEmpty) {
+                  return Stack(
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.paddingOf(context).top + 56,
+                          ),
+                          _buildChatsTabBar(context),
+                          const Expanded(child: SizedBox.shrink()),
+                        ],
+                      ),
+                      _buildHeader(context),
+                    ],
+                  );
                 }
 
-                final friends =
-                    resolveFriendsForUser(currentUserDocument).toList();
+                final friends = _friendsForCurrentUser(currentUid);
 
                 return StreamBuilder<_ConversationsLoadState>(
-                  stream: _watchConversationsForUser(currentUserUid),
-                  initialData: _cachedConversationsStateForUser(currentUserUid),
+                  stream: _watchConversationsForUser(currentUid),
+                  initialData: _cachedConversationsStateForUser(currentUid),
                   builder: (context, conversationsSnapshot) {
                     if (conversationsSnapshot.hasError) {
                       debugPrint(
@@ -786,6 +799,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                       context,
                                       conversationsLoading:
                                           conversationsLoading,
+                                      friendsLoading: !hasCurrentUserDocument &&
+                                          !hasCachedFriends,
                                       friends: friends,
                                       conversations: conversations,
                                     )

@@ -17,7 +17,7 @@ void main() {
         contains('Navigator.of(context, rootNavigator: true).push'),
       );
       expect(source, contains("FieldPath(['participantMap', currentUid])"));
-      expect(source, contains('resolveFriendsForUser(currentUserDocument)'));
+      expect(source, contains('resolveFriendsForUser(userDocument)'));
       expect(source, contains('kConversationMessageTypeCallEvent'));
       expect(source, contains('conversationPartnerIsFriend'));
       expect(
@@ -28,16 +28,18 @@ void main() {
         source,
         contains('FutureBuilder<UserPublicProfilesRecord?>'),
       );
-      expect(source, contains('partnerSnapshot.connectionState'));
-      expect(source, contains('final partnerIdentityLoading'));
-      expect(source, contains('_buildChatPartnerNamePlaceholder'));
+      expect(source, contains('_userProfileCacheByUid'));
+      expect(source, contains('initialData: _cachedUserProfile(partnerRef)'));
+      expect(source, contains('_friendsCacheByUid'));
+      expect(source, isNot(contains('final partnerIdentityLoading')));
+      expect(source, isNot(contains('_buildChatPartnerNamePlaceholder')));
+      expect(source, isNot(contains('SpinKitCircle')));
       expect(source, contains("ruText: 'Собеседник'"));
       expect(source, isNot(contains("ruText: 'Пользователь'")));
       expect(source,
           isNot(contains('initialData: const _ConversationsLoadState()')));
       expect(source, contains('_conversationStateCacheByUid'));
-      expect(
-          source, contains('_cachedConversationsStateForUser(currentUserUid)'));
+      expect(source, contains('_cachedConversationsStateForUser(currentUid)'));
       expect(source, isNot(contains('_buildMessagesLoadingList')));
       expect(source, isNot(contains('_conversationLoadingCard')));
       expect(source, contains('_conversationsStreamUid'));

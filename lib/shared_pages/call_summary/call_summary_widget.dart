@@ -243,6 +243,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
             alignment: Alignment.centerLeft,
             child: ReviewCardWidget(
               rewDoc: reviewRecord,
+              fullWidth: true,
             ),
           ),
         );
