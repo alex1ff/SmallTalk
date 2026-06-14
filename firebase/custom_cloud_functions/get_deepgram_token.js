@@ -135,6 +135,7 @@ exports.getDeepgramToken = functions
         throw new functions.https.HttpsError(
           "failed-precondition",
           "Deepgram temporary token grants are not enabled",
+          {reason: "deepgram_token_grant_forbidden"},
         );
       }
 

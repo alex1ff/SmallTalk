@@ -103,6 +103,7 @@ service cloud.firestore {
     function isSafeCaptionRuntimeDiagnosticText(text) {
       return text in [
         'Субтитры временно недоступны: не удалось получить токен распознавания.',
+        'Субтитры временно недоступны: сервис распознавания требует настройки.',
         'Субтитры временно недоступны: нет доступа к микрофону.',
         'Субтитры временно недоступны: не удалось передать звук на распознавание.',
         'Субтитры временно недоступны: не удалось запустить распознавание речи.',
@@ -115,6 +116,7 @@ service cloud.firestore {
     function isSafeCaptionRuntimeDiagnosticCode(code) {
       return code in [
         'caption_token_unavailable',
+        'deepgram_token_grant_forbidden',
         'microphone_permission_denied',
         'audio_stream_error',
         'deepgram_start_failed',
@@ -128,6 +130,10 @@ service cloud.firestore {
       return (
           code == 'caption_token_unavailable' &&
           text == 'Субтитры временно недоступны: не удалось получить токен распознавания.'
+        ) ||
+        (
+          code == 'deepgram_token_grant_forbidden' &&
+          text == 'Субтитры временно недоступны: сервис распознавания требует настройки.'
         ) ||
         (
           code == 'microphone_permission_denied' &&

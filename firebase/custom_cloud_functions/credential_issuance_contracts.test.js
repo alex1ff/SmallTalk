@@ -28,6 +28,7 @@ test("getDeepgramToken never returns the raw API key as a client credential", ()
   assert.match(source, /isCredentialSessionJoinable/);
   assert.match(source, /getCredentialTtlSeconds/);
   assert.match(source, /refusing to expose API key/);
+  assert.match(source, /deepgram_token_grant_forbidden/);
   assert.doesNotMatch(source, /credentialType:\s*"api_key_fallback"/);
   assert.doesNotMatch(source, /accessToken:\s*apiKey/);
 });

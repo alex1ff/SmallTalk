@@ -282,6 +282,7 @@ void main() {
       expect(source, contains("'deepgram_start_failed'"));
       expect(source, contains("'deepgram_websocket_error'"));
       expect(source, contains("'deepgram_error_frame'"));
+      expect(source, contains('DeepgramCredentialException'));
       expect(source, contains('_isDeepgramErrorFrame('));
       expect(source, contains('_flushPendingCaptionLogs(force: true)'));
 
@@ -292,11 +293,20 @@ void main() {
       expect(credentialFailureIndex, greaterThanOrEqualTo(0));
       expect(credentialReturnIndex, greaterThan(credentialFailureIndex));
 
+      final videoPageSource = _source(
+          'lib/shared_pages/video_call_page/video_call_page_widget.dart');
+      expect(videoPageSource, contains('DeepgramCredentialException'));
+      expect(videoPageSource, contains("'deepgram_token_grant_forbidden'"));
+      expect(videoPageSource, contains('throwOnFailure: true'));
+      expect(videoPageSource,
+          contains('!force &&\n        _deepgramTokenLoading'));
+
       final rulesSource = _source('firebase/firestore.rules');
       expect(rulesSource, contains('canWriteCaptionRuntimeDiagnostic'));
       expect(rulesSource, contains('isSafeCaptionRuntimeDiagnosticText'));
       expect(rulesSource, contains('isSafeCaptionRuntimeDiagnosticCode'));
       expect(rulesSource, contains('isSafeCaptionRuntimeDiagnosticPair'));
+      expect(rulesSource, contains("'deepgram_token_grant_forbidden'"));
       expect(rulesSource, contains('isReservedCaptionDiagnosticLogId'));
       expect(rulesSource, contains('usesReservedCaptionDiagnosticSpeaker'));
       expect(rulesSource, contains('canWritePeerLegacyCaptionLogData'));

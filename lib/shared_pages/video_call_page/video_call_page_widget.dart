@@ -5,6 +5,7 @@ import '/flutter_flow/permissions_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'dart:async';
 import '/custom_code/widgets/index.dart' as custom_widgets;
+import '/custom_code/widgets/deepgram_credential_exception.dart';
 import '/custom_code/widgets/session_limit_ui.dart' as session_limit_ui;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
@@ -172,11 +173,36 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     });
   }
 
-  Future<String?> _fetchDeepgramToken({bool force = false}) async {
+  DeepgramCredentialException _mapDeepgramCredentialError(
+    FirebaseFunctionsException error,
+  ) {
+    final details = error.details;
+    final reason = details is Map ? details['reason']?.toString() : null;
+    if (reason == 'deepgram_token_grant_forbidden') {
+      return const DeepgramCredentialException(
+        code: 'deepgram_token_grant_forbidden',
+        message:
+            'Субтитры временно недоступны: сервис распознавания требует настройки.',
+      );
+    }
+
+    return const DeepgramCredentialException(
+      code: 'caption_token_unavailable',
+      message:
+          'Субтитры временно недоступны: не удалось получить токен распознавания.',
+    );
+  }
+
+  Future<String?> _fetchDeepgramToken({
+    bool force = false,
+    bool throwOnFailure = false,
+  }) async {
     final sessionPath = widget.videoDocRef?.path;
     final sessionId = widget.videoDocRef?.id;
     if (sessionId == null || sessionId.isEmpty) return null;
-    if (_deepgramTokenLoading && _deepgramTokenLoadingSessionId == sessionId) {
+    if (!force &&
+        _deepgramTokenLoading &&
+        _deepgramTokenLoadingSessionId == sessionId) {
       return _deepgramAccessToken;
     }
     if (!force &&
@@ -215,9 +241,25 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         );
       }
       return _deepgramAccessToken;
+    } on FirebaseFunctionsException catch (e) {
+      final error = _mapDeepgramCredentialError(e);
+      if (kDebugMode) {
+        debugPrint('❌ Deepgram credential fetch failed: $e');
+      }
+      if (throwOnFailure) {
+        throw error;
+      }
+      return _deepgramAccessToken;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ Deepgram credential fetch failed: $e');
+      }
+      if (throwOnFailure) {
+        throw const DeepgramCredentialException(
+          code: 'caption_token_unavailable',
+          message:
+              'Субтитры временно недоступны: не удалось получить токен распознавания.',
+        );
       }
       return _deepgramAccessToken;
     } finally {
@@ -505,7 +547,10 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                     sessionPolicy:
                         useSessionLimitCountdown ? sessionPolicy : null,
                     deepgramTokenRefreshCallback: () async {
-                      return await _fetchDeepgramToken(force: true);
+                      return await _fetchDeepgramToken(
+                        force: true,
+                        throwOnFailure: true,
+                      );
                     },
                     sessionStatus: sessionStatus,
                     isStudent: isStudent,

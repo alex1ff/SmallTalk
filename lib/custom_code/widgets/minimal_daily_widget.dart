@@ -28,6 +28,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '/services/voip_service.dart';
 import '/components/interactive_caption_text.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import 'deepgram_credential_exception.dart';
 import 'session_limit_ui.dart' as session_limit_ui;
 
 // VideoQuality enum simplified - only auto mode needed
@@ -685,6 +686,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           _deepgramCredential = sanitized;
           return sanitized;
         }
+      } on DeepgramCredentialException catch (error) {
+        _reportCaptionRuntimeIssue(
+          code: error.code,
+          message: error.message,
+        );
+        if (kDebugMode) print('Deepgram token refresh failed: $error');
       } catch (e) {
         if (kDebugMode) print('Deepgram token refresh failed: $e');
       }
@@ -2080,11 +2087,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return;
     }
     if (credential == null) {
-      _reportCaptionRuntimeIssue(
-        code: 'caption_token_unavailable',
-        message:
-            'Субтитры временно недоступны: не удалось получить токен распознавания.',
-      );
+      if (_state.captionIssueCode == null) {
+        _reportCaptionRuntimeIssue(
+          code: 'caption_token_unavailable',
+          message:
+              'Субтитры временно недоступны: не удалось получить токен распознавания.',
+        );
+      }
       if (kDebugMode) print('Deepgram disabled: no credential available');
       return;
     }

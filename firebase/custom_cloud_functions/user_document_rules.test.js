@@ -426,6 +426,15 @@ test("session participants can write only safe caption diagnostics", async () =>
   });
 
   await assertSucceeds(captionLogRef.set(diagnosticData()));
+  await assertSucceeds(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/system_student-a_deepgram_token_grant_forbidden`)
+      .set(diagnosticData({
+        diagnosticCode: "deepgram_token_grant_forbidden",
+        text: "Субтитры временно недоступны: сервис распознавания требует настройки.",
+      })),
+  );
   await assertSucceeds(captionLogRef.set(diagnosticData()));
   await assertSucceeds(
     otherParticipantCaptionLogRef.set(diagnosticData({
@@ -467,6 +476,15 @@ test("session participants can write only safe caption diagnostics", async () =>
       .doc(`videoSessions/${sessionId}/captionLogs/system_student-a_deepgram_websocket_error`)
       .set(diagnosticData({
         diagnosticCode: "deepgram_websocket_error",
+      })),
+  );
+
+  await assertFails(
+    participant
+      .firestore()
+      .doc(`videoSessions/${sessionId}/captionLogs/system_student-a_deepgram_token_grant_forbidden`)
+      .set(diagnosticData({
+        diagnosticCode: "deepgram_token_grant_forbidden",
       })),
   );
 
