@@ -10,7 +10,7 @@ Date: 2026-06-14
 - User can browse active future offline events by selected city.
 - User can filter events by date and level.
 - User can create up to 5 events per calendar day.
-- User can join and leave events without organizer approval.
+- User can join events without organizer approval and leave only before event `startsAt`.
 - Organizer can edit and cancel own events.
 - Event chat is available only to active participants.
 - Event can be shared through native share sheet with deep link.
@@ -23,7 +23,7 @@ Date: 2026-06-14
 - [x] Confirm max title length: 70 user-perceived characters / grapheme clusters after trim and whitespace normalization; line breaks are not allowed.
 - [x] Confirm max description length: 1000 user-perceived characters / grapheme clusters after trim and whitespace normalization; multiline allowed and more than 2 consecutive line breaks collapse to 2.
 - [x] Confirm city chip source: local recent city selections first, static curated popular city list second; Remote Config is not in MVP, and chips do not replace manual city selection.
-- [ ] Decide whether participant can leave after event start.
+- [x] Decide whether participant can leave after event start: no; leave is allowed only before `startsAt`, using trusted server/request time.
 - [ ] Decide canceled event chat behavior: read-only or still writable.
 - [ ] Decide deep link fallback when app is not installed.
 - [ ] Confirm whether event language list reuses existing app language catalog.
@@ -53,6 +53,7 @@ Date: 2026-06-14
 - [ ] Block duplicate join.
 - [ ] Block join for full, canceled, past, or missing events.
 - [ ] Implement transaction-safe leave.
+- [ ] Block leave at or after `startsAt` without changing occupancy or chat access.
 - [ ] Block organizer from leaving through participant leave flow.
 - [ ] Remove or deactivate participant membership on leave.
 - [ ] Update chat access after join and leave.
@@ -70,6 +71,7 @@ Date: 2026-06-14
 - [ ] Allow participant reads only where required by UI.
 - [ ] Allow event chat reads only for active participants.
 - [ ] Allow event chat writes only for active participants.
+- [ ] Block direct leave/membership writes at or after `startsAt` using trusted request/server time.
 - [ ] Prevent users from sending chat messages as another user.
 - [ ] Add rules tests for create, edit, cancel, join, leave, and chat access.
 
@@ -178,9 +180,11 @@ Date: 2026-06-14
 - [ ] Update occupancy after join.
 - [ ] Add leave action for active participants.
 - [ ] Add leave confirmation.
+- [ ] Hide or disable leave action at or after `startsAt`.
 - [ ] Update occupancy after leave.
 - [ ] Remove chat access after leave.
 - [ ] Show clear errors for full event, canceled event, past event, and duplicate join.
+- [ ] Show clear error if leave races with event start and backend blocks it.
 
 ## Phase 11: Event Group Chat
 
@@ -235,6 +239,7 @@ Date: 2026-06-14
 - [ ] Add transaction tests for join capacity.
 - [ ] Add transaction tests for duplicate join.
 - [ ] Add transaction tests for leave.
+- [ ] Add tests that leave is blocked at or after `startsAt` and preserves occupancy/chat access.
 - [ ] Add tests that organizer cannot leave as participant.
 - [ ] Add tests that organizer can edit/cancel.
 - [ ] Add tests that non-organizer cannot edit/cancel.

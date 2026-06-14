@@ -113,13 +113,15 @@ Required UI:
 - Occupancy.
 - Sticky bottom actions:
   - `Присоединиться` for non-participants;
-  - `Выйти` or joined state for participants;
+  - `Выйти` for participants only before `startsAt`;
+  - joined/chat state without enabled leave action at or after `startsAt`;
   - `Чат`.
 
 Participant behavior:
 
 - User joins instantly when tapping `Присоединиться`.
-- User can leave the event after joining.
+- User can leave the event after joining only before event start.
+- At or after `startsAt`, participants cannot leave in MVP; membership and chat access remain active.
 - User cannot join a full, canceled, past, or already joined event.
 - User loses group chat access after leaving.
 
@@ -288,6 +290,7 @@ As a participant, I want to leave an event so that my spot becomes available.
 Acceptance criteria:
 
 - Participant can leave before the event starts.
+- Participant cannot leave at or after event `startsAt`.
 - Leaving removes participant document or marks it inactive.
 - Occupancy decrements atomically.
 - User loses event chat access after leaving.
@@ -541,13 +544,20 @@ Checks:
 - User is active participant.
 - User is not organizer.
 - Event status is `active`.
-- Event starts in the future.
+- Event starts in the future: leave is allowed only when `startsAt` is greater than trusted server/request time.
 
 Writes:
 
 - Mark participant as left or delete participant doc.
 - Decrement `participantsCount`.
 - Remove user from chat participant access if denormalized.
+
+At or after `startsAt`:
+
+- Leave must be blocked.
+- `participantsCount` must not change.
+- Participant membership remains active.
+- Event chat access remains available to the participant.
 
 #### Create limit
 
@@ -573,6 +583,7 @@ Firebase write paths must enforce:
 - Server-side create/edit validation must enforce title: required after normalization, max 70 grapheme clusters, single-line.
 - Server-side create/edit validation must enforce description: required after normalization, max 1000 grapheme clusters, multiline allowed, more than 2 consecutive line breaks collapsed to 2.
 - Firestore rules must block direct client writes that bypass validated event create/edit paths; exact grapheme counting belongs in server-side validation.
+- Direct leave or membership writes must be blocked at or after `startsAt` using trusted request/server time.
 - Chat read/write is participant-only.
 - User cannot write messages as another sender.
 - User cannot directly inflate `participantsCount`.
@@ -599,6 +610,7 @@ Required tests:
 - Join transaction does not exceed capacity.
 - Duplicate join is blocked.
 - Leave decrements occupancy.
+- Leave is blocked at or after `startsAt` and does not change occupancy or chat access.
 - Organizer cannot leave as participant.
 - Organizer can edit/cancel.
 - Non-organizer cannot edit/cancel.
@@ -657,5 +669,4 @@ Required tests:
 
 - Exact static popular chip list and country coverage.
 - Should canceled event chat become read-only or stay writable for participants?
-- Should users be allowed to leave after event start?
 - Should organizer be able to delete event draft permanently, or only cancel published events?
