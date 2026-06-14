@@ -154,6 +154,10 @@ Validation:
 - Title max length is 70 user-perceived characters, meaning grapheme clusters, after trimming and whitespace normalization.
 - Title must be single-line; line breaks are not allowed.
 - Description is required.
+- Description max length is 1000 user-perceived characters, meaning grapheme clusters, after trimming and whitespace normalization.
+- Description can be multiline.
+- Description normalization must convert `\r\n` and `\r` to `\n`, collapse repeated spaces/tabs inside each line, and collapse more than 2 consecutive line breaks down to 2.
+- Persist normalized title and description values, not raw user input.
 - Language is required.
 - Level/range is required.
 - Date/time must be in the future.
@@ -187,6 +191,7 @@ Editable fields:
 Rules:
 
 - Edited title must pass the same validation as create: required after normalization, max 70 grapheme clusters, single-line.
+- Edited description must pass the same validation as create: required after normalization, max 1000 grapheme clusters, multiline allowed, more than 2 consecutive line breaks collapsed to 2.
 - Cannot edit past events.
 - Cannot edit canceled events.
 - Cannot reduce participant limit below current participant count.
@@ -519,14 +524,15 @@ Client-only enforcement is not sufficient.
 
 ### Security & Privacy
 
-Firestore rules must enforce:
+Firebase write paths must enforce:
 
 - Only authorized users can create events.
 - Only organizer can edit/cancel their event.
 - Non-organizer cannot change `organizerId`, `participantsCount`, or `status`.
 - Event creation must respect required fields and allowed status.
 - Server-side create/edit validation must enforce title: required after normalization, max 70 grapheme clusters, single-line.
-- Firestore rules must block direct client writes that bypass validated event create/edit paths.
+- Server-side create/edit validation must enforce description: required after normalization, max 1000 grapheme clusters, multiline allowed, more than 2 consecutive line breaks collapsed to 2.
+- Firestore rules must block direct client writes that bypass validated event create/edit paths; exact grapheme counting belongs in server-side validation.
 - Chat read/write is participant-only.
 - User cannot write messages as another sender.
 - User cannot directly inflate `participantsCount`.
@@ -543,7 +549,9 @@ Personal data exposed in event UI:
 Required tests:
 
 - Event creation validation.
-- Create/edit and rules tests for title validation: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
+- Create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
+- Create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
+- Rules tests that block direct client writes bypassing validated event create/edit paths.
 - 5-events-per-day limit.
 - Event list filters by city/date/level.
 - Join transaction does not exceed capacity.
@@ -604,7 +612,6 @@ Required tests:
 
 ### Open Questions
 
-- Exact max description length.
 - Exact list of supported cities/countries for chips.
 - Should canceled event chat become read-only or stay writable for participants?
 - Should users be allowed to leave after event start?

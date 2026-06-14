@@ -21,7 +21,7 @@ Date: 2026-06-14
 ## Phase 0: Product Decisions
 
 - [x] Confirm max title length: 70 user-perceived characters / grapheme clusters after trim and whitespace normalization; line breaks are not allowed.
-- [ ] Confirm max description length.
+- [x] Confirm max description length: 1000 user-perceived characters / grapheme clusters after trim and whitespace normalization; multiline allowed and more than 2 consecutive line breaks collapse to 2.
 - [ ] Confirm city chip source: static list, recent cities, popular cities, or remote config.
 - [ ] Decide whether participant can leave after event start.
 - [ ] Decide canceled event chat behavior: read-only or still writable.
@@ -220,7 +220,9 @@ Date: 2026-06-14
 - [ ] Add unit tests for date filter helper.
 - [ ] Add unit tests for level overlap helper.
 - [ ] Add repository tests for event creation validation.
-- [ ] Add create/edit and rules tests for title validation: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
+- [ ] Add create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
+- [ ] Add create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
+- [ ] Add rules tests that block direct client writes bypassing validated event create/edit paths.
 - [ ] Add tests for 5-events-per-day limit.
 - [ ] Add tests for city/date/level list filtering.
 - [ ] Add transaction tests for join capacity.
