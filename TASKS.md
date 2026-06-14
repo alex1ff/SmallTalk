@@ -22,7 +22,7 @@ Date: 2026-06-14
 
 - [x] Confirm max title length: 70 user-perceived characters / grapheme clusters after trim and whitespace normalization; line breaks are not allowed.
 - [x] Confirm max description length: 1000 user-perceived characters / grapheme clusters after trim and whitespace normalization; multiline allowed and more than 2 consecutive line breaks collapse to 2.
-- [ ] Confirm city chip source: static list, recent cities, popular cities, or remote config.
+- [x] Confirm city chip source: local recent city selections first, static curated popular city list second; Remote Config is not in MVP, and chips do not replace manual city selection.
 - [ ] Decide whether participant can leave after event start.
 - [ ] Decide canceled event chat behavior: read-only or still writable.
 - [ ] Decide deep link fallback when app is not installed.
@@ -32,6 +32,7 @@ Date: 2026-06-14
 ## Phase 1: Firebase Data Contract
 
 - [ ] Audit existing `users` location fields from registration/profile.
+- [ ] Define canonical city identity as `countryCode + cityKey`, with localized city names used only for display.
 - [ ] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
 - [ ] Define event statuses: `active`, `canceled`.
 - [ ] Add Firestore collection contract for `events/{eventId}`.
@@ -39,7 +40,7 @@ Date: 2026-06-14
 - [ ] Add Firestore collection contract for `eventChats/{chatId}`.
 - [ ] Add Firestore subcollection contract for `eventChats/{chatId}/messages/{messageId}`.
 - [ ] Add daily creation counter contract: `eventCreationCounters/{userId_yyyyMMdd}` or equivalent.
-- [ ] Define required compound indexes for city, status, start date, and level filters.
+- [ ] Define required compound index baseline: `status + countryCode + cityKey + startsAt`, with level filtering strategy handled separately.
 - [ ] Decide whether level filtering needs denormalized fields for Firestore queries.
 
 ## Phase 2: Firebase Write Logic
@@ -77,12 +78,14 @@ Date: 2026-06-14
 - [ ] Add event model.
 - [ ] Add event participant model.
 - [ ] Add event chat/message model or reuse existing chat model if compatible.
+- [ ] Add static curated city catalog with `countryCode`, `cityKey`, localized names, country/region display context, and priority.
 - [ ] Add event repository/service for list queries.
 - [ ] Add event repository/service for detail stream.
 - [ ] Add event repository/service for create, edit, cancel, join, and leave.
 - [ ] Add date filter helper for today, tomorrow, current week, and current month.
 - [ ] Add level overlap helper.
 - [ ] Add city resolution helper from user profile.
+- [ ] Add city chip source helper backed by local recent selections and a static curated popular city list.
 - [ ] Add fallback selected city state when profile location is missing.
 - [ ] Add user-facing error mapping for Firebase failures.
 
@@ -103,7 +106,9 @@ Date: 2026-06-14
 - [ ] Add city selector/state.
 - [ ] Show profile city by default when available.
 - [ ] Show location prompt when profile city is missing.
-- [ ] Add city chips in missing-location flow.
+- [ ] Add city chips in missing-location flow: recent selections first, static popular cities second.
+- [ ] Add manual city selection action because chips are shortcuts, not the full city set.
+- [ ] Allow chip/manual city selection to unlock the event list without saving profile location.
 - [ ] Add date filter chips: `Сегодня`, `Завтра`, `На этой неделе`, `В этом месяце`.
 - [ ] Add level filter chips: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
 - [ ] Build event card layout from design.
@@ -202,7 +207,7 @@ Date: 2026-06-14
 ## Phase 13: Analytics
 
 - [ ] Track event list opened.
-- [ ] Track city selected.
+- [ ] Track city selected with canonical payload: `countryCode`, `cityKey`, `selectionSource` (`profile|recent|static|manual`), without localized city name.
 - [ ] Track date filter selected.
 - [ ] Track level filter selected.
 - [ ] Track event detail opened.
@@ -225,6 +230,8 @@ Date: 2026-06-14
 - [ ] Add rules tests that block direct client writes bypassing validated event create/edit paths.
 - [ ] Add tests for 5-events-per-day limit.
 - [ ] Add tests for city/date/level list filtering.
+- [ ] Add city chip source tests for profile default, missing profile city, recent city ordering, static popular fallback, profile city absent from chips, and recent/static dedupe by `countryCode + cityKey`.
+- [ ] Add city query tests for canonical `countryCode + cityKey`.
 - [ ] Add transaction tests for join capacity.
 - [ ] Add transaction tests for duplicate join.
 - [ ] Add transaction tests for leave.

@@ -71,9 +71,14 @@ City behavior:
 - If the user has a saved registration/profile location, events are filtered by that city by default.
 - If location is missing, show a required location prompt before rendering the normal list.
 - Prompt options:
-  - quick city chips, for example popular/recent cities;
+  - local recent city chips from prior Events selections;
+  - static curated popular city chips bundled with the app;
   - action to fill/save profile location.
 - User can change the city from the Events screen.
+- Selecting a chip or manual city can be temporary and must unlock the event list without requiring the user to save profile location.
+- City chips are shortcuts, not the full allowed city set; user must be able to choose another city manually.
+- MVP must not depend on Firebase Remote Config for city chips.
+- City selection must use a canonical `countryCode + cityKey` pair for queries and analytics; localized city names are display-only.
 - MVP should filter by city, not by map radius.
 
 Event card must show:
@@ -397,6 +402,7 @@ Core flow:
   "levelMin": "B1",
   "levelMax": "C1",
   "countryCode": "RU",
+  "cityKey": "moscow",
   "city": "Москва",
   "locationName": "Starbucks, ул. Арбат, 5",
   "locationGeoPoint": null,
@@ -455,19 +461,53 @@ Use existing profile fields if already present. Required product meaning:
 ```json
 {
   "countryCode": "RU",
+  "cityKey": "moscow",
   "city": "Москва"
 }
 ```
+
+#### City chip source
+
+MVP city chips come from two local sources:
+
+- Recent city selections stored locally on device for the Events screen.
+- A static curated popular city list bundled with the app.
+
+Static city records must include:
+
+```json
+{
+  "countryCode": "RU",
+  "cityKey": "moscow",
+  "nameRu": "Москва",
+  "nameEn": "Moscow",
+  "displayContext": "Россия",
+  "priority": 10
+}
+```
+
+Rules:
+
+- If profile location has `countryCode + cityKey`, it is the default city.
+- If profile location is missing city, show recent city chips first, then static popular city chips.
+- Selecting a chip or manual city can be temporary for Events discovery; the UI must also offer an action to save/fill profile location.
+- If the user's profile city is not in chips, still use it as the selected city.
+- If no events exist for selected city, show empty state, not another location prompt.
+- Recent and static city chips must dedupe by `countryCode + cityKey`.
+- Cities with the same display name in different countries or regions must include country/region context in UI.
+- Remote Config is not part of MVP; keep the city chip source behind a replaceable helper/service so Remote Config can be added later without changing UI contracts.
 
 ### Query Requirements
 
 Event list query must support:
 
 - `status == active`.
-- `city == selectedCity`.
+- `countryCode == selectedCountryCode`.
+- `cityKey == selectedCityKey`.
 - `startsAt >= now`.
 - Date range filter for today/tomorrow/week/month.
 - Level overlap filter.
+- Required index baseline: `status`, `countryCode`, `cityKey`, `startsAt`.
 
 Level overlap rule:
 
@@ -552,6 +592,8 @@ Required tests:
 - Create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
 - Create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
 - Rules tests that block direct client writes bypassing validated event create/edit paths.
+- City chip source tests for profile default, missing profile city, recent city ordering, static popular city fallback, profile city not present in chips, and recent/static dedupe by `countryCode + cityKey`.
+- City query tests must use canonical `countryCode + cityKey`, not localized display names.
 - 5-events-per-day limit.
 - Event list filters by city/date/level.
 - Join transaction does not exceed capacity.
@@ -590,6 +632,7 @@ Required tests:
 - Read-only canceled chat decision.
 - Event history in profile.
 - More robust city picker.
+- Optional Remote Config-backed city chip source.
 
 #### v2.0
 
@@ -612,7 +655,7 @@ Required tests:
 
 ### Open Questions
 
-- Exact list of supported cities/countries for chips.
+- Exact static popular chip list and country coverage.
 - Should canceled event chat become read-only or stay writable for participants?
 - Should users be allowed to leave after event start?
 - Should organizer be able to delete event draft permanently, or only cancel published events?
