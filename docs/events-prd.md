@@ -137,7 +137,10 @@ Canceled event behavior:
 - Canceled events do not appear in the main active list.
 - Direct link to a canceled event opens detail with canceled status.
 - Join is disabled.
-- Chat can remain readable for existing participants, but sending messages after cancellation is TBD.
+- Event chat becomes read-only after cancellation.
+- Chat read access after cancellation remains available to the organizer and users who were active participants at cancellation time.
+- Users who left before cancellation do not regain chat access.
+- Sending messages after cancellation is blocked for everyone, including organizer.
 
 #### Create Event
 
@@ -212,9 +215,11 @@ Only organizer can cancel.
 Required behavior:
 
 - Show confirmation before canceling.
-- Set event status to `canceled`.
+- Atomically set event status to `canceled`, set `canceledAt`, and preserve the event chat read-access snapshot for organizer and users active at cancellation time.
 - Hide from active list.
 - Disable join.
+- Keep event chat readable for organizer and users who were active participants at cancellation time.
+- Disable event chat writes for everyone after cancellation.
 - Keep event accessible through direct link/history where applicable.
 - MVP has no push notifications.
 
@@ -223,11 +228,12 @@ Required behavior:
 Chat rules:
 
 - One group chat per event.
-- Chat is accessible only after user joins the event.
+- While event is active, chat is accessible only after user joins the event.
 - Organizer is a member by default.
 - New participants can read previous messages.
-- Users who leave lose read/write access.
-- Non-participants cannot read or write messages.
+- While event is active, users who leave lose read/write access.
+- While event is active, non-participants cannot read or write messages.
+- If event status becomes `canceled`, eligible chat readers keep read-only access, a read-only status/banner is shown, and message composer/send is disabled.
 
 Entry points:
 
@@ -332,6 +338,7 @@ Acceptance criteria:
 - Canceled event disappears from active list.
 - Direct link shows canceled state.
 - Join is disabled.
+- Event chat becomes read-only for organizer and users who were active participants at cancellation time.
 
 #### Story 7: Use Group Chat
 
@@ -343,6 +350,7 @@ Acceptance criteria:
 - Messages are visible to event participants.
 - Non-participants cannot read or write messages.
 - User who leaves loses access.
+- After event cancellation, eligible participants and organizer can read existing messages but nobody can send new messages.
 
 #### Story 8: Share Event
 
@@ -391,7 +399,7 @@ Core flow:
 3. App queries active future events by city, date range, and optional level.
 4. User opens detail or creates event.
 5. Join/leave/edit/cancel writes go through transaction-safe Firebase logic.
-6. Event chat reads/writes are protected by participant membership.
+6. Event chat reads/writes are protected by participant membership; canceled event chats keep a read-only access snapshot for organizer and users active at cancellation time.
 
 ### Suggested Firestore Model
 
@@ -440,11 +448,13 @@ Core flow:
 ```json
 {
   "eventId": "eventId",
-  "participantIds": ["uid1", "uid2"],
+  "readAccessUserIds": ["uid1", "uid2"],
   "createdAt": "timestamp",
   "updatedAt": "timestamp"
 }
 ```
+
+`readAccessUserIds` is the chat read-access list. While the event is active, it stays synced with active participants plus organizer. When the event is canceled, this list is preserved as the read-only snapshot for organizer and users active at cancellation time. Users who left before cancellation remain excluded, and no new readers are added after cancellation.
 
 #### `eventChats/{chatId}/messages/{messageId}`
 
@@ -584,7 +594,11 @@ Firebase write paths must enforce:
 - Server-side create/edit validation must enforce description: required after normalization, max 1000 grapheme clusters, multiline allowed, more than 2 consecutive line breaks collapsed to 2.
 - Firestore rules must block direct client writes that bypass validated event create/edit paths; exact grapheme counting belongs in server-side validation.
 - Direct leave or membership writes must be blocked at or after `startsAt` using trusted request/server time.
-- Chat read/write is participant-only.
+- Active event chat read/write is participant-only.
+- Canceled event chat reads are allowed only for organizer and the preserved read-access snapshot of users active at cancellation time.
+- Canceled event chat reads are denied for nonparticipants and users who left before cancellation.
+- Chat writes require event status `active`; canceled event chats are read-only for eligible existing participants and organizer.
+- Direct client writes to `eventChats/{chatId}` metadata, including `readAccessUserIds`, are blocked.
 - User cannot write messages as another sender.
 - User cannot directly inflate `participantsCount`.
 
@@ -616,6 +630,10 @@ Required tests:
 - Non-organizer cannot edit/cancel.
 - Chat access only for participants.
 - User loses chat access after leaving.
+- Canceled event chat remains readable for organizer and users who were active participants at cancellation time.
+- Users who left before cancellation cannot read canceled event chat.
+- Canceled event chat does not gain new readers after cancellation.
+- Canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
 - Deep link opens event detail.
 
 ## 5. Risks & Roadmap
@@ -641,7 +659,6 @@ Required tests:
 
 - Better deep link fallback when app is not installed.
 - Report event/message.
-- Read-only canceled chat decision.
 - Event history in profile.
 - More robust city picker.
 - Optional Remote Config-backed city chip source.
@@ -668,5 +685,4 @@ Required tests:
 ### Open Questions
 
 - Exact static popular chip list and country coverage.
-- Should canceled event chat become read-only or stay writable for participants?
 - Should organizer be able to delete event draft permanently, or only cancel published events?

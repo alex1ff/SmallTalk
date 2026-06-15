@@ -12,7 +12,7 @@ Date: 2026-06-14
 - User can create up to 5 events per calendar day.
 - User can join events without organizer approval and leave only before event `startsAt`.
 - Organizer can edit and cancel own events.
-- Event chat is available only to active participants.
+- Event chat is available to active participants; canceled event chats remain read-only for organizer and participants active at cancellation time.
 - Event can be shared through native share sheet with deep link.
 - Firebase rules prevent unauthorized reads/writes.
 - `flutter analyze` passes.
@@ -24,7 +24,7 @@ Date: 2026-06-14
 - [x] Confirm max description length: 1000 user-perceived characters / grapheme clusters after trim and whitespace normalization; multiline allowed and more than 2 consecutive line breaks collapse to 2.
 - [x] Confirm city chip source: local recent city selections first, static curated popular city list second; Remote Config is not in MVP, and chips do not replace manual city selection.
 - [x] Decide whether participant can leave after event start: no; leave is allowed only before `startsAt`, using trusted server/request time.
-- [ ] Decide canceled event chat behavior: read-only or still writable.
+- [x] Decide canceled event chat behavior: read-only for organizer and users active at cancellation time; writes blocked for everyone.
 - [ ] Decide deep link fallback when app is not installed.
 - [ ] Confirm whether event language list reuses existing app language catalog.
 - [ ] Confirm whether organizer can permanently delete drafts or only cancel published events.
@@ -38,6 +38,7 @@ Date: 2026-06-14
 - [ ] Add Firestore collection contract for `events/{eventId}`.
 - [ ] Add Firestore subcollection contract for `events/{eventId}/participants/{userId}`.
 - [ ] Add Firestore collection contract for `eventChats/{chatId}`.
+- [ ] Define `eventChats.readAccessUserIds` as the chat read-access list that freezes on cancel with organizer and active participants, excludes users who left before cancel, and does not gain new readers after cancel.
 - [ ] Add Firestore subcollection contract for `eventChats/{chatId}/messages/{messageId}`.
 - [ ] Add daily creation counter contract: `eventCreationCounters/{userId_yyyyMMdd}` or equivalent.
 - [ ] Define required compound index baseline: `status + countryCode + cityKey + startsAt`, with level filtering strategy handled separately.
@@ -60,6 +61,8 @@ Date: 2026-06-14
 - [ ] Implement organizer-only event edit.
 - [ ] Block capacity reduction below active participant count.
 - [ ] Implement organizer-only event cancel.
+- [ ] On cancel, atomically set `status = canceled`, set `canceledAt`, and preserve event chat read-access snapshot for organizer and users active at cancellation time.
+- [ ] Block event chat writes after cancellation.
 
 ## Phase 3: Firebase Security Rules
 
@@ -69,9 +72,13 @@ Date: 2026-06-14
 - [ ] Allow only organizer to cancel own event.
 - [ ] Prevent client-side tampering with `organizerId`, `participantsCount`, and protected status fields.
 - [ ] Allow participant reads only where required by UI.
-- [ ] Allow event chat reads only for active participants.
-- [ ] Allow event chat writes only for active participants.
+- [ ] Allow active event chat reads only for active participants.
+- [ ] Allow canceled event chat reads only for organizer and participants active at cancellation time.
+- [ ] Deny canceled event chat reads for nonparticipants and users who left before cancellation.
+- [ ] Allow event chat writes only for active participants while event status is `active`.
+- [ ] Require event status `active` for event chat writes.
 - [ ] Block direct leave/membership writes at or after `startsAt` using trusted request/server time.
+- [ ] Block direct client writes to `eventChats/{chatId}` metadata, especially `readAccessUserIds`.
 - [ ] Prevent users from sending chat messages as another user.
 - [ ] Add rules tests for create, edit, cancel, join, leave, and chat access.
 
@@ -196,7 +203,9 @@ Date: 2026-06-14
 - [ ] Send event chat messages.
 - [ ] Show sender name/avatar.
 - [ ] Prevent read/write after participant leaves.
-- [ ] Handle canceled event chat behavior based on Phase 0 decision.
+- [ ] Show canceled event chats as read-only for eligible organizer/participants.
+- [ ] Show read-only status/banner for canceled event chats.
+- [ ] Hide or disable message composer/send for canceled event chats.
 
 ## Phase 12: Sharing And Deep Links
 
@@ -243,7 +252,12 @@ Date: 2026-06-14
 - [ ] Add tests that organizer cannot leave as participant.
 - [ ] Add tests that organizer can edit/cancel.
 - [ ] Add tests that non-organizer cannot edit/cancel.
-- [ ] Add rules tests for participant-only chat access.
+- [ ] Add rules tests for participant-only chat access on active events.
+- [ ] Add rules tests that canceled event chat stays readable for organizer and active participants at cancellation time.
+- [ ] Add rules tests that canceled event chat denies reads for nonparticipants and users who left before cancellation.
+- [ ] Add rules tests that canceled event chat does not gain new readers after cancellation.
+- [ ] Add rules tests that canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
+- [ ] Add widget tests for canceled chat read-only banner/status and hidden or disabled composer.
 - [ ] Add widget tests for list empty/loading/error states.
 - [ ] Add widget tests for create form validation.
 - [ ] Add widget tests for detail CTA states.
