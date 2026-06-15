@@ -25,7 +25,7 @@ Date: 2026-06-14
 - [x] Confirm city chip source: local recent city selections first, static curated popular city list second; Remote Config is not in MVP, and chips do not replace manual city selection.
 - [x] Decide whether participant can leave after event start: no; leave is allowed only before `startsAt`, using trusted server/request time.
 - [x] Decide canceled event chat behavior: read-only for organizer and users active at cancellation time; writes blocked for everyone.
-- [ ] Decide deep link fallback when app is not installed.
+- [x] Decide deep link fallback when app is not installed: `https://smalltalk-2109b.firebaseapp.com/events/{eventId}` HTTPS App Link/Universal Link with simple Firebase Hosting install landing; no rich web preview, deferred deep link, or Firebase Dynamic Links in MVP.
 - [ ] Confirm whether event language list reuses existing app language catalog.
 - [ ] Confirm whether organizer can permanently delete drafts or only cancel published events.
 
@@ -214,8 +214,18 @@ Date: 2026-06-14
 - [ ] Share title, date/time, place, and link.
 - [ ] Add route handling for event deep links.
 - [ ] Open event detail from link.
-- [ ] Handle missing/deleted/canceled event link states.
-- [ ] Implement app-not-installed fallback if included in MVP decision.
+- [ ] Handle missing/deleted/canceled/past/full event link states without auto-join.
+- [ ] Preserve target `eventId` through auth redirect before opening event detail.
+- [ ] Configure HTTPS App Links / Universal Links for `https://smalltalk-2109b.firebaseapp.com/events/{eventId}`.
+- [ ] Add Android App Links config: `/.well-known/assetlinks.json` and Android manifest intent filter with `autoVerify`.
+- [ ] Add iOS Universal Links config: `/.well-known/apple-app-site-association` and Associated Domains entitlement.
+- [ ] Add Firebase Hosting fallback landing for `/events/{eventId}` when app is not installed or browser handles the link.
+- [ ] Add Firebase Hosting rewrites/fallback for `/events/**`.
+- [ ] Add App Store and Google Play actions to fallback landing.
+- [ ] Confirm final App Store and Google Play URLs for fallback landing.
+- [ ] Ensure fallback landing does not auto-redirect to stores.
+- [ ] Ensure fallback landing does not read Firestore, render event-specific OG/meta tags, or expose participant lists, chat data, or private event metadata.
+- [ ] Ensure Firebase Hosting config does not use Firebase Dynamic Links or `dynamicLinks: true`.
 
 ## Phase 13: Analytics
 
@@ -262,6 +272,10 @@ Date: 2026-06-14
 - [ ] Add widget tests for create form validation.
 - [ ] Add widget tests for detail CTA states.
 - [ ] Add deep link test for opening event detail.
+- [ ] Add deep link test for preserving target `eventId` through auth redirect.
+- [ ] Add deep link tests for missing, deleted, canceled, past, and full event link states without auto-join.
+- [ ] Add fallback landing tests for no auto-redirect, no Firestore reads, no event-specific OG/meta tags, no private event/participant/chat data, and generic missing/deleted response.
+- [ ] Add hosting verification for `/.well-known/assetlinks.json`, `/.well-known/apple-app-site-association`, `/events/**` fallback, and absence of Dynamic Links config.
 - [ ] Run `flutter analyze`.
 - [ ] Run relevant `flutter test`.
 
@@ -276,11 +290,15 @@ Date: 2026-06-14
 - [ ] Smoke test join, leave, full event.
 - [ ] Smoke test participant-only chat.
 - [ ] Smoke test share link.
+- [ ] Smoke test installed app opens shared event detail.
+- [ ] Smoke test unauthenticated deep link preserves target `eventId` through login.
+- [ ] Smoke test no-app/browser opens install landing.
+- [ ] Verify production `assetlinks.json` and `apple-app-site-association` are reachable without redirects and have correct content type and app identifiers.
 - [ ] Confirm no regression in existing bottom navigation.
 
 ## Post-MVP Backlog
 
-- [ ] Deep link fallback when app is not installed.
+- [ ] Rich web event preview, deferred deep linking, and optional vendor attribution.
 - [ ] Report event.
 - [ ] Report chat message.
 - [ ] Event history in profile.

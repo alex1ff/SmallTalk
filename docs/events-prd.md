@@ -251,7 +251,17 @@ Required behavior:
 
 - Detail screen share button opens native share sheet.
 - Shared payload includes event title, date/time, place, and deep link.
-- Deep link opens event detail.
+- Deep link canonical URL is `https://smalltalk-2109b.firebaseapp.com/events/{eventId}`.
+- Deep link is an HTTPS App Link/Universal Link using the `/events/{eventId}` path.
+- If the app is installed and link association works, the link opens event detail.
+- If the app is not installed or the link opens in browser, Firebase Hosting serves a simple fallback landing page.
+- Fallback landing shows SmallTalk branding, a short "event is available in the app" message, and App Store / Google Play actions.
+- Fallback landing shows explicit store buttons and must not auto-redirect to a store.
+- Fallback landing must not read Firestore or render event-specific Open Graph/meta tags in MVP.
+- Fallback landing must not expose participant lists, chat data, or private event metadata.
+- MVP does not include full web event preview, deferred deep linking, or Firebase Dynamic Links.
+- Missing or deleted event links opened in app show an unavailable/not-found state.
+- Missing or deleted event links opened in browser still show the generic install landing and must not reveal whether the event exists.
 
 Example payload:
 
@@ -261,7 +271,7 @@ Example payload:
 Присоединиться: {eventDeepLink}
 ```
 
-Fallback if app is not installed is TBD.
+Fallback keeps the same `/events/{eventId}` URL so the shared link remains stable.
 
 ### User Stories
 
@@ -361,6 +371,10 @@ Acceptance criteria:
 - Share button opens native share sheet.
 - Shared text includes event title, time, place, and link.
 - Link routes to event detail when opened in app.
+- Link opens a simple install landing page when opened without the app.
+- If user is not authenticated in app, route preserves `eventId` through auth and opens event detail after login.
+- Missing or deleted links show an unavailable/not-found state without offering join.
+- Canceled, past, or full event links open the relevant event detail state without auto-joining.
 
 ### Non-Goals
 
@@ -390,7 +404,7 @@ Not applicable. This feature does not require AI behavior.
 - Auth: Firebase Auth.
 - Database: Cloud Firestore.
 - Optional later: Firebase Storage for event images.
-- Deep links: Firebase/App Links setup TBD.
+- Deep links: HTTPS App Links / Universal Links for `https://smalltalk-2109b.firebaseapp.com/events/{eventId}` with Firebase Hosting fallback.
 
 Core flow:
 
@@ -635,6 +649,9 @@ Required tests:
 - Canceled event chat does not gain new readers after cancellation.
 - Canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
 - Deep link opens event detail.
+- Deep link preserves target `eventId` through auth login redirect.
+- Deep link handles missing, deleted, canceled, past, and full event states without auto-joining.
+- Browser fallback opens simple install landing without exposing private event data.
 
 ## 5. Risks & Roadmap
 
@@ -653,11 +670,12 @@ Required tests:
 - Leave event.
 - Participant-only group chat.
 - Native share sheet.
+- HTTPS App Link / Universal Link fallback landing for shared event links.
 - Firebase rules and transaction-safe writes.
 
 #### v1.1
 
-- Better deep link fallback when app is not installed.
+- Rich web event preview and deferred deep linking.
 - Report event/message.
 - Event history in profile.
 - More robust city picker.
