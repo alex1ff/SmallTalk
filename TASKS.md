@@ -47,8 +47,8 @@ Date: 2026-06-14
 - [x] Define `eventChats.readAccessUserIds` as the chat read-access list that freezes on cancel with organizer and active participants, excludes users who left before cancel, and does not gain new readers after cancel.
 - [x] Add Firestore subcollection contract for `eventChats/{chatId}/messages/{messageId}`.
 - [x] Add daily creation counter contract: `eventCreationCounters/{userId}/days/{yyyyMMdd}` plus `eventCreateRequests/{userId}/requests/{createRequestId}`.
-- [ ] Define required compound index baseline: `status ASC + countryCode ASC + cityKey ASC + startsAt ASC`, with MVP level filtering applied client-side unless denormalized fields are later added.
-- [ ] Decide whether level filtering needs denormalized fields for Firestore queries.
+- [x] Define required compound index baseline: `status ASC + countryCode ASC + cityKey ASC + startsAt ASC`, with MVP level filtering applied client-side unless denormalized fields are later added.
+- [x] Decide whether level filtering needs denormalized fields for Firestore queries: not in MVP; use client-side level overlap filtering after the canonical city/date Firestore query.
 
 ## Phase 2: Firebase Write Logic
 
@@ -134,6 +134,12 @@ Date: 2026-06-14
 - [ ] Add `users.profileCity` model/struct with `countryCode`, `cityKey`, catalog-derived localized display fields, catalog-derived region fields, `catalogVersion`, and server-time `updatedAt`.
 - [ ] Add static curated city catalog with `countryCode`, `cityKey`, localized names, region metadata required for duplicate-name disambiguation, IANA `timeZoneId`, aliases/transliterations, country/region display context, and priority.
 - [ ] Add event repository/service for list queries.
+- [ ] Add the `events` composite index to `firebase/firestore.indexes.json`: `status ASC`, `countryCode ASC`, `cityKey ASC`, `startsAt ASC`.
+- [ ] Implement event list query exactly as `status == active`, `countryCode == selectedCountryCode`, `cityKey == selectedCityKey`, `startsAt >= lowerBoundUtc`, `startsAt < upperBoundUtc`, `orderBy startsAt ASC`.
+- [ ] Compute event list date bounds in the selected city `timeZoneId`, convert bounds to UTC timestamps, and use an exclusive upper bound.
+- [ ] Apply level overlap filtering client-side after raw Firestore pages are fetched.
+- [ ] Continue raw Firestore pagination until enough visible level-matching events are collected or the query is exhausted.
+- [ ] Advance pagination cursors by the last raw Firestore document, not the last visible filtered event.
 - [ ] Add event repository/service for detail stream.
 - [ ] Add event repository/service for create, edit, cancel, join, and leave.
 - [ ] Add date filter helper for today, tomorrow, current week, and current month.
@@ -340,12 +346,19 @@ Date: 2026-06-14
 - [ ] Add language catalog sync tests that backend allowlist matches the app catalog and `alternateCodes` resolve uniquely.
 - [ ] Add language display tests for current locale name, denormalized fallback names, unknown legacy code fallback, and missing catalog load fallback.
 - [ ] Add rules tests that block direct client writes bypassing validated event create/edit paths.
+- [ ] Add index contract test or CI check proving `firebase/firestore.indexes.json` contains the `events` collection index with `status ASC`, `countryCode ASC`, `cityKey ASC`, and `startsAt ASC`.
 - [ ] Add rules/model tests that reject `draft`, `past`, `completed`, `deleted`, `archived`, `cancelled`, and unknown values as event statuses in MVP.
 - [ ] Add status lifecycle tests for `active` with `canceledAt = null`, only `active -> canceled`, terminal canceled without reopen/restore, and `canceledAt` set from trusted server/request time.
 - [ ] Add rules tests that deny organizer/client hard delete of active and canceled events.
 - [ ] Add rules tests that deny client hard delete of event chat documents.
 - [ ] Add rules tests denying direct client reads, creates, updates, and deletes of `eventCreationCounters` and `eventCreateRequests`.
 - [ ] Add tests for city/date/level list filtering.
+- [ ] Add event list query tests for active-only discovery, canceled hidden from list, past hidden by `startsAt`, date lower/upper UTC bounds, selected city timezone boundary conversion, and exclusive upper bound.
+- [ ] Add pagination tests proving client-side level filtering can fetch additional raw pages until enough visible events are collected or the source is exhausted.
+- [ ] Add pagination cursor tests proving the cursor advances by the last raw Firestore document when level filtering hides trailing raw results.
+- [ ] Add same-`startsAt` ordering tests documenting that MVP has no product-visible tie guarantee unless `__name__ ASC` is added later.
+- [ ] Add repository/query-shape tests that event list queries include `status == active`, canonical city equality filters, compatible `startsAt` bounds, and `orderBy startsAt ASC`.
+- [ ] Add rules tests for enforceable event list constraints only: active-only list reads, reasonable query metadata such as `limit/orderBy` if implemented, and separate direct detail `get` behavior.
 - [ ] Add city chip source tests for profile default, missing profile city, recent city ordering, static popular fallback, profile city absent from chips, and recent/static dedupe by `countryCode + cityKey`.
 - [ ] Add city catalog sync tests that backend allowlist/shared catalog is versioned and generated from the same source as the full app canonical city catalog.
 - [ ] Add city query tests for canonical `countryCode + cityKey`.

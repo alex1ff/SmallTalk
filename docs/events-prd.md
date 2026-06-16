@@ -929,11 +929,60 @@ Event list query must support:
 - Level overlap filter.
 - Required composite index in `firebase/firestore.indexes.json`: `status ASC`, `countryCode ASC`, `cityKey ASC`, `startsAt ASC`.
 
+Firestore query shape:
+
+```text
+collection: events
+where status == "active"
+where countryCode == selectedCountryCode
+where cityKey == selectedCityKey
+where startsAt >= lowerBoundUtc
+where startsAt < upperBoundUtc
+orderBy startsAt ASC
+limit rawPageSize
+```
+
+Index contract:
+
+- MVP requires exactly this baseline composite index for the canonical event list query: `events` collection, query scope `COLLECTION`, `status ASC`, `countryCode ASC`, `cityKey ASC`, `startsAt ASC`.
+- `status`, `countryCode`, and `cityKey` are equality filters; their field order in the composite index has no product meaning, but the checked-in index should use the order above for consistency.
+- `startsAt` is the only range/order field in the MVP event list query and must be stored as a Firestore timestamp.
+- Because the query uses a range on `startsAt`, the first explicit order is `orderBy startsAt ASC`.
+- Do not query event discovery with `status != canceled`; use `status == active`.
+- Do not add a `startsAt DESC` index unless a future UI adds descending sort.
+- Do not include `levelMin` or `levelMax` in the baseline index in MVP.
+- If future pagination needs a deterministic same-`startsAt` tie breaker, add `orderBy __name__ ASC` and extend the composite index with `__name__ ASC` in the same change.
+
+Date bound rules:
+
+- Date filter boundaries are computed in the selected event city's `timeZoneId`, then converted to UTC Firestore timestamps for `lowerBoundUtc` and `upperBoundUtc`.
+- `lowerBoundUtc` is `max(clientKnownNowUtc, selectedDateRangeStartUtc)` for query efficiency and UX. Client time is not trusted for security-critical write checks; server-side create/join/leave/edit validation remains authoritative.
+- `upperBoundUtc` is exclusive.
+- Past events are hidden from discovery by the `startsAt >= lowerBoundUtc` query bound, not by a separate event status.
+- Canceled events are hidden from discovery by `status == active`, while direct detail links may still load canceled event documents.
+
+Pagination and client-side level filtering:
+
+- MVP applies level overlap filtering client-side after fetching raw Firestore pages from the canonical city/date query.
+- `rawPageSize` is the Firestore fetch size before level filtering; visible page size may be smaller after level filtering.
+- If level filtering removes too many raw results, the repository should continue fetching raw pages until it has enough visible events for the UI page or the Firestore query is exhausted.
+- Pagination cursors advance by the last raw Firestore document read, not by the last visible level-matching event.
+- Same-`startsAt` ordering is acceptable without a product-visible tie guarantee in MVP; if this becomes a UX issue, add the `__name__ ASC` tie-breaker and index extension together.
+
+Security rules for list versus get:
+
+- Event list reads should expose only documents whose stored fields are safe for public authorized discovery, especially `status == active` and non-private event fields.
+- Repository/query tests, not Firestore rules alone, must prove the exact city/date query shape: canonical city equality filters, `startsAt` lower/upper bounds, and `orderBy startsAt ASC`.
+- Firestore rules may enforce document predicates such as active-only list reads and query metadata such as reasonable `limit`/`orderBy` when feasible, but MVP must not rely on rules to prove arbitrary flat-collection `where countryCode == ...`, `where cityKey == ...`, or selected date upper-bound constraints.
+- Rules are not filters; any list rule must be compatible with the actual query or the whole list query fails.
+- Direct event detail `get` reads are a separate access path and must support valid direct links for active, canceled, past, full, missing, or admin-deleted event states as defined by deep-link behavior.
+- Security rules must not rely on client-side level filtering for authorization.
+
 Level overlap rule:
 
 - Event is visible for selected level if `rank(event.levelMin) <= rank(selectedLevel) <= rank(event.levelMax)` using the canonical level rank map.
 - If no level is selected, show all levels in selected city/date range.
-- MVP must not add unsupported Firestore range filters on both `levelMin` and `levelMax`.
+- MVP must not query Firestore with level overlap filters because doing so adds ordering/index and pagination complexity outside the baseline list query.
 - Unless the separate level denormalization task changes the strategy, apply level overlap filtering client-side after the canonical city/date query.
 
 ### Analytics City Payload Requirements
