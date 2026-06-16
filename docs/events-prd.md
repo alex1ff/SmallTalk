@@ -46,6 +46,7 @@ MVP includes:
 - Leave event.
 - Organizer edit event.
 - Organizer cancel event.
+- Local-only create form draft/discard before submit.
 - Participant-only group chat.
 - Event sharing through native share sheet.
 - Limit: one user can create up to 5 events per calendar day.
@@ -148,6 +149,14 @@ Canceled event behavior:
 
 Any authorized user can create an event.
 
+Draft behavior:
+
+- MVP has no server-side event drafts and no `draft` Firestore status.
+- A partially filled create form is local UI state only.
+- Closing the create form before submit discards local input and does not delete anything on the server, because no event, participant, or chat document has been created.
+- If the form has unsaved user input, show a discard confirmation before leaving the screen.
+- Local form state is not guaranteed to survive app restart, logout, or reinstall in MVP.
+
 Required fields:
 
 - Title.
@@ -185,10 +194,12 @@ Validation:
 
 After successful creation:
 
+- Event creation must be atomic: the event document, organizer participant membership, and event chat reservation are created together, or none are created.
 - Creator becomes organizer.
 - Organizer is added as event participant.
 - Event group chat is created or reserved with `chatId = eventId`.
 - App opens the created event detail.
+- After successful submit, the event is considered `active` and cannot be permanently deleted by the organizer.
 
 #### Edit Event
 
@@ -220,10 +231,13 @@ Rules:
 
 Only organizer can cancel.
 
+Active and canceled events cannot be permanently deleted by the organizer in MVP. The organizer can only cancel an active event, which keeps the event record available for direct links, history, chat read snapshots, support, and debugging.
+
 Required behavior:
 
 - Show confirmation before canceling.
 - Atomically set event status to `canceled`, set `canceledAt`, and preserve the event chat read-access snapshot for organizer and users active at cancellation time.
+- Treat repeated cancel attempts as idempotent success or return a clear already-canceled error without changing the existing cancellation snapshot.
 - Hide from active list.
 - Disable join.
 - Keep event chat readable for organizer and users who were active participants at cancellation time.
@@ -268,8 +282,9 @@ Required behavior:
 - Fallback landing must not read Firestore or render event-specific Open Graph/meta tags in MVP.
 - Fallback landing must not expose participant lists, chat data, or private event metadata.
 - MVP does not include full web event preview, deferred deep linking, or Firebase Dynamic Links.
-- Missing or deleted event links opened in app show an unavailable/not-found state.
-- Missing or deleted event links opened in browser still show the generic install landing and must not reveal whether the event exists.
+- Missing or admin-deleted event links opened in app show an unavailable/not-found state.
+- Missing or admin-deleted event links opened in browser still show the generic install landing and must not reveal whether the event exists.
+- In this context, `admin-deleted` means removal by trusted admin/ops/moderation or data-retention tooling outside MVP, not organizer hard delete.
 
 Example payload:
 
@@ -381,7 +396,7 @@ Acceptance criteria:
 - Link routes to event detail when opened in app.
 - Link opens a simple install landing page when opened without the app.
 - If user is not authenticated in app, route preserves `eventId` through auth and opens event detail after login.
-- Missing or deleted links show an unavailable/not-found state without offering join.
+- Missing or admin-deleted links show an unavailable/not-found state without offering join.
 - Canceled, past, or full event links open the relevant event detail state without auto-joining.
 
 ### Non-Goals
@@ -389,6 +404,9 @@ Acceptance criteria:
 Not included in MVP:
 
 - Online events.
+- Server-side event drafts.
+- Organizer permanent delete for active or canceled events.
+- Trusted admin/ops/moderation deletion or data-retention tooling.
 - Push notifications.
 - Payments/tickets.
 - Waitlist.
@@ -420,8 +438,10 @@ Core flow:
 2. App resolves selected city from profile or local temporary city selection.
 3. App queries active future events by city, date range, and optional level.
 4. User opens detail or creates event.
-5. Join/leave/edit/cancel writes go through transaction-safe Firebase logic.
-6. Event chat reads/writes are protected by participant membership; canceled event chats keep a read-only access snapshot for organizer and users active at cancellation time.
+5. Create form state remains local until submit; there are no server-side draft event documents in MVP.
+6. Successful submit atomically creates an active event, organizer participant membership, and event chat reservation.
+7. Join/leave/edit/cancel writes go through transaction-safe Firebase logic.
+8. Event chat reads/writes are protected by participant membership; canceled event chats keep a read-only access snapshot for organizer and users active at cancellation time.
 
 ### Suggested Firestore Model
 
@@ -452,6 +472,16 @@ Core flow:
   "canceledAt": null
 }
 ```
+
+Lifecycle rules:
+
+- Allowed event statuses in MVP are only `active` and `canceled`.
+- `draft` is not a Firestore status in MVP.
+- Before submit, a user's create form is local UI state and has no `eventId`, `chatId`, participant document, or indexable event record.
+- Closing or abandoning the create form before submit discards local state only.
+- After submit succeeds, the event is created as `active`.
+- Organizer cannot hard-delete active or canceled events in MVP; cancel is the only organizer removal action.
+- Canceled event and chat records are retained for direct links, history, read-only chat access snapshots, support, and debugging.
 
 Language rules:
 
@@ -618,14 +648,28 @@ Implementation options:
 
 Client-only enforcement is not sufficient.
 
+#### Create atomicity and drafts
+
+Requirement:
+
+- MVP must not create server-side draft events.
+- Event creation must atomically create the active event, organizer participant membership, and event chat reservation.
+- Failed or interrupted create attempts must not leave partially created event/chat/participant documents.
+- Repeated submit taps must be blocked in UI.
+- Event create requests must include a client-generated `createRequestId` or equivalent idempotency key so backend retries can reuse or reject duplicate create attempts instead of creating duplicate events.
+
 ### Security & Privacy
 
 Firebase write paths must enforce:
 
 - Only authorized users can create events.
 - Only organizer can edit/cancel their event.
+- Organizers and ordinary clients cannot permanently delete active or canceled event documents.
+- Trusted admin/ops/moderation deletion and data-retention tooling are outside MVP.
+- Clients cannot hard-delete event chat documents; participant membership deletion is allowed only if the chosen validated leave implementation uses deletion before `startsAt`.
 - Non-organizer cannot change `organizerId`, `participantsCount`, or `status`.
 - Event creation must respect required fields and allowed status.
+- Event creation must not create `draft` status documents.
 - Server-side create/edit validation must enforce title: required after normalization, max 70 grapheme clusters, single-line.
 - Server-side create/edit validation must enforce description: required after normalization, max 1000 grapheme clusters, multiline allowed, more than 2 consecutive line breaks collapsed to 2.
 - Server-side create/edit validation must enforce that `languageCode` is a supported primary language code, or normalize a known alternate code before persisting.
@@ -652,6 +696,9 @@ Personal data exposed in event UI:
 Required tests:
 
 - Event creation validation.
+- Create/discard tests proving leaving the create form before submit creates no server event, participant, or chat documents.
+- Create atomicity tests proving failed/interrupted creates do not leave partial event, participant, or chat documents.
+- Submit double-tap/retry tests proving duplicate event creation is blocked or idempotently handled through `createRequestId` or equivalent.
 - Create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
 - Create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
 - Rules tests that block direct client writes bypassing validated event create/edit paths.
@@ -667,6 +714,8 @@ Required tests:
 - Organizer cannot leave as participant.
 - Organizer can edit/cancel.
 - Non-organizer cannot edit/cancel.
+- Rules tests deny organizer/client hard delete of active and canceled events.
+- Rules/model tests reject `draft` as an event status in MVP.
 - Chat access only for participants.
 - User loses chat access after leaving.
 - Canceled event chat remains readable for organizer and users who were active participants at cancellation time.
@@ -675,7 +724,7 @@ Required tests:
 - Canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
 - Deep link opens event detail.
 - Deep link preserves target `eventId` through auth login redirect.
-- Deep link handles missing, deleted, canceled, past, and full event states without auto-joining.
+- Deep link handles missing, admin-deleted, canceled, past, and full event states without auto-joining.
 - Browser fallback opens simple install landing without exposing private event data.
 
 ## 5. Risks & Roadmap
@@ -704,6 +753,7 @@ Required tests:
 - Report event/message.
 - Event history in profile.
 - More robust city picker.
+- Optional server-side drafts and draft restore.
 - Optional Remote Config-backed city chip source.
 
 #### v2.0
@@ -722,6 +772,7 @@ Required tests:
 - Firestore compound indexes will be needed for city/date/status queries.
 - Level range filtering may require denormalized query fields depending on Firestore limitations.
 - Language validation cannot rely only on a local asset when writes are server-side; the backend needs an allowlist or validation helper synchronized from the same catalog source.
+- Organizer hard-deleting events would break direct links, canceled chat snapshots, participant history, and support/debug workflows; MVP uses cancel retention instead.
 - Missing profile location can block discovery unless the fallback chip flow is clear.
 - Without push notifications, users may miss event edits/cancellations.
 - Without moderation, open event creation can create spam risk.
@@ -729,4 +780,3 @@ Required tests:
 ### Open Questions
 
 - Exact static popular chip list and country coverage.
-- Should organizer be able to delete event draft permanently, or only cancel published events?

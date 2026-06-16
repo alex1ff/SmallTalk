@@ -27,7 +27,7 @@ Date: 2026-06-14
 - [x] Decide canceled event chat behavior: read-only for organizer and users active at cancellation time; writes blocked for everyone.
 - [x] Decide deep link fallback when app is not installed: `https://smalltalk-2109b.firebaseapp.com/events/{eventId}` HTTPS App Link/Universal Link with simple Firebase Hosting install landing; no rich web preview, deferred deep link, or Firebase Dynamic Links in MVP.
 - [x] Confirm whether event language list reuses existing app language catalog.
-- [ ] Confirm whether organizer can permanently delete drafts or only cancel published events.
+- [x] Confirm MVP policy: no server-side drafts; pre-submit is local discard only; active events can be canceled by organizer, and active/canceled events cannot be hard deleted by organizer.
 
 ## Phase 1: Firebase Data Contract
 
@@ -35,7 +35,7 @@ Date: 2026-06-14
 - [ ] Define canonical city identity as `countryCode + cityKey`, with localized city names used only for display.
 - [ ] Define event language fields as canonical `languageCode` plus denormalized `languageNameEn` and `languageNameRu`.
 - [ ] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
-- [ ] Define event statuses: `active`, `canceled`.
+- [ ] Define event statuses: `active`, `canceled`; `draft` is not a Firestore status in MVP.
 - [ ] Add Firestore collection contract for `events/{eventId}`.
 - [ ] Add Firestore subcollection contract for `events/{eventId}/participants/{userId}`.
 - [ ] Add Firestore collection contract for `eventChats/{chatId}`.
@@ -48,6 +48,8 @@ Date: 2026-06-14
 ## Phase 2: Firebase Write Logic
 
 - [ ] Implement transaction-safe event creation.
+- [ ] Ensure event creation atomically creates active event, organizer participant membership, and chat reservation without partial server drafts.
+- [ ] Add `createRequestId` or equivalent idempotency key handling for event creation retries.
 - [ ] Enforce 5 events per user per calendar day server-side.
 - [ ] Normalize trimmed, case-insensitive event language input from catalog `code` or `alternateCodes` to exact primary `languageCode`.
 - [ ] Validate event `languageCode` against a backend-supported allowlist or shared validation helper synchronized from the app language catalog.
@@ -66,6 +68,7 @@ Date: 2026-06-14
 - [ ] Block capacity reduction below active participant count.
 - [ ] Implement organizer-only event cancel.
 - [ ] On cancel, atomically set `status = canceled`, set `canceledAt`, and preserve event chat read-access snapshot for organizer and users active at cancellation time.
+- [ ] Make repeated cancel idempotent or return a clear already-canceled error without changing the cancellation snapshot.
 - [ ] Block event chat writes after cancellation.
 
 ## Phase 3: Firebase Security Rules
@@ -74,6 +77,8 @@ Date: 2026-06-14
 - [ ] Allow authorized users to create valid events only.
 - [ ] Allow only organizer to edit own event.
 - [ ] Allow only organizer to cancel own event.
+- [ ] Deny organizer/client hard delete of active and canceled event documents.
+- [ ] Deny client-created `draft` event status documents.
 - [ ] Prevent client-side tampering with `organizerId`, `participantsCount`, and protected status fields.
 - [ ] Allow participant reads only where required by UI.
 - [ ] Allow active event chat reads only for active participants.
@@ -83,6 +88,7 @@ Date: 2026-06-14
 - [ ] Require event status `active` for event chat writes.
 - [ ] Block direct leave/membership writes at or after `startsAt` using trusted request/server time.
 - [ ] Block direct client writes to `eventChats/{chatId}` metadata, especially `readAccessUserIds`.
+- [ ] Block client hard delete of event chat documents.
 - [ ] Prevent users from sending chat messages as another user.
 - [ ] Add rules tests for create, edit, cancel, join, leave, and chat access.
 
@@ -172,6 +178,11 @@ Date: 2026-06-14
 - [ ] Block date/time in the past.
 - [ ] Block capacity below 2.
 - [ ] Handle daily creation limit error.
+- [ ] Treat partially filled create form as local-only draft state before submit.
+- [ ] Add dirty-form discard confirmation before leaving create screen.
+- [ ] Do not promise local draft restore after app restart, logout, or reinstall in MVP.
+- [ ] Ensure closing create form before submit creates no event, participant, or chat documents.
+- [ ] Disable repeated submit taps while create request is in flight.
 - [ ] Submit event creation.
 - [ ] Open created event detail after success.
 
@@ -180,6 +191,7 @@ Date: 2026-06-14
 - [ ] Reuse create form for edit mode.
 - [ ] Prefill existing event values.
 - [ ] Hide edit route from non-organizers.
+- [ ] Do not show permanent delete action for active or canceled events.
 - [ ] Validate edited values.
 - [ ] Block capacity below active participant count.
 - [ ] Save organizer edits.
@@ -223,7 +235,7 @@ Date: 2026-06-14
 - [ ] Share title, date/time, place, and link.
 - [ ] Add route handling for event deep links.
 - [ ] Open event detail from link.
-- [ ] Handle missing/deleted/canceled/past/full event link states without auto-join.
+- [ ] Handle missing/admin-deleted/canceled/past/full event link states without auto-join.
 - [ ] Preserve target `eventId` through auth redirect before opening event detail.
 - [ ] Configure HTTPS App Links / Universal Links for `https://smalltalk-2109b.firebaseapp.com/events/{eventId}`.
 - [ ] Add Android App Links config: `/.well-known/assetlinks.json` and Android manifest intent filter with `autoVerify`.
@@ -257,12 +269,18 @@ Date: 2026-06-14
 - [ ] Add unit tests for date filter helper.
 - [ ] Add unit tests for level overlap helper.
 - [ ] Add repository tests for event creation validation.
+- [ ] Add create discard tests proving leaving create form before submit creates no server event, participant, or chat documents.
+- [ ] Add create atomicity tests proving failed/interrupted creates do not leave partial event, participant, or chat documents.
+- [ ] Add submit double-tap/retry tests proving duplicate event creation is blocked or idempotently handled through `createRequestId` or equivalent.
 - [ ] Add create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
 - [ ] Add create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
 - [ ] Add create/edit/server validation tests for language: primary code accepted, alternate code normalized, trim/case input normalized, unknown code rejected, mismatched client-provided names rejected or ignored, and full `LanguageStruct` persistence blocked.
 - [ ] Add language catalog sync tests that backend allowlist matches the app catalog and `alternateCodes` resolve uniquely.
 - [ ] Add language display tests for current locale name, denormalized fallback names, unknown legacy code fallback, and missing catalog load fallback.
 - [ ] Add rules tests that block direct client writes bypassing validated event create/edit paths.
+- [ ] Add rules/model tests that reject `draft` as an event status in MVP.
+- [ ] Add rules tests that deny organizer/client hard delete of active and canceled events.
+- [ ] Add rules tests that deny client hard delete of event chat documents.
 - [ ] Add tests for 5-events-per-day limit.
 - [ ] Add tests for city/date/level list filtering.
 - [ ] Add city chip source tests for profile default, missing profile city, recent city ordering, static popular fallback, profile city absent from chips, and recent/static dedupe by `countryCode + cityKey`.
@@ -285,8 +303,8 @@ Date: 2026-06-14
 - [ ] Add widget tests for detail CTA states.
 - [ ] Add deep link test for opening event detail.
 - [ ] Add deep link test for preserving target `eventId` through auth redirect.
-- [ ] Add deep link tests for missing, deleted, canceled, past, and full event link states without auto-join.
-- [ ] Add fallback landing tests for no auto-redirect, no Firestore reads, no event-specific OG/meta tags, no private event/participant/chat data, and generic missing/deleted response.
+- [ ] Add deep link tests for missing, admin-deleted, canceled, past, and full event link states without auto-join.
+- [ ] Add fallback landing tests for no auto-redirect, no Firestore reads, no event-specific OG/meta tags, no private event/participant/chat data, and generic missing/admin-deleted response.
 - [ ] Add hosting verification for `/.well-known/assetlinks.json`, `/.well-known/apple-app-site-association`, `/events/**` fallback, and absence of Dynamic Links config.
 - [ ] Run `flutter analyze`.
 - [ ] Run relevant `flutter test`.
@@ -315,6 +333,7 @@ Date: 2026-06-14
 - [ ] Report chat message.
 - [ ] Event history in profile.
 - [ ] Improved city picker.
+- [ ] Server-side event drafts and draft restore.
 - [ ] Online events.
 - [ ] Push reminders.
 - [ ] Waitlist.
