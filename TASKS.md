@@ -43,7 +43,7 @@ Date: 2026-06-14
 - [x] Define `events.status` lifecycle, allowed values `active|canceled`, rejected values, `draft` as local-only create state, and no `past|completed|deleted|archived|cancelled` statuses in MVP.
 - [x] Add Firestore collection contract for `events/{eventId}`.
 - [x] Add Firestore subcollection contract for `events/{eventId}/participants/{userId}`.
-- [ ] Add Firestore collection contract for `eventChats/{chatId}`.
+- [x] Add Firestore collection contract for `eventChats/{chatId}`.
 - [ ] Define `eventChats.readAccessUserIds` as the chat read-access list that freezes on cancel with organizer and active participants, excludes users who left before cancel, and does not gain new readers after cancel.
 - [ ] Add Firestore subcollection contract for `eventChats/{chatId}/messages/{messageId}`.
 - [ ] Add daily creation counter contract: `eventCreationCounters/{userId_yyyyMMdd}` or equivalent.
@@ -84,6 +84,7 @@ Date: 2026-06-14
 - [ ] Make repeated cancel idempotent or return a clear already-canceled error without changing the cancellation snapshot.
 - [ ] Block reopening/restoring canceled events to `active` in MVP.
 - [ ] Block event chat writes after cancellation.
+- [ ] Fail closed when event chat metadata is missing or `eventChats/{chatId}.eventId` does not match the owning event id.
 
 ## Phase 3: Firebase Security Rules
 
@@ -102,7 +103,7 @@ Date: 2026-06-14
 - [ ] Allow event chat writes only for active participants while event status is `active`.
 - [ ] Require event status `active` for event chat writes.
 - [ ] Block direct leave/membership writes at or after `startsAt` using trusted request/server time.
-- [ ] Block direct client writes to `eventChats/{chatId}` metadata, especially `readAccessUserIds`.
+- [ ] Block direct client creates, updates, and deletes of `eventChats/{chatId}` metadata, especially `readAccessUserIds`.
 - [ ] Block client hard delete of event chat documents.
 - [ ] Prevent users from sending chat messages as another user.
 - [ ] Add rules tests for create, edit, cancel, join, leave, and chat access.
@@ -111,7 +112,7 @@ Date: 2026-06-14
 
 - [ ] Add event model matching the `events/{eventId}` field contract, including server-managed fields, catalog-derived fields, organizer snapshot fields, and `timeZoneId`.
 - [ ] Add event participant model matching the `events/{eventId}/participants/{userId}` field contract with `active|left` membership status and immutable role.
-- [ ] Add event chat/message model or reuse existing chat model if compatible.
+- [ ] Add event chat metadata model matching the `eventChats/{chatId}` contract and event chat/message model or reuse existing chat model if compatible.
 - [ ] Add `users.profileCity` model/struct with `countryCode`, `cityKey`, catalog-derived localized display fields, catalog-derived region fields, `catalogVersion`, and server-time `updatedAt`.
 - [ ] Add static curated city catalog with `countryCode`, `cityKey`, localized names, region metadata required for duplicate-name disambiguation, IANA `timeZoneId`, aliases/transliterations, country/region display context, and priority.
 - [ ] Add event repository/service for list queries.
@@ -337,6 +338,7 @@ Date: 2026-06-14
 - [ ] Add rules tests that canceled event chat denies reads for nonparticipants and users who left before cancellation.
 - [ ] Add rules tests that canceled event chat does not gain new readers after cancellation.
 - [ ] Add rules tests that canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
+- [ ] Add event chat metadata tests for `chatId = eventId`, matching `eventId`, no independent chat status fields, blocked direct metadata writes/deletes, `updatedAt` metadata semantics, and fail-closed missing/mismatched metadata.
 - [ ] Add widget tests for canceled chat read-only banner/status and hidden or disabled composer.
 - [ ] Add widget tests for list empty/loading/error states.
 - [ ] Add widget tests for create form validation.

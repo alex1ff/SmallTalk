@@ -641,7 +641,37 @@ Participant membership rules:
 }
 ```
 
-`readAccessUserIds` is the chat read-access list. While the event is active, it stays synced with active participants plus organizer. When the event is canceled, this list is preserved as the read-only snapshot for organizer and users active at cancellation time. Users who left before cancellation remain excluded, and no new readers are added after cancellation.
+This section defines only the chat metadata document. Message documents are defined in the `eventChats/{chatId}/messages/{messageId}` contract.
+
+Chat id rules:
+
+- One event has exactly one event chat in MVP.
+- `chatId` is exactly `eventId`.
+- `events/{eventId}.chatId` must equal `eventId`.
+- `eventChats/{chatId}.eventId` must equal the chat document id.
+- Event chat metadata is created/reserved atomically with the event document and organizer participant document; MVP has no standalone chat draft.
+
+`eventChats/{chatId}` field contract:
+
+| Field | Type | Required / nullable | Source | Rules |
+| --- | --- | --- | --- | --- |
+| `eventId` | string | required, non-null | server-managed | Immutable, must equal `chatId`, and must point to the owning event. |
+| `readAccessUserIds` | list<string> | required, non-null | server-managed | Unique uid strings; active participants plus organizer while event is active; frozen on cancel. |
+| `createdAt` | timestamp | required, non-null | server-managed | Trusted server/request time at chat metadata creation. |
+| `updatedAt` | timestamp | required, non-null | server-managed | Trusted server/request time when access metadata changes or cancel freezes access. |
+
+Event chat metadata rules:
+
+- Event chat lifecycle is derived from the owning event status. Do not add independent chat `status`, `canceledAt`, `writeAccessUserIds`, roster/profile snapshots, or message preview fields in MVP.
+- While the owning event status is `active`, active participant documents are the source of read/write eligibility. `readAccessUserIds` stays synced with active participants plus organizer as join, rejoin, and leave transactions run.
+- While the owning event status is `active`, chat writes are allowed for active participants even after `startsAt`; MVP blocks writes only when the event is canceled or the user is not an active participant.
+- When the owning event is canceled, `readAccessUserIds` is preserved as the read-only snapshot for organizer and users whose participant status was `active` at cancellation time.
+- After cancellation, `readAccessUserIds` must not gain new users. Users who left before cancellation remain excluded.
+- Canceled event chat reads are allowed only for users in the frozen `readAccessUserIds` list.
+- Canceled event chat writes are blocked for everyone, including organizer.
+- `updatedAt` changes on join/rejoin/leave access updates and on cancel snapshot freeze, but not for ordinary message sends.
+- If the event chat metadata document is missing or its `eventId` does not match the expected event, chat access must fail closed.
+- Direct client creates, updates, and deletes of `eventChats/{chatId}` metadata are blocked.
 
 #### `eventChats/{chatId}/messages/{messageId}`
 
@@ -949,7 +979,8 @@ Firebase write paths must enforce:
 - Canceled event chat reads are allowed only for organizer and the preserved read-access snapshot of users active at cancellation time.
 - Canceled event chat reads are denied for nonparticipants and users who left before cancellation.
 - Chat writes require event status `active`; canceled event chats are read-only for eligible existing participants and organizer.
-- Direct client writes to `eventChats/{chatId}` metadata, including `readAccessUserIds`, are blocked.
+- Direct client creates, updates, and deletes of `eventChats/{chatId}` metadata, including `readAccessUserIds`, are blocked.
+- Event chat metadata reads and writes must fail closed when metadata is missing or `eventChats/{chatId}.eventId` does not match the owning event id.
 - User cannot write messages as another sender.
 - User cannot directly inflate `participantsCount`.
 
@@ -1000,6 +1031,7 @@ Required tests:
 - Users who left before cancellation cannot read canceled event chat.
 - Canceled event chat does not gain new readers after cancellation.
 - Canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
+- Event chat metadata tests cover `chatId = eventId`, `eventChats/{chatId}.eventId` matching the owning event, no independent chat status fields, direct metadata writes/deletes blocked, `updatedAt` metadata semantics, and fail-closed behavior for missing or mismatched metadata.
 - Deep link opens event detail.
 - Deep link preserves target `eventId` through auth login redirect.
 - Deep link handles missing, admin-deleted, canceled, past, and full event states without auto-joining.
