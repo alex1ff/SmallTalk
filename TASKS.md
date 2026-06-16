@@ -42,7 +42,7 @@ Date: 2026-06-14
 - [x] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
 - [x] Define `events.status` lifecycle, allowed values `active|canceled`, rejected values, `draft` as local-only create state, and no `past|completed|deleted|archived|cancelled` statuses in MVP.
 - [x] Add Firestore collection contract for `events/{eventId}`.
-- [ ] Add Firestore subcollection contract for `events/{eventId}/participants/{userId}`.
+- [x] Add Firestore subcollection contract for `events/{eventId}/participants/{userId}`.
 - [ ] Add Firestore collection contract for `eventChats/{chatId}`.
 - [ ] Define `eventChats.readAccessUserIds` as the chat read-access list that freezes on cancel with organizer and active participants, excludes users who left before cancel, and does not gain new readers after cancel.
 - [ ] Add Firestore subcollection contract for `eventChats/{chatId}/messages/{messageId}`.
@@ -70,11 +70,12 @@ Date: 2026-06-14
 - [ ] Create or reserve event chat during event creation.
 - [ ] Implement transaction-safe join.
 - [ ] Block duplicate join.
+- [ ] Allow rejoin after leave before `startsAt` only when event is active, future, and not full, reusing the same participant document.
 - [ ] Block join for full, canceled, past by `startsAt`, or missing events.
 - [ ] Implement transaction-safe leave.
 - [ ] Block leave at or after `startsAt` without changing occupancy or chat access.
 - [ ] Block organizer from leaving through participant leave flow.
-- [ ] Remove or deactivate participant membership on leave.
+- [ ] Mark participant membership as `status = left` on leave, set `leftAt` to trusted server/request time, and do not delete the participant document in MVP.
 - [ ] Update chat access after join and leave.
 - [ ] Implement organizer-only event edit.
 - [ ] Block capacity reduction below active participant count.
@@ -94,6 +95,7 @@ Date: 2026-06-14
 - [ ] Deny any client-created or client-updated `events.status` outside `active|canceled`.
 - [ ] Prevent client-side tampering with protected event fields: `organizerId`, organizer snapshot fields, `participantsCount`, `chatId`, status fields, timestamps, and catalog-derived display fields.
 - [ ] Allow participant reads only where required by UI.
+- [ ] Deny direct client creates, updates, and deletes of participant documents outside validated join/leave/create flows.
 - [ ] Allow active event chat reads only for active participants.
 - [ ] Allow canceled event chat reads only for organizer and participants active at cancellation time.
 - [ ] Deny canceled event chat reads for nonparticipants and users who left before cancellation.
@@ -108,7 +110,7 @@ Date: 2026-06-14
 ## Phase 4: Flutter Data Layer
 
 - [ ] Add event model matching the `events/{eventId}` field contract, including server-managed fields, catalog-derived fields, organizer snapshot fields, and `timeZoneId`.
-- [ ] Add event participant model.
+- [ ] Add event participant model matching the `events/{eventId}/participants/{userId}` field contract with `active|left` membership status and immutable role.
 - [ ] Add event chat/message model or reuse existing chat model if compatible.
 - [ ] Add `users.profileCity` model/struct with `countryCode`, `cityKey`, catalog-derived localized display fields, catalog-derived region fields, `catalogVersion`, and server-time `updatedAt`.
 - [ ] Add static curated city catalog with `countryCode`, `cityKey`, localized names, region metadata required for duplicate-name disambiguation, IANA `timeZoneId`, aliases/transliterations, country/region display context, and priority.
@@ -322,7 +324,10 @@ Date: 2026-06-14
 - [ ] Add profile city field tests for missing/null `users.profileCity`, stale `profileCity`, explicit save-only behavior, no auto-migration from `Country_NS`, no top-level `users.countryCode`/`users.cityKey` identity, stored `catalogVersion`, and server-time `updatedAt`.
 - [ ] Add transaction tests for join capacity.
 - [ ] Add transaction tests for duplicate join.
+- [ ] Add transaction tests for rejoin after leave using the same participant document and no duplicate membership.
 - [ ] Add transaction tests for leave.
+- [ ] Add participant count invariant tests proving `participantsCount` equals active participant documents, including organizer.
+- [ ] Add participant document tests for `active|left` status allowlist, immutable `role`, server-derived snapshots, server-time `joinedAt`/`leftAt`/`updatedAt`, and no delete-on-leave.
 - [ ] Add tests that leave is blocked at or after `startsAt` and preserves occupancy/chat access.
 - [ ] Add tests that organizer cannot leave as participant.
 - [ ] Add tests that organizer can edit/cancel.

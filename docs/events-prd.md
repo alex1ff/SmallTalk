@@ -332,7 +332,7 @@ Acceptance criteria:
 
 - Participant can leave before the event starts.
 - Participant cannot leave at or after event `startsAt`.
-- Leaving removes participant document or marks it inactive.
+- Leaving marks the participant document as `left`; the document is not deleted in MVP.
 - Occupancy decrements atomically.
 - User loses event chat access after leaving.
 - Organizer cannot leave through this flow.
@@ -583,11 +583,52 @@ Level rules:
   "displayName": "Марко",
   "photoUrl": "...",
   "role": "organizer|participant",
+  "status": "active",
   "joinedAt": "timestamp",
   "leftAt": null,
-  "status": "active"
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp"
 }
 ```
+
+This section defines only participant membership documents. Chat access consumes active participant state, but `eventChats` and messages are defined separately.
+
+Participant document id rules:
+
+- Document id is exactly `{userId}`.
+- `userId` field must equal the document id and authenticated user id.
+- One user has at most one participant document per event.
+
+`events/{eventId}/participants/{userId}` field contract:
+
+| Field | Type | Required / nullable | Source | Rules |
+| --- | --- | --- | --- | --- |
+| `userId` | string | yes | authenticated user id | Immutable and must match document id. |
+| `displayName` | string | yes | server-derived user profile snapshot | Denormalized display snapshot for participant list/avatar stack. |
+| `photoUrl` | string or null | optional, nullable | server-derived user profile snapshot | Nullable if user has no avatar. |
+| `role` | string | yes | server-managed | Allowed values: `organizer`, `participant`; immutable after document creation. |
+| `status` | string | yes | server-managed membership lifecycle | Allowed values: `active`, `left`; this is membership state, not event status. |
+| `joinedAt` | timestamp | yes | server-managed | Trusted server/request time of the latest successful join or rejoin. |
+| `leftAt` | timestamp or null | yes | server-managed | Null while active; trusted server/request time when user leaves. |
+| `createdAt` | timestamp | yes | server-managed | Trusted server/request time when membership document is first created. |
+| `updatedAt` | timestamp | yes | server-managed | Trusted server/request time when membership state or snapshots change. |
+
+Participant membership rules:
+
+- Event creation creates the organizer participant document atomically with `role = organizer`, `status = active`, `leftAt = null`.
+- Organizer participant document is counted in `participantsCount`.
+- Organizer cannot leave through the participant leave flow and cannot transition to `status = left` in MVP.
+- Ordinary join creates a new participant document with `role = participant`, `status = active`, `leftAt = null`.
+- If a user previously left, rejoin before `startsAt` is allowed only when the event is active, not full, and in the future; it reuses the same participant document, sets `status = active`, clears `leftAt`, updates `joinedAt`, and increments `participantsCount`.
+- Duplicate join by an already active participant must not increment `participantsCount`; return idempotent success or a clear duplicate-join error.
+- Leave before `startsAt` marks the existing participant document as `status = left`, sets `leftAt` to trusted server/request time, updates `updatedAt`, decrements `participantsCount`, and removes active chat access if denormalized.
+- Participant documents are not deleted on leave in MVP.
+- Canceling an event does not mutate participant `status`, `joinedAt`, or `leftAt`; cancel logic snapshots users whose participant status is `active` at cancellation time.
+- Past events keep participant documents unchanged; past state is derived from `startsAt`, not participant status.
+- Direct client writes to participant documents are blocked; create/join/leave transactions own membership changes.
+- `participantsCount` on the event document must equal the number of participant documents with `status = active`, including organizer.
+- Participant list and avatar stack show only `status = active` participant documents.
+- Participant profile snapshots are display fallbacks and do not replace the user profile as the identity source.
 
 #### `eventChats/{chatId}`
 
@@ -826,8 +867,10 @@ Checks:
 Writes:
 
 - Create/update participant doc as active.
-- Increment `participantsCount`.
+- Increment `participantsCount` only for a newly active membership or rejoin from `left`; duplicate active join must not increment.
 - Add user to chat participant access if denormalized.
+
+Rejoin after leave follows the same join transaction checks and reactivates the existing participant document instead of creating a second document.
 
 #### Leave transaction
 
@@ -841,7 +884,7 @@ Checks:
 
 Writes:
 
-- Mark participant as left or delete participant doc.
+- Mark participant as `left`; do not delete the participant document in MVP.
 - Decrement `participantsCount`.
 - Remove user from chat participant access if denormalized.
 
@@ -883,8 +926,9 @@ Firebase write paths must enforce:
 - Only organizer can edit/cancel their event.
 - Organizers and ordinary clients cannot permanently delete active or canceled event documents.
 - Trusted admin/ops/moderation deletion and data-retention tooling are outside MVP.
-- Clients cannot hard-delete event chat documents; participant membership deletion is allowed only if the chosen validated leave implementation uses deletion before `startsAt`.
-- Non-organizer cannot change `organizerId`, `participantsCount`, or `status`.
+- Clients cannot hard-delete event chat documents.
+- Clients cannot delete participant membership documents; leave marks the document as `left`.
+- Non-organizer cannot change `organizerId`, `participantsCount`, or `events.status`.
 - Event creation must respect required fields and allowed status.
 - Server-side create/edit/cancel validation must reject any `events.status` outside the allowlist `active|canceled`.
 - Event creation must not create `draft` status documents.
@@ -900,6 +944,7 @@ Firebase write paths must enforce:
 - Server-side create logic must derive `organizerDisplayName` and `organizerPhotoUrl` from the authenticated organizer profile snapshot.
 - Firestore rules must block direct client writes that bypass validated event create/edit paths; exact grapheme counting belongs in server-side validation.
 - Direct leave or membership writes must be blocked at or after `startsAt` using trusted request/server time.
+- Direct client creates, updates, and deletes of participant documents are blocked outside validated create/join/leave flows.
 - Active event chat read/write is participant-only.
 - Canceled event chat reads are allowed only for organizer and the preserved read-access snapshot of users active at cancellation time.
 - Canceled event chat reads are denied for nonparticipants and users who left before cancellation.
@@ -939,9 +984,11 @@ Required tests:
 - Event list filters by city/date/level.
 - Join transaction does not exceed capacity.
 - Duplicate join is blocked.
+- Rejoin after leave reuses the same participant document and does not create duplicate membership.
 - Leave decrements occupancy.
 - Leave is blocked at or after `startsAt` and does not change occupancy or chat access.
 - Organizer cannot leave as participant.
+- Participant document tests cover `active|left` status allowlist, immutable `role`, server-derived snapshots, server-time `joinedAt`/`leftAt`/`updatedAt`, participant count invariant, and no delete-on-leave.
 - Organizer can edit/cancel.
 - Non-organizer cannot edit/cancel.
 - Rules tests deny organizer/client hard delete of active and canceled events.
