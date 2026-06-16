@@ -1,112 +1,12 @@
 const CITY_KEY_RE = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
-const CITY_CATALOG_VERSION = "events-city-catalog-mvp-2026-06-16";
-
-const EVENT_CITY_CATALOG = Object.freeze([
-  {
-    countryCode: "RU",
-    cityKey: "moscow",
-    cityNameRu: "Москва",
-    cityNameEn: "Moscow",
-    cityDisplayContext: "Россия",
-    timeZoneId: "Europe/Moscow",
-  },
-  {
-    countryCode: "RU",
-    cityKey: "saint_petersburg",
-    cityNameRu: "Санкт-Петербург",
-    cityNameEn: "Saint Petersburg",
-    cityDisplayContext: "Россия",
-    timeZoneId: "Europe/Moscow",
-  },
-  {
-    countryCode: "US",
-    cityKey: "new_york",
-    cityNameRu: "Нью-Йорк",
-    cityNameEn: "New York",
-    cityDisplayContext: "United States",
-    timeZoneId: "America/New_York",
-  },
-  {
-    countryCode: "GB",
-    cityKey: "london",
-    cityNameRu: "Лондон",
-    cityNameEn: "London",
-    cityDisplayContext: "United Kingdom",
-    timeZoneId: "Europe/London",
-  },
-  {
-    countryCode: "DE",
-    cityKey: "berlin",
-    cityNameRu: "Берлин",
-    cityNameEn: "Berlin",
-    cityDisplayContext: "Deutschland",
-    timeZoneId: "Europe/Berlin",
-  },
-  {
-    countryCode: "FR",
-    cityKey: "paris",
-    cityNameRu: "Париж",
-    cityNameEn: "Paris",
-    cityDisplayContext: "France",
-    timeZoneId: "Europe/Paris",
-  },
-  {
-    countryCode: "IT",
-    cityKey: "rome",
-    cityNameRu: "Рим",
-    cityNameEn: "Rome",
-    cityDisplayContext: "Italia",
-    timeZoneId: "Europe/Rome",
-  },
-  {
-    countryCode: "ES",
-    cityKey: "madrid",
-    cityNameRu: "Мадрид",
-    cityNameEn: "Madrid",
-    cityDisplayContext: "España",
-    timeZoneId: "Europe/Madrid",
-  },
-  {
-    countryCode: "TR",
-    cityKey: "istanbul",
-    cityNameRu: "Стамбул",
-    cityNameEn: "Istanbul",
-    cityDisplayContext: "Türkiye",
-    timeZoneId: "Europe/Istanbul",
-  },
-  {
-    countryCode: "AE",
-    cityKey: "dubai",
-    cityNameRu: "Дубай",
-    cityNameEn: "Dubai",
-    cityDisplayContext: "United Arab Emirates",
-    timeZoneId: "Asia/Dubai",
-  },
-  {
-    countryCode: "KZ",
-    cityKey: "almaty",
-    cityNameRu: "Алматы",
-    cityNameEn: "Almaty",
-    cityDisplayContext: "Қазақстан",
-    timeZoneId: "Asia/Almaty",
-  },
-  {
-    countryCode: "AM",
-    cityKey: "yerevan",
-    cityNameRu: "Ереван",
-    cityNameEn: "Yerevan",
-    cityDisplayContext: "Հայաստան",
-    timeZoneId: "Asia/Yerevan",
-  },
-  {
-    countryCode: "GE",
-    cityKey: "tbilisi",
-    cityNameRu: "Тбилиси",
-    cityNameEn: "Tbilisi",
-    cityDisplayContext: "საქართველო",
-    timeZoneId: "Asia/Tbilisi",
-  },
-]);
+const GENERATED_CITY_CATALOG = require(
+    "./generated/event_city_catalog.generated.json",
+);
+const CITY_CATALOG_VERSION = GENERATED_CITY_CATALOG.catalogVersion;
+const CITY_CATALOG_SOURCE_PATH = GENERATED_CITY_CATALOG.generatedFrom;
+const EVENT_CITY_CATALOG = Object.freeze(
+    GENERATED_CITY_CATALOG.cities.map((city) => Object.freeze({...city})),
+);
 
 class EventCityCatalogError extends Error {
   constructor(field, reason, message, options = {}) {
@@ -182,7 +82,10 @@ function validateEventCityCatalog(catalog = EVENT_CITY_CATALOG) {
       typeof city.cityDisplayContext !== "string" ||
       city.cityDisplayContext.trim() === "" ||
       typeof city.timeZoneId !== "string" ||
-      city.timeZoneId.trim() === ""
+      city.timeZoneId.trim() === "" ||
+      !Array.isArray(city.aliases) ||
+      !Array.isArray(city.transliterations) ||
+      !Number.isInteger(city.priority)
     ) {
       throw new EventCityCatalogError(
           "cityKey",
@@ -240,6 +143,7 @@ function resolveEventCityIdentity(
 
 module.exports = {
   CITY_CATALOG_VERSION,
+  CITY_CATALOG_SOURCE_PATH,
   CITY_KEY_RE,
   EVENT_CITY_CATALOG,
   EventCityCatalogError,

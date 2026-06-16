@@ -66,7 +66,7 @@ Date: 2026-06-14
 - [x] Enforce `count < 5` inside the same Firestore transaction before writing the event, participant, chat metadata, and counter update.
 - [x] Return `resource-exhausted` with `details.domainCode = daily_limit_reached`, `resetAtUtc`, `dayKeyUtc`, `count`, and `limit` when the UTC daily counter is already 5.
 - [x] Validate event create/edit city against a backend-supported allowlist or shared canonical city catalog.
-- [ ] Keep backend city allowlist/shared catalog versioned and generated from the same source as the full app canonical city catalog.
+- [x] Keep backend city allowlist/shared catalog versioned and generated from the same source as the full app canonical city catalog.
 - [x] Derive city display fallback fields server-side from the canonical city catalog after validation.
 - [ ] Ensure cancel, edit, and trusted admin delete do not decrement or increment the daily creation counter.
 - [x] Normalize trimmed, case-insensitive event language input from catalog `code` or `alternateCodes` to exact primary `languageCode`.
@@ -360,7 +360,7 @@ Date: 2026-06-14
 - [ ] Add repository/query-shape tests that event list queries include `status == active`, canonical city equality filters, compatible `startsAt` bounds, and `orderBy startsAt ASC`.
 - [ ] Add rules tests for enforceable event list constraints only: active-only list reads, reasonable query metadata such as `limit/orderBy` if implemented, and separate direct detail `get` behavior.
 - [ ] Add city chip source tests for profile default, missing profile city, recent city ordering, static popular fallback, profile city absent from chips, and recent/static dedupe by `countryCode + cityKey`.
-- [ ] Add city catalog sync tests that backend allowlist/shared catalog is versioned and generated from the same source as the full app canonical city catalog.
+- [x] Add city catalog sync tests that backend allowlist/shared catalog is versioned and generated from the same source as the full app canonical city catalog.
 - [ ] Add city query tests for canonical `countryCode + cityKey`.
 - [ ] Add city identity tests for ISO uppercase `countryCode`, `cityKey` regex, unique `(countryCode, cityKey)`, duplicate-name disambiguation, required display context/known region metadata, alias resolution, ambiguous alias no-auto-resolve behavior, unknown city create/edit/profile-save rejection, stale profile/recent city fallback, and localized names never acting as identity.
 - [ ] Add city resolution tests that `Country_NS` alone does not unlock the Events list.

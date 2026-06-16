@@ -7,6 +7,8 @@
     "validate:secret-readiness": "node scripts/validate_secret_readiness.js --config ../firebase.json",
     "set:admin-claim": "node scripts/set_admin_claim.js",
     "migrate:pair-reviews": "node scripts/migrate_pair_reviews.js",
+    "generate:event-city-catalog": "node scripts/generate_event_city_catalog.js",
+    "test:events": "node --test create_event.test.js edit_event.test.js event_city_catalog.test.js event_city_catalog_generation.test.js deployment_readiness.test.js",
     "lint": "eslint .",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",

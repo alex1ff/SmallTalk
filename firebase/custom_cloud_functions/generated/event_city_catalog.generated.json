@@ -1,0 +1,260 @@
+{
+  "catalogVersion": "events-city-catalog-mvp-2026-06-16",
+  "generatedFrom": "assets/jsons/events_city_catalog.json",
+  "cities": [
+    {
+      "countryCode": "AE",
+      "cityKey": "dubai",
+      "cityNameRu": "Дубай",
+      "cityNameEn": "Dubai",
+      "cityDisplayContext": "United Arab Emirates",
+      "regionCode": "DU",
+      "regionNameRu": "Дубай",
+      "regionNameEn": "Dubai",
+      "timeZoneId": "Asia/Dubai",
+      "aliases": [
+        "Dubai",
+        "Дубай"
+      ],
+      "transliterations": [
+        "Dubay"
+      ],
+      "priority": 70
+    },
+    {
+      "countryCode": "AM",
+      "cityKey": "yerevan",
+      "cityNameRu": "Ереван",
+      "cityNameEn": "Yerevan",
+      "cityDisplayContext": "Հայաստան",
+      "regionCode": null,
+      "regionNameRu": null,
+      "regionNameEn": null,
+      "timeZoneId": "Asia/Yerevan",
+      "aliases": [
+        "Yerevan",
+        "Ереван"
+      ],
+      "transliterations": [
+        "Yerevan",
+        "Erevan"
+      ],
+      "priority": 65
+    },
+    {
+      "countryCode": "DE",
+      "cityKey": "berlin",
+      "cityNameRu": "Берлин",
+      "cityNameEn": "Berlin",
+      "cityDisplayContext": "Deutschland",
+      "regionCode": "BE",
+      "regionNameRu": "Берлин",
+      "regionNameEn": "Berlin",
+      "timeZoneId": "Europe/Berlin",
+      "aliases": [
+        "Berlin",
+        "Берлин"
+      ],
+      "transliterations": [
+        "Berlin"
+      ],
+      "priority": 80
+    },
+    {
+      "countryCode": "ES",
+      "cityKey": "madrid",
+      "cityNameRu": "Мадрид",
+      "cityNameEn": "Madrid",
+      "cityDisplayContext": "España",
+      "regionCode": "MD",
+      "regionNameRu": "Мадрид",
+      "regionNameEn": "Madrid",
+      "timeZoneId": "Europe/Madrid",
+      "aliases": [
+        "Madrid",
+        "Мадрид"
+      ],
+      "transliterations": [
+        "Madrid"
+      ],
+      "priority": 75
+    },
+    {
+      "countryCode": "FR",
+      "cityKey": "paris",
+      "cityNameRu": "Париж",
+      "cityNameEn": "Paris",
+      "cityDisplayContext": "France",
+      "regionCode": "IDF",
+      "regionNameRu": "Иль-де-Франс",
+      "regionNameEn": "Ile-de-France",
+      "timeZoneId": "Europe/Paris",
+      "aliases": [
+        "Paris",
+        "Париж"
+      ],
+      "transliterations": [
+        "Parizh"
+      ],
+      "priority": 80
+    },
+    {
+      "countryCode": "GB",
+      "cityKey": "london",
+      "cityNameRu": "Лондон",
+      "cityNameEn": "London",
+      "cityDisplayContext": "United Kingdom",
+      "regionCode": null,
+      "regionNameRu": null,
+      "regionNameEn": null,
+      "timeZoneId": "Europe/London",
+      "aliases": [
+        "London",
+        "Лондон"
+      ],
+      "transliterations": [
+        "London"
+      ],
+      "priority": 90
+    },
+    {
+      "countryCode": "GE",
+      "cityKey": "tbilisi",
+      "cityNameRu": "Тбилиси",
+      "cityNameEn": "Tbilisi",
+      "cityDisplayContext": "საქართველო",
+      "regionCode": null,
+      "regionNameRu": null,
+      "regionNameEn": null,
+      "timeZoneId": "Asia/Tbilisi",
+      "aliases": [
+        "Tbilisi",
+        "Тбилиси"
+      ],
+      "transliterations": [
+        "Tbilisi"
+      ],
+      "priority": 65
+    },
+    {
+      "countryCode": "IT",
+      "cityKey": "rome",
+      "cityNameRu": "Рим",
+      "cityNameEn": "Rome",
+      "cityDisplayContext": "Italia",
+      "regionCode": "LAZ",
+      "regionNameRu": "Лацио",
+      "regionNameEn": "Lazio",
+      "timeZoneId": "Europe/Rome",
+      "aliases": [
+        "Rome",
+        "Roma",
+        "Рим"
+      ],
+      "transliterations": [
+        "Rim"
+      ],
+      "priority": 75
+    },
+    {
+      "countryCode": "KZ",
+      "cityKey": "almaty",
+      "cityNameRu": "Алматы",
+      "cityNameEn": "Almaty",
+      "cityDisplayContext": "Қазақстан",
+      "regionCode": null,
+      "regionNameRu": null,
+      "regionNameEn": null,
+      "timeZoneId": "Asia/Almaty",
+      "aliases": [
+        "Almaty",
+        "Алматы"
+      ],
+      "transliterations": [
+        "Almaty"
+      ],
+      "priority": 65
+    },
+    {
+      "countryCode": "RU",
+      "cityKey": "moscow",
+      "cityNameRu": "Москва",
+      "cityNameEn": "Moscow",
+      "cityDisplayContext": "Россия",
+      "regionCode": null,
+      "regionNameRu": null,
+      "regionNameEn": null,
+      "timeZoneId": "Europe/Moscow",
+      "aliases": [
+        "Moskva",
+        "Moscow",
+        "Москва"
+      ],
+      "transliterations": [
+        "Moskva"
+      ],
+      "priority": 100
+    },
+    {
+      "countryCode": "RU",
+      "cityKey": "saint_petersburg",
+      "cityNameRu": "Санкт-Петербург",
+      "cityNameEn": "Saint Petersburg",
+      "cityDisplayContext": "Россия",
+      "regionCode": null,
+      "regionNameRu": null,
+      "regionNameEn": null,
+      "timeZoneId": "Europe/Moscow",
+      "aliases": [
+        "Saint Petersburg",
+        "St Petersburg",
+        "Санкт-Петербург",
+        "Петербург"
+      ],
+      "transliterations": [
+        "Sankt-Peterburg"
+      ],
+      "priority": 90
+    },
+    {
+      "countryCode": "TR",
+      "cityKey": "istanbul",
+      "cityNameRu": "Стамбул",
+      "cityNameEn": "Istanbul",
+      "cityDisplayContext": "Türkiye",
+      "regionCode": null,
+      "regionNameRu": null,
+      "regionNameEn": null,
+      "timeZoneId": "Europe/Istanbul",
+      "aliases": [
+        "Istanbul",
+        "İstanbul",
+        "Стамбул"
+      ],
+      "transliterations": [
+        "Stambul"
+      ],
+      "priority": 75
+    },
+    {
+      "countryCode": "US",
+      "cityKey": "new_york",
+      "cityNameRu": "Нью-Йорк",
+      "cityNameEn": "New York",
+      "cityDisplayContext": "United States",
+      "regionCode": "NY",
+      "regionNameRu": "Нью-Йорк",
+      "regionNameEn": "New York",
+      "timeZoneId": "America/New_York",
+      "aliases": [
+        "New York",
+        "NYC",
+        "Нью-Йорк"
+      ],
+      "transliterations": [
+        "Nyu-York"
+      ],
+      "priority": 95
+    }
+  ]
+}

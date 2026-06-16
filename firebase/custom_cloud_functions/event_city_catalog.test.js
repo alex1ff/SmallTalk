@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   CITY_CATALOG_VERSION,
+  CITY_CATALOG_SOURCE_PATH,
   EVENT_CITY_CATALOG,
   EventCityCatalogError,
   assertUniqueCityCatalogIdentities,
@@ -31,6 +32,9 @@ test("resolveEventCityIdentity returns canonical server-derived city fields", ()
   assert.equal(city.cityDisplayContext, "Россия");
   assert.equal(city.timeZoneId, "Europe/Moscow");
   assert.equal(city.catalogVersion, CITY_CATALOG_VERSION);
+  assert.equal(CITY_CATALOG_SOURCE_PATH, "assets/jsons/events_city_catalog.json");
+  assert.ok(city.aliases.includes("Москва"));
+  assert.ok(Number.isInteger(city.priority));
 });
 
 test("normalizeEventCityIdentityInput validates identity syntax only", () => {
@@ -101,6 +105,9 @@ test("event city catalog rejects invalid timezone records", () => {
           cityNameEn: "Test",
           cityDisplayContext: "Россия",
           timeZoneId: "Mars/Phobos",
+          aliases: ["Test"],
+          transliterations: ["Test"],
+          priority: 1,
         },
       ]),
       "cityKey",
