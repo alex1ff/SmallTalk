@@ -26,13 +26,14 @@ Date: 2026-06-14
 - [x] Decide whether participant can leave after event start: no; leave is allowed only before `startsAt`, using trusted server/request time.
 - [x] Decide canceled event chat behavior: read-only for organizer and users active at cancellation time; writes blocked for everyone.
 - [x] Decide deep link fallback when app is not installed: `https://smalltalk-2109b.firebaseapp.com/events/{eventId}` HTTPS App Link/Universal Link with simple Firebase Hosting install landing; no rich web preview, deferred deep link, or Firebase Dynamic Links in MVP.
-- [ ] Confirm whether event language list reuses existing app language catalog.
+- [x] Confirm whether event language list reuses existing app language catalog.
 - [ ] Confirm whether organizer can permanently delete drafts or only cancel published events.
 
 ## Phase 1: Firebase Data Contract
 
 - [ ] Audit existing `users` location fields from registration/profile.
 - [ ] Define canonical city identity as `countryCode + cityKey`, with localized city names used only for display.
+- [ ] Define event language fields as canonical `languageCode` plus denormalized `languageNameEn` and `languageNameRu`.
 - [ ] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
 - [ ] Define event statuses: `active`, `canceled`.
 - [ ] Add Firestore collection contract for `events/{eventId}`.
@@ -48,6 +49,9 @@ Date: 2026-06-14
 
 - [ ] Implement transaction-safe event creation.
 - [ ] Enforce 5 events per user per calendar day server-side.
+- [ ] Normalize trimmed, case-insensitive event language input from catalog `code` or `alternateCodes` to exact primary `languageCode`.
+- [ ] Validate event `languageCode` against a backend-supported allowlist or shared validation helper synchronized from the app language catalog.
+- [ ] Derive `languageNameEn` and `languageNameRu` server-side from synchronized catalog `nameEn` and `nameRu` values after normalization.
 - [ ] Add organizer as first participant during event creation.
 - [ ] Create or reserve event chat during event creation.
 - [ ] Implement transaction-safe join.
@@ -96,6 +100,9 @@ Date: 2026-06-14
 - [ ] Add city resolution helper from user profile.
 - [ ] Add city chip source helper backed by local recent selections and a static curated popular city list.
 - [ ] Add fallback selected city state when profile location is missing.
+- [ ] Add event language helper backed by existing `assets/jsons/languages_catalog.json`.
+- [ ] Add helper to resolve exact primary `languageCode` by trimmed, case-insensitive primary code or `alternateCodes`.
+- [ ] Add localized event language display helper with fallback to denormalized names, then raw `languageCode`.
 - [ ] Add user-facing error mapping for Firebase failures.
 
 ## Phase 5: Navigation
@@ -123,6 +130,7 @@ Date: 2026-06-14
 - [ ] Build event card layout from design.
 - [ ] Show organizer avatar/name.
 - [ ] Show title, description, level/range, date, time, and place.
+- [ ] Show language badge from `languageCode`.
 - [ ] Show participant avatar stack.
 - [ ] Show occupancy like `5/10 мест`.
 - [ ] Add card CTA states: join, joined, full, canceled/past unavailable.
@@ -152,7 +160,8 @@ Date: 2026-06-14
 ## Phase 8: Create Event Screen
 
 - [ ] Build form fields for title and description.
-- [ ] Add language selector.
+- [ ] Add language selector backed by the existing app language catalog.
+- [ ] Submit selected language as primary `languageCode`; backend persists denormalized `languageNameEn` and `languageNameRu` from the synchronized allowlist.
 - [ ] Add level/range selector.
 - [ ] Add date picker.
 - [ ] Add time picker.
@@ -250,6 +259,9 @@ Date: 2026-06-14
 - [ ] Add repository tests for event creation validation.
 - [ ] Add create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
 - [ ] Add create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
+- [ ] Add create/edit/server validation tests for language: primary code accepted, alternate code normalized, trim/case input normalized, unknown code rejected, mismatched client-provided names rejected or ignored, and full `LanguageStruct` persistence blocked.
+- [ ] Add language catalog sync tests that backend allowlist matches the app catalog and `alternateCodes` resolve uniquely.
+- [ ] Add language display tests for current locale name, denormalized fallback names, unknown legacy code fallback, and missing catalog load fallback.
 - [ ] Add rules tests that block direct client writes bypassing validated event create/edit paths.
 - [ ] Add tests for 5-events-per-day limit.
 - [ ] Add tests for city/date/level list filtering.

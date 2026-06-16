@@ -41,6 +41,7 @@ MVP includes:
 - Event cards.
 - Event detail screen.
 - Event creation screen.
+- Event language selection backed by the existing app language catalog.
 - Instant join.
 - Leave event.
 - Organizer edit event.
@@ -86,6 +87,7 @@ Event card must show:
 - Organizer avatar and name.
 - Event title.
 - Short description.
+- Language badge.
 - Level/range badge, for example `B1-C1`.
 - Date and time.
 - Place name/address.
@@ -169,6 +171,11 @@ Validation:
 - Description normalization must convert `\r\n` and `\r` to `\n`, collapse repeated spaces/tabs inside each line, and collapse more than 2 consecutive line breaks down to 2.
 - Persist normalized title and description values, not raw user input.
 - Language is required.
+- Language selector must reuse the existing app language catalog from `assets/jsons/languages_catalog.json`.
+- The canonical stored value is `languageCode`, equal to the catalog primary `LanguageStruct.code`.
+- If selection input matches a catalog `code` or `alternateCodes` value after trim and case-insensitive comparison, it must be normalized to the matching primary `code` exactly as stored in the catalog.
+- Persist `languageNameEn` and `languageNameRu` as denormalized display fallback values derived from the catalog `nameEn` and `nameRu` fields in the backend language allowlist after `languageCode` normalization; client-provided display names must not be trusted.
+- Event data must not persist catalog-only fields such as `model`, `isPopular`, or `ss`.
 - Level/range is required.
 - Date/time must be in the future.
 - City is required.
@@ -202,6 +209,7 @@ Rules:
 
 - Edited title must pass the same validation as create: required after normalization, max 70 grapheme clusters, single-line.
 - Edited description must pass the same validation as create: required after normalization, max 1000 grapheme clusters, multiline allowed, more than 2 consecutive line breaks collapsed to 2.
+- Edited language must pass the same validation as create: selected from the existing app language catalog, stored as primary `languageCode`, with denormalized `languageNameEn` and `languageNameRu`.
 - Cannot edit past events.
 - Cannot edit canceled events.
 - Cannot reduce participant limit below current participant count.
@@ -423,7 +431,9 @@ Core flow:
 {
   "title": "Разговорный клуб: кофе и английский",
   "description": "Неформальная встреча для практики разговорного английского.",
-  "language": "english",
+  "languageCode": "en",
+  "languageNameEn": "English",
+  "languageNameRu": "Английский",
   "levelMin": "B1",
   "levelMax": "C1",
   "countryCode": "RU",
@@ -442,6 +452,18 @@ Core flow:
   "canceledAt": null
 }
 ```
+
+Language rules:
+
+- `languageCode` is the only query/filter key for event language.
+- `languageCode` must equal a primary `code` from `assets/jsons/languages_catalog.json`, preserving the catalog's exact casing and spelling.
+- `code` and `alternateCodes` input values are matched after trim and case-insensitive comparison, then normalized to the matching primary `code`.
+- Backend validation must use an allowlist or shared helper synchronized from the same language catalog source; the server-side list must not drift into a separately maintained language set.
+- `languageNameEn` and `languageNameRu` are stored only as display fallbacks and must be derived from the backend allowlist's `nameEn` and `nameRu` values after normalization.
+- Event documents must not store full `LanguageStruct` objects or catalog-only fields such as `model`, `isPopular`, or `ss`.
+- Unknown `languageCode` fallback is read/display-only for legacy or drifted documents. Create/edit/server validation must reject unknown language codes.
+- When reading an older or drifted event whose `languageCode` is unknown in the current app catalog, UI displays the denormalized localized name when available; otherwise it displays the raw `languageCode`.
+- Event language badges use the current app locale when the catalog entry exists, then fall back to denormalized `languageNameRu`/`languageNameEn`, then to `languageCode`.
 
 #### `events/{eventId}/participants/{userId}`
 
@@ -606,6 +628,8 @@ Firebase write paths must enforce:
 - Event creation must respect required fields and allowed status.
 - Server-side create/edit validation must enforce title: required after normalization, max 70 grapheme clusters, single-line.
 - Server-side create/edit validation must enforce description: required after normalization, max 1000 grapheme clusters, multiline allowed, more than 2 consecutive line breaks collapsed to 2.
+- Server-side create/edit validation must enforce that `languageCode` is a supported primary language code, or normalize a known alternate code before persisting.
+- Server-side create/edit logic must derive `languageNameEn` and `languageNameRu` from the synchronized allowlist and reject or ignore mismatched client-provided language display names.
 - Firestore rules must block direct client writes that bypass validated event create/edit paths; exact grapheme counting belongs in server-side validation.
 - Direct leave or membership writes must be blocked at or after `startsAt` using trusted request/server time.
 - Active event chat read/write is participant-only.
@@ -633,6 +657,7 @@ Required tests:
 - Rules tests that block direct client writes bypassing validated event create/edit paths.
 - City chip source tests for profile default, missing profile city, recent city ordering, static popular city fallback, profile city not present in chips, and recent/static dedupe by `countryCode + cityKey`.
 - City query tests must use canonical `countryCode + cityKey`, not localized display names.
+- Language catalog tests for primary code selection, alternate code normalization, denormalized display fallback, unknown legacy code read fallback, rejecting unknown create/edit codes, rejecting or ignoring mismatched client-provided names, backend allowlist sync with the app catalog, unique `alternateCodes`, and avoiding full `LanguageStruct` persistence.
 - 5-events-per-day limit.
 - Event list filters by city/date/level.
 - Join transaction does not exceed capacity.
@@ -696,6 +721,7 @@ Required tests:
 - Concurrent joins can overfill event capacity if not transaction-protected.
 - Firestore compound indexes will be needed for city/date/status queries.
 - Level range filtering may require denormalized query fields depending on Firestore limitations.
+- Language validation cannot rely only on a local asset when writes are server-side; the backend needs an allowlist or validation helper synchronized from the same catalog source.
 - Missing profile location can block discovery unless the fallback chip flow is clear.
 - Without push notifications, users may miss event edits/cancellations.
 - Without moderation, open event creation can create spam risk.
