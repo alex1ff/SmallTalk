@@ -489,11 +489,13 @@ Lifecycle rules:
 
 Language rules:
 
+- New and edited event documents must store required string fields `languageCode`, `languageNameEn`, and `languageNameRu`.
 - `languageCode` is the only query/filter key for event language.
 - `languageCode` must equal a primary `code` from `assets/jsons/languages_catalog.json`, preserving the catalog's exact casing and spelling.
 - `code` and `alternateCodes` input values are matched after trim and case-insensitive comparison, then normalized to the matching primary `code`.
 - Backend validation must use an allowlist or shared helper synchronized from the same language catalog source; the server-side list must not drift into a separately maintained language set.
-- `languageNameEn` and `languageNameRu` are stored only as display fallbacks and must be derived from the backend allowlist's `nameEn` and `nameRu` values after normalization.
+- `languageNameEn` and `languageNameRu` are stored only as display fallbacks, are not identity or lookup keys, and must be derived from the backend allowlist's `nameEn` and `nameRu` values after normalization; client-provided values must be rejected or ignored.
+- Event language is independent from the user's app UI locale; locale affects only which display name the UI prefers.
 - Event documents must not store full `LanguageStruct` objects or catalog-only fields such as `model`, `isPopular`, or `ss`.
 - Unknown `languageCode` fallback is read/display-only for legacy or drifted documents. Create/edit/server validation must reject unknown language codes.
 - When reading an older or drifted event whose `languageCode` is unknown in the current app catalog, UI displays the denormalized localized name when available; otherwise it displays the raw `languageCode`.

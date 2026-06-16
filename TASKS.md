@@ -38,7 +38,7 @@ Date: 2026-06-14
 - [x] Define `users.profileCity` as the new nested profile city map because existing `users.Country_NS` is country-only.
 - [x] Define profile city save contract: validate `countryCode + cityKey` against canonical catalog and derive display/region fields from catalog.
 - [x] N/A: Firestore `users` data sampling is not required for city migration/defaulting because MVP must not auto-migrate or default `users.profileCity` from legacy data. `users.Country_NS` is country-only and may only rank city suggestions.
-- [ ] Define event language fields as canonical `languageCode` plus denormalized `languageNameEn` and `languageNameRu`.
+- [x] Define event language fields as canonical `languageCode` plus denormalized `languageNameEn` and `languageNameRu`.
 - [ ] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
 - [ ] Define event statuses: `active`, `canceled`; `draft` is not a Firestore status in MVP.
 - [ ] Add Firestore collection contract for `events/{eventId}`.
