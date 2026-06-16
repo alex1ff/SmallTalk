@@ -70,7 +70,9 @@ Required UI:
 
 City behavior:
 
-- If the user has a saved registration/profile location, events are filtered by that city by default.
+- If the user has a saved canonical profile city, events are filtered by that city by default.
+- Existing registration/profile location data is country-level only (`users.Country_NS`) and must not be treated as an event city.
+- If the profile has only country-level data, use it only as a country hint for the city selector/chip ordering and still require the user to choose a city before rendering the normal list.
 - If location is missing, show a required location prompt before rendering the normal list.
 - Prompt options:
   - local recent city chips from prior Events selections;
@@ -305,8 +307,8 @@ As a user, I want to browse offline events in my city so that I can find relevan
 Acceptance criteria:
 
 - User sees active future events for selected city.
-- If profile location exists, it is selected by default.
-- If profile location is missing, user is prompted to choose/fill location.
+- If saved canonical profile city (`countryCode + cityKey`) exists, it is selected by default.
+- If saved canonical profile city (`countryCode + cityKey`) is missing, user is prompted to choose/fill location.
 - Date and level filters update the list.
 - Past and canceled events are hidden from the main list.
 
@@ -533,9 +535,48 @@ Language rules:
 }
 ```
 
-#### User profile fields
+#### Existing user location audit
 
-Use existing profile fields if already present. Required product meaning:
+Audit scope:
+
+- This audit is based on the current code, generated schemas, and Firestore indexes.
+- It did not sample production Firestore `users` documents. If a migration or defaulting strategy depends on real legacy data, run a separate data sampling task before implementation.
+
+Current registration/profile fields are not city-ready:
+
+- `users.Country_NS`: `CountryStruct` selected in student onboarding, native speaker onboarding, and profile edit. `EditCountryWidget` can update `Country_NS` only when called with `persistSelectedCountryToUserCountry: true`; filter flows call it with `false` to update `preferences.preferredLocation` instead.
+- `CountryStruct` contains `code`, `nameEn`, `nameRu`, `flag`, `languages`, `isPopular`, and `index`; it does not contain city, region/state, place id, coordinates, or geocoded address fields.
+- `userPublicProfiles.Country_NS` projects a country-level public profile subset for native speaker discovery. `userPublicProfiles.countryCode` is a generated Dart getter derived from `Country_NS.code`, not a stored Firestore field.
+- `users.preferences.preferredLocation` is also a `CountryStruct`, but it represents preferred interlocutor/tutor country for matching, not the user's own city.
+- Existing Firestore indexes and queries use stored `Country_NS.code`, including public profile matching by country.
+- No saved `city`, `cityKey`, profile `countryCode + cityKey`, user `GeoPoint`, or profile place id was found in registration/profile/onboarding code.
+- FlutterFlow `FFPlace.city` serialization exists as a generic utility, but it is not wired to user registration/profile location.
+
+Source references:
+
+| Source | Field or usage | Product meaning for Events |
+| --- | --- | --- |
+| `lib/backend/schema/users_record.dart` | `users.Country_NS` | User country; not city-ready. |
+| `lib/backend/schema/structs/country_struct.dart` | `CountryStruct` | Country code/display metadata only. |
+| `lib/authorization/acquaintance_s_t_u_d_e_n_t/student_onboarding_logic.dart` | writes `countryNS` | Student registration country. |
+| `lib/authorization/acquaintance_n_s/native_speaker_onboarding_logic.dart` | writes `countryNS` | Native speaker registration country. |
+| `lib/authorization/loading/loading_widget.dart` | reads existing `countryNS` into onboarding resume state | Existing registration/profile country continuity. |
+| `lib/shared_pages/profile_edit/profile_edit_widget.dart`, `lib/components/edit_country_widget.dart` | updates `countryNS` only in profile/persisted-country flows | Editable profile country. |
+| `lib/backend/schema/user_public_profiles_record.dart`, `firebase/custom_cloud_functions/public_user_profiles.js` | `userPublicProfiles.Country_NS`; generated `countryCode` getter | Country-level public projection; query key remains stored `Country_NS.code`. |
+| `lib/backend/schema/structs/preferences_struct.dart` | `preferences.preferredLocation` | Preferred interlocutor country, not user's city. |
+| `lib/students_pages/students_dashboard/students_dashboard_widget.dart`, `firebase/firestore.indexes.json` | queries/indexes on `Country_NS.code` | Existing country-level query support. |
+
+Implications for Events:
+
+- Existing `Country_NS` can help prioritize country-specific city suggestions, but it cannot unlock the event list by itself.
+- This still honors registration location: the selected registration country is used as a country hint, but not as a city-level Events location.
+- `preferences.preferredLocation` must not be used as the default Events city because it is a match preference, not the user's location.
+- Events needs canonical city fields before profile-based default city selection can work.
+- Until a user has canonical city fields, the Events screen must show the missing-city flow with recent/static/manual city selection.
+
+#### Required user profile city meaning
+
+Events requires this product meaning for any new or future profile city fields:
 
 ```json
 {
@@ -704,6 +745,8 @@ Required tests:
 - Rules tests that block direct client writes bypassing validated event create/edit paths.
 - City chip source tests for profile default, missing profile city, recent city ordering, static popular city fallback, profile city not present in chips, and recent/static dedupe by `countryCode + cityKey`.
 - City query tests must use canonical `countryCode + cityKey`, not localized display names.
+- City resolution tests must prove `Country_NS` alone does not unlock the Events list.
+- City resolution tests must prove `preferences.preferredLocation` is not used as the default Events city.
 - Language catalog tests for primary code selection, alternate code normalization, denormalized display fallback, unknown legacy code read fallback, rejecting unknown create/edit codes, rejecting or ignoring mismatched client-provided names, backend allowlist sync with the app catalog, unique `alternateCodes`, and avoiding full `LanguageStruct` persistence.
 - 5-events-per-day limit.
 - Event list filters by city/date/level.
@@ -773,6 +816,7 @@ Required tests:
 - Level range filtering may require denormalized query fields depending on Firestore limitations.
 - Language validation cannot rely only on a local asset when writes are server-side; the backend needs an allowlist or validation helper synchronized from the same catalog source.
 - Organizer hard-deleting events would break direct links, canceled chat snapshots, participant history, and support/debug workflows; MVP uses cancel retention instead.
+- Existing profile location data is country-only; treating `Country_NS` or `preferences.preferredLocation` as a city would show incorrect event lists.
 - Missing profile location can block discovery unless the fallback chip flow is clear.
 - Without push notifications, users may miss event edits/cancellations.
 - Without moderation, open event creation can create spam risk.

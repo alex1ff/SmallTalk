@@ -31,8 +31,10 @@ Date: 2026-06-14
 
 ## Phase 1: Firebase Data Contract
 
-- [ ] Audit existing `users` location fields from registration/profile.
+- [x] Audit existing `users` location fields from registration/profile.
 - [ ] Define canonical city identity as `countryCode + cityKey`, with localized city names used only for display.
+- [ ] Define new or future user profile city fields because existing `users.Country_NS` is country-only.
+- [ ] If city migration/defaulting depends on legacy user data, run Firestore `users` data sampling before implementation.
 - [ ] Define event language fields as canonical `languageCode` plus denormalized `languageNameEn` and `languageNameRu`.
 - [ ] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
 - [ ] Define event statuses: `active`, `canceled`; `draft` is not a Firestore status in MVP.
@@ -104,6 +106,8 @@ Date: 2026-06-14
 - [ ] Add date filter helper for today, tomorrow, current week, and current month.
 - [ ] Add level overlap helper.
 - [ ] Add city resolution helper from user profile.
+- [ ] Ensure city resolution treats existing `users.Country_NS` as a country hint only, not as selected event city.
+- [ ] Ensure city resolution ignores `users.preferences.preferredLocation` as default Events city because it is an interlocutor country preference.
 - [ ] Add city chip source helper backed by local recent selections and a static curated popular city list.
 - [ ] Add fallback selected city state when profile location is missing.
 - [ ] Add event language helper backed by existing `assets/jsons/languages_catalog.json`.
@@ -127,6 +131,7 @@ Date: 2026-06-14
 - [ ] Add `+` create button.
 - [ ] Add city selector/state.
 - [ ] Show profile city by default when available.
+- [ ] If profile has only existing `Country_NS`, show missing-city flow and use country only to prioritize city suggestions.
 - [ ] Show location prompt when profile city is missing.
 - [ ] Add city chips in missing-location flow: recent selections first, static popular cities second.
 - [ ] Add manual city selection action because chips are shortcuts, not the full city set.
@@ -285,6 +290,8 @@ Date: 2026-06-14
 - [ ] Add tests for city/date/level list filtering.
 - [ ] Add city chip source tests for profile default, missing profile city, recent city ordering, static popular fallback, profile city absent from chips, and recent/static dedupe by `countryCode + cityKey`.
 - [ ] Add city query tests for canonical `countryCode + cityKey`.
+- [ ] Add city resolution tests that `Country_NS` alone does not unlock the Events list.
+- [ ] Add city resolution tests that `preferences.preferredLocation` is not used as the default Events city.
 - [ ] Add transaction tests for join capacity.
 - [ ] Add transaction tests for duplicate join.
 - [ ] Add transaction tests for leave.
