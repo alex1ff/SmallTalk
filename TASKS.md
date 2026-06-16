@@ -35,7 +35,7 @@ Date: 2026-06-14
 - [x] Define canonical city identity as required ISO 3166-1 alpha-2 uppercase `countryCode` plus stable `cityKey` matching `^[a-z0-9]+(?:_[a-z0-9]+)*$`, with localized city names used only for display/search.
 - [x] Define city disambiguation rules for duplicate city display names using stable curated disambiguators in `cityKey`, required `displayContext`, and region/state metadata whenever known.
 - [x] Define city alias/transliteration rules that resolve manual input to canonical `countryCode + cityKey` and show choices instead of auto-resolving ambiguous aliases.
-- [ ] Define new or future user profile city fields because existing `users.Country_NS` is country-only.
+- [x] Define `users.profileCity` as the new nested profile city map because existing `users.Country_NS` is country-only.
 - [x] Define profile city save contract: validate `countryCode + cityKey` against canonical catalog and derive display/region fields from catalog.
 - [ ] If city migration/defaulting depends on legacy user data, run Firestore `users` data sampling before implementation.
 - [ ] Define event language fields as canonical `languageCode` plus denormalized `languageNameEn` and `languageNameRu`.
@@ -105,6 +105,7 @@ Date: 2026-06-14
 - [ ] Add event model.
 - [ ] Add event participant model.
 - [ ] Add event chat/message model or reuse existing chat model if compatible.
+- [ ] Add `users.profileCity` model/struct with `countryCode`, `cityKey`, catalog-derived localized display fields, catalog-derived region fields, `catalogVersion`, and server-time `updatedAt`.
 - [ ] Add static curated city catalog with `countryCode`, `cityKey`, localized names, region metadata required for duplicate-name disambiguation, aliases/transliterations, country/region display context, and priority.
 - [ ] Add event repository/service for list queries.
 - [ ] Add event repository/service for detail stream.
@@ -119,6 +120,8 @@ Date: 2026-06-14
 - [ ] Add manual city search normalization that resolves aliases/transliterations to canonical city records.
 - [ ] Add ambiguous city search handling that shows all matching city options with `displayContext`.
 - [ ] Add fallback selected city state when profile location is missing.
+- [ ] Ensure temporary Events city selection does not write `users.profileCity` unless the user explicitly saves/fills profile location.
+- [ ] Keep `users.Country_NS`, top-level country fields, `users.preferences.preferredLocation`, and `userPublicProfiles.Country_NS` separate from Events profile city identity.
 - [ ] Add event language helper backed by existing `assets/jsons/languages_catalog.json`.
 - [ ] Add helper to resolve exact primary `languageCode` by trimmed, case-insensitive primary code or `alternateCodes`.
 - [ ] Add localized event language display helper with fallback to denormalized names, then raw `languageCode`.
@@ -306,6 +309,7 @@ Date: 2026-06-14
 - [ ] Add city identity tests for ISO uppercase `countryCode`, `cityKey` regex, unique `(countryCode, cityKey)`, duplicate-name disambiguation, required display context/known region metadata, alias resolution, ambiguous alias no-auto-resolve behavior, unknown city create/edit/profile-save rejection, stale profile/recent city fallback, and localized names never acting as identity.
 - [ ] Add city resolution tests that `Country_NS` alone does not unlock the Events list.
 - [ ] Add city resolution tests that `preferences.preferredLocation` is not used as the default Events city.
+- [ ] Add profile city field tests for missing/null `users.profileCity`, stale `profileCity`, explicit save-only behavior, no auto-migration from `Country_NS`, no top-level `users.countryCode`/`users.cityKey` identity, stored `catalogVersion`, and server-time `updatedAt`.
 - [ ] Add transaction tests for join capacity.
 - [ ] Add transaction tests for duplicate join.
 - [ ] Add transaction tests for leave.

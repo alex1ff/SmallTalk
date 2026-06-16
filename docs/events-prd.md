@@ -307,8 +307,8 @@ As a user, I want to browse offline events in my city so that I can find relevan
 Acceptance criteria:
 
 - User sees active future events for selected city.
-- If saved canonical profile city (`countryCode + cityKey`) exists and resolves in the current canonical city catalog, it is selected by default.
-- If saved canonical profile city (`countryCode + cityKey`) is missing, user is prompted to choose/fill location.
+- If `users.profileCity.countryCode + users.profileCity.cityKey` exists and resolves in the current canonical city catalog, it is selected by default.
+- If `users.profileCity.countryCode + users.profileCity.cityKey` is missing, user is prompted to choose/fill location.
 - Date and level filters update the list.
 - Past and canceled events are hidden from the main list.
 
@@ -573,31 +573,52 @@ Implications for Events:
 - Existing `Country_NS` can help prioritize country-specific city suggestions, but it cannot unlock the event list by itself.
 - This still honors registration location: the selected registration country is used as a country hint, but not as a city-level Events location.
 - `preferences.preferredLocation` must not be used as the default Events city because it is a match preference, not the user's location.
-- Events needs canonical city fields before profile-based default city selection can work.
+- Events needs `users.profileCity` before profile-based default city selection can work.
 - Until a user has canonical city fields, the Events screen must show the missing-city flow with recent/static/manual city selection.
 
 #### Required user profile city meaning
 
-Events requires this product meaning for any new or future profile city fields:
+Events profile city must be stored as a new nested map `users.profileCity`.
+
+`users.profileCity.countryCode + users.profileCity.cityKey` is the only profile-city identity for Events default city selection:
 
 ```json
 {
-  "countryCode": "RU",
-  "cityKey": "moscow",
-  "cityNameRu": "Москва",
-  "cityNameEn": "Moscow",
-  "cityDisplayContext": "Россия",
-  "regionCode": null,
-  "regionNameRu": null,
-  "regionNameEn": null
+  "profileCity": {
+    "countryCode": "RU",
+    "cityKey": "moscow",
+    "cityNameRu": "Москва",
+    "cityNameEn": "Moscow",
+    "cityDisplayContext": "Россия",
+    "regionCode": null,
+    "regionNameRu": null,
+    "regionNameEn": null,
+    "catalogVersion": 1,
+    "updatedAt": "server timestamp"
+  }
 }
 ```
+
+Profile city field rules:
+
+- Do not add city data to `users.Country_NS`; it remains the user's country-level registration/profile field.
+- Do not use a top-level `users.countryCode` or `users.cityKey` for Events city identity; keep the Events city under `users.profileCity` to avoid collisions with country/profile projections.
+- `users.profileCity` may be missing or null for legacy users and for new users who have not saved a city.
+- Missing `users.profileCity` must show the Events missing-city flow; `Country_NS.code` can only rank city suggestions.
+- Stale or unknown `users.profileCity.countryCode + users.profileCity.cityKey` must show the missing/outdated city flow and must not unlock the normal Events list.
+- Do not auto-migrate or default `users.profileCity` from `Country_NS`, because country is not city.
+- A temporary Events city selection must not update `users.profileCity` unless the user explicitly chooses to save/fill profile location.
+- `users.preferences.preferredLocation` must never populate or override `users.profileCity`.
+- `userPublicProfiles` does not need `profileCity` projection in MVP. If future public projection is added, it must use catalog-derived canonical fields only and avoid precise/private location data.
 
 Profile city save rules:
 
 - Saving profile city must validate `countryCode + cityKey` against the same canonical city catalog/allowlist as event create/edit.
 - Profile city display and region fields must be derived from the canonical catalog after validation.
 - Client-provided profile city display fields must not be trusted as identity or display fallback source.
+- `catalogVersion` must be stored from the catalog version used to derive display fields.
+- `updatedAt` must use trusted server/request time.
+- Catalog version is diagnostic metadata only; current selection validity must still be checked against the current canonical city catalog.
 
 #### Canonical city identity
 
@@ -652,8 +673,8 @@ Static city records must include:
 
 Rules:
 
-- If profile location has `countryCode + cityKey` and resolves in the current canonical city catalog, it is the default city.
-- If profile location is missing city, show recent city chips first, then static popular city chips.
+- If `users.profileCity.countryCode + users.profileCity.cityKey` resolves in the current canonical city catalog, it is the default city.
+- If `users.profileCity` is missing city, show recent city chips first, then static popular city chips.
 - Selecting a chip or manual city can be temporary for Events discovery; the UI must also offer an action to save/fill profile location.
 - If the user's profile city is not in chips, still use it as the selected city.
 - If a saved profile city no longer resolves to a known canonical city record, do not unlock the list from that stale value; show the missing/outdated city flow and ask the user to choose a valid city.
