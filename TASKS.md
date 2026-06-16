@@ -39,7 +39,7 @@ Date: 2026-06-14
 - [x] Define profile city save contract: validate `countryCode + cityKey` against canonical catalog and derive display/region fields from catalog.
 - [x] N/A: Firestore `users` data sampling is not required for city migration/defaulting because MVP must not auto-migrate or default `users.profileCity` from legacy data. `users.Country_NS` is country-only and may only rank city suggestions.
 - [x] Define event language fields as canonical `languageCode` plus denormalized `languageNameEn` and `languageNameRu`.
-- [ ] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
+- [x] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
 - [ ] Define event statuses: `active`, `canceled`; `draft` is not a Firestore status in MVP.
 - [ ] Add Firestore collection contract for `events/{eventId}`.
 - [ ] Add Firestore subcollection contract for `events/{eventId}/participants/{userId}`.
@@ -62,6 +62,7 @@ Date: 2026-06-14
 - [ ] Normalize trimmed, case-insensitive event language input from catalog `code` or `alternateCodes` to exact primary `languageCode`.
 - [ ] Validate event `languageCode` against a backend-supported allowlist or shared validation helper synchronized from the app language catalog.
 - [ ] Derive `languageNameEn` and `languageNameRu` server-side from synchronized catalog `nameEn` and `nameRu` values after normalization.
+- [ ] Normalize event level input by trim and uppercase, validate against `A1`, `A2`, `B1`, `B2`, `C1`, `C2`, and reject reversed `levelMin`/`levelMax` ranges using canonical rank.
 - [ ] Add organizer as first participant during event creation.
 - [ ] Create or reserve event chat during event creation.
 - [ ] Implement transaction-safe join.
@@ -287,7 +288,7 @@ Date: 2026-06-14
 ## Phase 14: Testing And QA
 
 - [ ] Add unit tests for date filter helper.
-- [ ] Add unit tests for level overlap helper.
+- [ ] Add unit tests for level overlap helper covering all six canonical ranks, no selected level, same-level ranges, rejected invalid levels, and rejected reversed ranges.
 - [ ] Add repository tests for event creation validation.
 - [ ] Add create discard tests proving leaving create form before submit creates no server event, participant, or chat documents.
 - [ ] Add create atomicity tests proving failed/interrupted creates do not leave partial event, participant, or chat documents.

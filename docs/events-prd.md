@@ -501,6 +501,18 @@ Language rules:
 - When reading an older or drifted event whose `languageCode` is unknown in the current app catalog, UI displays the denormalized localized name when available; otherwise it displays the raw `languageCode`.
 - Event language badges use the current app locale when the catalog entry exists, then fall back to denormalized `languageNameRu`/`languageNameEn`, then to `languageCode`.
 
+Level rules:
+
+- MVP supports only CEFR level codes `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
+- Canonical level order and rank are `A1=0`, `A2=1`, `B1=2`, `B2=3`, `C1=4`, `C2=5`.
+- New and edited event documents must store required string fields `levelMin` and `levelMax` using canonical level codes only.
+- Level input must be normalized by trim and uppercase before validation.
+- Unknown level values such as `A0`, `B1+`, `Beginner`, `Native`, `Any`, empty, or null must be rejected on create/edit.
+- Event level range is valid only when `rank(levelMin) <= rank(levelMax)`.
+- A single-level event stores the same value in both fields, for example `levelMin = "B1"` and `levelMax = "B1"`.
+- Level display badges show `B1-C1` for ranges and `B1` when `levelMin == levelMax`.
+- Level range is a discovery filter in MVP and does not block joining an event by user profile level.
+
 #### `events/{eventId}/participants/{userId}`
 
 ```json
@@ -705,7 +717,7 @@ Event list query must support:
 
 Level overlap rule:
 
-- Event is visible for selected level if `event.levelMin <= selectedLevel <= event.levelMax`.
+- Event is visible for selected level if `rank(event.levelMin) <= rank(selectedLevel) <= rank(event.levelMax)` using the canonical level rank map.
 - If no level is selected, show all levels in selected city/date range.
 - MVP must not add unsupported Firestore range filters on both `levelMin` and `levelMax`.
 - Unless the separate level denormalization task changes the strategy, apply level overlap filtering client-side after the canonical city/date query.
