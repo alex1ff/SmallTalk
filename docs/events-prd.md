@@ -49,7 +49,7 @@ MVP includes:
 - Local-only create form draft/discard before submit.
 - Participant-only group chat.
 - Event sharing through native share sheet.
-- Limit: one user can create up to 5 events per calendar day.
+- Limit: one user can create up to 5 events per UTC calendar day using trusted backend creation time.
 
 ### Screens
 
@@ -192,11 +192,11 @@ Validation:
 - City is required.
 - Place/address is required.
 - Participant limit must be at least 2.
-- User cannot create more than 5 events per calendar day.
+- User cannot create more than 5 events per UTC calendar day using trusted backend creation time.
 
 After successful creation:
 
-- Event creation must be atomic: the event document, organizer participant membership, and event chat reservation are created together, or none are created.
+- Event creation must be atomic: the event document, organizer participant membership, event chat reservation, and daily creation counter update/idempotency marker are created together, or none are created.
 - Creator becomes organizer.
 - Organizer is added as event participant.
 - Event group chat is created or reserved with `chatId = eventId`.
@@ -346,7 +346,7 @@ Acceptance criteria:
 - Any authorized user can open creation screen.
 - Required fields are validated.
 - Event cannot be created in the past.
-- User cannot create more than 5 events per calendar day.
+- User cannot create more than 5 events per UTC calendar day using trusted backend creation time.
 - After creation, user becomes organizer and participant.
 - Event appears in the selected city list.
 
@@ -1008,30 +1008,244 @@ At or after `startsAt`:
 
 Requirement:
 
-- A user can create no more than 5 events per calendar day.
+- A user can create no more than 5 events per UTC calendar day using trusted backend creation time.
+- Calendar day for the limit is the UTC day of trusted backend creation time, not client device time, selected event city timezone, or event `startsAt`.
+- The limit counts successfully created events by `events.createdAt`, not by event date.
+- Canceling an event, editing an event, or trusted admin deletion does not decrement the creation counter. A canceled event still consumes the creation slot for its creation UTC day.
 
-Implementation options:
+Implementation:
 
-- Cloud Function callable with server-side counter.
-- Firestore transaction on `eventCreationCounters/{userId_yyyyMMdd}`.
+- Event creation goes through callable Cloud Function `createEvent`.
+- `createEvent` request schema includes normalized event create payload fields plus required `createRequestId`.
+- `createRequestId` must match UUID v4 format and is generated once per logical create submit.
+- `createEvent` captures one trusted backend timestamp `creationTimeUtc` before the transaction. This same timestamp is used to derive the UTC counter day/window and to write `events.createdAt`, initial `events.updatedAt`, participant/chat/counter/request `createdAt`, and initial `updatedAt` fields.
+- `createEvent` updates `eventCreationCounters/{userId}/days/{yyyyMMdd}` and `eventCreateRequests/{userId}/requests/{createRequestId}` in the same Firestore transaction that creates `events/{eventId}`, `events/{eventId}/participants/{userId}`, and `eventChats/{eventId}`.
+- `yyyyMMdd` in the counter document id is derived from trusted backend time in UTC.
+- Counter documents are server-owned; business logic must use authenticated uid plus stored `userId` and `dayKeyUtc`, not parse a flat document id as the authority.
+- The counter path is exactly `eventCreationCounters/{userId}/days/{yyyyMMdd}`, for example `eventCreationCounters/uid123/days/20260616`. The stored `dayKeyUtc` format is `YYYY-MM-DD`, for example `2026-06-16`.
+- The transaction first checks the day-independent idempotency marker `eventCreateRequests/{userId}/requests/{createRequestId}`. If it exists, the transaction returns the existing result or conflict before reading/updating the daily counter. If it does not exist, the transaction checks `count < 5`, then writes the event, organizer participant, chat metadata, counter update, and request marker.
+- Do not enforce the limit with a standalone `FieldValue.increment` without a transactional guard.
+- Client-only enforcement is not sufficient.
 
-Client-only enforcement is not sufficient.
+`createEvent` response schema is exact:
+
+```json
+{
+  "eventId": "eventId",
+  "createdAt": "2026-06-16T12:34:56.789Z",
+  "dailyCreation": {
+    "dayKeyUtc": "2026-06-16",
+    "count": 3,
+    "remaining": 2,
+    "resetAtUtc": "2026-06-17T00:00:00Z"
+  }
+}
+```
+
+Response field rules:
+
+| Field | Type | Required / nullable | Rules |
+| --- | --- | --- | --- |
+| `eventId` | string | required, non-null | Created or idempotently reused event id. |
+| `createdAt` | string | required, non-null | ISO-8601 UTC timestamp of the original event `createdAt`; idempotent retries return the original value. |
+| `dailyCreation.dayKeyUtc` | string | required, non-null | UTC day of the original successful create, format `YYYY-MM-DD`. |
+| `dailyCreation.count` | integer | required, non-null | Counter value after the original successful create. |
+| `dailyCreation.remaining` | integer | required, non-null | `5 - count` for the original counter day. |
+| `dailyCreation.resetAtUtc` | string | required, non-null | ISO-8601 UTC timestamp for the original counter `windowEndAt`. |
+
+- Idempotent retry with the same `createRequestId` and same normalized payload returns the original `eventId`, original `createdAt`, and original `dailyCreation` values.
+- Idempotent retry after UTC midnight must not read, create, or update the new day's counter.
+
+`createEvent` request schema is exact. Unknown keys are rejected:
+
+```json
+{
+  "createRequestId": "uuid-v4",
+  "title": "Разговорный клуб: кофе и английский",
+  "description": "Неформальная встреча для практики разговорного английского.",
+  "languageCode": "en",
+  "levelMin": "B1",
+  "levelMax": "C1",
+  "countryCode": "RU",
+  "cityKey": "moscow",
+  "locationName": "Starbucks, ул. Арбат, 5",
+  "locationGeoPoint": {
+    "latitude": 55.7522,
+    "longitude": 37.6156
+  },
+  "startsAt": "2026-06-20T15:00:00.000Z",
+  "capacity": 10
+}
+```
+
+Request field wire-format rules:
+
+- `startsAt` is required as an ISO-8601 UTC string with millisecond precision after converting the selected event-local date/time with the selected city's `timeZoneId`.
+- `locationGeoPoint` is either `null` or an object with numeric `latitude` and `longitude`.
+- UUID input is normalized to lowercase before validation, path use, and storage. `createRequestId` is not included in the payload hash.
+- Text fields are normalized before hashing and persistence using the same trim/whitespace rules as their field contracts.
+- `languageCode` input is normalized to primary catalog code casing; level input is normalized to uppercase; `countryCode` is normalized to uppercase; `cityKey` must already match canonical lowercase key.
+
+Request field contract:
+
+| Field | Type | Required / nullable | Rules |
+| --- | --- | --- | --- |
+| `createRequestId` | string | required, non-null | UUID v4; normalized to lowercase for validation/path/storage; excluded from payload hash. |
+| `title` | string | required, non-null | Normalized and validated by event title rules. |
+| `description` | string | required, non-null | Normalized and validated by event description rules. |
+| `languageCode` | string | required, non-null | Normalized to primary catalog code; unknown values rejected. |
+| `levelMin` | string | required, non-null | Normalized uppercase CEFR code. |
+| `levelMax` | string | required, non-null | Normalized uppercase CEFR code; rank must be >= `levelMin`. |
+| `countryCode` | string | required, non-null | Normalized uppercase ISO alpha-2; must match canonical city catalog with `cityKey`. |
+| `cityKey` | string | required, non-null | Canonical lowercase city key. |
+| `locationName` | string | required, non-null | Normalized non-empty place/address string. |
+| `locationGeoPoint` | object or null | required, nullable | Null or `{latitude, longitude}`; latitude range `-90..90`, longitude range `-180..180`; server converts object to Firestore GeoPoint. |
+| `startsAt` | string | required, non-null | ISO-8601 UTC string with millisecond precision; parsed to Firestore timestamp; must be future by trusted backend time. |
+| `capacity` | integer | required, non-null | Integer only; range `2..50`. |
+
+`createEvent` stable errors:
+
+| Condition | Callable `HttpsError.code` | `details.domainCode` | Required details |
+| --- | --- | --- | --- |
+| Daily limit reached | `resource-exhausted` | `daily_limit_reached` | `resetAtUtc`, `dayKeyUtc`, `count`, `limit` |
+| Same `createRequestId`, changed payload | `already-exists` | `create_request_conflict` | `eventId`, `createRequestId`, `dayKeyUtc` |
+| Invalid request payload or `createRequestId` | `invalid-argument` | `invalid_create_request` | `field`, `reason` |
+| Unauthenticated user | `unauthenticated` | `auth_required` | none |
+
+Error details field rules:
+
+- `daily_limit_reached.details.resetAtUtc`: string, required, ISO-8601 UTC.
+- `daily_limit_reached.details.dayKeyUtc`: string, required, `YYYY-MM-DD`.
+- `daily_limit_reached.details.count`: integer, required, always `5` when limit is reached.
+- `daily_limit_reached.details.limit`: integer, required, always `5` in MVP.
+- `create_request_conflict.details.eventId`: string, required, original created event id from the idempotency marker.
+- `create_request_conflict.details.createRequestId`: string, required, lowercase UUID v4.
+- `create_request_conflict.details.dayKeyUtc`: string, required, original create UTC day.
+- `invalid_create_request.details.field`: string, required, invalid top-level request field name or `payload`.
+- `invalid_create_request.details.reason`: string, required, stable reason code such as `missing`, `unknown_key`, `invalid_type`, `invalid_format`, `out_of_range`, or `past_starts_at`.
+
+#### `eventCreationCounters/{userId}/days/{yyyyMMdd}`
+
+```json
+{
+  "userId": "uid",
+  "dayKeyUtc": "2026-06-16",
+  "count": 3,
+  "eventIds": ["eventId1", "eventId2", "eventId3"],
+  "requestEventIds": {
+    "550e8400-e29b-41d4-a716-446655440000": "eventId1"
+  },
+  "requestPayloadHashes": {
+    "550e8400-e29b-41d4-a716-446655440000": "sha256"
+  },
+  "windowStartAt": "timestamp",
+  "windowEndAt": "timestamp",
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp"
+}
+```
+
+`eventCreationCounters/{userId}/days/{yyyyMMdd}` field contract:
+
+| Field | Type | Required / nullable | Source | Rules |
+| --- | --- | --- | --- | --- |
+| `userId` | string | required, non-null | authenticated creator uid | Immutable; must match the parent path `{userId}`. |
+| `dayKeyUtc` | string | required, non-null | trusted backend time | Format `YYYY-MM-DD`; immutable; UTC day for the limit. |
+| `count` | integer | required, non-null | server transaction | Number of successful event creates for this user and UTC day; range `0..5`. |
+| `eventIds` | list<string> | required, non-null | server transaction | Event ids counted for this day; length must equal `count`; no duplicates. |
+| `requestEventIds` | map<string,string> | required, non-null | server transaction | Idempotency map from `createRequestId` to created `eventId` for this UTC day. |
+| `requestPayloadHashes` | map<string,string> | required, non-null | server transaction | Hash of normalized create payload for each `createRequestId`, used to detect changed-payload retries. |
+| `windowStartAt` | timestamp | required, non-null | trusted backend time | UTC day start, inclusive. |
+| `windowEndAt` | timestamp | required, non-null | trusted backend time | Next UTC day start, exclusive. |
+| `createdAt` | timestamp | required, non-null | captured `creationTimeUtc` | Trusted server time when counter doc is first created. |
+| `updatedAt` | timestamp | required, non-null | captured `creationTimeUtc` | Trusted server time when `count` or idempotency maps change. |
+
+Daily counter rules:
+
+- Direct client get, list, query, create, update, and delete access to `eventCreationCounters` is denied in MVP.
+- UI receives remaining-limit and reset information from `createEvent` success/error responses, not by reading the counter directly.
+- `createRequestId` is generated once per create-form submit attempt and reused for retries of the same logical submit.
+- `createRequestId` must be UUID v4.
+- `requestEventIds.keys == requestPayloadHashes.keys`.
+- `count == eventIds.length == requestEventIds.size == requestPayloadHashes.size`.
+- Every `requestEventIds` value must exist in `eventIds`.
+- Failed validation attempts are not written to `eventCreationCounters`, `requestEventIds`, or `requestPayloadHashes`.
+- The canonical payload hash is SHA-256 over canonical JSON with stable lexicographic key order and no unknown keys.
+- Hash input includes exactly normalized `title`, `description`, `languageCode`, `levelMin`, `levelMax`, `countryCode`, `cityKey`, `locationName`, `locationGeoPoint`, `startsAt`, and `capacity`.
+- Hash input excludes `createRequestId`, auth uid, generated event id, timestamps, counter fields, server-derived organizer snapshots, catalog-derived city/language display fields, participant data, and chat metadata.
+- Hash serialization normalizes Unicode to NFC, serializes `startsAt` as ISO-8601 UTC with millisecond precision, serializes `locationGeoPoint` as `{ "latitude": number, "longitude": number }` or `null`, preserves normalized catalog casing, and omits no required fields.
+- Retrying the same `createRequestId` with the same normalized payload returns the original `eventId` and does not increment `count`.
+- Retrying the same `createRequestId` with a different normalized payload returns a stable conflict error and does not create a second event.
+- A new create with no existing `createRequestId` succeeds only when `count < 5`.
+- When `count == 5`, `createEvent` fails with callable `HttpsError.code = resource-exhausted`, `details.domainCode = daily_limit_reached`, `details.resetAtUtc = windowEndAt` as an ISO-8601 UTC string, plus `details.dayKeyUtc`, `details.count`, and `details.limit = 5`.
+- Failed validation before the transaction must not create or update the counter.
+- Failed/interrupted transactions must not leave partial counter, request-marker, event, participant, or chat documents.
+
+#### `eventCreateRequests/{userId}/requests/{createRequestId}`
+
+```json
+{
+  "userId": "uid",
+  "createRequestId": "550e8400-e29b-41d4-a716-446655440000",
+  "eventId": "eventId",
+  "payloadHash": "sha256",
+  "counterPath": "eventCreationCounters/uid/days/20260616",
+  "dayKeyUtc": "2026-06-16",
+  "dailyCreation": {
+    "dayKeyUtc": "2026-06-16",
+    "count": 3,
+    "remaining": 2,
+    "resetAtUtc": "2026-06-17T00:00:00Z"
+  },
+  "status": "created",
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp"
+}
+```
+
+`eventCreateRequests/{userId}/requests/{createRequestId}` field contract:
+
+| Field | Type | Required / nullable | Source | Rules |
+| --- | --- | --- | --- | --- |
+| `userId` | string | required, non-null | authenticated creator uid | Immutable; must match parent path `{userId}`. |
+| `createRequestId` | string | required, non-null | client-generated UUID v4 | Immutable; lowercase UUID v4 and must match document id `{createRequestId}`. |
+| `eventId` | string | required, non-null | server transaction | Created event id for this request. |
+| `payloadHash` | string | required, non-null | server transaction | SHA-256 canonical payload hash used for retry conflict detection. |
+| `counterPath` | string | required, non-null | server transaction | Path of the counter document updated by the original create. |
+| `dayKeyUtc` | string | required, non-null | trusted backend time | UTC day of the original create, format `YYYY-MM-DD`. |
+| `dailyCreation` | map | required, non-null | server transaction | Exact `dailyCreation` response snapshot from the original successful create. |
+| `status` | string | required, non-null | server transaction | Allowed value in MVP: `created`. |
+| `createdAt` | timestamp | required, non-null | captured `creationTimeUtc` | Same trusted timestamp used for the original event create. |
+| `updatedAt` | timestamp | required, non-null | captured `creationTimeUtc` | Same as `createdAt` in MVP; marker is immutable after create. |
+
+`eventCreateRequests/{userId}/requests/{createRequestId}` rules:
+
+- This marker is day-independent so a retry after UTC midnight finds the original `createRequestId` instead of creating a duplicate event in a new day.
+- Document path is exactly `eventCreateRequests/{userId}/requests/{createRequestId}`; `{userId}` must match the authenticated uid and stored `userId`.
+- `{createRequestId}` is the lowercase UUID v4 value.
+- Only successfully created events write request markers.
+- Marker stores the original `dailyCreation` response snapshot so idempotent retries, including retries after UTC midnight, return the original response without reading or mutating any daily counter.
+- `status` is `created` in MVP. Failed validations and failed transactions do not create marker documents.
+- Direct client reads, creates, updates, and deletes are denied in MVP.
+- Marker writes are atomic with the event, participant, chat metadata, and daily counter update.
 
 #### Create atomicity and drafts
 
 Requirement:
 
 - MVP must not create server-side draft events.
-- Event creation must atomically create the active event, organizer participant membership, and event chat reservation.
-- Failed or interrupted create attempts must not leave partially created event/chat/participant documents.
+- Event creation must atomically create the active event, organizer participant membership, event chat reservation, daily creation counter update, and day-independent `eventCreateRequests` idempotency marker.
+- Failed or interrupted create attempts must not leave partially created event/chat/participant/counter/request-marker documents.
 - Repeated submit taps must be blocked in UI.
-- Event create requests must include a client-generated `createRequestId` or equivalent idempotency key so backend retries can reuse or reject duplicate create attempts instead of creating duplicate events.
+- Event create requests must include a client-generated UUID v4 `createRequestId` so backend retries can reuse or reject duplicate create attempts instead of creating duplicate events.
 
 ### Security & Privacy
 
 Firebase write paths must enforce:
 
 - Only authorized users can create events.
+- Event creation must go through callable Cloud Function `createEvent`; direct client event creates and daily counter writes are blocked.
+- `createEvent` must enforce 5 successful event creations per authenticated user per UTC calendar day using trusted backend time and `eventCreationCounters/{userId}/days/{yyyyMMdd}`.
 - Only organizer can edit/cancel their event.
 - Organizers and ordinary clients cannot permanently delete active or canceled event documents.
 - Trusted admin/ops/moderation deletion and data-retention tooling are outside MVP.
@@ -1043,6 +1257,7 @@ Firebase write paths must enforce:
 - Event creation must not create `draft` status documents.
 - Server-side create/edit validation must enforce that `countryCode + cityKey` resolves to a known canonical city record from the synchronized city allowlist/catalog.
 - Server-side create/edit logic must derive city display fallback fields from the canonical city catalog and reject or ignore mismatched client-provided city display names.
+- Server-side create validation must require UUID v4 `createRequestId`, reuse it idempotently for same-payload retries, and return conflict for changed-payload retries.
 - Server-side create/edit validation must enforce title: required after normalization, max 70 grapheme clusters, single-line.
 - Server-side create/edit validation must enforce description: required after normalization, max 1000 grapheme clusters, multiline allowed, more than 2 consecutive line breaks collapsed to 2.
 - Server-side create/edit validation must enforce that `languageCode` is a supported primary language code, or normalize a known alternate code before persisting.
@@ -1054,6 +1269,7 @@ Firebase write paths must enforce:
 - Firestore rules must block direct client writes that bypass validated event create/edit paths; exact grapheme counting belongs in server-side validation.
 - Direct leave or membership writes must be blocked at or after `startsAt` using trusted request/server time.
 - Direct client creates, updates, and deletes of participant documents are blocked outside validated create/join/leave flows.
+- Direct client reads, creates, updates, and deletes of `eventCreationCounters` and `eventCreateRequests` are denied in MVP.
 - Active event chat reads are participant-only; active event message sends are participant-only through `sendEventChatMessage`.
 - Canceled event chat reads are allowed only for organizer and the preserved read-access snapshot of users active at cancellation time.
 - Canceled event chat reads are denied for nonparticipants and users who left before cancellation.
@@ -1078,9 +1294,13 @@ Personal data exposed in event UI:
 Required tests:
 
 - Event creation validation.
-- Create/discard tests proving leaving the create form before submit creates no server event, participant, or chat documents.
-- Create atomicity tests proving failed/interrupted creates do not leave partial event, participant, or chat documents.
-- Submit double-tap/retry tests proving duplicate event creation is blocked or idempotently handled through `createRequestId` or equivalent.
+- Create/discard tests proving leaving the create form before submit creates no server event, participant, chat, counter, or request-marker documents.
+- Create atomicity tests proving failed/interrupted creates do not leave partial event, participant, chat, counter, or request-marker documents.
+- Submit double-tap/retry tests proving duplicate event creation is blocked or idempotently handled through UUID v4 `createRequestId`.
+- Daily creation counter tests cover counter document schema, UTC `dayKeyUtc`, trusted backend time, one captured `creationTimeUtc` reused for event/counter/request timestamps and day derivation, `windowStartAt`/`windowEndAt`, count/eventIds/request map invariants, canonical payload hashes, request idempotency maps, and direct client counter/request-marker reads/writes denied.
+- Create limit tests cover 4th-to-5th create success, 6th create denied with `resource-exhausted`, `details.domainCode = daily_limit_reached`, `resetAtUtc`, `dayKeyUtc`, `count`, and `limit`, concurrent creates cannot exceed 5, UTC boundary around 23:59/00:00, client clock/timezone spoof ignored, selected event city timezone ignored for counter key, and event `startsAt` day ignored for counter key.
+- `createRequestId` tests cover required UUID v4, same id and same normalized payload returning the original `eventId` without increment, same id with changed normalized payload returning `already-exists` plus `details.domainCode = create_request_conflict` without creating a second event, retry after UTC midnight finding the day-independent request marker, and retry after transient failure leaving no duplicate counter increment.
+- Cancel/edit/admin-delete tests prove they do not decrement or increment the daily creation counter.
 - Create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
 - Create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
 - Create/edit/server validation tests for `capacity`: below 2, above 50, non-integer, valid bounds, and edit below current `participantsCount`.
@@ -1093,7 +1313,7 @@ Required tests:
 - City resolution tests must prove `Country_NS` alone does not unlock the Events list.
 - City resolution tests must prove `preferences.preferredLocation` is not used as the default Events city.
 - Language catalog tests for primary code selection, alternate code normalization, denormalized display fallback, unknown legacy code read fallback, rejecting unknown create/edit codes, rejecting or ignoring mismatched client-provided names, backend allowlist sync with the app catalog, unique `alternateCodes`, and avoiding full `LanguageStruct` persistence.
-- 5-events-per-day limit.
+- UTC 5-events-per-day limit.
 - Event list filters by city/date/level.
 - Join transaction does not exceed capacity.
 - Duplicate join is blocked.

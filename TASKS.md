@@ -9,7 +9,7 @@ Date: 2026-06-14
 - New bottom tab `События` is available to authorized users.
 - User can browse active future offline events by selected city.
 - User can filter events by date and level.
-- User can create up to 5 events per calendar day.
+- User can create up to 5 events per UTC calendar day using trusted backend creation time.
 - User can join events without organizer approval and leave only before event `startsAt`.
 - Organizer can edit and cancel own events.
 - Event chat is available to active participants; canceled event chats remain read-only for organizer and participants active at cancellation time.
@@ -46,19 +46,29 @@ Date: 2026-06-14
 - [x] Add Firestore collection contract for `eventChats/{chatId}`.
 - [x] Define `eventChats.readAccessUserIds` as the chat read-access list that freezes on cancel with organizer and active participants, excludes users who left before cancel, and does not gain new readers after cancel.
 - [x] Add Firestore subcollection contract for `eventChats/{chatId}/messages/{messageId}`.
-- [ ] Add daily creation counter contract: `eventCreationCounters/{userId_yyyyMMdd}` or equivalent.
+- [x] Add daily creation counter contract: `eventCreationCounters/{userId}/days/{yyyyMMdd}` plus `eventCreateRequests/{userId}/requests/{createRequestId}`.
 - [ ] Define required compound index baseline: `status ASC + countryCode ASC + cityKey ASC + startsAt ASC`, with MVP level filtering applied client-side unless denormalized fields are later added.
 - [ ] Decide whether level filtering needs denormalized fields for Firestore queries.
 
 ## Phase 2: Firebase Write Logic
 
 - [ ] Implement transaction-safe event creation.
-- [ ] Ensure event creation atomically creates active event, organizer participant membership, and chat reservation without partial server drafts.
-- [ ] Add `createRequestId` or equivalent idempotency key handling for event creation retries.
+- [ ] Implement callable Cloud Function `createEvent` with exact request schema: `createRequestId`, `title`, `description`, `languageCode`, `levelMin`, `levelMax`, `countryCode`, `cityKey`, `locationName`, `locationGeoPoint`, `startsAt`, and `capacity`; reject unknown keys.
+- [ ] Ensure event creation atomically creates active event, organizer participant membership, chat reservation, daily creation counter update, and day-independent `eventCreateRequests` idempotency marker without partial server drafts.
+- [ ] Validate `createRequestId` as a required UUID v4.
+- [ ] Add `createRequestId` idempotency handling: same request id plus same normalized payload returns the original `eventId` without incrementing the daily counter.
+- [ ] Return `already-exists` with `details.domainCode = create_request_conflict` when the same `createRequestId` is retried with a different normalized payload.
+- [ ] Compute one trusted backend `creationTimeUtc` per create attempt and reuse it for `events.createdAt`, initial `updatedAt`, participant/chat/counter/request marker timestamps, and daily counter UTC key/window derivation.
+- [ ] Compute daily creation counter key from trusted backend UTC time, not client device time, event city timezone, or event `startsAt`.
+- [ ] Store and update `eventCreationCounters/{userId}/days/{yyyyMMdd}` with `userId`, `dayKeyUtc`, `count`, `eventIds`, `requestEventIds`, `requestPayloadHashes`, `windowStartAt`, `windowEndAt`, `createdAt`, and `updatedAt`.
+- [ ] Store `eventCreateRequests/{userId}/requests/{createRequestId}` as a day-independent idempotency marker with `userId`, `createRequestId`, `eventId`, `payloadHash`, `counterPath`, `dayKeyUtc`, original `dailyCreation` response snapshot, `status`, `createdAt`, and `updatedAt`.
+- [ ] Define canonical event create payload hashing with stable lexicographic JSON key order, Unicode NFC normalization, ISO-8601 UTC millisecond `startsAt`, normalized `locationGeoPoint`, and exclusions for `createRequestId`, auth uid, generated ids, timestamps, counters, server-derived snapshots, catalog-derived display fields, participant data, and chat metadata.
+- [ ] Enforce `count < 5` inside the same Firestore transaction before writing the event, participant, chat metadata, and counter update.
+- [ ] Return `resource-exhausted` with `details.domainCode = daily_limit_reached`, `resetAtUtc`, `dayKeyUtc`, `count`, and `limit` when the UTC daily counter is already 5.
 - [ ] Validate event create/edit city against a backend-supported allowlist or shared canonical city catalog.
 - [ ] Keep backend city allowlist/shared catalog versioned and generated from the same source as the full app canonical city catalog.
 - [ ] Derive city display fallback fields server-side from the canonical city catalog after validation.
-- [ ] Enforce 5 events per user per calendar day server-side.
+- [ ] Ensure cancel, edit, and trusted admin delete do not decrement or increment the daily creation counter.
 - [ ] Normalize trimmed, case-insensitive event language input from catalog `code` or `alternateCodes` to exact primary `languageCode`.
 - [ ] Validate event `languageCode` against a backend-supported allowlist or shared validation helper synchronized from the app language catalog.
 - [ ] Derive `languageNameEn` and `languageNameRu` server-side from synchronized catalog `nameEn` and `nameRu` values after normalization.
@@ -93,7 +103,7 @@ Date: 2026-06-14
 ## Phase 3: Firebase Security Rules
 
 - [ ] Allow authorized users to read active event list data.
-- [ ] Allow authorized users to create valid events only.
+- [ ] Deny direct client event creates outside the trusted `createEvent` callable/Admin SDK path.
 - [ ] Allow only organizer to edit own event.
 - [ ] Allow only organizer to cancel own event.
 - [ ] Deny organizer/client hard delete of active and canceled event documents.
@@ -101,6 +111,7 @@ Date: 2026-06-14
 - [ ] Prevent client-side tampering with protected event fields: `organizerId`, organizer snapshot fields, `participantsCount`, `chatId`, status fields, timestamps, and catalog-derived display fields.
 - [ ] Allow participant reads only where required by UI.
 - [ ] Deny direct client creates, updates, and deletes of participant documents outside validated join/leave/create flows.
+- [ ] Deny direct client reads, creates, updates, and deletes of `eventCreationCounters` and `eventCreateRequests`.
 - [ ] Allow active event chat reads only for active participants.
 - [ ] Allow canceled event chat reads only for organizer and participants active at cancellation time.
 - [ ] Deny canceled event chat reads for nonparticipants and users who left before cancellation.
@@ -213,6 +224,10 @@ Date: 2026-06-14
 - [ ] Block capacity below 2.
 - [ ] Block capacity above 50.
 - [ ] Handle daily creation limit error.
+- [ ] Generate one `createRequestId` per create-form submit attempt and reuse it for retries of the same in-flight logical submit.
+- [ ] Map `details.domainCode = daily_limit_reached` errors to user-facing copy and keep `resetAtUtc`, `dayKeyUtc`, `count`, and `limit` available for retry timing/support context.
+- [ ] Map `details.domainCode = create_request_conflict` with `eventId`, `createRequestId`, and `dayKeyUtc` to a recoverable submit error that does not create another event.
+- [ ] After `create_request_conflict`, discard the old `createRequestId` and generate a new one only when the user intentionally submits the changed payload again.
 - [ ] Treat partially filled create form as local-only draft state before submit.
 - [ ] Add dirty-form discard confirmation before leaving create screen.
 - [ ] Do not promise local draft restore after app restart, logout, or reinstall in MVP.
@@ -306,9 +321,16 @@ Date: 2026-06-14
 - [ ] Add unit tests for date filter helper.
 - [ ] Add unit tests for level overlap helper covering all six canonical ranks, no selected level, same-level ranges, rejected invalid levels, and rejected reversed ranges.
 - [ ] Add repository tests for event creation validation.
-- [ ] Add create discard tests proving leaving create form before submit creates no server event, participant, or chat documents.
-- [ ] Add create atomicity tests proving failed/interrupted creates do not leave partial event, participant, or chat documents.
-- [ ] Add submit double-tap/retry tests proving duplicate event creation is blocked or idempotently handled through `createRequestId` or equivalent.
+- [ ] Add `createEvent` request/response schema tests for required exact keys, unknown keys denied, invalid/missing `createRequestId`, per-field required/null/type/range validation, ISO-8601 UTC millisecond `startsAt`, nullable or `{latitude, longitude}` `locationGeoPoint`, exact success response fields/types, idempotent retry response returning original `eventId`/`createdAt`/`dailyCreation`, and normalized payload hashing inputs.
+- [ ] Add create discard tests proving leaving create form before submit creates no server event, participant, chat, counter, or request-marker documents.
+- [ ] Add create atomicity tests proving failed/interrupted creates do not leave partial event, participant, chat, counter, or request-marker documents.
+- [ ] Add submit double-tap/retry tests proving duplicate event creation is blocked or idempotently handled through UUID v4 `createRequestId`.
+- [ ] Add daily creation counter schema tests for `userId`, `dayKeyUtc`, `count`, `eventIds`, `requestEventIds`, `requestPayloadHashes`, `windowStartAt`, `windowEndAt`, `createdAt`, `updatedAt`, and count/request map invariants.
+- [ ] Add daily creation counter UTC tests for 23:59/00:00 boundary, one captured `creationTimeUtc`, trusted backend time, client clock/timezone spoof ignored, selected event city timezone ignored, and event `startsAt` day ignored.
+- [ ] Add daily creation limit tests for 4th-to-5th create success, 6th create denied with `resource-exhausted` plus `details.domainCode = daily_limit_reached`, `resetAtUtc`, `dayKeyUtc`, `count`, and `limit`, and concurrent creates never exceeding 5.
+- [ ] Add `createRequestId` tests for required UUID v4, same id plus same normalized payload returning original `eventId` without counter increment, same id plus changed normalized payload returning `already-exists` with full `create_request_conflict` details, retry after UTC midnight finding the original request marker, and transient retry leaving no duplicate increment.
+- [ ] Add `eventCreateRequests` marker tests for field schema including original `dailyCreation` snapshot, lowercase UUID v4 document id, parent `userId` match, day-independent lookup, original `dailyCreation` response on retry after UTC midnight without reading/updating the new daily counter, atomic write with event/counter, no marker on failed validation, immutability after create, and direct client access denial.
+- [ ] Add tests proving cancel, edit, and trusted admin delete do not decrement or increment the daily creation counter.
 - [ ] Add create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
 - [ ] Add create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
 - [ ] Add create/edit/server validation tests for `capacity`: below 2, above 50, non-integer, valid bounds, and edit below active `participantsCount`.
@@ -322,7 +344,7 @@ Date: 2026-06-14
 - [ ] Add status lifecycle tests for `active` with `canceledAt = null`, only `active -> canceled`, terminal canceled without reopen/restore, and `canceledAt` set from trusted server/request time.
 - [ ] Add rules tests that deny organizer/client hard delete of active and canceled events.
 - [ ] Add rules tests that deny client hard delete of event chat documents.
-- [ ] Add tests for 5-events-per-day limit.
+- [ ] Add rules tests denying direct client reads, creates, updates, and deletes of `eventCreationCounters` and `eventCreateRequests`.
 - [ ] Add tests for city/date/level list filtering.
 - [ ] Add city chip source tests for profile default, missing profile city, recent city ordering, static popular fallback, profile city absent from chips, and recent/static dedupe by `countryCode + cityKey`.
 - [ ] Add city catalog sync tests that backend allowlist/shared catalog is versioned and generated from the same source as the full app canonical city catalog.
