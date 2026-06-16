@@ -469,13 +469,69 @@ Core flow:
   "capacity": 10,
   "participantsCount": 5,
   "organizerId": "uid",
+  "organizerDisplayName": "Анастасия Иванова",
+  "organizerPhotoUrl": "https://...",
   "chatId": "eventId",
   "status": "active",
+  "timeZoneId": "Europe/Moscow",
   "createdAt": "timestamp",
   "updatedAt": "timestamp",
   "canceledAt": null
 }
 ```
+
+This section defines only the `events/{eventId}` document. Participant documents, chat documents, and message documents are defined in their own contracts. The only cross-contract fields here are the event aggregate `participantsCount` and the stable chat pointer `chatId`.
+
+`events/{eventId}` field contract:
+
+| Field | Type | Required / nullable | Source | Rules |
+| --- | --- | --- | --- | --- |
+| `title` | string | yes | client input, server-normalized | Trimmed, single-line, max 70 grapheme clusters. |
+| `description` | string | yes | client input, server-normalized | Trimmed, multiline, max 1000 grapheme clusters, repeated line breaks collapsed. |
+| `languageCode` | string | yes | server-normalized catalog code | Primary language catalog code only. |
+| `languageNameEn` | string | yes | server-derived catalog fallback | Display fallback only; not identity. |
+| `languageNameRu` | string | yes | server-derived catalog fallback | Display fallback only; not identity. |
+| `levelMin` | string | yes | client input, server-normalized | Canonical CEFR code only. |
+| `levelMax` | string | yes | client input, server-normalized | Canonical CEFR code only; rank must be >= `levelMin`. |
+| `countryCode` | string | yes | canonical city catalog | ISO 3166-1 alpha-2 uppercase. |
+| `cityKey` | string | yes | canonical city catalog | Stable canonical city key. |
+| `cityNameRu` | string | yes | server-derived city fallback | Display fallback only; not identity. |
+| `cityNameEn` | string | yes | server-derived city fallback | Display fallback only; not identity. |
+| `cityDisplayContext` | string | yes | server-derived city fallback | Display disambiguation only; not identity. |
+| `locationName` | string | yes | client input, server-normalized | MVP stores a human-readable place/address string in one field. |
+| `locationGeoPoint` | GeoPoint or null | no | optional client input | Nullable in MVP; not used for discovery queries or map/radius search. |
+| `startsAt` | timestamp | yes | client selected local date/time converted by server/client helper | Must be in the future at create/edit using trusted server/request time. |
+| `timeZoneId` | string | yes | canonical city catalog | Valid IANA timezone for the event city, used to interpret and display local event time. |
+| `capacity` | integer | yes | client input, server-validated | MVP range is 2..50. |
+| `participantsCount` | integer | yes | server-managed aggregate | Starts at 1 for organizer, must stay between 1 and `capacity`, changes only in join/leave transactions. |
+| `organizerId` | string | yes | authenticated creator uid | Protected after create; organizer is included in `participantsCount`. |
+| `organizerDisplayName` | string | yes | server-derived organizer profile snapshot | Denormalized display snapshot for event list/detail. |
+| `organizerPhotoUrl` | string or null | no | server-derived organizer profile snapshot | Denormalized display snapshot; nullable if organizer has no avatar. |
+| `chatId` | string | yes | server-managed | Stable value is `eventId` in MVP. |
+| `status` | string | yes | server-managed lifecycle | Only `active` or `canceled`. |
+| `createdAt` | timestamp | yes | server-managed | Trusted server/request time at creation. |
+| `updatedAt` | timestamp | yes | server-managed | Trusted server/request time when event fields or aggregate counters change. |
+| `canceledAt` | timestamp or null | yes | server-managed | Null while active; server/request time when canceled. |
+
+Protected/server-derived field rules:
+
+- Clients must not directly set or change `organizerId`, `organizerDisplayName`, `organizerPhotoUrl`, `participantsCount`, `chatId`, `status`, `createdAt`, `updatedAt`, or `canceledAt`.
+- Clients must not directly set trusted display fallback fields: `languageNameEn`, `languageNameRu`, `cityNameRu`, `cityNameEn`, or `cityDisplayContext`.
+- Server-side create/edit logic must derive catalog-backed display fallback fields after validating canonical language and city identity.
+- Organizer display fields are snapshots for the event list/detail. They do not replace the organizer's user profile as the identity source.
+- `chatId = eventId` is required in MVP so event links, chat lookup, and atomic create logic share a stable key.
+- `updatedAt` changes on organizer edits, cancellation, and join/leave transactions that change `participantsCount`.
+- Event list queries and analytics must use canonical identity fields, not denormalized display fields.
+
+Event document invariants:
+
+- `participantsCount` starts at 1 because the organizer is added as the first participant during creation.
+- `participantsCount <= capacity` must hold after every create/join/leave/cancel transaction.
+- Capacity cannot be edited below current `participantsCount`.
+- `startsAt` is stored as a Firestore timestamp. Create/edit UI captures event-local date/time for the selected canonical city; `timeZoneId` from the city catalog is used for conversion and display.
+- Past events do not get a separate status; list queries hide them with `startsAt`.
+- Canceled events keep their event document for direct links, history, support, and chat read snapshots.
+- Admin/ops/moderation hard delete is outside MVP and not an organizer action.
 
 Lifecycle rules:
 
@@ -686,6 +742,7 @@ Static city records must include:
   "regionCode": null,
   "regionNameRu": null,
   "regionNameEn": null,
+  "timeZoneId": "Europe/Moscow",
   "displayContext": "Россия",
   "aliases": ["Moskva", "Moscow", "Москва"],
   "transliterations": ["Moskva"],
@@ -705,6 +762,7 @@ Rules:
 - Recent and static city chips must dedupe by `countryCode + cityKey`.
 - Cities with the same display name in different countries or regions must include country/region context in UI.
 - Manual city search can match aliases/transliterations, but selection must persist only canonical `countryCode + cityKey`.
+- City records must include an IANA `timeZoneId` because event `startsAt` is entered and displayed in the selected event city's local time.
 - Remote Config is not part of MVP; keep the city chip source behind a replaceable helper/service so Remote Config can be added later without changing UI contracts.
 
 ### Query Requirements
@@ -836,6 +894,10 @@ Firebase write paths must enforce:
 - Server-side create/edit validation must enforce description: required after normalization, max 1000 grapheme clusters, multiline allowed, more than 2 consecutive line breaks collapsed to 2.
 - Server-side create/edit validation must enforce that `languageCode` is a supported primary language code, or normalize a known alternate code before persisting.
 - Server-side create/edit logic must derive `languageNameEn` and `languageNameRu` from the synchronized allowlist and reject or ignore mismatched client-provided language display names.
+- Server-side create/edit validation must enforce `capacity` as an integer from 2 to 50, and edits must not reduce it below `participantsCount`.
+- Server-side create/edit validation must enforce future `startsAt` using trusted server/request time.
+- Server-side create/edit logic must derive `timeZoneId` from the selected canonical city record, validate it as an IANA timezone, and reject or ignore client-provided timezone mismatches.
+- Server-side create logic must derive `organizerDisplayName` and `organizerPhotoUrl` from the authenticated organizer profile snapshot.
 - Firestore rules must block direct client writes that bypass validated event create/edit paths; exact grapheme counting belongs in server-side validation.
 - Direct leave or membership writes must be blocked at or after `startsAt` using trusted request/server time.
 - Active event chat read/write is participant-only.
@@ -863,6 +925,9 @@ Required tests:
 - Submit double-tap/retry tests proving duplicate event creation is blocked or idempotently handled through `createRequestId` or equivalent.
 - Create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
 - Create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
+- Create/edit/server validation tests for `capacity`: below 2, above 50, non-integer, valid bounds, and edit below current `participantsCount`.
+- Create/edit/server validation tests for `startsAt` and `timeZoneId`: future trusted-time validation, selected city timezone derivation, and rejected or ignored client timezone mismatch.
+- Create tests proving `organizerDisplayName` and `organizerPhotoUrl` are derived from the authenticated organizer profile snapshot.
 - Rules tests that block direct client writes bypassing validated event create/edit paths.
 - City chip source tests for profile default, missing profile city, recent city ordering, static popular city fallback, profile city not present in chips, and recent/static dedupe by `countryCode + cityKey`.
 - City query tests must use canonical `countryCode + cityKey`, not localized display names.

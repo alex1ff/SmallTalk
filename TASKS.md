@@ -41,7 +41,7 @@ Date: 2026-06-14
 - [x] Define event language fields as canonical `languageCode` plus denormalized `languageNameEn` and `languageNameRu`.
 - [x] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
 - [x] Define `events.status` lifecycle, allowed values `active|canceled`, rejected values, `draft` as local-only create state, and no `past|completed|deleted|archived|cancelled` statuses in MVP.
-- [ ] Add Firestore collection contract for `events/{eventId}`.
+- [x] Add Firestore collection contract for `events/{eventId}`.
 - [ ] Add Firestore subcollection contract for `events/{eventId}/participants/{userId}`.
 - [ ] Add Firestore collection contract for `eventChats/{chatId}`.
 - [ ] Define `eventChats.readAccessUserIds` as the chat read-access list that freezes on cancel with organizer and active participants, excludes users who left before cancel, and does not gain new readers after cancel.
@@ -63,6 +63,9 @@ Date: 2026-06-14
 - [ ] Validate event `languageCode` against a backend-supported allowlist or shared validation helper synchronized from the app language catalog.
 - [ ] Derive `languageNameEn` and `languageNameRu` server-side from synchronized catalog `nameEn` and `nameRu` values after normalization.
 - [ ] Normalize event level input by trim and uppercase, validate against `A1`, `A2`, `B1`, `B2`, `C1`, `C2`, and reject reversed `levelMin`/`levelMax` ranges using canonical rank.
+- [ ] Validate event `capacity` server-side as an integer from 2 to 50 and reject edits below active `participantsCount`.
+- [ ] Validate event `startsAt` against trusted server/request time and derive `timeZoneId` from the selected canonical city record.
+- [ ] Derive `organizerDisplayName` and `organizerPhotoUrl` server-side from the authenticated organizer profile snapshot during event creation.
 - [ ] Add organizer as first participant during event creation.
 - [ ] Create or reserve event chat during event creation.
 - [ ] Implement transaction-safe join.
@@ -89,7 +92,7 @@ Date: 2026-06-14
 - [ ] Allow only organizer to cancel own event.
 - [ ] Deny organizer/client hard delete of active and canceled event documents.
 - [ ] Deny any client-created or client-updated `events.status` outside `active|canceled`.
-- [ ] Prevent client-side tampering with `organizerId`, `participantsCount`, and protected status fields.
+- [ ] Prevent client-side tampering with protected event fields: `organizerId`, organizer snapshot fields, `participantsCount`, `chatId`, status fields, timestamps, and catalog-derived display fields.
 - [ ] Allow participant reads only where required by UI.
 - [ ] Allow active event chat reads only for active participants.
 - [ ] Allow canceled event chat reads only for organizer and participants active at cancellation time.
@@ -104,11 +107,11 @@ Date: 2026-06-14
 
 ## Phase 4: Flutter Data Layer
 
-- [ ] Add event model.
+- [ ] Add event model matching the `events/{eventId}` field contract, including server-managed fields, catalog-derived fields, organizer snapshot fields, and `timeZoneId`.
 - [ ] Add event participant model.
 - [ ] Add event chat/message model or reuse existing chat model if compatible.
 - [ ] Add `users.profileCity` model/struct with `countryCode`, `cityKey`, catalog-derived localized display fields, catalog-derived region fields, `catalogVersion`, and server-time `updatedAt`.
-- [ ] Add static curated city catalog with `countryCode`, `cityKey`, localized names, region metadata required for duplicate-name disambiguation, aliases/transliterations, country/region display context, and priority.
+- [ ] Add static curated city catalog with `countryCode`, `cityKey`, localized names, region metadata required for duplicate-name disambiguation, IANA `timeZoneId`, aliases/transliterations, country/region display context, and priority.
 - [ ] Add event repository/service for list queries.
 - [ ] Add event repository/service for detail stream.
 - [ ] Add event repository/service for create, edit, cancel, join, and leave.
@@ -196,8 +199,9 @@ Date: 2026-06-14
 - [ ] Add place/address input.
 - [ ] Add participant limit input.
 - [ ] Validate required fields.
-- [ ] Block date/time in the past.
+- [ ] Interpret date/time in the selected event city's `timeZoneId` and block past values using trusted-time validation feedback.
 - [ ] Block capacity below 2.
+- [ ] Block capacity above 50.
 - [ ] Handle daily creation limit error.
 - [ ] Treat partially filled create form as local-only draft state before submit.
 - [ ] Add dirty-form discard confirmation before leaving create screen.
@@ -296,6 +300,9 @@ Date: 2026-06-14
 - [ ] Add submit double-tap/retry tests proving duplicate event creation is blocked or idempotently handled through `createRequestId` or equivalent.
 - [ ] Add create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
 - [ ] Add create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
+- [ ] Add create/edit/server validation tests for `capacity`: below 2, above 50, non-integer, valid bounds, and edit below active `participantsCount`.
+- [ ] Add create/edit/server validation tests for `startsAt` and `timeZoneId`: future trusted-time validation, selected city timezone derivation, and rejected or ignored client timezone mismatch.
+- [ ] Add create tests proving `organizerDisplayName` and `organizerPhotoUrl` are derived from the authenticated organizer profile snapshot.
 - [ ] Add create/edit/server validation tests for language: primary code accepted, alternate code normalized, trim/case input normalized, unknown code rejected, mismatched client-provided names rejected or ignored, and full `LanguageStruct` persistence blocked.
 - [ ] Add language catalog sync tests that backend allowlist matches the app catalog and `alternateCodes` resolve uniquely.
 - [ ] Add language display tests for current locale name, denormalized fallback names, unknown legacy code fallback, and missing catalog load fallback.
