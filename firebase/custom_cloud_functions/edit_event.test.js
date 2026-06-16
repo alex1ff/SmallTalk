@@ -44,6 +44,21 @@ function cloneValidEditRequest(overrides = {}) {
   };
 }
 
+function counterData() {
+  return {
+    userId: "uid",
+    dayKeyUtc: "2026-06-16",
+    count: 1,
+    eventIds: ["event-1"],
+    requestEventIds: {request1: "event-1"},
+    requestPayloadHashes: {request1: "a".repeat(64)},
+    windowStartAt: fixedTimestamp,
+    windowEndAt: fixedTimestamp,
+    createdAt: fixedTimestamp,
+    updatedAt: fixedTimestamp,
+  };
+}
+
 function assertHttpsError(fn, code, domainCode, field, reason) {
   assert.throws(fn, (err) => {
     assert.equal(err.code, code);
@@ -208,8 +223,10 @@ test("executeEditEventTransaction updates organizer active future event", async 
       }),
       {now: fixedNow},
   );
+  const counterBefore = counterData();
   const {db, store, writes} = createFakeFirestore({
     "events/event-1": eventData(),
+    "eventCreationCounters/uid/days/20260616": counterBefore,
   });
 
   const response = await executeEditEventTransaction({
@@ -233,6 +250,10 @@ test("executeEditEventTransaction updates organizer active future event", async 
   assert.equal(event.capacity, 5);
   assert.equal(event.updatedAt, fixedTimestamp);
   assert.deepEqual(writes.map((write) => write.path), ["events/event-1"]);
+  assert.strictEqual(
+      store.get("eventCreationCounters/uid/days/20260616"),
+      counterBefore,
+  );
   assert.equal(
       writes.some((write) => write.path.includes("eventCreationCounters")),
       false,

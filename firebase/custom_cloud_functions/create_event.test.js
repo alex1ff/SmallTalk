@@ -797,6 +797,58 @@ test("executeCreateEventTransaction returns marker retry after startsAt", async 
   assert.deepEqual(writes, []);
 });
 
+test("executeCreateEventTransaction keeps counter after admin event delete", async () => {
+  const originalDayInfo = buildUtcDayInfo(fixedNow);
+  const {normalized, payloadHash} =
+    buildNormalizedAndHash(cloneValidRequest());
+  const dailyCreation = buildDailyCreation(1, originalDayInfo);
+  const marker = buildCreateRequestMarker({
+    uid: "uid",
+    createRequestId: validRequest.createRequestId,
+    eventId: "event-original",
+    payloadHash,
+    counterPath: "eventCreationCounters/uid/days/20260616",
+    dayInfo: originalDayInfo,
+    dailyCreation,
+    creationTimestamp: fixedTimestamp,
+  });
+  const counterBefore = buildValidCounterData({
+    dayInfo: originalDayInfo,
+    count: 1,
+  });
+  const {db, makeRef, reads, store, writes} = createFakeFirestore({
+    [`eventCreateRequests/uid/requests/${validRequest.createRequestId}`]:
+      marker,
+    "eventCreationCounters/uid/days/20260616": counterBefore,
+  });
+
+  const response = await executeCreateEventTransaction({
+    db,
+    uid: "uid",
+    creationDate: fixedNow,
+    creationTimestamp: fixedTimestamp,
+    dayInfo: originalDayInfo,
+    normalized,
+    payloadHash,
+    eventRef: makeRef("events/event-new"),
+  });
+
+  assert.deepEqual(response, {
+    eventId: "event-original",
+    createdAt: "2026-06-16T10:00:00.000Z",
+    dailyCreation,
+  });
+  assert.equal(store.has("events/event-original"), false);
+  assert.strictEqual(
+      store.get("eventCreationCounters/uid/days/20260616"),
+      counterBefore,
+  );
+  assert.deepEqual(reads, [
+    `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+  ]);
+  assert.deepEqual(writes, []);
+});
+
 test("executeCreateEventTransaction returns marker retry for stale city", async () => {
   const staleCityRequest = cloneValidRequest({cityKey: "removed_city"});
   const {normalized, payloadHash} = buildNormalizedAndHash(

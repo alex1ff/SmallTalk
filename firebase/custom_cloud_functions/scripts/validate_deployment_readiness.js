@@ -75,6 +75,7 @@ const REQUIRED_FUNCTIONS = [
   {id: "claimRegistrationGift", trigger: "callable"},
   {id: "createEvent", trigger: "callable"},
   {id: "editEvent", trigger: "callable"},
+  {id: "cancelEvent", trigger: "callable"},
   {id: "requestWithdrawal", trigger: "callable"},
   {id: "syncUserPublicProfile", trigger: "firestore"},
   {

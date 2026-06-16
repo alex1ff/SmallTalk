@@ -68,7 +68,7 @@ Date: 2026-06-14
 - [x] Validate event create/edit city against a backend-supported allowlist or shared canonical city catalog.
 - [x] Keep backend city allowlist/shared catalog versioned and generated from the same source as the full app canonical city catalog.
 - [x] Derive city display fallback fields server-side from the canonical city catalog after validation.
-- [ ] Ensure cancel, edit, and trusted admin delete do not decrement or increment the daily creation counter.
+- [x] Ensure cancel, edit, and trusted admin delete do not decrement or increment the daily creation counter.
 - [x] Normalize trimmed, case-insensitive event language input from catalog `code` or `alternateCodes` to exact primary `languageCode`.
 - [x] Validate event `languageCode` against a backend-supported allowlist or shared validation helper synchronized from the app language catalog.
 - [x] Derive `languageNameEn` and `languageNameRu` server-side from synchronized catalog `nameEn` and `nameRu` values after normalization.
@@ -89,13 +89,13 @@ Date: 2026-06-14
 - [ ] Update chat access after join and leave.
 - [x] Implement organizer-only event edit.
 - [x] Block capacity reduction below active participant count.
-- [ ] Implement organizer-only event cancel.
-- [ ] On cancel, atomically set `status = canceled`, set `canceledAt` to trusted server/request time, and preserve event chat read-access snapshot for organizer and users active at cancellation time.
-- [ ] Build cancel chat snapshot from `events.organizerId` plus participant documents with `status = active` read inside the cancel transaction, not from timestamp comparisons.
-- [ ] Make repeated cancel idempotent or return a clear already-canceled error without changing the cancellation snapshot.
+- [x] Implement organizer-only event cancel.
+- [x] On cancel, atomically set `status = canceled`, set `canceledAt` to trusted server/request time, and preserve event chat read-access snapshot for organizer and users active at cancellation time.
+- [x] Build cancel chat snapshot from `events.organizerId` plus participant documents with `status = active` read inside the cancel transaction, not from timestamp comparisons.
+- [x] Make repeated cancel idempotent or return a clear already-canceled error without changing the cancellation snapshot.
 - [ ] Block reopening/restoring canceled events to `active` in MVP.
 - [ ] Block event chat writes after cancellation.
-- [ ] Fail closed when event chat metadata is missing or `eventChats/{chatId}.eventId` does not match the owning event id.
+- [x] Fail closed when event chat metadata is missing or `eventChats/{chatId}.eventId` does not match the owning event id.
 - [ ] Implement callable Cloud Function `sendEventChatMessage` with exact request schema `{eventId, text}`; reject unknown request keys; validate `eventId` as a non-empty Firestore document id/path segment with no `/`; use authenticated uid as `senderId`; generate `messageId`; return `messageId` and `createdAt`; and check active event status, matching chat metadata, active participant membership, allowed message fields, trusted `createdAt`, `deletedAt = null`, normalized non-empty text, and max 1000 grapheme clusters.
 - [ ] Derive event chat message `senderDisplayName` and `senderPhotoUrl` server-side from trusted participant/profile data during send.
 - [ ] Block ordinary event chat message edit, soft delete, hard delete, and sender snapshot mutation in MVP.

@@ -74,6 +74,7 @@ test("deployment readiness fails missing critical functions", () => {
   assert.ok(missingIds.includes("syncUserPublicProfile"));
   assert.ok(missingIds.includes("createEvent"));
   assert.ok(missingIds.includes("editEvent"));
+  assert.ok(missingIds.includes("cancelEvent"));
   assert.ok(missingIds.includes("sendCustomEmailVerification"));
   assert.ok(missingIds.includes("submitReview"));
 });
