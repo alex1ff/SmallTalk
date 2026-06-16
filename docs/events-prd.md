@@ -699,11 +699,69 @@ Event chat metadata rules:
 ```json
 {
   "senderId": "uid",
+  "senderDisplayName": "Марко",
+  "senderPhotoUrl": "...",
   "text": "Всем привет!",
   "createdAt": "timestamp",
   "deletedAt": null
 }
 ```
+
+Message document id rules:
+
+- `messageId` is an opaque backend-generated id with no product meaning; clients do not choose it.
+- Message ordering must not rely on `messageId`.
+- The default query order is `createdAt ASC`, then `__name__ ASC` / document id ascending as the stable tie-breaker when two messages have the same timestamp.
+- Pagination cursors must include both `createdAt` and document id so equal-timestamp messages do not skip or duplicate.
+
+`eventChats/{chatId}/messages/{messageId}` field contract:
+
+| Field | Type | Required / nullable | Source | Rules |
+| --- | --- | --- | --- | --- |
+| `senderId` | string | required, non-null | authenticated user id | Immutable; must equal the sender auth uid and an active participant id at send time. |
+| `senderDisplayName` | string | required, non-null | trusted backend snapshot from active participant document, with current user profile fallback | Immutable display snapshot for historical chat messages; clients must not be trusted as the source; required after trim; max 70 grapheme clusters. |
+| `senderPhotoUrl` | string or null | required, nullable | trusted backend snapshot from active participant document, with current user profile fallback | Immutable display snapshot; nullable when the sender has no avatar; if non-null, max 2048 characters. |
+| `text` | string | required, non-null | user input after validation/normalization | Immutable for ordinary users and message sends; required after trim; max 1000 grapheme clusters in app/server validation. Trusted moderation may atomically replace it with the fixed tombstone placeholder when setting `deletedAt`. |
+| `createdAt` | timestamp | required, non-null | trusted server/request time | Immutable; client device time must not be trusted. |
+| `deletedAt` | timestamp or null | required, nullable | trusted admin/moderation path | Must be `null` on MVP user-created messages; reserved for future trusted moderation. |
+
+Message content rules:
+
+- MVP supports only plain text event chat messages.
+- Allowed fields are exactly `senderId`, `senderDisplayName`, `senderPhotoUrl`, `text`, `createdAt`, and `deletedAt`.
+- Do not add message `type`, attachments, reactions, read receipts, edit history, delivery status, client timestamps, or arbitrary metadata maps in MVP.
+- Text normalization trims leading/trailing whitespace, normalizes CRLF/CR to LF, and collapses more than 2 consecutive line breaks to 2.
+- Empty or whitespace-only messages are rejected.
+- Multiline text is allowed after normalization.
+- Exact grapheme counting belongs in app/server validation; Firestore rules may use only coarse string-size checks.
+
+Message access and lifecycle rules:
+
+- MVP message writes go through callable Cloud Function `sendEventChatMessage`. Direct client creates, updates, and deletes of `eventChats/{chatId}/messages/{messageId}` are denied by Firestore rules.
+- Because `chatId == eventId`, the owning event for `eventChats/{chatId}/messages/{messageId}` is `events/{chatId}`.
+- `sendEventChatMessage` request schema is exactly `{ eventId, text }`.
+- `sendEventChatMessage` rejects unknown request keys and ignores no extra client-provided identity, snapshot, timestamp, `deletedAt`, or `messageId` fields.
+- `eventId` in the request must be a non-empty Firestore document id/path segment with no `/`.
+- `sendEventChatMessage` response returns `messageId` and `createdAt` after persistence.
+- `sendEventChatMessage` checks must verify that the user is authenticated, `eventId == chatId`, `events/{eventId}` exists, `events/{eventId}.chatId == eventId`, `eventChats/{eventId}.eventId == eventId`, the owning event status is `active`, and the sender has an active participant document at `events/{eventId}/participants/{auth.uid}`.
+- `sendEventChatMessage` must derive `senderId` from `auth.uid`.
+- `sendEventChatMessage` must derive `senderDisplayName` and `senderPhotoUrl` from the sender's active participant snapshot first. If that snapshot is missing display fields, it may fall back to the sender's current trusted user profile; missing/blank display name after fallback rejects the send.
+- `sendEventChatMessage` writes only the allowed fields, generates the message document id, sets `createdAt` from trusted server time, sets `deletedAt = null`, and persists normalized text.
+- `sendEventChatMessage` must return stable errors for unauthenticated user, invalid payload, missing/mismatched event chat metadata, nonparticipant/left participant, canceled event, invalid text, and internal write failure.
+- Message read rules are defined on the messages subcollection; parent chat read rules must not be assumed to inherit automatically.
+- Message reads require authenticated user, existing `events/{chatId}`, existing `eventChats/{chatId}`, `events/{chatId}.chatId == chatId`, and `eventChats/{chatId}.eventId == chatId`.
+- While the owning event status is `active`, message reads are allowed only for users with an active participant document for `events/{chatId}`.
+- While the owning event status is `active`, message reads are denied for nonparticipants and users whose participant status is `left`.
+- When the owning event status is `canceled`, message reads are allowed only for users in the frozen `eventChats/{chatId}.readAccessUserIds` snapshot.
+- New participants can read previous messages after joining while the event is active.
+- If a sender leaves after sending, existing messages remain in the chat history, but the sender loses active-chat read/write access.
+- Users who left before cancellation are not included in the canceled chat read snapshot, even if they sent earlier messages.
+- When the event is canceled, all message creates, updates, and deletes are blocked for everyone, including organizer.
+- Ordinary users cannot edit messages, soft-delete messages, hard-delete messages, or change sender snapshots in MVP.
+- Non-null `deletedAt` is reserved for trusted moderation/admin paths outside MVP. A moderation tombstone may atomically set `deletedAt` and replace `text` with a fixed non-user-content placeholder before clients can read it; original removed text must not remain in the readable message document and, if retained for audit, must live in an admin-only location outside event chat reads.
+- If `deletedAt` is non-null, the UI should render the message as removed/tombstoned and must not show sender-provided removed content.
+- Message read rules fail closed for missing auth, missing event, missing chat metadata, mismatched `eventId`, mismatched `chatId`, missing active participant access while active, or missing frozen read access while canceled. Read rules must not depend on message body schema validation, because Firestore rules are not query filters.
+- `sendEventChatMessage` fails closed for invalid sender membership, invalid payload/schema, invalid sender snapshot, invalid timestamp source, invalid text, or mismatched event/chat state.
 
 #### Existing user location audit
 
@@ -996,13 +1054,16 @@ Firebase write paths must enforce:
 - Firestore rules must block direct client writes that bypass validated event create/edit paths; exact grapheme counting belongs in server-side validation.
 - Direct leave or membership writes must be blocked at or after `startsAt` using trusted request/server time.
 - Direct client creates, updates, and deletes of participant documents are blocked outside validated create/join/leave flows.
-- Active event chat read/write is participant-only.
+- Active event chat reads are participant-only; active event message sends are participant-only through `sendEventChatMessage`.
 - Canceled event chat reads are allowed only for organizer and the preserved read-access snapshot of users active at cancellation time.
 - Canceled event chat reads are denied for nonparticipants and users who left before cancellation.
-- Chat writes require event status `active`; canceled event chats are read-only for eligible existing participants and organizer.
+- `sendEventChatMessage` requires event status `active`; canceled event chats are read-only for eligible existing participants and organizer.
 - Direct client creates, updates, and deletes of `eventChats/{chatId}` metadata, including `readAccessUserIds`, are blocked.
 - Event chat metadata reads and writes must fail closed when metadata is missing or `eventChats/{chatId}.eventId` does not match the owning event id.
-- User cannot write messages as another sender.
+- Event chat message reads are protected at the messages subcollection level: active event messages are readable only by active participants, and canceled event messages are readable only by users in the frozen `readAccessUserIds` snapshot.
+- Event chat message sends require callable Cloud Function `sendEventChatMessage`, which verifies an authenticated active participant, owning event status `active`, matching chat metadata, allowed message fields only, trusted `createdAt`, `deletedAt = null`, and valid normalized text before writing.
+- Users cannot send messages as another sender, and sender display/photo snapshots must be derived from trusted participant/profile data, not trusted from arbitrary client input.
+- Ordinary clients cannot directly create, update, soft-delete, or hard-delete event chat messages in MVP.
 - User cannot directly inflate `participantsCount`.
 
 Personal data exposed in event UI:
@@ -1054,6 +1115,9 @@ Required tests:
 - Canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
 - Event chat metadata tests cover `chatId = eventId`, `eventChats/{chatId}.eventId` matching the owning event, no independent chat status fields, direct metadata writes/deletes blocked, `updatedAt` metadata semantics, and fail-closed behavior for missing or mismatched metadata.
 - `readAccessUserIds` tests cover uniqueness, no semantic ordering, create `[organizerId]`, join/rejoin add, duplicate active join no-op, leave removes only before `startsAt`, cancel snapshot formula, immutable frozen snapshot, repeated cancel no snapshot changes, and join/leave/rejoin versus cancel commit ordering.
+- Event chat message backend send tests cover valid send, active participant requirement, sender spoofing denial, server-derived sender snapshots, missing/blank display name after fallback rejection, 70/71 grapheme sender display name bounds, nullable sender photo, 2048/2049 character sender photo URL bounds, missing/mismatched chat metadata fail-closed behavior, canceled send denial, allowed-fields-only schema, trusted `createdAt`, `deletedAt = null`, invalid text rejection, text normalization, 1000/1001 grapheme text length bounds, and multiline text.
+- Event chat message rules tests cover active participant read, left/nonparticipant read denial while active, canceled read for frozen `readAccessUserIds`, canceled read denial for users outside the snapshot, missing/mismatched chat metadata fail-closed behavior, and direct client create/update/delete denial.
+- Event chat message repository/UI tests cover stable ordering and pagination by `createdAt` plus `__name__` / document id.
 - Deep link opens event detail.
 - Deep link preserves target `eventId` through auth login redirect.
 - Deep link handles missing, admin-deleted, canceled, past, and full event states without auto-joining.
