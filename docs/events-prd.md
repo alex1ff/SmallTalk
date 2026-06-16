@@ -542,7 +542,9 @@ Language rules:
 Audit scope:
 
 - This audit is based on the current code, generated schemas, and Firestore indexes.
-- It did not sample production Firestore `users` documents. If a migration or defaulting strategy depends on real legacy data, run a separate data sampling task before implementation.
+- It did not sample production Firestore `users` documents.
+- Production `users` sampling is not required for MVP profile-city migration/defaulting because there is no automatic migration/defaulting from legacy user location fields. Missing, null, or stale `users.profileCity` must show the missing/outdated city flow. `users.Country_NS` may only rank suggestions and must never unlock the Events list or silently choose `cityKey`.
+- Only run Firestore `users` data sampling if a future approved product decision introduces a legacy-data-based migration, backfill, or automatic defaulting strategy. Current MVP explicitly does not do this.
 
 Current registration/profile fields are not city-ready:
 
