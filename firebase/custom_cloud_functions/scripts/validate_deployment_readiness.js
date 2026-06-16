@@ -73,6 +73,7 @@ const REQUIRED_FUNCTIONS = [
   {id: "migrateLegacyVoipTokens", trigger: "callable"},
   {id: "scheduledLegacyVoipTokenMigration", trigger: "scheduled"},
   {id: "claimRegistrationGift", trigger: "callable"},
+  {id: "createEvent", trigger: "callable"},
   {id: "requestWithdrawal", trigger: "callable"},
   {id: "syncUserPublicProfile", trigger: "firestore"},
   {

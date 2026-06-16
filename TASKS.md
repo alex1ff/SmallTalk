@@ -52,32 +52,32 @@ Date: 2026-06-14
 
 ## Phase 2: Firebase Write Logic
 
-- [ ] Implement transaction-safe event creation.
-- [ ] Implement callable Cloud Function `createEvent` with exact request schema: `createRequestId`, `title`, `description`, `languageCode`, `levelMin`, `levelMax`, `countryCode`, `cityKey`, `locationName`, `locationGeoPoint`, `startsAt`, and `capacity`; reject unknown keys.
-- [ ] Ensure event creation atomically creates active event, organizer participant membership, chat reservation, daily creation counter update, and day-independent `eventCreateRequests` idempotency marker without partial server drafts.
-- [ ] Validate `createRequestId` as a required UUID v4.
-- [ ] Add `createRequestId` idempotency handling: same request id plus same normalized payload returns the original `eventId` without incrementing the daily counter.
-- [ ] Return `already-exists` with `details.domainCode = create_request_conflict` when the same `createRequestId` is retried with a different normalized payload.
-- [ ] Compute one trusted backend `creationTimeUtc` per create attempt and reuse it for `events.createdAt`, initial `updatedAt`, participant/chat/counter/request marker timestamps, and daily counter UTC key/window derivation.
-- [ ] Compute daily creation counter key from trusted backend UTC time, not client device time, event city timezone, or event `startsAt`.
-- [ ] Store and update `eventCreationCounters/{userId}/days/{yyyyMMdd}` with `userId`, `dayKeyUtc`, `count`, `eventIds`, `requestEventIds`, `requestPayloadHashes`, `windowStartAt`, `windowEndAt`, `createdAt`, and `updatedAt`.
-- [ ] Store `eventCreateRequests/{userId}/requests/{createRequestId}` as a day-independent idempotency marker with `userId`, `createRequestId`, `eventId`, `payloadHash`, `counterPath`, `dayKeyUtc`, original `dailyCreation` response snapshot, `status`, `createdAt`, and `updatedAt`.
-- [ ] Define canonical event create payload hashing with stable lexicographic JSON key order, Unicode NFC normalization, ISO-8601 UTC millisecond `startsAt`, normalized `locationGeoPoint`, and exclusions for `createRequestId`, auth uid, generated ids, timestamps, counters, server-derived snapshots, catalog-derived display fields, participant data, and chat metadata.
-- [ ] Enforce `count < 5` inside the same Firestore transaction before writing the event, participant, chat metadata, and counter update.
-- [ ] Return `resource-exhausted` with `details.domainCode = daily_limit_reached`, `resetAtUtc`, `dayKeyUtc`, `count`, and `limit` when the UTC daily counter is already 5.
+- [x] Implement transaction-safe event creation.
+- [x] Implement callable Cloud Function `createEvent` with exact request schema: `createRequestId`, `title`, `description`, `languageCode`, `levelMin`, `levelMax`, `countryCode`, `cityKey`, `locationName`, `locationGeoPoint`, `startsAt`, and `capacity`; reject unknown keys.
+- [x] Ensure event creation atomically creates active event, organizer participant membership, chat reservation, daily creation counter update, and day-independent `eventCreateRequests` idempotency marker without partial server drafts.
+- [x] Validate `createRequestId` as a required UUID v4.
+- [x] Add `createRequestId` idempotency handling: same request id plus same normalized payload returns the original `eventId` without incrementing the daily counter.
+- [x] Return `already-exists` with `details.domainCode = create_request_conflict` when the same `createRequestId` is retried with a different normalized payload.
+- [x] Compute one trusted backend `creationTimeUtc` per create attempt and reuse it for `events.createdAt`, initial `updatedAt`, participant/chat/counter/request marker timestamps, and daily counter UTC key/window derivation.
+- [x] Compute daily creation counter key from trusted backend UTC time, not client device time, event city timezone, or event `startsAt`.
+- [x] Store and update `eventCreationCounters/{userId}/days/{yyyyMMdd}` with `userId`, `dayKeyUtc`, `count`, `eventIds`, `requestEventIds`, `requestPayloadHashes`, `windowStartAt`, `windowEndAt`, `createdAt`, and `updatedAt`.
+- [x] Store `eventCreateRequests/{userId}/requests/{createRequestId}` as a day-independent idempotency marker with `userId`, `createRequestId`, `eventId`, `payloadHash`, `counterPath`, `dayKeyUtc`, original `dailyCreation` response snapshot, `status`, `createdAt`, and `updatedAt`.
+- [x] Define canonical event create payload hashing with stable lexicographic JSON key order, Unicode NFC normalization, ISO-8601 UTC millisecond `startsAt`, normalized `locationGeoPoint`, and exclusions for `createRequestId`, auth uid, generated ids, timestamps, counters, server-derived snapshots, catalog-derived display fields, participant data, and chat metadata.
+- [x] Enforce `count < 5` inside the same Firestore transaction before writing the event, participant, chat metadata, and counter update.
+- [x] Return `resource-exhausted` with `details.domainCode = daily_limit_reached`, `resetAtUtc`, `dayKeyUtc`, `count`, and `limit` when the UTC daily counter is already 5.
 - [ ] Validate event create/edit city against a backend-supported allowlist or shared canonical city catalog.
 - [ ] Keep backend city allowlist/shared catalog versioned and generated from the same source as the full app canonical city catalog.
-- [ ] Derive city display fallback fields server-side from the canonical city catalog after validation.
+- [x] Derive city display fallback fields server-side from the canonical city catalog after validation.
 - [ ] Ensure cancel, edit, and trusted admin delete do not decrement or increment the daily creation counter.
-- [ ] Normalize trimmed, case-insensitive event language input from catalog `code` or `alternateCodes` to exact primary `languageCode`.
-- [ ] Validate event `languageCode` against a backend-supported allowlist or shared validation helper synchronized from the app language catalog.
-- [ ] Derive `languageNameEn` and `languageNameRu` server-side from synchronized catalog `nameEn` and `nameRu` values after normalization.
-- [ ] Normalize event level input by trim and uppercase, validate against `A1`, `A2`, `B1`, `B2`, `C1`, `C2`, and reject reversed `levelMin`/`levelMax` ranges using canonical rank.
+- [x] Normalize trimmed, case-insensitive event language input from catalog `code` or `alternateCodes` to exact primary `languageCode`.
+- [x] Validate event `languageCode` against a backend-supported allowlist or shared validation helper synchronized from the app language catalog.
+- [x] Derive `languageNameEn` and `languageNameRu` server-side from synchronized catalog `nameEn` and `nameRu` values after normalization.
+- [x] Normalize event level input by trim and uppercase, validate against `A1`, `A2`, `B1`, `B2`, `C1`, `C2`, and reject reversed `levelMin`/`levelMax` ranges using canonical rank.
 - [ ] Validate event `capacity` server-side as an integer from 2 to 50 and reject edits below active `participantsCount`.
-- [ ] Validate event `startsAt` against trusted server/request time and derive `timeZoneId` from the selected canonical city record.
-- [ ] Derive `organizerDisplayName` and `organizerPhotoUrl` server-side from the authenticated organizer profile snapshot during event creation.
-- [ ] Add organizer as first participant during event creation.
-- [ ] Create or reserve event chat during event creation.
+- [x] Validate event `startsAt` against trusted server/request time and derive `timeZoneId` from the selected canonical city record.
+- [x] Derive `organizerDisplayName` and `organizerPhotoUrl` server-side from the authenticated organizer profile snapshot during event creation.
+- [x] Add organizer as first participant during event creation.
+- [x] Create or reserve event chat during event creation.
 - [ ] Implement transaction-safe join.
 - [ ] Block duplicate join.
 - [ ] Allow rejoin after leave before `startsAt` only when event is active, future, and not full, reusing the same participant document.
