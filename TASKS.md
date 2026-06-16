@@ -44,7 +44,7 @@ Date: 2026-06-14
 - [x] Add Firestore collection contract for `events/{eventId}`.
 - [x] Add Firestore subcollection contract for `events/{eventId}/participants/{userId}`.
 - [x] Add Firestore collection contract for `eventChats/{chatId}`.
-- [ ] Define `eventChats.readAccessUserIds` as the chat read-access list that freezes on cancel with organizer and active participants, excludes users who left before cancel, and does not gain new readers after cancel.
+- [x] Define `eventChats.readAccessUserIds` as the chat read-access list that freezes on cancel with organizer and active participants, excludes users who left before cancel, and does not gain new readers after cancel.
 - [ ] Add Firestore subcollection contract for `eventChats/{chatId}/messages/{messageId}`.
 - [ ] Add daily creation counter contract: `eventCreationCounters/{userId_yyyyMMdd}` or equivalent.
 - [ ] Define required compound index baseline: `status ASC + countryCode ASC + cityKey ASC + startsAt ASC`, with MVP level filtering applied client-side unless denormalized fields are later added.
@@ -81,6 +81,7 @@ Date: 2026-06-14
 - [ ] Block capacity reduction below active participant count.
 - [ ] Implement organizer-only event cancel.
 - [ ] On cancel, atomically set `status = canceled`, set `canceledAt` to trusted server/request time, and preserve event chat read-access snapshot for organizer and users active at cancellation time.
+- [ ] Build cancel chat snapshot from `events.organizerId` plus participant documents with `status = active` read inside the cancel transaction, not from timestamp comparisons.
 - [ ] Make repeated cancel idempotent or return a clear already-canceled error without changing the cancellation snapshot.
 - [ ] Block reopening/restoring canceled events to `active` in MVP.
 - [ ] Block event chat writes after cancellation.
@@ -339,6 +340,7 @@ Date: 2026-06-14
 - [ ] Add rules tests that canceled event chat does not gain new readers after cancellation.
 - [ ] Add rules tests that canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
 - [ ] Add event chat metadata tests for `chatId = eventId`, matching `eventId`, no independent chat status fields, blocked direct metadata writes/deletes, `updatedAt` metadata semantics, and fail-closed missing/mismatched metadata.
+- [ ] Add `readAccessUserIds` tests for uniqueness, no semantic ordering, create `[organizerId]`, join/rejoin add, duplicate active join no-op, leave removes only before `startsAt`, cancel snapshot formula, immutable frozen snapshot, repeated cancel no snapshot changes, and join/leave/rejoin versus cancel commit ordering.
 - [ ] Add widget tests for canceled chat read-only banner/status and hidden or disabled composer.
 - [ ] Add widget tests for list empty/loading/error states.
 - [ ] Add widget tests for create form validation.

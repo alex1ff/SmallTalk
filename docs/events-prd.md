@@ -673,6 +673,27 @@ Event chat metadata rules:
 - If the event chat metadata document is missing or its `eventId` does not match the expected event, chat access must fail closed.
 - Direct client creates, updates, and deletes of `eventChats/{chatId}` metadata are blocked.
 
+`readAccessUserIds` rules:
+
+- `readAccessUserIds` is an access-control set, not a roster or profile source.
+- Values are unique, non-empty uid strings. Order has no product meaning.
+- While the event is active, `readAccessUserIds` must equal the unique set of active participant document ids plus `events.organizerId`.
+- The set must include `events.organizerId` even if the organizer participant document is missing or stale, so organizer access is not lost because of participant-doc drift.
+- The set must exclude participant documents with `status = left`.
+- While the event is active, `readAccessUserIds.length <= capacity`.
+- Event create initializes `readAccessUserIds` to `[organizerId]` in the same transaction that creates the event and organizer participant document.
+- Join and rejoin add the user id in the same transaction that activates the participant document and increments `participantsCount`.
+- Duplicate active join is a no-op for membership state: it must not add a duplicate uid, change `readAccessUserIds`, increment `participantsCount`, or update participant/chat metadata timestamps.
+- Leave removes the user id only while the event is active and before `startsAt`, in the same transaction that marks participant `status = left` and decrements `participantsCount`.
+- Leave at or after `startsAt` is blocked and must not change `readAccessUserIds`.
+- Cancel transaction builds the frozen snapshot as `unique({events.organizerId} + active participant document ids read in the cancel transaction)`, not from timestamp comparisons such as `leftAt < canceledAt`.
+- The cancel snapshot must be written atomically with `events.status = canceled`, `events.canceledAt`, and the preserved cancellation chat access state.
+- After cancel, `readAccessUserIds` is immutable. No join, rejoin, leave, repeated cancel, or metadata repair may add or remove readers.
+- Repeated cancel returns idempotent success or a clear already-canceled error without changing `readAccessUserIds` or its freeze-time `updatedAt`.
+- Join versus cancel ordering is commit-order based: join committed before cancel is included in the snapshot; cancel committed first blocks the join/rejoin retry.
+- Leave versus cancel ordering is commit-order based: leave committed before cancel is excluded from the snapshot; cancel committed first keeps the user in the frozen read snapshot, and later leave cannot remove access.
+- Rejoin versus cancel ordering is commit-order based: rejoin committed before cancel is included; cancel committed first blocks rejoin.
+
 #### `eventChats/{chatId}/messages/{messageId}`
 
 ```json
@@ -1032,6 +1053,7 @@ Required tests:
 - Canceled event chat does not gain new readers after cancellation.
 - Canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
 - Event chat metadata tests cover `chatId = eventId`, `eventChats/{chatId}.eventId` matching the owning event, no independent chat status fields, direct metadata writes/deletes blocked, `updatedAt` metadata semantics, and fail-closed behavior for missing or mismatched metadata.
+- `readAccessUserIds` tests cover uniqueness, no semantic ordering, create `[organizerId]`, join/rejoin add, duplicate active join no-op, leave removes only before `startsAt`, cancel snapshot formula, immutable frozen snapshot, repeated cancel no snapshot changes, and join/leave/rejoin versus cancel commit ordering.
 - Deep link opens event detail.
 - Deep link preserves target `eventId` through auth login redirect.
 - Deep link handles missing, admin-deleted, canceled, past, and full event states without auto-joining.
