@@ -40,7 +40,7 @@ Date: 2026-06-14
 - [x] N/A: Firestore `users` data sampling is not required for city migration/defaulting because MVP must not auto-migrate or default `users.profileCity` from legacy data. `users.Country_NS` is country-only and may only rank city suggestions.
 - [x] Define event language fields as canonical `languageCode` plus denormalized `languageNameEn` and `languageNameRu`.
 - [x] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
-- [ ] Define event statuses: `active`, `canceled`; `draft` is not a Firestore status in MVP.
+- [x] Define `events.status` lifecycle, allowed values `active|canceled`, rejected values, `draft` as local-only create state, and no `past|completed|deleted|archived|cancelled` statuses in MVP.
 - [ ] Add Firestore collection contract for `events/{eventId}`.
 - [ ] Add Firestore subcollection contract for `events/{eventId}/participants/{userId}`.
 - [ ] Add Firestore collection contract for `eventChats/{chatId}`.
@@ -67,7 +67,7 @@ Date: 2026-06-14
 - [ ] Create or reserve event chat during event creation.
 - [ ] Implement transaction-safe join.
 - [ ] Block duplicate join.
-- [ ] Block join for full, canceled, past, or missing events.
+- [ ] Block join for full, canceled, past by `startsAt`, or missing events.
 - [ ] Implement transaction-safe leave.
 - [ ] Block leave at or after `startsAt` without changing occupancy or chat access.
 - [ ] Block organizer from leaving through participant leave flow.
@@ -76,8 +76,9 @@ Date: 2026-06-14
 - [ ] Implement organizer-only event edit.
 - [ ] Block capacity reduction below active participant count.
 - [ ] Implement organizer-only event cancel.
-- [ ] On cancel, atomically set `status = canceled`, set `canceledAt`, and preserve event chat read-access snapshot for organizer and users active at cancellation time.
+- [ ] On cancel, atomically set `status = canceled`, set `canceledAt` to trusted server/request time, and preserve event chat read-access snapshot for organizer and users active at cancellation time.
 - [ ] Make repeated cancel idempotent or return a clear already-canceled error without changing the cancellation snapshot.
+- [ ] Block reopening/restoring canceled events to `active` in MVP.
 - [ ] Block event chat writes after cancellation.
 
 ## Phase 3: Firebase Security Rules
@@ -87,7 +88,7 @@ Date: 2026-06-14
 - [ ] Allow only organizer to edit own event.
 - [ ] Allow only organizer to cancel own event.
 - [ ] Deny organizer/client hard delete of active and canceled event documents.
-- [ ] Deny client-created `draft` event status documents.
+- [ ] Deny any client-created or client-updated `events.status` outside `active|canceled`.
 - [ ] Prevent client-side tampering with `organizerId`, `participantsCount`, and protected status fields.
 - [ ] Allow participant reads only where required by UI.
 - [ ] Allow active event chat reads only for active participants.
@@ -299,7 +300,8 @@ Date: 2026-06-14
 - [ ] Add language catalog sync tests that backend allowlist matches the app catalog and `alternateCodes` resolve uniquely.
 - [ ] Add language display tests for current locale name, denormalized fallback names, unknown legacy code fallback, and missing catalog load fallback.
 - [ ] Add rules tests that block direct client writes bypassing validated event create/edit paths.
-- [ ] Add rules/model tests that reject `draft` as an event status in MVP.
+- [ ] Add rules/model tests that reject `draft`, `past`, `completed`, `deleted`, `archived`, `cancelled`, and unknown values as event statuses in MVP.
+- [ ] Add status lifecycle tests for `active` with `canceledAt = null`, only `active -> canceled`, terminal canceled without reopen/restore, and `canceledAt` set from trusted server/request time.
 - [ ] Add rules tests that deny organizer/client hard delete of active and canceled events.
 - [ ] Add rules tests that deny client hard delete of event chat documents.
 - [ ] Add tests for 5-events-per-day limit.

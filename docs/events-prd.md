@@ -238,7 +238,7 @@ Active and canceled events cannot be permanently deleted by the organizer in MVP
 Required behavior:
 
 - Show confirmation before canceling.
-- Atomically set event status to `canceled`, set `canceledAt`, and preserve the event chat read-access snapshot for organizer and users active at cancellation time.
+- Atomically set event status to `canceled`, set `canceledAt` to trusted server/request time, and preserve the event chat read-access snapshot for organizer and users active at cancellation time.
 - Treat repeated cancel attempts as idempotent success or return a clear already-canceled error without changing the existing cancellation snapshot.
 - Hide from active list.
 - Disable join.
@@ -479,11 +479,17 @@ Core flow:
 
 Lifecycle rules:
 
-- Allowed event statuses in MVP are only `active` and `canceled`.
+- `events.status` is required and allowed event statuses in MVP are only `active` and `canceled`; spelling is exactly `canceled`.
 - `draft` is not a Firestore status in MVP.
+- MVP has no `past`, `completed`, `deleted`, `archived`, or `cancelled` event statuses.
+- Past events remain `active` unless canceled, and are hidden from discovery by `startsAt` filters.
 - Before submit, a user's create form is local UI state and has no `eventId`, `chatId`, participant document, or indexable event record.
 - Closing or abandoning the create form before submit discards local state only.
 - After submit succeeds, the event is created as `active`.
+- Active events must have `canceledAt = null`.
+- Cancel is the only MVP status transition: `active -> canceled`.
+- Canceled events are terminal in MVP; `canceled -> active` restore/reopen is not supported.
+- Cancel sets `canceledAt` to trusted server/request time.
 - Organizer cannot hard-delete active or canceled events in MVP; cancel is the only organizer removal action.
 - Canceled event and chat records are retained for direct links, history, read-only chat access snapshots, support, and debugging.
 
@@ -822,6 +828,7 @@ Firebase write paths must enforce:
 - Clients cannot hard-delete event chat documents; participant membership deletion is allowed only if the chosen validated leave implementation uses deletion before `startsAt`.
 - Non-organizer cannot change `organizerId`, `participantsCount`, or `status`.
 - Event creation must respect required fields and allowed status.
+- Server-side create/edit/cancel validation must reject any `events.status` outside the allowlist `active|canceled`.
 - Event creation must not create `draft` status documents.
 - Server-side create/edit validation must enforce that `countryCode + cityKey` resolves to a known canonical city record from the synchronized city allowlist/catalog.
 - Server-side create/edit logic must derive city display fallback fields from the canonical city catalog and reject or ignore mismatched client-provided city display names.
@@ -873,7 +880,8 @@ Required tests:
 - Organizer can edit/cancel.
 - Non-organizer cannot edit/cancel.
 - Rules tests deny organizer/client hard delete of active and canceled events.
-- Rules/model tests reject `draft` as an event status in MVP.
+- Rules/model tests reject `draft`, `past`, `completed`, `deleted`, `archived`, `cancelled`, and unknown values as event statuses in MVP.
+- Status lifecycle tests cover `active` with `canceledAt = null`, only `active -> canceled`, terminal canceled without reopen/restore, and `canceledAt` set from trusted server/request time.
 - Chat access only for participants.
 - User loses chat access after leaving.
 - Canceled event chat remains readable for organizer and users who were active participants at cancellation time.
