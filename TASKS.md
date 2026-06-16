@@ -32,8 +32,11 @@ Date: 2026-06-14
 ## Phase 1: Firebase Data Contract
 
 - [x] Audit existing `users` location fields from registration/profile.
-- [ ] Define canonical city identity as `countryCode + cityKey`, with localized city names used only for display.
+- [x] Define canonical city identity as required ISO 3166-1 alpha-2 uppercase `countryCode` plus stable `cityKey` matching `^[a-z0-9]+(?:_[a-z0-9]+)*$`, with localized city names used only for display/search.
+- [x] Define city disambiguation rules for duplicate city display names using stable curated disambiguators in `cityKey`, required `displayContext`, and region/state metadata whenever known.
+- [x] Define city alias/transliteration rules that resolve manual input to canonical `countryCode + cityKey` and show choices instead of auto-resolving ambiguous aliases.
 - [ ] Define new or future user profile city fields because existing `users.Country_NS` is country-only.
+- [x] Define profile city save contract: validate `countryCode + cityKey` against canonical catalog and derive display/region fields from catalog.
 - [ ] If city migration/defaulting depends on legacy user data, run Firestore `users` data sampling before implementation.
 - [ ] Define event language fields as canonical `languageCode` plus denormalized `languageNameEn` and `languageNameRu`.
 - [ ] Define canonical event level order: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
@@ -44,7 +47,7 @@ Date: 2026-06-14
 - [ ] Define `eventChats.readAccessUserIds` as the chat read-access list that freezes on cancel with organizer and active participants, excludes users who left before cancel, and does not gain new readers after cancel.
 - [ ] Add Firestore subcollection contract for `eventChats/{chatId}/messages/{messageId}`.
 - [ ] Add daily creation counter contract: `eventCreationCounters/{userId_yyyyMMdd}` or equivalent.
-- [ ] Define required compound index baseline: `status + countryCode + cityKey + startsAt`, with level filtering strategy handled separately.
+- [ ] Define required compound index baseline: `status ASC + countryCode ASC + cityKey ASC + startsAt ASC`, with MVP level filtering applied client-side unless denormalized fields are later added.
 - [ ] Decide whether level filtering needs denormalized fields for Firestore queries.
 
 ## Phase 2: Firebase Write Logic
@@ -52,6 +55,9 @@ Date: 2026-06-14
 - [ ] Implement transaction-safe event creation.
 - [ ] Ensure event creation atomically creates active event, organizer participant membership, and chat reservation without partial server drafts.
 - [ ] Add `createRequestId` or equivalent idempotency key handling for event creation retries.
+- [ ] Validate event create/edit city against a backend-supported allowlist or shared canonical city catalog.
+- [ ] Keep backend city allowlist/shared catalog versioned and generated from the same source as the full app canonical city catalog.
+- [ ] Derive city display fallback fields server-side from the canonical city catalog after validation.
 - [ ] Enforce 5 events per user per calendar day server-side.
 - [ ] Normalize trimmed, case-insensitive event language input from catalog `code` or `alternateCodes` to exact primary `languageCode`.
 - [ ] Validate event `languageCode` against a backend-supported allowlist or shared validation helper synchronized from the app language catalog.
@@ -99,16 +105,19 @@ Date: 2026-06-14
 - [ ] Add event model.
 - [ ] Add event participant model.
 - [ ] Add event chat/message model or reuse existing chat model if compatible.
-- [ ] Add static curated city catalog with `countryCode`, `cityKey`, localized names, country/region display context, and priority.
+- [ ] Add static curated city catalog with `countryCode`, `cityKey`, localized names, region metadata required for duplicate-name disambiguation, aliases/transliterations, country/region display context, and priority.
 - [ ] Add event repository/service for list queries.
 - [ ] Add event repository/service for detail stream.
 - [ ] Add event repository/service for create, edit, cancel, join, and leave.
 - [ ] Add date filter helper for today, tomorrow, current week, and current month.
 - [ ] Add level overlap helper.
 - [ ] Add city resolution helper from user profile.
+- [ ] Add profile city save helper that does not trust client-provided display or region fields.
 - [ ] Ensure city resolution treats existing `users.Country_NS` as a country hint only, not as selected event city.
 - [ ] Ensure city resolution ignores `users.preferences.preferredLocation` as default Events city because it is an interlocutor country preference.
 - [ ] Add city chip source helper backed by local recent selections and a static curated popular city list.
+- [ ] Add manual city search normalization that resolves aliases/transliterations to canonical city records.
+- [ ] Add ambiguous city search handling that shows all matching city options with `displayContext`.
 - [ ] Add fallback selected city state when profile location is missing.
 - [ ] Add event language helper backed by existing `assets/jsons/languages_catalog.json`.
 - [ ] Add helper to resolve exact primary `languageCode` by trimmed, case-insensitive primary code or `alternateCodes`.
@@ -131,6 +140,8 @@ Date: 2026-06-14
 - [ ] Add `+` create button.
 - [ ] Add city selector/state.
 - [ ] Show profile city by default when available.
+- [ ] Validate saved profile `countryCode + cityKey` against the canonical city catalog before using it as the default Events city.
+- [ ] Route stale/unknown saved profile city to the missing/outdated city flow instead of unlocking the list.
 - [ ] If profile has only existing `Country_NS`, show missing-city flow and use country only to prioritize city suggestions.
 - [ ] Show location prompt when profile city is missing.
 - [ ] Add city chips in missing-location flow: recent selections first, static popular cities second.
@@ -255,18 +266,19 @@ Date: 2026-06-14
 
 ## Phase 13: Analytics
 
-- [ ] Track event list opened.
-- [ ] Track city selected with canonical payload: `countryCode`, `cityKey`, `selectionSource` (`profile|recent|static|manual`), without localized city name.
+- [ ] Track event list opened with canonical city payload and `citySource` when list city came from selection/default state.
+- [ ] Track city selected with canonical payload: `countryCode`, `cityKey`, `citySource` (`profile|recent|static|manual`), without localized city name.
 - [ ] Track date filter selected.
 - [ ] Track level filter selected.
-- [ ] Track event detail opened.
-- [ ] Track event created.
-- [ ] Track event edited.
-- [ ] Track event canceled.
-- [ ] Track event joined.
-- [ ] Track event left.
-- [ ] Track event chat opened.
-- [ ] Track event shared.
+- [ ] Track event detail opened with canonical city payload and optional `citySource` only when known.
+- [ ] Track event created with canonical city payload and optional `citySource` only when known.
+- [ ] Track event edited with canonical city payload and optional `citySource` only when known.
+- [ ] Track event canceled with canonical city payload and optional `citySource` only when known.
+- [ ] Track event joined with canonical city payload and optional `citySource` only when known.
+- [ ] Track event left with canonical city payload and optional `citySource` only when known.
+- [ ] Track event chat opened with canonical city payload and optional `citySource` only when known.
+- [ ] Track event shared with canonical city payload and optional `citySource` only when known.
+- [ ] Ensure analytics never sends localized city names, aliases, or display context as city identity fields.
 - [ ] Add dashboard notes for PRD success metrics.
 
 ## Phase 14: Testing And QA
@@ -289,7 +301,9 @@ Date: 2026-06-14
 - [ ] Add tests for 5-events-per-day limit.
 - [ ] Add tests for city/date/level list filtering.
 - [ ] Add city chip source tests for profile default, missing profile city, recent city ordering, static popular fallback, profile city absent from chips, and recent/static dedupe by `countryCode + cityKey`.
+- [ ] Add city catalog sync tests that backend allowlist/shared catalog is versioned and generated from the same source as the full app canonical city catalog.
 - [ ] Add city query tests for canonical `countryCode + cityKey`.
+- [ ] Add city identity tests for ISO uppercase `countryCode`, `cityKey` regex, unique `(countryCode, cityKey)`, duplicate-name disambiguation, required display context/known region metadata, alias resolution, ambiguous alias no-auto-resolve behavior, unknown city create/edit/profile-save rejection, stale profile/recent city fallback, and localized names never acting as identity.
 - [ ] Add city resolution tests that `Country_NS` alone does not unlock the Events list.
 - [ ] Add city resolution tests that `preferences.preferredLocation` is not used as the default Events city.
 - [ ] Add transaction tests for join capacity.

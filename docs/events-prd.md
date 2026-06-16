@@ -70,7 +70,7 @@ Required UI:
 
 City behavior:
 
-- If the user has a saved canonical profile city, events are filtered by that city by default.
+- If the user has a saved canonical profile city that resolves in the current canonical city catalog, events are filtered by that city by default.
 - Existing registration/profile location data is country-level only (`users.Country_NS`) and must not be treated as an event city.
 - If the profile has only country-level data, use it only as a country hint for the city selector/chip ordering and still require the user to choose a city before rendering the normal list.
 - If location is missing, show a required location prompt before rendering the normal list.
@@ -307,7 +307,7 @@ As a user, I want to browse offline events in my city so that I can find relevan
 Acceptance criteria:
 
 - User sees active future events for selected city.
-- If saved canonical profile city (`countryCode + cityKey`) exists, it is selected by default.
+- If saved canonical profile city (`countryCode + cityKey`) exists and resolves in the current canonical city catalog, it is selected by default.
 - If saved canonical profile city (`countryCode + cityKey`) is missing, user is prompted to choose/fill location.
 - Date and level filters update the list.
 - Past and canceled events are hidden from the main list.
@@ -460,7 +460,9 @@ Core flow:
   "levelMax": "C1",
   "countryCode": "RU",
   "cityKey": "moscow",
-  "city": "Москва",
+  "cityNameRu": "Москва",
+  "cityNameEn": "Moscow",
+  "cityDisplayContext": "Россия",
   "locationName": "Starbucks, ул. Арбат, 5",
   "locationGeoPoint": null,
   "startsAt": "timestamp",
@@ -582,9 +584,44 @@ Events requires this product meaning for any new or future profile city fields:
 {
   "countryCode": "RU",
   "cityKey": "moscow",
-  "city": "Москва"
+  "cityNameRu": "Москва",
+  "cityNameEn": "Moscow",
+  "cityDisplayContext": "Россия",
+  "regionCode": null,
+  "regionNameRu": null,
+  "regionNameEn": null
 }
 ```
+
+Profile city save rules:
+
+- Saving profile city must validate `countryCode + cityKey` against the same canonical city catalog/allowlist as event create/edit.
+- Profile city display and region fields must be derived from the canonical catalog after validation.
+- Client-provided profile city display fields must not be trusted as identity or display fallback source.
+
+#### Canonical city identity
+
+Canonical city identity is the pair `countryCode + cityKey`.
+
+Rules:
+
+- `countryCode` is required and must be ISO 3166-1 alpha-2 uppercase, for example `RU`, `US`, `AE`.
+- `cityKey` is required, stable over time, and must match `^[a-z0-9]+(?:_[a-z0-9]+)*$`.
+- `cityKey` must be unique within its `countryCode`.
+- `cityKey` is not localized and must not be derived at runtime from `nameRu`, `nameEn`, user input, transliteration, or display aliases.
+- `nameRu`, `nameEn`, `displayContext`, aliases, transliterations, and manual search text are display/search inputs only; they must resolve to an existing canonical `countryCode + cityKey`.
+- If two cities share the same display name within a country, `cityKey` must include a stable curated disambiguator. Use region/state code when available, for example `springfield_il`.
+- For duplicate-name cities, `displayContext` is required. If a region/state exists, `regionCode` and localized region names are also required for that city record; do not rely on display text as identity.
+- When region/state metadata is known for any city, store it in the canonical catalog even if the city name is currently unique.
+- If a normalized alias/transliteration matches multiple city records, the app must not auto-resolve it. Show matching options with `displayContext`; a country hint can rank results but must not silently choose the city.
+- Renaming a city or changing localized display names must not change `cityKey` when it is the same city.
+- City merge/split/rename migrations must be explicit product/data migrations, not silent client-side key changes.
+- Users with only country-level legacy data (`Country_NS`) do not get a default `cityKey`; they must choose a city.
+- Events can be created or edited only for a city that resolves to a known canonical city record.
+- Backend validation must use a server-side city allowlist or shared catalog synchronized from the canonical city catalog; bundled client catalog data alone is not sufficient for trusted create/edit validation.
+- Client catalog and backend allowlist/shared catalog must be versioned and generated from the same source so selectable cities match server validation.
+- `cityNameRu`, `cityNameEn`, and `cityDisplayContext` are display-only denormalized fallbacks derived from the canonical city catalog after city validation. Firestore queries and analytics must never use these fields as identity.
+- Analytics and Firestore queries must use `countryCode + cityKey`; localized names must not be sent as identity fields.
 
 #### City chip source
 
@@ -592,6 +629,8 @@ MVP city chips come from two local sources:
 
 - Recent city selections stored locally on device for the Events screen.
 - A static curated popular city list bundled with the app.
+
+Manual city selection searches the full canonical city catalog available to the app, not only the popular chip subset. If a city is not present in the canonical catalog, the user cannot select it or create an event for it in MVP.
 
 Static city records must include:
 
@@ -601,20 +640,28 @@ Static city records must include:
   "cityKey": "moscow",
   "nameRu": "Москва",
   "nameEn": "Moscow",
+  "regionCode": null,
+  "regionNameRu": null,
+  "regionNameEn": null,
   "displayContext": "Россия",
+  "aliases": ["Moskva", "Moscow", "Москва"],
+  "transliterations": ["Moskva"],
   "priority": 10
 }
 ```
 
 Rules:
 
-- If profile location has `countryCode + cityKey`, it is the default city.
+- If profile location has `countryCode + cityKey` and resolves in the current canonical city catalog, it is the default city.
 - If profile location is missing city, show recent city chips first, then static popular city chips.
 - Selecting a chip or manual city can be temporary for Events discovery; the UI must also offer an action to save/fill profile location.
 - If the user's profile city is not in chips, still use it as the selected city.
+- If a saved profile city no longer resolves to a known canonical city record, do not unlock the list from that stale value; show the missing/outdated city flow and ask the user to choose a valid city.
+- If a recent city chip no longer resolves to a known canonical city record, hide or ignore that recent chip and do not use it to unlock the list.
 - If no events exist for selected city, show empty state, not another location prompt.
 - Recent and static city chips must dedupe by `countryCode + cityKey`.
 - Cities with the same display name in different countries or regions must include country/region context in UI.
+- Manual city search can match aliases/transliterations, but selection must persist only canonical `countryCode + cityKey`.
 - Remote Config is not part of MVP; keep the city chip source behind a replaceable helper/service so Remote Config can be added later without changing UI contracts.
 
 ### Query Requirements
@@ -624,15 +671,43 @@ Event list query must support:
 - `status == active`.
 - `countryCode == selectedCountryCode`.
 - `cityKey == selectedCityKey`.
-- `startsAt >= now`.
+- `startsAt >= max(now, selectedDateRangeStart)`.
+- `startsAt < selectedDateRangeEnd`.
+- `orderBy startsAt ASC`.
 - Date range filter for today/tomorrow/week/month.
 - Level overlap filter.
-- Required index baseline: `status`, `countryCode`, `cityKey`, `startsAt`.
+- Required composite index in `firebase/firestore.indexes.json`: `status ASC`, `countryCode ASC`, `cityKey ASC`, `startsAt ASC`.
 
 Level overlap rule:
 
 - Event is visible for selected level if `event.levelMin <= selectedLevel <= event.levelMax`.
 - If no level is selected, show all levels in selected city/date range.
+- MVP must not add unsupported Firestore range filters on both `levelMin` and `levelMax`.
+- Unless the separate level denormalization task changes the strategy, apply level overlap filtering client-side after the canonical city/date query.
+
+### Analytics City Payload Requirements
+
+Any analytics event with city context must include canonical city identity:
+
+- `event_list_opened`.
+- `city_selected`.
+- `event_detail_opened`.
+- `event_created`.
+- `event_edited`.
+- `event_canceled`.
+- `event_joined`.
+- `event_left`.
+- `event_chat_opened`.
+- `event_shared`.
+
+Required payload fields:
+
+- `countryCode`.
+- `cityKey`.
+- `citySource` is required for `city_selected` and for `event_list_opened` when the list city came from selection/default state: `profile|recent|static|manual`.
+- For detail/create/edit/cancel/join/leave/chat/share analytics, `citySource` is optional; include it only when the source is known.
+
+Localized city names, aliases, and `displayContext` must not be sent as analytics identity fields.
 
 ### Transaction Requirements
 
@@ -711,6 +786,8 @@ Firebase write paths must enforce:
 - Non-organizer cannot change `organizerId`, `participantsCount`, or `status`.
 - Event creation must respect required fields and allowed status.
 - Event creation must not create `draft` status documents.
+- Server-side create/edit validation must enforce that `countryCode + cityKey` resolves to a known canonical city record from the synchronized city allowlist/catalog.
+- Server-side create/edit logic must derive city display fallback fields from the canonical city catalog and reject or ignore mismatched client-provided city display names.
 - Server-side create/edit validation must enforce title: required after normalization, max 70 grapheme clusters, single-line.
 - Server-side create/edit validation must enforce description: required after normalization, max 1000 grapheme clusters, multiline allowed, more than 2 consecutive line breaks collapsed to 2.
 - Server-side create/edit validation must enforce that `languageCode` is a supported primary language code, or normalize a known alternate code before persisting.
@@ -745,6 +822,7 @@ Required tests:
 - Rules tests that block direct client writes bypassing validated event create/edit paths.
 - City chip source tests for profile default, missing profile city, recent city ordering, static popular city fallback, profile city not present in chips, and recent/static dedupe by `countryCode + cityKey`.
 - City query tests must use canonical `countryCode + cityKey`, not localized display names.
+- City identity tests must cover uppercase ISO `countryCode`, `cityKey` regex `^[a-z0-9]+(?:_[a-z0-9]+)*$`, unique `(countryCode, cityKey)`, duplicate-name disambiguation, required region/display context for ambiguous cities, alias/transliteration resolution, ambiguous alias no-auto-resolve behavior, stale profile city fallback, unknown city create/edit rejection, and localized names never acting as identity.
 - City resolution tests must prove `Country_NS` alone does not unlock the Events list.
 - City resolution tests must prove `preferences.preferredLocation` is not used as the default Events city.
 - Language catalog tests for primary code selection, alternate code normalization, denormalized display fallback, unknown legacy code read fallback, rejecting unknown create/edit codes, rejecting or ignoring mismatched client-provided names, backend allowlist sync with the app catalog, unique `alternateCodes`, and avoiding full `LanguageStruct` persistence.
