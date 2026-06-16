@@ -1,6 +1,13 @@
 const crypto = require("node:crypto");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {
+  CITY_CATALOG_VERSION,
+  EVENT_CITY_CATALOG,
+  EventCityCatalogError,
+  normalizeEventCityIdentityInput,
+  resolveEventCityIdentity,
+} = require("./event_city_catalog");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const DAILY_CREATE_LIMIT = 5;
@@ -27,7 +34,6 @@ const CREATE_EVENT_KEY_SET = new Set(CREATE_EVENT_KEYS);
 
 const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const CITY_KEY_RE = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 const ISO_UTC_MILLIS_RE =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -156,116 +162,7 @@ const EVENT_LANGUAGE_CATALOG = Object.freeze([
   },
 ]);
 
-const CITY_CATALOG_VERSION = "events-city-catalog-mvp-2026-06-16";
-const EVENT_CITY_CATALOG = Object.freeze([
-  {
-    countryCode: "RU",
-    cityKey: "moscow",
-    cityNameRu: "Москва",
-    cityNameEn: "Moscow",
-    cityDisplayContext: "Россия",
-    timeZoneId: "Europe/Moscow",
-  },
-  {
-    countryCode: "RU",
-    cityKey: "saint_petersburg",
-    cityNameRu: "Санкт-Петербург",
-    cityNameEn: "Saint Petersburg",
-    cityDisplayContext: "Россия",
-    timeZoneId: "Europe/Moscow",
-  },
-  {
-    countryCode: "US",
-    cityKey: "new_york",
-    cityNameRu: "Нью-Йорк",
-    cityNameEn: "New York",
-    cityDisplayContext: "United States",
-    timeZoneId: "America/New_York",
-  },
-  {
-    countryCode: "GB",
-    cityKey: "london",
-    cityNameRu: "Лондон",
-    cityNameEn: "London",
-    cityDisplayContext: "United Kingdom",
-    timeZoneId: "Europe/London",
-  },
-  {
-    countryCode: "DE",
-    cityKey: "berlin",
-    cityNameRu: "Берлин",
-    cityNameEn: "Berlin",
-    cityDisplayContext: "Deutschland",
-    timeZoneId: "Europe/Berlin",
-  },
-  {
-    countryCode: "FR",
-    cityKey: "paris",
-    cityNameRu: "Париж",
-    cityNameEn: "Paris",
-    cityDisplayContext: "France",
-    timeZoneId: "Europe/Paris",
-  },
-  {
-    countryCode: "IT",
-    cityKey: "rome",
-    cityNameRu: "Рим",
-    cityNameEn: "Rome",
-    cityDisplayContext: "Italia",
-    timeZoneId: "Europe/Rome",
-  },
-  {
-    countryCode: "ES",
-    cityKey: "madrid",
-    cityNameRu: "Мадрид",
-    cityNameEn: "Madrid",
-    cityDisplayContext: "España",
-    timeZoneId: "Europe/Madrid",
-  },
-  {
-    countryCode: "TR",
-    cityKey: "istanbul",
-    cityNameRu: "Стамбул",
-    cityNameEn: "Istanbul",
-    cityDisplayContext: "Türkiye",
-    timeZoneId: "Europe/Istanbul",
-  },
-  {
-    countryCode: "AE",
-    cityKey: "dubai",
-    cityNameRu: "Дубай",
-    cityNameEn: "Dubai",
-    cityDisplayContext: "United Arab Emirates",
-    timeZoneId: "Asia/Dubai",
-  },
-  {
-    countryCode: "KZ",
-    cityKey: "almaty",
-    cityNameRu: "Алматы",
-    cityNameEn: "Almaty",
-    cityDisplayContext: "Қазақстан",
-    timeZoneId: "Asia/Almaty",
-  },
-  {
-    countryCode: "AM",
-    cityKey: "yerevan",
-    cityNameRu: "Ереван",
-    cityNameEn: "Yerevan",
-    cityDisplayContext: "Հայաստան",
-    timeZoneId: "Asia/Yerevan",
-  },
-  {
-    countryCode: "GE",
-    cityKey: "tbilisi",
-    cityNameRu: "Тбилиси",
-    cityNameEn: "Tbilisi",
-    cityDisplayContext: "საქართველო",
-    timeZoneId: "Asia/Tbilisi",
-  },
-]);
-
 const LANGUAGE_BY_INPUT = buildLanguageLookup(EVENT_LANGUAGE_CATALOG);
-const CITY_BY_IDENTITY = buildCityLookup(EVENT_CITY_CATALOG);
 const GRAPHEME_SEGMENTER = typeof Intl !== "undefined" && Intl.Segmenter ?
   new Intl.Segmenter("und", {granularity: "grapheme"}) :
   null;
@@ -277,14 +174,6 @@ function buildLanguageLookup(catalog) {
     for (const alias of aliases) {
       lookup.set(String(alias).trim().toLowerCase(), language);
     }
-  }
-  return lookup;
-}
-
-function buildCityLookup(catalog) {
-  const lookup = new Map();
-  for (const city of catalog) {
-    lookup.set(`${city.countryCode}:${city.cityKey}`, city);
   }
   return lookup;
 }
@@ -423,41 +312,49 @@ function normalizeLevel(value, field) {
   return normalized;
 }
 
-function normalizeCityIdentity(countryCodeValue, cityKeyValue) {
-  if (typeof countryCodeValue !== "string") {
-    throwInvalidCreateRequest("countryCode", "invalid_type");
+function cityCatalogErrorToHttps(error) {
+  if (!(error instanceof EventCityCatalogError)) {
+    throw error;
   }
-  if (typeof cityKeyValue !== "string") {
-    throwInvalidCreateRequest("cityKey", "invalid_type");
-  }
-
-  const countryCode = countryCodeValue.trim().toUpperCase();
-  const cityKey = cityKeyValue.trim();
-  if (!/^[A-Z]{2}$/.test(countryCode)) {
-    throwInvalidCreateRequest("countryCode", "invalid_format");
-  }
-  if (!CITY_KEY_RE.test(cityKey)) {
-    throwInvalidCreateRequest("cityKey", "invalid_format");
-  }
-
-  const city = CITY_BY_IDENTITY.get(`${countryCode}:${cityKey}`);
-  if (!city) {
-    throwInvalidCreateRequest("cityKey", "unknown_city");
-  }
-  validateTimeZoneId(city.timeZoneId);
-  return city;
-}
-
-function validateTimeZoneId(timeZoneId) {
-  try {
-    new Intl.DateTimeFormat("en-US", {timeZone: timeZoneId}).format();
-  } catch (err) {
+  if (error.internal) {
     throw new functions.https.HttpsError(
         "internal",
-        "Configured city timezone is invalid",
-        {domainCode: "invalid_city_catalog", timeZoneId},
+        "Configured city catalog is invalid",
+        {
+          domainCode: "invalid_city_catalog",
+          reason: error.reason,
+          timeZoneId: error.timeZoneId,
+        },
     );
   }
+  throwInvalidCreateRequest(error.field, error.reason);
+}
+
+function normalizeCityIdentity(countryCodeValue, cityKeyValue, {
+  requireKnownCity = true,
+} = {}) {
+  try {
+    return requireKnownCity ?
+      resolveEventCityIdentity(countryCodeValue, cityKeyValue) :
+      normalizeEventCityIdentityInput(countryCodeValue, cityKeyValue);
+  } catch (err) {
+    cityCatalogErrorToHttps(err);
+  }
+}
+
+function resolveNormalizedCity(normalized) {
+  if (normalized.city.timeZoneId) {
+    return normalized;
+  }
+  const city = normalizeCityIdentity(
+      normalized.city.countryCode,
+      normalized.city.cityKey,
+      {requireKnownCity: true},
+  );
+  return {
+    ...normalized,
+    city,
+  };
 }
 
 function normalizeGeoPoint(value) {
@@ -552,6 +449,7 @@ function validateExactCreateEventKeys(data) {
 function normalizeCreateEventPayload(data, {
   now = new Date(),
   requireFutureStartsAt = true,
+  requireKnownCity = true,
 } = {}) {
   validateExactCreateEventKeys(data);
 
@@ -564,7 +462,9 @@ function normalizeCreateEventPayload(data, {
   if (LEVEL_RANK[levelMin] > LEVEL_RANK[levelMax]) {
     throwInvalidCreateRequest("levelMax", "out_of_range");
   }
-  const city = normalizeCityIdentity(data.countryCode, data.cityKey);
+  const city = normalizeCityIdentity(data.countryCode, data.cityKey, {
+    requireKnownCity,
+  });
   const locationName = normalizeLocationName(data.locationName);
   const geoPoint = normalizeGeoPoint(data.locationGeoPoint);
   const startsAt = normalizeStartsAt(data.startsAt, {
@@ -937,6 +837,29 @@ function buildEventData({
   };
 }
 
+function buildEventEditableUpdate({normalized, editTimestamp}) {
+  return {
+    title: normalized.title,
+    description: normalized.description,
+    languageCode: normalized.language.code,
+    languageNameEn: normalized.language.nameEn,
+    languageNameRu: normalized.language.nameRu,
+    levelMin: normalized.levelMin,
+    levelMax: normalized.levelMax,
+    countryCode: normalized.city.countryCode,
+    cityKey: normalized.city.cityKey,
+    cityNameRu: normalized.city.cityNameRu,
+    cityNameEn: normalized.city.cityNameEn,
+    cityDisplayContext: normalized.city.cityDisplayContext,
+    locationName: normalized.locationName,
+    locationGeoPoint: normalized.locationGeoPoint,
+    startsAt: normalized.startsAtTimestamp,
+    capacity: normalized.capacity,
+    timeZoneId: normalized.city.timeZoneId,
+    updatedAt: editTimestamp,
+  };
+}
+
 function buildOrganizerParticipantData({
   uid,
   organizerSnapshot,
@@ -1132,6 +1055,7 @@ async function executeCreateEventTransaction({
       });
     }
     assertFutureStartsAt(normalized, creationDate);
+    const eventNormalized = resolveNormalizedCity(normalized);
 
     const [counterDoc, userDoc] = await Promise.all([
       tx.get(refs.counterRef),
@@ -1154,7 +1078,7 @@ async function executeCreateEventTransaction({
     const dailyCreation = buildDailyCreation(nextCounter.count, dayInfo);
 
     tx.create(refs.eventRef, buildEventData({
-      normalized,
+      normalized: eventNormalized,
       uid,
       eventId: refs.eventRef.id,
       organizerSnapshot,
@@ -1201,6 +1125,7 @@ exports.__private__ = {
   buildDailyCreation,
   buildEventChatData,
   buildEventData,
+  buildEventEditableUpdate,
   buildExistingCreateResponse,
   buildNextCounterState,
   buildOrganizerParticipantData,
@@ -1212,6 +1137,7 @@ exports.__private__ = {
   assertFutureStartsAt,
   normalizeCreateEventPayload,
   normalizeCreateRequestId,
+  resolveNormalizedCity,
   validateExistingCounter,
 };
 
@@ -1234,6 +1160,7 @@ exports.createEvent = functions
       const normalized = normalizeCreateEventPayload(data, {
         now: creationDate,
         requireFutureStartsAt: false,
+        requireKnownCity: false,
       });
       const payloadHash = hashCreatePayload(normalized.hashPayload);
 

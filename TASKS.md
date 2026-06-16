@@ -65,7 +65,7 @@ Date: 2026-06-14
 - [x] Define canonical event create payload hashing with stable lexicographic JSON key order, Unicode NFC normalization, ISO-8601 UTC millisecond `startsAt`, normalized `locationGeoPoint`, and exclusions for `createRequestId`, auth uid, generated ids, timestamps, counters, server-derived snapshots, catalog-derived display fields, participant data, and chat metadata.
 - [x] Enforce `count < 5` inside the same Firestore transaction before writing the event, participant, chat metadata, and counter update.
 - [x] Return `resource-exhausted` with `details.domainCode = daily_limit_reached`, `resetAtUtc`, `dayKeyUtc`, `count`, and `limit` when the UTC daily counter is already 5.
-- [ ] Validate event create/edit city against a backend-supported allowlist or shared canonical city catalog.
+- [x] Validate event create/edit city against a backend-supported allowlist or shared canonical city catalog.
 - [ ] Keep backend city allowlist/shared catalog versioned and generated from the same source as the full app canonical city catalog.
 - [x] Derive city display fallback fields server-side from the canonical city catalog after validation.
 - [ ] Ensure cancel, edit, and trusted admin delete do not decrement or increment the daily creation counter.
@@ -73,7 +73,7 @@ Date: 2026-06-14
 - [x] Validate event `languageCode` against a backend-supported allowlist or shared validation helper synchronized from the app language catalog.
 - [x] Derive `languageNameEn` and `languageNameRu` server-side from synchronized catalog `nameEn` and `nameRu` values after normalization.
 - [x] Normalize event level input by trim and uppercase, validate against `A1`, `A2`, `B1`, `B2`, `C1`, `C2`, and reject reversed `levelMin`/`levelMax` ranges using canonical rank.
-- [ ] Validate event `capacity` server-side as an integer from 2 to 50 and reject edits below active `participantsCount`.
+- [x] Validate event `capacity` server-side as an integer from 2 to 50 and reject edits below active `participantsCount`.
 - [x] Validate event `startsAt` against trusted server/request time and derive `timeZoneId` from the selected canonical city record.
 - [x] Derive `organizerDisplayName` and `organizerPhotoUrl` server-side from the authenticated organizer profile snapshot during event creation.
 - [x] Add organizer as first participant during event creation.
@@ -87,8 +87,8 @@ Date: 2026-06-14
 - [ ] Block organizer from leaving through participant leave flow.
 - [ ] Mark participant membership as `status = left` on leave, set `leftAt` to trusted server/request time, and do not delete the participant document in MVP.
 - [ ] Update chat access after join and leave.
-- [ ] Implement organizer-only event edit.
-- [ ] Block capacity reduction below active participant count.
+- [x] Implement organizer-only event edit.
+- [x] Block capacity reduction below active participant count.
 - [ ] Implement organizer-only event cancel.
 - [ ] On cancel, atomically set `status = canceled`, set `canceledAt` to trusted server/request time, and preserve event chat read-access snapshot for organizer and users active at cancellation time.
 - [ ] Build cancel chat snapshot from `events.organizerId` plus participant documents with `status = active` read inside the cancel transaction, not from timestamp comparisons.

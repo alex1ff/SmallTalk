@@ -797,6 +797,46 @@ test("executeCreateEventTransaction returns marker retry after startsAt", async 
   assert.deepEqual(writes, []);
 });
 
+test("executeCreateEventTransaction returns marker retry for stale city", async () => {
+  const staleCityRequest = cloneValidRequest({cityKey: "removed_city"});
+  const {normalized, payloadHash} = buildNormalizedAndHash(
+      staleCityRequest,
+      {requireKnownCity: false},
+  );
+  const originalDayInfo = buildUtcDayInfo(fixedNow);
+  const marker = buildCreateRequestMarker({
+    uid: "uid",
+    createRequestId: validRequest.createRequestId,
+    eventId: "event-original",
+    payloadHash,
+    counterPath: "eventCreationCounters/uid/days/20260616",
+    dayInfo: originalDayInfo,
+    dailyCreation: buildDailyCreation(1, originalDayInfo),
+    creationTimestamp: fixedTimestamp,
+  });
+  const {db, makeRef, reads, writes} = createFakeFirestore({
+    [`eventCreateRequests/uid/requests/${validRequest.createRequestId}`]:
+      marker,
+  });
+
+  const response = await executeCreateEventTransaction({
+    db,
+    uid: "uid",
+    creationDate: fixedNow,
+    creationTimestamp: fixedTimestamp,
+    dayInfo: originalDayInfo,
+    normalized,
+    payloadHash,
+    eventRef: makeRef("events/event-new"),
+  });
+
+  assert.equal(response.eventId, "event-original");
+  assert.deepEqual(reads, [
+    `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+  ]);
+  assert.deepEqual(writes, []);
+});
+
 test("executeCreateEventTransaction rejects new past event without writes", async () => {
   const pastRequest = cloneValidRequest({
     startsAt: "2026-06-16T09:00:00.000Z",
@@ -804,6 +844,36 @@ test("executeCreateEventTransaction rejects new past event without writes", asyn
   const {normalized, payloadHash} = buildNormalizedAndHash(
       pastRequest,
       {requireFutureStartsAt: false},
+  );
+  const {db, makeRef, reads, writes} = createFakeFirestore({
+    "users/uid": {display_name: "Анастасия Иванова"},
+  });
+
+  await assertRejectsHttpsError(
+      () => executeCreateEventTransaction({
+        db,
+        uid: "uid",
+        creationDate: fixedNow,
+        creationTimestamp: fixedTimestamp,
+        dayInfo: buildUtcDayInfo(fixedNow),
+        normalized,
+        payloadHash,
+        eventRef: makeRef("events/event-new"),
+      }),
+      "invalid-argument",
+      "invalid_create_request",
+  );
+  assert.deepEqual(reads, [
+    `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+  ]);
+  assert.deepEqual(writes, []);
+});
+
+test("executeCreateEventTransaction rejects unknown city before writes", async () => {
+  const unknownCityRequest = cloneValidRequest({cityKey: "unknown_city"});
+  const {normalized, payloadHash} = buildNormalizedAndHash(
+      unknownCityRequest,
+      {requireKnownCity: false},
   );
   const {db, makeRef, reads, writes} = createFakeFirestore({
     "users/uid": {display_name: "Анастасия Иванова"},
