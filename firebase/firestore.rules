@@ -767,6 +767,19 @@ service cloud.firestore {
       ];
     }
 
+    function directEventEditContentFields() {
+      return [
+        'title',
+        'description',
+        'levelMin',
+        'levelMax',
+        'locationName',
+        'locationGeoPoint',
+        'startsAt',
+        'capacity'
+      ];
+    }
+
     function directEventEditRequiredFields() {
       return [
         'title',
@@ -863,6 +876,7 @@ service cloud.firestore {
         resource.data.startsAt is timestamp &&
         resource.data.startsAt > request.time &&
         changedKeys.hasOnly(directEventEditFields()) &&
+        changedKeys.hasAny(directEventEditContentFields()) &&
         isValidDirectEventEditData(request.resource.data);
     }
 

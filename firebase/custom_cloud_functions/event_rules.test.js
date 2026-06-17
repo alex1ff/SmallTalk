@@ -331,6 +331,20 @@ test("direct organizer edit cannot mutate protected or catalog-derived fields", 
       [field]: value,
     }));
   }
+  for (const field of Object.keys(protectedSamples)) {
+    await assertFails(eventRef.update({
+      ...directEditPatch(),
+      [field]: firebaseCompat.firestore.FieldValue.delete(),
+    }));
+  }
+  await assertFails(eventRef.update({
+    ...directEditPatch(),
+    createdAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+  await assertFails(eventRef.update({
+    ...directEditPatch(),
+    canceledAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
 });
 
 test("direct organizer edit rejects unknown fields and field deletion", async () => {
@@ -345,6 +359,54 @@ test("direct organizer edit rejects unknown fields and field deletion", async ()
     title: firebaseCompat.firestore.FieldValue.delete(),
     updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
   }));
+  await assertFails(eventRef.update({
+    title: "Updated without timestamp",
+  }));
+  await assertFails(eventRef.update({
+    title: "Updated without valid timestamp",
+    updatedAt: firebaseCompat.firestore.FieldValue.delete(),
+  }));
+  await assertFails(eventRef.update({
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+});
+
+test("admin claim client cannot bypass protected event edit rules", async () => {
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+  const organizerAdminClient = testEnv.authenticatedContext("organizer", {admin: true});
+
+  await assertFails(
+    adminClient.firestore().doc("events/editable-event").update(directEditPatch()),
+  );
+  await assertFails(
+    organizerAdminClient.firestore().doc("events/editable-event").update({
+      ...directEditPatch(),
+      participantsCount: 4,
+    }),
+  );
+});
+
+test("client set cannot replace existing event with protected field changes", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const eventRef = organizer.firestore().doc("events/editable-event");
+  const replacement = eventData({
+    startsAt: farFutureStartsAt,
+    participantsCount: 4,
+    capacity: 8,
+    chatId: "replaced-chat",
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await assertFails(
+    eventRef.set(replacement),
+  );
+  await assertFails(
+    eventRef.set({
+      ...directEditPatch({
+        startsAt: farFutureStartsAt,
+      }),
+    }),
+  );
 });
 
 test("direct organizer edit validates editable field values", async () => {

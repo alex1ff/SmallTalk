@@ -108,7 +108,7 @@ Date: 2026-06-14
 - [x] Allow only organizer to cancel own event.
 - [x] Deny organizer/client hard delete of active and canceled event documents.
 - [x] Deny any client-created or client-updated `events.status` outside `active|canceled`.
-- [ ] Prevent client-side tampering with protected event fields: `organizerId`, organizer snapshot fields, `participantsCount`, `chatId`, status fields, timestamps, and catalog-derived display fields.
+- [x] Prevent client-side tampering with protected event fields: `organizerId`, organizer snapshot fields, `participantsCount`, `chatId`, status fields, timestamps, and catalog-derived display fields.
 - [ ] Allow participant reads only where required by UI.
 - [ ] Deny direct client creates, updates, and deletes of participant documents outside validated join/leave/create flows.
 - [ ] Deny direct client reads, creates, updates, and deletes of `eventCreationCounters` and `eventCreateRequests`.
