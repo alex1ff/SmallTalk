@@ -74,6 +74,103 @@ void main() {
     expect(catalog.resolvePrimaryLanguageCode(null), isNull);
   });
 
+  test('localizes display name from catalog before denormalized fields', () {
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: 'en',
+        localeCode: 'ru',
+        languageNameEn: 'Stale English',
+        languageNameRu: 'Stale Russian',
+      ),
+      'Английский',
+    );
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: ' EN-us ',
+        localeCode: 'en',
+        languageNameEn: 'Stale English',
+        languageNameRu: 'Stale Russian',
+      ),
+      'English',
+    );
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: 'en',
+        localeCode: null,
+      ),
+      'English',
+    );
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: 'en',
+        localeCode: 'it',
+      ),
+      'English',
+    );
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: 'ZH-tw',
+        localeCode: 'ru_RU',
+      ),
+      'Китайский (традиционный)',
+    );
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: 'ZH-tw',
+        localeCode: 'en-US',
+      ),
+      'Chinese (Traditional)',
+    );
+  });
+
+  test('localizes display name from denormalized fields then raw code', () {
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: 'unknown',
+        localeCode: 'ru',
+        languageNameEn: 'Fallback English',
+        languageNameRu: 'Фолбэк русский',
+      ),
+      'Фолбэк русский',
+    );
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: 'unknown',
+        localeCode: 'en',
+        languageNameEn: 'Fallback English',
+        languageNameRu: 'Фолбэк русский',
+      ),
+      'Fallback English',
+    );
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: 'unknown',
+        localeCode: 'ru-RU',
+        languageNameEn: 'Fallback English',
+        languageNameRu: '  ',
+      ),
+      'Fallback English',
+    );
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: ' unknown ',
+        localeCode: 'en',
+        languageNameEn: '  ',
+        languageNameRu: null,
+      ),
+      'unknown',
+    );
+    expect(
+      catalog.localizedDisplayName(
+        languageCode: '  ',
+        localeCode: 'ru',
+        languageNameEn: null,
+        languageNameRu: '',
+      ),
+      '',
+    );
+  });
+
   test('exposes immutable language lists', () {
     expect(
       () => catalog.languages.add(catalog.languages.first),

@@ -92,6 +92,36 @@ class EventLanguageCatalog {
     return null;
   }
 
+  /// Returns the user-facing Events language label without depending on
+  /// BuildContext; callers pass the current locale code from the UI layer.
+  String localizedDisplayName({
+    required String? languageCode,
+    required String? localeCode,
+    String? languageNameEn,
+    String? languageNameRu,
+  }) {
+    final isRussian = _isRussianLocale(localeCode);
+    final resolvedCode = resolvePrimaryLanguageCode(languageCode);
+    final language = languageByPrimaryCode(resolvedCode);
+    if (language != null) {
+      return isRussian ? language.nameRu : language.nameEn;
+    }
+
+    final localizedName = _trimToNull(
+      isRussian ? languageNameRu : languageNameEn,
+    );
+    if (localizedName != null) {
+      return localizedName;
+    }
+    final fallbackName = _trimToNull(
+      isRussian ? languageNameEn : languageNameRu,
+    );
+    if (fallbackName != null) {
+      return fallbackName;
+    }
+    return _trimToNull(languageCode) ?? '';
+  }
+
   List<EventLanguage> popularLanguages({int? limit}) {
     if (limit != null && limit <= 0) {
       return const [];
@@ -191,6 +221,21 @@ void _assertUniqueLanguageAliases(List<EventLanguage> languages) {
 
 String? _normalizeLanguageCodeKey(String? code) {
   final normalized = code?.trim().toLowerCase();
+  if (normalized == null || normalized.isEmpty) {
+    return null;
+  }
+  return normalized;
+}
+
+bool _isRussianLocale(String? localeCode) {
+  final normalized = localeCode?.trim().toLowerCase();
+  return normalized == 'ru' ||
+      normalized?.startsWith('ru-') == true ||
+      normalized?.startsWith('ru_') == true;
+}
+
+String? _trimToNull(String? value) {
+  final normalized = value?.trim();
   if (normalized == null || normalized.isEmpty) {
     return null;
   }
