@@ -78,10 +78,10 @@ Date: 2026-06-14
 - [x] Derive `organizerDisplayName` and `organizerPhotoUrl` server-side from the authenticated organizer profile snapshot during event creation.
 - [x] Add organizer as first participant during event creation.
 - [x] Create or reserve event chat during event creation.
-- [ ] Implement transaction-safe join.
-- [ ] Block duplicate join.
-- [ ] Allow rejoin after leave before `startsAt` only when event is active, future, and not full, reusing the same participant document.
-- [ ] Block join for full, canceled, past by `startsAt`, or missing events.
+- [x] Implement transaction-safe join.
+- [x] Block duplicate join.
+- [x] Allow rejoin after leave before `startsAt` only when event is active, future, and not full, reusing the same participant document.
+- [x] Block join for full, canceled, past by `startsAt`, or missing events.
 - [ ] Implement transaction-safe leave.
 - [ ] Block leave at or after `startsAt` without changing occupancy or chat access.
 - [ ] Block organizer from leaving through participant leave flow.
