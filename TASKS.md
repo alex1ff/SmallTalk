@@ -157,7 +157,7 @@ Date: 2026-06-14
 - [x] Add event language helper backed by existing `assets/jsons/languages_catalog.json`.
 - [x] Add helper to resolve exact primary `languageCode` by trimmed, case-insensitive primary code or `alternateCodes`.
 - [x] Add localized event language display helper with fallback to denormalized names, then raw `languageCode`.
-- [ ] Add user-facing error mapping for Firebase failures.
+- [x] Add user-facing error mapping for Firebase failures.
 
 ## Phase 5: Navigation
 
