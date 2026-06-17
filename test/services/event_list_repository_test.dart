@@ -1,6 +1,7 @@
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/backend/backend.dart';
+import 'package:small_talk/services/event_list_date_bounds.dart';
 import 'package:small_talk/services/event_list_repository.dart';
 
 void main() {
@@ -9,6 +10,7 @@ void main() {
   setUpAll(() async {
     setupFirebaseCoreMocks();
     await Firebase.initializeApp();
+    initializeEventListTimeZones();
   });
 
   group('EventListRepository', () {
@@ -155,6 +157,50 @@ void main() {
           delegatedQuery.parameters['where'] as List<dynamic>;
       expectWhereCondition(delegatedWhere, 'countryCode', '==', 'RU');
       expectWhereCondition(delegatedWhere, 'cityKey', '==', 'moscow');
+    });
+
+    test('connects selected city date bounds to the raw Firestore query',
+        () async {
+      Query Function(Query)? capturedQueryBuilder;
+
+      await EventListRepository.loadRawActiveEventPageForDateRange(
+        countryCode: 'US',
+        cityKey: 'new_york',
+        timeZoneId: 'America/New_York',
+        localDateRange: eventListSingleLocalDateRange(DateTime(2026, 3, 8)),
+        nowUtc: DateTime.parse('2026-03-01T00:00:00Z'),
+        pageSize: 5,
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          capturedQueryBuilder = queryBuilder;
+          return FFFirestorePage<EventsRecord>(const [], null, null);
+        },
+      );
+
+      final query = capturedQueryBuilder!(EventsRecord.collection);
+      final where = query.parameters['where'] as List<dynamic>;
+
+      expectWhereCondition(where, 'status', '==', activeEventStatus);
+      expectWhereCondition(where, 'countryCode', '==', 'US');
+      expectWhereCondition(where, 'cityKey', '==', 'new_york');
+      expectWhereCondition(
+        where,
+        'startsAt',
+        '>=',
+        DateTime.parse('2026-03-08T05:00:00Z'),
+      );
+      expectWhereCondition(
+        where,
+        'startsAt',
+        '<',
+        DateTime.parse('2026-03-09T04:00:00Z'),
+      );
     });
   });
 }

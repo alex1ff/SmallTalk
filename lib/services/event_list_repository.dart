@@ -1,4 +1,5 @@
 import '/backend/backend.dart';
+import 'event_list_date_bounds.dart';
 import 'event_city_catalog.dart';
 
 const activeEventStatus = 'active';
@@ -98,6 +99,28 @@ class EventListRepository {
         .orderBy('startsAt');
   }
 
+  static Query buildActiveEventListQueryForDateRange(
+    Query query, {
+    required String countryCode,
+    required String cityKey,
+    required String timeZoneId,
+    required EventListLocalDateRange localDateRange,
+    required DateTime nowUtc,
+  }) {
+    final bounds = computeEventListDateBounds(
+      timeZoneId: timeZoneId,
+      localDateRange: localDateRange,
+      nowUtc: nowUtc,
+    );
+    return buildActiveEventListQuery(
+      query,
+      countryCode: countryCode,
+      cityKey: cityKey,
+      lowerBoundUtc: bounds.lowerBoundUtc,
+      upperBoundUtc: bounds.upperBoundUtc,
+    );
+  }
+
   static Future<FFFirestorePage<EventsRecord>> loadRawActiveEventPage({
     required String countryCode,
     required String cityKey,
@@ -129,6 +152,33 @@ class EventListRepository {
       nextPageMarker: nextPageMarker,
       pageSize: spec.pageSize,
       isStream: false,
+    );
+  }
+
+  static Future<FFFirestorePage<EventsRecord>>
+      loadRawActiveEventPageForDateRange({
+    required String countryCode,
+    required String cityKey,
+    required String timeZoneId,
+    required EventListLocalDateRange localDateRange,
+    required DateTime nowUtc,
+    required int pageSize,
+    DocumentSnapshot? nextPageMarker,
+    EventListPageLoader? pageLoader,
+  }) {
+    final bounds = computeEventListDateBounds(
+      timeZoneId: timeZoneId,
+      localDateRange: localDateRange,
+      nowUtc: nowUtc,
+    );
+    return loadRawActiveEventPage(
+      countryCode: countryCode,
+      cityKey: cityKey,
+      lowerBoundUtc: bounds.lowerBoundUtc,
+      upperBoundUtc: bounds.upperBoundUtc,
+      pageSize: pageSize,
+      nextPageMarker: nextPageMarker,
+      pageLoader: pageLoader,
     );
   }
 }
