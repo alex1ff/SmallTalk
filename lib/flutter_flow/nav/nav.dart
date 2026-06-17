@@ -305,6 +305,17 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             ),
           ),
           FFRoute(
+            name: EventGroupChatWidget.routeName,
+            path: EventGroupChatWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => EventGroupChatWidget(
+              eventId: params.getParam(
+                'eventId',
+                ParamType.String,
+              ),
+            ),
+          ),
+          FFRoute(
             name: EventDetailWidget.routeName,
             path: EventDetailWidget.routePath,
             requireAuth: true,

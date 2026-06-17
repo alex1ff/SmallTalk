@@ -8,6 +8,7 @@ import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/shared_pages/events/event_edit_widget.dart';
+import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
 import 'package:small_talk/shared_pages/events/event_list_widget.dart';
 
 void main() {
@@ -40,6 +41,11 @@ void main() {
   test('event edit route exposes the canonical edit route', () {
     expect(EventEditWidget.routeName, 'eventEdit');
     expect(EventEditWidget.routePath, '/events/:eventId/edit');
+  });
+
+  test('event group chat route exposes the canonical chat route', () {
+    expect(EventGroupChatWidget.routeName, 'eventGroupChat');
+    expect(EventGroupChatWidget.routePath, '/events/:eventId/chat');
   });
 
   test('bottom navigation exposes events between home and existing tabs', () {
@@ -122,6 +128,14 @@ void main() {
       router,
       contains(
         RegExp(
+          r'FFRoute\([\s\S]*name: EventGroupChatWidget\.routeName,[\s\S]*path: EventGroupChatWidget\.routePath,[\s\S]*requireAuth: true,[\s\S]*eventId[\s\S]*ParamType\.String',
+        ),
+      ),
+    );
+    expect(
+      router,
+      contains(
+        RegExp(
           r'FFRoute\([\s\S]*name: EventDetailWidget\.routeName,[\s\S]*path: EventDetailWidget\.routePath,[\s\S]*requireAuth: true,[\s\S]*eventId[\s\S]*ParamType\.String',
         ),
       ),
@@ -132,6 +146,10 @@ void main() {
     );
     expect(
       router.indexOf('name: EventEditWidget.routeName'),
+      lessThan(router.indexOf('name: EventGroupChatWidget.routeName')),
+    );
+    expect(
+      router.indexOf('name: EventGroupChatWidget.routeName'),
       lessThan(router.indexOf('name: EventDetailWidget.routeName')),
     );
     expect(
@@ -146,10 +164,18 @@ void main() {
       router.indexOf('name: EventEditWidget.routeName'),
       lessThan(router.indexOf('ShellRoute(')),
     );
+    expect(
+      router.indexOf('name: EventGroupChatWidget.routeName'),
+      lessThan(router.indexOf('ShellRoute(')),
+    );
     expect(index,
         contains("export '/shared_pages/events/event_create_widget.dart'"));
     expect(index,
         contains("export '/shared_pages/events/event_edit_widget.dart'"));
+    expect(
+      index,
+      contains("export '/shared_pages/events/event_group_chat_widget.dart'"),
+    );
     expect(index,
         contains("export '/shared_pages/events/event_detail_widget.dart'"));
   });
@@ -192,6 +218,20 @@ void main() {
     expect(edit, isNot(contains('.editEvent(')));
   });
 
+  test('event group chat screen stays a route placeholder before Phase 11', () {
+    final chat = File('lib/shared_pages/events/event_group_chat_widget.dart')
+        .readAsStringSync();
+
+    expect(chat, contains('final String eventId;'));
+    expect(chat, contains('Чат события'));
+    expect(chat, contains('Event chat'));
+    expect(chat, isNot(contains('ChatThreadWidget')));
+    expect(chat, isNot(contains('EventChatsRecord')));
+    expect(chat, isNot(contains('EventChatMessagesRecord')));
+    expect(chat, isNot(contains('sendEventChatMessage')));
+    expect(chat, isNot(contains('queryEventChatMessagesRecord')));
+  });
+
   testWidgets('event create route redirects signed-out users to onboarding',
       (tester) async {
     final harness = await _pumpSignedOutEventsRouter(tester, '/events/create');
@@ -211,6 +251,16 @@ void main() {
     expect(harness.notifier.getRedirectLocation(), '/events/event-123/edit');
   });
 
+  testWidgets('event group chat route redirects signed-out users to onboarding',
+      (tester) async {
+    final harness =
+        await _pumpSignedOutEventsRouter(tester, '/events/event-123/chat');
+
+    expect(harness.router.getCurrentLocation(), '/onboarding');
+    expect(harness.notifier.hasRedirect(), isTrue);
+    expect(harness.notifier.getRedirectLocation(), '/events/event-123/chat');
+  });
+
   testWidgets('router opens event create path before dynamic detail route',
       (tester) async {
     final router = await _pumpEventsRouter(tester, '/events/create');
@@ -227,6 +277,17 @@ void main() {
 
     expect(router.getCurrentLocation(), '/events/event-123/edit');
     expect(find.byType(EventEditWidget), findsOneWidget);
+    expect(find.byType(EventDetailWidget), findsNothing);
+    expect(find.text('event-123'), findsOneWidget);
+    expect(find.byType(NavBarWidget), findsNothing);
+  });
+
+  testWidgets('router opens event group chat path before dynamic detail route',
+      (tester) async {
+    final router = await _pumpEventsRouter(tester, '/events/event-123/chat');
+
+    expect(router.getCurrentLocation(), '/events/event-123/chat');
+    expect(find.byType(EventGroupChatWidget), findsOneWidget);
     expect(find.byType(EventDetailWidget), findsNothing);
     expect(find.text('event-123'), findsOneWidget);
     expect(find.byType(NavBarWidget), findsNothing);

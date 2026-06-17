@@ -166,7 +166,7 @@ Date: 2026-06-14
 - [x] Add route for event detail.
 - [x] Add route for event create.
 - [x] Add route for event edit.
-- [ ] Add route for event group chat.
+- [x] Add route for event group chat.
 - [ ] Ensure existing tabs keep current behavior.
 
 ## Phase 6: Event List Screen
