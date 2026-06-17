@@ -482,6 +482,7 @@ test("canceled event chat metadata get is limited to frozen read access", async 
 test("canceled event chat metadata uses frozen access, not current membership", async () => {
   const user = testEnv.authenticatedContext("user-a");
   const leftUser = testEnv.authenticatedContext("user-left");
+  const currentOnlyUser = testEnv.authenticatedContext("current-only");
 
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
@@ -508,6 +509,21 @@ test("canceled event chat metadata uses frozen access, not current membership", 
       eventId: "canceled-left-snapshot",
       readAccessUserIds: ["user-left"],
     }));
+    await db.doc("events/canceled-current-only").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-current-only",
+    }));
+    await db.doc("events/canceled-current-only/participants/current-only").set(
+      participantData({
+        userId: "current-only",
+        displayName: "Current Only",
+      }),
+    );
+    await db.doc("eventChats/canceled-current-only").set(eventChatData({
+      eventId: "canceled-current-only",
+      readAccessUserIds: ["organizer"],
+    }));
   });
 
   await assertSucceeds(
@@ -515,6 +531,9 @@ test("canceled event chat metadata uses frozen access, not current membership", 
   );
   await assertSucceeds(
     leftUser.firestore().doc("eventChats/canceled-left-snapshot").get(),
+  );
+  await assertFails(
+    currentOnlyUser.firestore().doc("eventChats/canceled-current-only").get(),
   );
 });
 

@@ -115,7 +115,7 @@ Date: 2026-06-14
 - [x] Allow active event chat reads only for active participants.
 - [x] Allow canceled event chat reads only for organizer and participants active at cancellation time.
 - [x] Deny canceled event chat reads for nonparticipants and users who left before cancellation.
-- [ ] Allow event chat metadata reads only according to active/canceled chat access rules.
+- [x] Allow event chat metadata reads only according to active/canceled chat access rules.
 - [ ] Enforce that `sendEventChatMessage` is the only MVP message write path; Firestore rules must deny direct message creates, updates, and deletes.
 - [ ] Block direct leave/membership writes at or after `startsAt` using trusted request/server time.
 - [ ] Block direct client creates, updates, and deletes of `eventChats/{chatId}` metadata, especially `readAccessUserIds`.
