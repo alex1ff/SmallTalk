@@ -11,6 +11,7 @@ import 'schema/video_sessions_record.dart';
 import 'schema/conversations_record.dart';
 import 'schema/messages_record.dart';
 import 'schema/events_record.dart';
+import 'schema/event_participants_record.dart';
 import 'schema/chat_utils.dart';
 import 'schema/caption_logs_record.dart';
 import 'schema/user_words_record.dart';
@@ -39,6 +40,7 @@ export 'schema/video_sessions_record.dart';
 export 'schema/conversations_record.dart';
 export 'schema/messages_record.dart';
 export 'schema/events_record.dart';
+export 'schema/event_participants_record.dart';
 export 'schema/chat_utils.dart';
 export 'schema/caption_logs_record.dart';
 export 'schema/user_words_record.dart';
@@ -239,6 +241,46 @@ Future<List<EventsRecord>> queryEventsRecordOnce({
     queryCollectionOnce(
       EventsRecord.collection,
       EventsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+/// Functions to query EventParticipantsRecords (as a Stream and as a Future).
+Future<int> queryEventParticipantsRecordCount({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      EventParticipantsRecord.collection(parent),
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<EventParticipantsRecord>> queryEventParticipantsRecord({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      EventParticipantsRecord.collection(parent),
+      EventParticipantsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<EventParticipantsRecord>> queryEventParticipantsRecordOnce({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      EventParticipantsRecord.collection(parent),
+      EventParticipantsRecord.fromSnapshot,
       queryBuilder: queryBuilder,
       limit: limit,
       singleRecord: singleRecord,
