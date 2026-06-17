@@ -102,7 +102,7 @@ Date: 2026-06-14
 
 ## Phase 3: Firebase Security Rules
 
-- [ ] Allow authorized users to read active event list data.
+- [x] Allow authorized users to read active event list data.
 - [ ] Deny direct client event creates outside the trusted `createEvent` callable/Admin SDK path.
 - [ ] Allow only organizer to edit own event.
 - [ ] Allow only organizer to cancel own event.

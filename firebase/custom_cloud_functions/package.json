@@ -9,6 +9,7 @@
     "migrate:pair-reviews": "node scripts/migrate_pair_reviews.js",
     "generate:event-city-catalog": "node scripts/generate_event_city_catalog.js",
     "test:events": "node --test create_event.test.js edit_event.test.js cancel_event.test.js join_event.test.js leave_event.test.js send_event_chat_message.test.js event_city_catalog.test.js event_city_catalog_generation.test.js deployment_readiness.test.js",
+    "test:event-rules": "node --test event_rules.test.js",
     "lint": "eslint .",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",

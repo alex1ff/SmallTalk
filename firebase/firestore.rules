@@ -749,6 +749,10 @@ service cloud.firestore {
         request.resource.data.get('verif_NS', null) == false;
     }
 
+    function canListActiveEvent(data) {
+      return isSignedIn() && data.status == 'active';
+    }
+
     match /users/{userId} {
       allow create: if isAdmin() || canCreateOwnUser(userId);
       allow get, list: if canReadUserDocument(userId);
@@ -838,6 +842,10 @@ service cloud.firestore {
           request.resource.data.createdAt == request.time;
         allow update, delete: if false;
       }
+    }
+
+    match /events/{eventId} {
+      allow list: if canListActiveEvent(resource.data);
     }
 
     match /users/{userId}/userWords/{wordId} {
