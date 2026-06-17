@@ -149,7 +149,7 @@ Date: 2026-06-14
 - [x] Ensure city resolution treats existing `users.Country_NS` as a country hint only, not as selected event city.
 - [x] Ensure city resolution ignores `users.preferences.preferredLocation` as default Events city because it is an interlocutor country preference.
 - [x] Add city chip source helper backed by local recent selections and a static curated popular city list.
-- [ ] Add manual city search normalization that resolves aliases/transliterations to canonical city records.
+- [x] Add manual city search normalization that resolves aliases/transliterations to canonical city records.
 - [ ] Add ambiguous city search handling that shows all matching city options with `displayContext`.
 - [ ] Add fallback selected city state when profile location is missing.
 - [ ] Ensure temporary Events city selection does not write `users.profileCity` unless the user explicitly saves/fills profile location.
