@@ -135,7 +135,7 @@ Date: 2026-06-14
 - [x] Add static curated city catalog with `countryCode`, `cityKey`, localized names, region metadata required for duplicate-name disambiguation, IANA `timeZoneId`, aliases/transliterations, country/region display context, and priority.
 - [x] Add event repository/service for list queries.
 - [x] Add the `events` composite index to `firebase/firestore.indexes.json`: `status ASC`, `countryCode ASC`, `cityKey ASC`, `startsAt ASC`.
-- [ ] Implement event list query exactly as `status == active`, `countryCode == selectedCountryCode`, `cityKey == selectedCityKey`, `startsAt >= lowerBoundUtc`, `startsAt < upperBoundUtc`, `orderBy startsAt ASC`.
+- [x] Implement event list query exactly as `status == active`, `countryCode == selectedCountryCode`, `cityKey == selectedCityKey`, `startsAt >= lowerBoundUtc`, `startsAt < upperBoundUtc`, `orderBy startsAt ASC`.
 - [ ] Compute event list date bounds in the selected city `timeZoneId`, convert bounds to UTC timestamps, and use an exclusive upper bound.
 - [ ] Apply level overlap filtering client-side after raw Firestore pages are fetched.
 - [ ] Continue raw Firestore pagination until enough visible level-matching events are collected or the query is exhausted.
