@@ -19,6 +19,10 @@ service cloud.firestore {
         request.auth.token.admin == true;
     }
 
+    function isEventCreateServerManagedPath(documentPath) {
+      return documentPath[0] in ['eventCreationCounters', 'eventCreateRequests'];
+    }
+
     function isSelf(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
@@ -1159,8 +1163,16 @@ service cloud.firestore {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
+    match /eventCreationCounters/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /eventCreateRequests/{document=**} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() && !isEventCreateServerManagedPath(document);
     }
   }
 }

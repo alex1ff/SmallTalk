@@ -111,7 +111,7 @@ Date: 2026-06-14
 - [x] Prevent client-side tampering with protected event fields: `organizerId`, organizer snapshot fields, `participantsCount`, `chatId`, status fields, timestamps, and catalog-derived display fields.
 - [x] Allow participant reads only where required by UI.
 - [x] Deny direct client creates, updates, and deletes of participant documents outside validated join/leave/create flows.
-- [ ] Deny direct client reads, creates, updates, and deletes of `eventCreationCounters` and `eventCreateRequests`.
+- [x] Deny direct client reads, creates, updates, and deletes of `eventCreationCounters` and `eventCreateRequests`.
 - [ ] Allow active event chat reads only for active participants.
 - [ ] Allow canceled event chat reads only for organizer and participants active at cancellation time.
 - [ ] Deny canceled event chat reads for nonparticipants and users who left before cancellation.

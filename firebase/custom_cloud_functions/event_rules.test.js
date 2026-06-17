@@ -24,6 +24,7 @@ let testEnv;
 
 const farFutureStartsAt = new Date("2099-06-20T15:00:00.000Z");
 const farFutureEditStartsAt = new Date("2099-06-21T15:00:00.000Z");
+const eventCreateRequestId = "550e8400-e29b-41d4-a716-446655440000";
 const disallowedEventStatuses = [
   "draft",
   "past",
@@ -111,6 +112,47 @@ function participantData(overrides = {}) {
     leftAt: null,
     createdAt: new Date("2026-06-14T10:00:00.000Z"),
     updatedAt: new Date("2026-06-14T10:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function eventCreationCounterData(overrides = {}) {
+  return {
+    userId: "user-a",
+    dayKeyUtc: "2026-06-16",
+    count: 1,
+    eventIds: ["editable-event"],
+    requestEventIds: {
+      [eventCreateRequestId]: "editable-event",
+    },
+    requestPayloadHashes: {
+      [eventCreateRequestId]: "payload-hash",
+    },
+    windowStartAt: new Date("2026-06-16T00:00:00.000Z"),
+    windowEndAt: new Date("2026-06-17T00:00:00.000Z"),
+    createdAt: new Date("2026-06-16T10:00:00.000Z"),
+    updatedAt: new Date("2026-06-16T10:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function eventCreateRequestData(overrides = {}) {
+  return {
+    userId: "user-a",
+    createRequestId: eventCreateRequestId,
+    eventId: "editable-event",
+    payloadHash: "payload-hash",
+    counterPath: "eventCreationCounters/user-a/days/20260616",
+    dayKeyUtc: "2026-06-16",
+    dailyCreation: {
+      count: 1,
+      dayKeyUtc: "2026-06-16",
+      remaining: 4,
+      resetAtUtc: "2026-06-17T00:00:00.000Z",
+    },
+    status: "created",
+    createdAt: new Date("2026-06-16T10:00:00.000Z"),
+    updatedAt: new Date("2026-06-16T10:00:00.000Z"),
     ...overrides,
   };
 }
@@ -211,6 +253,15 @@ test.beforeEach(async () => {
     await db.doc("events/canceled-editable-event/participants/user-a").set(
       participantData(),
     );
+    await db.doc("eventCreationCounters/user-a/days/20260616").set(
+      eventCreationCounterData(),
+    );
+    await db.doc(
+      `eventCreateRequests/user-a/requests/${eventCreateRequestId}`,
+    ).set(eventCreateRequestData());
+    await db.doc("adminFallbackProbe/probe").set({
+      visibleToAdminFallback: true,
+    });
   });
 });
 
@@ -482,6 +533,254 @@ test("participant writes fail even when batched with allowed event edits", async
   });
 
   await assertFails(batch.commit());
+});
+
+test("clients cannot directly read event creation counters", async () => {
+  const contexts = [
+    testEnv.unauthenticatedContext(),
+    testEnv.authenticatedContext("user-a"),
+    testEnv.authenticatedContext("other-user"),
+    testEnv.authenticatedContext("admin-user", {admin: true}),
+  ];
+
+  for (const context of contexts) {
+    const db = context.firestore();
+    await assertFails(
+      db.doc("eventCreationCounters/user-a").get(),
+    );
+    await assertFails(
+      db.doc("eventCreationCounters/user-a/days/20260616").get(),
+    );
+    await assertFails(
+      db.doc(
+        "eventCreationCounters/user-a/days/20260616/audit/log-entry",
+      ).get(),
+    );
+    await assertFails(
+      db.collection("eventCreationCounters/user-a/days").get(),
+    );
+    await assertFails(
+      db.collection("eventCreationCounters").get(),
+    );
+    await assertFails(
+      db.collectionGroup("days").get(),
+    );
+  }
+
+  await assertFails(
+    testEnv.authenticatedContext("admin-user", {admin: true})
+      .firestore()
+      .doc("eventCreationCounters/user-a/days/20990101")
+      .get(),
+  );
+});
+
+test("clients cannot directly write event creation counters", async () => {
+  const guest = testEnv.unauthenticatedContext();
+  const user = testEnv.authenticatedContext("user-a");
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+  const counterRef = user.firestore()
+    .doc("eventCreationCounters/user-a/days/20260616");
+  const adminDb = adminClient.firestore();
+
+  await assertFails(
+    guest.firestore()
+      .doc("eventCreationCounters/user-a/days/20260617")
+      .set(eventCreationCounterData({dayKeyUtc: "2026-06-17"})),
+  );
+  await assertFails(
+    user.firestore()
+      .doc("eventCreationCounters/user-a/days/20260617")
+      .set(eventCreationCounterData({dayKeyUtc: "2026-06-17"})),
+  );
+  await assertFails(
+    user.firestore()
+      .collection("eventCreationCounters/user-a/days")
+      .add(eventCreationCounterData({dayKeyUtc: "2026-06-17"})),
+  );
+  await assertFails(counterRef.update({
+    count: 2,
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+  await assertFails(counterRef.set({
+    count: 2,
+  }, {merge: true}));
+  await assertFails(
+    user.firestore()
+      .doc("eventCreationCounters/user-a")
+      .set({
+        userId: "user-a",
+      }),
+  );
+  await assertFails(
+    user.firestore()
+      .doc("eventCreationCounters/user-a/days/20260616/audit/log-entry")
+      .set({
+        count: 3,
+      }),
+  );
+  await assertFails(
+    adminDb.doc("eventCreationCounters/user-a/days/20260618")
+      .set(eventCreationCounterData({dayKeyUtc: "2026-06-18"})),
+  );
+  await assertFails(adminDb
+    .doc("eventCreationCounters/user-a/days/20260616")
+    .set({
+      count: 3,
+    }, {merge: true}),
+  );
+  await assertFails(adminDb
+    .doc("eventCreationCounters/user-a/days/20260616")
+    .update({
+      count: 3,
+      updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    adminDb.doc("eventCreationCounters/user-a/days/20260616").delete(),
+  );
+});
+
+test("clients cannot directly read event create request markers", async () => {
+  const markerPath =
+    `eventCreateRequests/user-a/requests/${eventCreateRequestId}`;
+  const contexts = [
+    testEnv.unauthenticatedContext(),
+    testEnv.authenticatedContext("user-a"),
+    testEnv.authenticatedContext("other-user"),
+    testEnv.authenticatedContext("admin-user", {admin: true}),
+  ];
+
+  for (const context of contexts) {
+    const db = context.firestore();
+    await assertFails(db.doc("eventCreateRequests/user-a").get());
+    await assertFails(db.doc(markerPath).get());
+    await assertFails(
+      db.doc(`${markerPath}/audit/log-entry`).get(),
+    );
+    await assertFails(
+      db.collection("eventCreateRequests/user-a/requests").get(),
+    );
+    await assertFails(
+      db.collection("eventCreateRequests").get(),
+    );
+    await assertFails(
+      db.collectionGroup("requests").get(),
+    );
+  }
+
+  await assertFails(
+    testEnv.authenticatedContext("admin-user", {admin: true})
+      .firestore()
+      .doc("eventCreateRequests/user-a/requests/00000000-0000-4000-8000-000000000000")
+      .get(),
+  );
+});
+
+test("clients cannot directly write event create request markers", async () => {
+  const guest = testEnv.unauthenticatedContext();
+  const user = testEnv.authenticatedContext("user-a");
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+  const markerPath =
+    `eventCreateRequests/user-a/requests/${eventCreateRequestId}`;
+  const markerRef = user.firestore().doc(markerPath);
+  const adminDb = adminClient.firestore();
+  const nextRequestId = "650e8400-e29b-41d4-a716-446655440001";
+  const adminRequestId = "750e8400-e29b-41d4-a716-446655440002";
+
+  await assertFails(
+    guest.firestore()
+      .doc(`eventCreateRequests/user-a/requests/${nextRequestId}`)
+      .set(eventCreateRequestData({createRequestId: nextRequestId})),
+  );
+  await assertFails(
+    user.firestore()
+      .doc(`eventCreateRequests/user-a/requests/${nextRequestId}`)
+      .set(eventCreateRequestData({createRequestId: nextRequestId})),
+  );
+  await assertFails(
+    user.firestore()
+      .collection("eventCreateRequests/user-a/requests")
+      .add(eventCreateRequestData({createRequestId: nextRequestId})),
+  );
+  await assertFails(markerRef.update({
+    status: "conflict",
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+  await assertFails(markerRef.set({
+    payloadHash: "changed-hash",
+  }, {merge: true}));
+  await assertFails(
+    user.firestore()
+      .doc("eventCreateRequests/user-a")
+      .set({
+        userId: "user-a",
+      }),
+  );
+  await assertFails(
+    user.firestore()
+      .doc(`${markerPath}/audit/log-entry`)
+      .set({
+        status: "created",
+      }),
+  );
+  await assertFails(
+    adminDb.doc(`eventCreateRequests/user-a/requests/${adminRequestId}`)
+      .set(eventCreateRequestData({createRequestId: adminRequestId})),
+  );
+  await assertFails(adminDb.doc(markerPath).set({
+    payloadHash: "changed-hash",
+  }, {merge: true}));
+  await assertFails(adminDb.doc(markerPath).update({
+    status: "conflict",
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+  await assertFails(
+    adminDb.doc(markerPath).delete(),
+  );
+});
+
+test("event create bookkeeping writes fail inside otherwise allowed batches", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const db = organizer.firestore();
+  const batch = db.batch();
+
+  batch.update(db.doc("events/editable-event"), directEditPatch());
+  batch.update(db.doc("eventCreationCounters/user-a/days/20260616"), {
+    count: 2,
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await assertFails(batch.commit());
+});
+
+test("event create request marker writes fail inside otherwise allowed batches", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const db = organizer.firestore();
+  const batch = db.batch();
+
+  batch.update(db.doc("events/editable-event"), directEditPatch());
+  batch.update(
+    db.doc(`eventCreateRequests/user-a/requests/${eventCreateRequestId}`),
+    {
+      status: "conflict",
+      updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    },
+  );
+
+  await assertFails(batch.commit());
+});
+
+test("event bookkeeping exclusions preserve unrelated admin fallback reads", async () => {
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+  const regularUser = testEnv.authenticatedContext("user-a");
+
+  await assertSucceeds(
+    adminClient.firestore().doc("adminFallbackProbe/probe").get(),
+  );
+  await assertFails(
+    regularUser.firestore().doc("adminFallbackProbe/probe").get(),
+  );
 });
 
 test("clients cannot directly create event documents", async () => {
