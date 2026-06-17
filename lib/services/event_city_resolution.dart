@@ -33,6 +33,23 @@ EventCityResolutionResult resolveSelectedEventCityFromUserProfile({
   );
 }
 
+String? resolveEventCityCountryCodeHintFromUserProfile({
+  required UsersRecord? user,
+}) {
+  return resolveEventCityCountryCodeHintFromCountry(
+    country: user != null && user.hasCountryNS() ? user.countryNS : null,
+  );
+}
+
+String? resolveEventCityCountryCodeHintFromCountry({
+  required CountryStruct? country,
+}) {
+  if (country == null || !country.hasCode()) {
+    return null;
+  }
+  return normalizeEventCountryCode(country.code);
+}
+
 EventCityResolutionResult resolveSelectedEventCityFromProfileCity({
   required ProfileCityStruct? profileCity,
   required EventCityCatalog catalog,

@@ -218,6 +218,169 @@ void main() {
       expect(result.city?.cityKey, 'new_york');
     });
   });
+
+  group('resolveEventCityCountryCodeHintFromUserProfile', () {
+    test('uses Country_NS only as a normalized country hint', () {
+      final user = userFixture(
+        data: {
+          'uid': 'uid-country-hint',
+          'Country_NS': {'code': ' it '},
+        },
+      );
+
+      final hint = resolveEventCityCountryCodeHintFromUserProfile(user: user);
+      final selectedCity = resolveSelectedEventCityFromUserProfile(
+        user: user,
+        catalog: catalog,
+      );
+
+      expect(hint, 'IT');
+      expect(catalog.popularCities().first.cityKey, 'moscow');
+      expect(
+          catalog.popularCities(countryCodeHint: hint).first.cityKey, 'rome');
+      expect(selectedCity.status, EventCityResolutionStatus.missingProfileCity);
+      expect(selectedCity.city, isNull);
+      expect(selectedCity.hasResolvedCity, isFalse);
+    });
+
+    test('resolves hints directly from country structs', () {
+      expect(
+        resolveEventCityCountryCodeHintFromCountry(
+          country: CountryStruct(code: ' ru '),
+        ),
+        'RU',
+      );
+      expect(
+        resolveEventCityCountryCodeHintFromCountry(country: CountryStruct()),
+        isNull,
+      );
+      expect(resolveEventCityCountryCodeHintFromCountry(country: null), isNull);
+    });
+
+    test('ignores missing and malformed Country_NS values', () {
+      for (final data in <Map<String, dynamic>>[
+        {'uid': 'uid-no-country'},
+        {'uid': 'uid-null-country', 'Country_NS': null},
+        {'uid': 'uid-non-map-country', 'Country_NS': 'RU'},
+        {'uid': 'uid-empty-country', 'Country_NS': <String, dynamic>{}},
+        {
+          'uid': 'uid-blank-country',
+          'Country_NS': {'code': ''},
+        },
+        {
+          'uid': 'uid-name-country',
+          'Country_NS': {'code': 'Russia'},
+        },
+        {
+          'uid': 'uid-alpha3-country',
+          'Country_NS': {'code': 'USA'},
+        },
+      ]) {
+        expect(
+          resolveEventCityCountryCodeHintFromUserProfile(
+            user: userFixture(data: data),
+          ),
+          isNull,
+          reason: 'Expected no hint for ${data['uid']}.',
+        );
+      }
+      expect(
+          resolveEventCityCountryCodeHintFromUserProfile(user: null), isNull);
+    });
+
+    test('does not use preferredLocation as a country hint', () {
+      final user = userFixture(
+        data: {
+          'uid': 'uid-preferred-location-only',
+          'preferences': {
+            'preferredLocation': {'code': 'US'},
+          },
+        },
+      );
+
+      expect(
+          resolveEventCityCountryCodeHintFromUserProfile(user: user), isNull);
+      expect(
+        resolveSelectedEventCityFromUserProfile(
+          user: user,
+          catalog: catalog,
+        ).status,
+        EventCityResolutionStatus.missingProfileCity,
+      );
+    });
+
+    test('keeps hint separate from stale or unknown profile city status', () {
+      final staleUser = userFixture(
+        data: {
+          'uid': 'uid-stale-profile-city',
+          'Country_NS': {'code': 'ru'},
+          'profileCity': profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: 'old-version',
+          ).toMap(),
+        },
+      );
+      final unknownUser = userFixture(
+        data: {
+          'uid': 'uid-unknown-profile-city',
+          'Country_NS': {'code': 'ru'},
+          'profileCity': profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'unknown_city',
+            catalogVersion: catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+
+      expect(
+        resolveEventCityCountryCodeHintFromUserProfile(user: staleUser),
+        'RU',
+      );
+      expect(
+        resolveSelectedEventCityFromUserProfile(
+          user: staleUser,
+          catalog: catalog,
+        ).status,
+        EventCityResolutionStatus.staleCatalogVersion,
+      );
+      expect(
+        resolveEventCityCountryCodeHintFromUserProfile(user: unknownUser),
+        'RU',
+      );
+      expect(
+        resolveSelectedEventCityFromUserProfile(
+          user: unknownUser,
+          catalog: catalog,
+        ).status,
+        EventCityResolutionStatus.unknownCatalogCity,
+      );
+    });
+
+    test('does not let Country_NS override a valid profile city', () {
+      final user = userFixture(
+        data: {
+          'uid': 'uid-profile-city-with-country-hint',
+          'Country_NS': {'code': 'RU'},
+          'profileCity': profileCityFixture(
+            countryCode: 'US',
+            cityKey: 'new_york',
+            catalogVersion: catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+
+      final selectedCity = resolveSelectedEventCityFromUserProfile(
+        user: user,
+        catalog: catalog,
+      );
+
+      expect(resolveEventCityCountryCodeHintFromUserProfile(user: user), 'RU');
+      expect(selectedCity.status, EventCityResolutionStatus.resolved);
+      expect(selectedCity.city?.countryCode, 'US');
+      expect(selectedCity.city?.cityKey, 'new_york');
+    });
+  });
 }
 
 ProfileCityStruct profileCityFixture({
