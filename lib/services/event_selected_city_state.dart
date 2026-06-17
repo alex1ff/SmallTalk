@@ -7,7 +7,26 @@ import 'event_city_selection_source.dart';
 ///
 /// Persisting a profile city must go through ProfileCitySaveService.
 class EventSelectedCityInput {
-  const EventSelectedCityInput({
+  factory EventSelectedCityInput({
+    required String countryCode,
+    required String cityKey,
+    required EventCitySelectionSource source,
+  }) {
+    if (source == EventCitySelectionSource.profile) {
+      throw ArgumentError.value(
+        source,
+        'source',
+        'Temporary Events city selection cannot use profile source.',
+      );
+    }
+    return EventSelectedCityInput._(
+      countryCode: countryCode,
+      cityKey: cityKey,
+      source: source,
+    );
+  }
+
+  const EventSelectedCityInput._({
     required this.countryCode,
     required this.cityKey,
     required this.source,

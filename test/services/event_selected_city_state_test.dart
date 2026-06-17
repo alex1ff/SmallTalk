@@ -120,7 +120,7 @@ void main() {
     test('temporary recent static and manual selections unlock the list', () {
       for (final input in <({EventSelectedCityInput input, String identity})>[
         (
-          input: const EventSelectedCityInput(
+          input: EventSelectedCityInput(
             countryCode: 'IT',
             cityKey: 'rome',
             source: EventCitySelectionSource.recent,
@@ -128,7 +128,7 @@ void main() {
           identity: 'IT:rome',
         ),
         (
-          input: const EventSelectedCityInput(
+          input: EventSelectedCityInput(
             countryCode: 'RU',
             cityKey: 'moscow',
             source: EventCitySelectionSource.static,
@@ -136,7 +136,7 @@ void main() {
           identity: 'RU:moscow',
         ),
         (
-          input: const EventSelectedCityInput(
+          input: EventSelectedCityInput(
             countryCode: 'US',
             cityKey: 'new_york',
             source: EventCitySelectionSource.manual,
@@ -182,7 +182,7 @@ void main() {
       final state = resolveEventSelectedCityState(
         user: user,
         catalog: catalog,
-        temporarySelection: const EventSelectedCityInput(
+        temporarySelection: EventSelectedCityInput(
           countryCode: 'IT',
           cityKey: 'rome',
           source: EventCitySelectionSource.manual,
@@ -208,7 +208,7 @@ void main() {
       final temporaryState = resolveEventSelectedCityState(
         user: user,
         catalog: catalog,
-        temporarySelection: const EventSelectedCityInput(
+        temporarySelection: EventSelectedCityInput(
           countryCode: 'US',
           cityKey: 'new_york',
           source: EventCitySelectionSource.manual,
@@ -245,7 +245,7 @@ void main() {
       final state = resolveEventSelectedCityState(
         user: user,
         catalog: catalog,
-        temporarySelection: const EventSelectedCityInput(
+        temporarySelection: EventSelectedCityInput(
           countryCode: 'US',
           cityKey: 'new_york',
           source: EventCitySelectionSource.manual,
@@ -258,9 +258,19 @@ void main() {
       expect(state.selectedTemporarily, isTrue);
     });
 
-    test('ignores malformed unknown and profile-sourced temporary selections',
-        () {
-      for (final temporarySelection in const <EventSelectedCityInput>[
+    test('rejects profile-sourced temporary selection inputs', () {
+      expect(
+        () => EventSelectedCityInput(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          source: EventCitySelectionSource.profile,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('ignores malformed and unknown temporary selections', () {
+      for (final temporarySelection in <EventSelectedCityInput>[
         EventSelectedCityInput(
           countryCode: 'RUS',
           cityKey: 'moscow',
@@ -270,11 +280,6 @@ void main() {
           countryCode: 'RU',
           cityKey: 'unknown_city',
           source: EventCitySelectionSource.recent,
-        ),
-        EventSelectedCityInput(
-          countryCode: 'RU',
-          cityKey: 'moscow',
-          source: EventCitySelectionSource.profile,
         ),
       ]) {
         final state = resolveEventSelectedCityState(
@@ -302,16 +307,11 @@ void main() {
         },
       );
 
-      for (final temporarySelection in const <EventSelectedCityInput>[
+      for (final temporarySelection in <EventSelectedCityInput>[
         EventSelectedCityInput(
           countryCode: 'RU',
           cityKey: 'unknown_city',
           source: EventCitySelectionSource.manual,
-        ),
-        EventSelectedCityInput(
-          countryCode: 'RU',
-          cityKey: 'moscow',
-          source: EventCitySelectionSource.profile,
         ),
       ]) {
         final state = resolveEventSelectedCityState(
