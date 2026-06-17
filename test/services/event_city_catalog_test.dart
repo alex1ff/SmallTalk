@@ -125,6 +125,111 @@ void main() {
           cityKey: 'springfield_il',
           nameEn: 'Springfield',
           regionCode: 'IL',
+          displayContext: 'Illinois, United States',
+          aliases: const ['Twin City'],
+          priority: 10,
+        ),
+        _cityFixture(
+          countryCode: 'US',
+          cityKey: 'springfield_ma',
+          nameEn: 'Springfield',
+          regionCode: 'MA',
+          displayContext: 'Massachusetts, United States',
+          aliases: const ['Twin City'],
+          priority: 9,
+        ),
+        _cityFixture(
+          countryCode: 'CA',
+          cityKey: 'springfield_ns',
+          nameEn: 'Springfield',
+          regionCode: 'NS',
+          displayContext: 'Nova Scotia, Canada',
+          aliases: const ['Twin City'],
+          priority: 12,
+        ),
+      ],
+    });
+
+    final options = ambiguousCatalog.searchOptions('Twin City');
+    final optionsWithHint = ambiguousCatalog.searchOptions(
+      'Twin City',
+      countryCodeHint: 'US',
+    );
+
+    expect(options.map((option) => option.city.identity), [
+      'CA:springfield_ns',
+      'US:springfield_il',
+      'US:springfield_ma',
+    ]);
+    expect(options.map((option) => option.displayContext), [
+      'Nova Scotia, Canada',
+      'Illinois, United States',
+      'Massachusetts, United States',
+    ]);
+    expect(optionsWithHint.map((option) => option.city.identity), [
+      'US:springfield_il',
+      'US:springfield_ma',
+      'CA:springfield_ns',
+    ]);
+    expect(optionsWithHint.map((option) => option.displayContext), [
+      'Illinois, United States',
+      'Massachusetts, United States',
+      'Nova Scotia, Canada',
+    ]);
+    expect(optionsWithHint.first.countryCode, 'US');
+    expect(optionsWithHint.first.cityKey, 'springfield_il');
+    expect(optionsWithHint.first.identity, 'US:springfield_il');
+    expect(optionsWithHint.first.displayNameEn, 'Springfield');
+    expect(optionsWithHint.first.displayNameRu, 'Springfield');
+  });
+
+  test('search options expose ambiguity even when capped search would not', () {
+    final ambiguousCatalog = EventCityCatalog.fromMap({
+      'catalogVersion': 'test',
+      'cities': [
+        _cityFixture(
+          countryCode: 'US',
+          cityKey: 'springfield_il',
+          nameEn: 'Springfield',
+          regionCode: 'IL',
+          displayContext: 'Illinois, United States',
+          priority: 10,
+        ),
+        _cityFixture(
+          countryCode: 'US',
+          cityKey: 'springfield_ma',
+          nameEn: 'Springfield',
+          regionCode: 'MA',
+          displayContext: 'Massachusetts, United States',
+          priority: 9,
+        ),
+      ],
+    });
+
+    expect(ambiguousCatalog.search('Springfield', limit: 1), hasLength(1));
+    expect(ambiguousCatalog.searchOptions('Springfield'), hasLength(2));
+    expect(
+      ambiguousCatalog.searchOptions('Springfield').map(
+            (option) => option.displayContext,
+          ),
+      ['Illinois, United States', 'Massachusetts, United States'],
+    );
+  });
+
+  test('empty city search options do not auto-resolve', () {
+    expect(catalog.searchOptions('   '), isEmpty);
+    expect(catalog.searchOptions('not in catalog'), isEmpty);
+  });
+
+  test('plain search still returns all ambiguous city matches', () {
+    final ambiguousCatalog = EventCityCatalog.fromMap({
+      'catalogVersion': 'test',
+      'cities': [
+        _cityFixture(
+          countryCode: 'US',
+          cityKey: 'springfield_il',
+          nameEn: 'Springfield',
+          regionCode: 'IL',
           priority: 10,
         ),
         _cityFixture(
@@ -137,17 +242,7 @@ void main() {
       ],
     });
 
-    final matches = ambiguousCatalog.search('Springfield');
-    final matchesWithHint = ambiguousCatalog.search(
-      'Springfield',
-      countryCodeHint: 'US',
-    );
-
-    expect(matches.map((city) => city.cityKey), [
-      'springfield_il',
-      'springfield_ma',
-    ]);
-    expect(matchesWithHint.map((city) => city.cityKey), [
+    expect(ambiguousCatalog.search('Springfield').map((city) => city.cityKey), [
       'springfield_il',
       'springfield_ma',
     ]);
@@ -170,6 +265,8 @@ Map<String, dynamic> _cityFixture({
   required String nameEn,
   required String regionCode,
   required int priority,
+  String? displayContext,
+  List<String>? aliases,
 }) =>
     {
       'countryCode': countryCode,
@@ -180,8 +277,8 @@ Map<String, dynamic> _cityFixture({
       'regionNameRu': regionCode,
       'regionNameEn': regionCode,
       'timeZoneId': 'America/New_York',
-      'displayContext': regionCode,
-      'aliases': [nameEn],
+      'displayContext': displayContext ?? regionCode,
+      'aliases': aliases ?? [nameEn],
       'transliterations': [nameEn],
       'priority': priority,
     };

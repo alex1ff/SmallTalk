@@ -140,6 +140,32 @@ class EventCityCatalog {
     }
     return results.sublist(0, limit);
   }
+
+  /// Manual city selection uses this instead of a capped search so ambiguous
+  /// aliases can be shown with context instead of being auto-resolved.
+  List<EventCitySearchOption> searchOptions(
+    String query, {
+    String? countryCodeHint,
+  }) {
+    return search(query, countryCodeHint: countryCodeHint)
+        .map((city) => EventCitySearchOption(city: city))
+        .toList(growable: false);
+  }
+}
+
+class EventCitySearchOption {
+  const EventCitySearchOption({
+    required this.city,
+  });
+
+  final EventCity city;
+
+  String get countryCode => city.countryCode;
+  String get cityKey => city.cityKey;
+  String get identity => city.identity;
+  String get displayNameRu => city.cityNameRu;
+  String get displayNameEn => city.cityNameEn;
+  String get displayContext => city.cityDisplayContext;
 }
 
 class EventCityIdentity {
