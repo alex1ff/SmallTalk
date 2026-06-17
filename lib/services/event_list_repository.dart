@@ -1,16 +1,9 @@
 import '/backend/backend.dart';
 import 'event_list_date_bounds.dart';
 import 'event_city_catalog.dart';
+import 'event_level_helper.dart';
 
 const activeEventStatus = 'active';
-const eventLevelRanks = <String, int>{
-  'A1': 0,
-  'A2': 1,
-  'B1': 2,
-  'B2': 3,
-  'C1': 4,
-  'C2': 5,
-};
 
 typedef EventListPageLoader = Future<FFFirestorePage<EventsRecord>> Function(
   Query collection,
@@ -35,23 +28,6 @@ class EventListQuerySpec {
   final DateTime lowerBoundUtc;
   final DateTime upperBoundUtc;
   final int pageSize;
-}
-
-class EventLevelRange {
-  const EventLevelRange._({
-    required this.levelMin,
-    required this.levelMax,
-    required this.minRank,
-    required this.maxRank,
-  });
-
-  final String levelMin;
-  final String levelMax;
-  final int minRank;
-  final int maxRank;
-
-  bool overlaps(EventLevelRange other) =>
-      minRank <= other.maxRank && other.minRank <= maxRank;
 }
 
 class _EventListQueryScope {
@@ -211,7 +187,7 @@ class EventListRepository {
     FFFirestorePage<EventsRecord> rawPage, {
     String? selectedLevel,
   }) {
-    final selectedRange = _selectedEventLevelRange(selectedLevel);
+    final selectedRange = selectedEventLevelRange(selectedLevel);
     if (selectedRange == null) {
       return rawPage;
     }
@@ -238,7 +214,7 @@ class EventListRepository {
       return events.toList(growable: false);
     }
     return events.where((event) {
-      final eventRange = _tryEventLevelRange(
+      final eventRange = tryEventLevelRange(
         levelMin: event.levelMin,
         levelMax: event.levelMax,
       );
@@ -260,7 +236,7 @@ class EventListRepository {
     DocumentSnapshot? nextPageMarker,
     EventListPageLoader? pageLoader,
   }) async {
-    final selectedRange = _selectedEventLevelRange(selectedLevel);
+    final selectedRange = selectedEventLevelRange(selectedLevel);
     if (selectedRange == null) {
       return loadRawActiveEventPage(
         countryCode: countryCode,
@@ -346,66 +322,6 @@ class EventListRepository {
       pageLoader: pageLoader,
     );
   }
-}
-
-EventLevelRange eventLevelRange({
-  required String levelMin,
-  required String levelMax,
-}) {
-  final minCode = _normalizeEventLevelCode(levelMin, 'levelMin');
-  final maxCode = _normalizeEventLevelCode(levelMax, 'levelMax');
-  final minRank = eventLevelRanks[minCode]!;
-  final maxRank = eventLevelRanks[maxCode]!;
-  if (minRank > maxRank) {
-    throw ArgumentError.value(
-      '$levelMin:$levelMax',
-      'levelRange',
-      'Expected levelMin to be less than or equal to levelMax.',
-    );
-  }
-  return EventLevelRange._(
-    levelMin: minCode,
-    levelMax: maxCode,
-    minRank: minRank,
-    maxRank: maxRank,
-  );
-}
-
-EventLevelRange? _selectedEventLevelRange(String? selectedLevel) {
-  final normalizedLevel = selectedLevel?.trim();
-  if (normalizedLevel == null || normalizedLevel.isEmpty) {
-    return null;
-  }
-  return eventLevelRange(
-    levelMin: normalizedLevel,
-    levelMax: normalizedLevel,
-  );
-}
-
-EventLevelRange? _tryEventLevelRange({
-  required String levelMin,
-  required String levelMax,
-}) {
-  try {
-    return eventLevelRange(
-      levelMin: levelMin,
-      levelMax: levelMax,
-    );
-  } on ArgumentError {
-    return null;
-  }
-}
-
-String _normalizeEventLevelCode(String levelCode, String name) {
-  final normalizedLevelCode = levelCode.trim().toUpperCase();
-  if (!eventLevelRanks.containsKey(normalizedLevelCode)) {
-    throw ArgumentError.value(
-      levelCode,
-      name,
-      'Expected a canonical CEFR level code.',
-    );
-  }
-  return normalizedLevelCode;
 }
 
 _EventListQueryScope _normalizeActiveEventListScope({

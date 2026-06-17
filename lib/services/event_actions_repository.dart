@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '/flutter_flow/flutter_flow_util.dart';
 import 'event_city_catalog.dart';
+import 'event_level_helper.dart';
 
 typedef EventCallableInvoker = Future<Object?> Function(
   String functionName,
@@ -23,14 +24,6 @@ final RegExp _uuidV4Pattern = RegExp(
 final RegExp _strictUtcIsoMillisPattern = RegExp(
   r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$',
 );
-const _eventActionLevelRanks = <String, int>{
-  'A1': 0,
-  'A2': 1,
-  'B1': 2,
-  'B2': 3,
-  'C1': 4,
-  'C2': 5,
-};
 
 class EventEditableFields {
   const EventEditableFields({
@@ -76,7 +69,7 @@ class EventEditableFields {
       countryCode: countryCode,
       cityKey: cityKey,
     );
-    final levelRange = _normalizeEventActionLevelRange(
+    final levelRange = eventLevelRange(
       levelMin: levelMin,
       levelMax: levelMax,
     );
@@ -320,35 +313,6 @@ EventCityIdentity _normalizeEventActionCity({
     );
   }
   return cityIdentity;
-}
-
-({String levelMin, String levelMax}) _normalizeEventActionLevelRange({
-  required String levelMin,
-  required String levelMax,
-}) {
-  final normalizedLevelMin = _normalizeEventActionLevel(levelMin, 'levelMin');
-  final normalizedLevelMax = _normalizeEventActionLevel(levelMax, 'levelMax');
-  if (_eventActionLevelRanks[normalizedLevelMin]! >
-      _eventActionLevelRanks[normalizedLevelMax]!) {
-    throw ArgumentError.value(
-      '$levelMin:$levelMax',
-      'levelRange',
-      'Expected levelMin to be less than or equal to levelMax.',
-    );
-  }
-  return (levelMin: normalizedLevelMin, levelMax: normalizedLevelMax);
-}
-
-String _normalizeEventActionLevel(String level, String name) {
-  final normalizedLevel = level.trim().toUpperCase();
-  if (!_eventActionLevelRanks.containsKey(normalizedLevel)) {
-    throw ArgumentError.value(
-      level,
-      name,
-      'Expected a canonical CEFR level code.',
-    );
-  }
-  return normalizedLevel;
 }
 
 DateTime _normalizeEventActionStartsAt(DateTime startsAt) {

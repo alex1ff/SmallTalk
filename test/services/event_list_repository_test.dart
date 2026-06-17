@@ -2,6 +2,7 @@ import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
+import 'package:small_talk/services/event_level_helper.dart';
 import 'package:small_talk/services/event_list_repository.dart';
 
 void main() {
