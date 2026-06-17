@@ -171,7 +171,7 @@ Date: 2026-06-14
 
 ## Phase 6: Event List Screen
 
-- [ ] Build header with title `События`.
+- [x] Build header with title `События`.
 - [ ] Add `+` create button.
 - [ ] Add city selector/state.
 - [ ] Show profile city by default when available.
