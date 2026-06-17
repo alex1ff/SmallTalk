@@ -145,7 +145,7 @@ Date: 2026-06-14
 - [x] Add date filter helper for today, tomorrow, current week, and current month.
 - [x] Add level overlap helper.
 - [x] Add city resolution helper from user profile.
-- [ ] Add profile city save helper that does not trust client-provided display or region fields.
+- [x] Add profile city save helper that does not trust client-provided display or region fields.
 - [ ] Ensure city resolution treats existing `users.Country_NS` as a country hint only, not as selected event city.
 - [ ] Ensure city resolution ignores `users.preferences.preferredLocation` as default Events city because it is an interlocutor country preference.
 - [ ] Add city chip source helper backed by local recent selections and a static curated popular city list.
