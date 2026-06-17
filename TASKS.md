@@ -140,7 +140,7 @@ Date: 2026-06-14
 - [x] Apply level overlap filtering client-side after raw Firestore pages are fetched.
 - [x] Continue raw Firestore pagination until enough visible level-matching events are collected or the query is exhausted.
 - [x] Advance pagination cursors by the last raw Firestore document, not the last visible filtered event.
-- [ ] Add event repository/service for detail stream.
+- [x] Add event repository/service for detail stream.
 - [ ] Add event repository/service for create, edit, cancel, join, and leave.
 - [ ] Add date filter helper for today, tomorrow, current week, and current month.
 - [ ] Add level overlap helper.
