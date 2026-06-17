@@ -93,7 +93,7 @@ Date: 2026-06-14
 - [x] On cancel, atomically set `status = canceled`, set `canceledAt` to trusted server/request time, and preserve event chat read-access snapshot for organizer and users active at cancellation time.
 - [x] Build cancel chat snapshot from `events.organizerId` plus participant documents with `status = active` read inside the cancel transaction, not from timestamp comparisons.
 - [x] Make repeated cancel idempotent or return a clear already-canceled error without changing the cancellation snapshot.
-- [ ] Block reopening/restoring canceled events to `active` in MVP.
+- [x] Block reopening/restoring canceled events to `active` in MVP.
 - [ ] Block event chat writes after cancellation.
 - [x] Fail closed when event chat metadata is missing or `eventChats/{chatId}.eventId` does not match the owning event id.
 - [ ] Implement callable Cloud Function `sendEventChatMessage` with exact request schema `{eventId, text}`; reject unknown request keys; validate `eventId` as a non-empty Firestore document id/path segment with no `/`; use authenticated uid as `senderId`; generate `messageId`; return `messageId` and `createdAt`; and check active event status, matching chat metadata, active participant membership, allowed message fields, trusted `createdAt`, `deletedAt = null`, normalized non-empty text, and max 1000 grapheme clusters.

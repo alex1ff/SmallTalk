@@ -160,6 +160,26 @@ test("normalizeEditEventPayload rejects unknown and missing keys", () => {
       "unexpected",
       "unknown_key",
   );
+  assertHttpsError(
+      () => normalizeEditEventPayload(
+          cloneValidEditRequest({status: "active"}),
+          {now: fixedNow},
+      ),
+      "invalid-argument",
+      "invalid_edit_request",
+      "status",
+      "unknown_key",
+  );
+  assertHttpsError(
+      () => normalizeEditEventPayload(
+          cloneValidEditRequest({canceledAt: null}),
+          {now: fixedNow},
+      ),
+      "invalid-argument",
+      "invalid_edit_request",
+      "canceledAt",
+      "unknown_key",
+  );
 
   for (const key of Object.keys(validEditRequest)) {
     const missing = cloneValidEditRequest();
@@ -248,8 +268,18 @@ test("executeEditEventTransaction updates organizer active future event", async 
   assert.equal(event.cityNameRu, "Нью-Йорк");
   assert.equal(event.timeZoneId, "America/New_York");
   assert.equal(event.capacity, 5);
+  assert.equal(event.status, "active");
+  assert.equal(event.canceledAt, null);
   assert.equal(event.updatedAt, fixedTimestamp);
   assert.deepEqual(writes.map((write) => write.path), ["events/event-1"]);
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(writes[0].data, "status"),
+      false,
+  );
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(writes[0].data, "canceledAt"),
+      false,
+  );
   assert.strictEqual(
       store.get("eventCreationCounters/uid/days/20260616"),
       counterBefore,
@@ -296,6 +326,19 @@ test("executeEditEventTransaction rejects canceled or past events", async () => 
             status: "canceled",
             canceledAt: fixedTimestamp,
           }),
+        }).db,
+        uid: "uid",
+        editDate: fixedNow,
+        editTimestamp: fixedTimestamp,
+        payload,
+      }),
+      "failed-precondition",
+      "event_not_editable",
+  );
+  await assertRejectsHttpsError(
+      () => executeEditEventTransaction({
+        db: createFakeFirestore({
+          "events/event-1": eventData({canceledAt: fixedTimestamp}),
         }).db,
         uid: "uid",
         editDate: fixedNow,

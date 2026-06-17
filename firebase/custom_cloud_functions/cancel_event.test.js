@@ -403,3 +403,23 @@ test("executeCancelEventTransaction fails closed on corrupt canceled event", asy
     assert.deepEqual(writes, []);
   }
 });
+
+test("executeCancelEventTransaction rejects active event with cancellation timestamp", async () => {
+  const {db, writes} = createFakeFirestore({
+    "events/event-1": activeEvent({canceledAt: originalCanceledAt}),
+    "eventChats/event-1": eventChat(),
+  });
+
+  await assertRejectsHttpsError(
+      () => executeCancelEventTransaction({
+        db,
+        uid: "uid",
+        cancelDate: fixedNow,
+        cancelTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      }),
+      "failed-precondition",
+      "event_not_cancelable",
+  );
+  assert.deepEqual(writes, []);
+});
