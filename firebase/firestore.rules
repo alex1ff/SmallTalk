@@ -19,8 +19,12 @@ service cloud.firestore {
         request.auth.token.admin == true;
     }
 
-    function isEventCreateServerManagedPath(documentPath) {
-      return documentPath[0] in ['eventCreationCounters', 'eventCreateRequests'];
+    function isEventProtectedFromAdminFallback(documentPath) {
+      return documentPath[0] in [
+        'eventCreationCounters',
+        'eventCreateRequests',
+        'eventChats'
+      ];
     }
 
     function isSelf(userId) {
@@ -903,6 +907,12 @@ service cloud.firestore {
       );
     }
 
+    function eventParticipantDocumentData(eventId, userId) {
+      return get(
+        /databases/$(database)/documents/events/$(eventId)/participants/$(userId)
+      ).data;
+    }
+
     function isValidEventParticipantRole(value) {
       return value in ['organizer', 'participant'];
     }
@@ -985,6 +995,50 @@ service cloud.firestore {
         eventIsActive(eventId) &&
         request.query.limit <= 50 &&
         data.status == 'active';
+    }
+
+    function hasValidEventChatMetadata(chatId, data) {
+      return data.keys().hasOnly([
+          'eventId',
+          'readAccessUserIds',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasAll([
+          'eventId',
+          'readAccessUserIds',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.eventId == chatId &&
+        data.readAccessUserIds is list &&
+        data.readAccessUserIds.size() <= 50 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function eventHasMatchingActiveChat(chatId) {
+      return eventDocumentExists(chatId) &&
+        eventDocumentData(chatId).chatId == chatId &&
+        eventDocumentData(chatId).status == 'active' &&
+        eventDocumentData(chatId).canceledAt == null;
+    }
+
+    function isActiveEventParticipant(eventId, userId) {
+      return eventParticipantDocumentExists(eventId, userId) &&
+        isValidEventParticipantReadData(
+          userId,
+          eventParticipantDocumentData(eventId, userId)
+        ) &&
+        eventParticipantDocumentData(eventId, userId).status == 'active' &&
+        eventParticipantDocumentData(eventId, userId).leftAt == null;
+    }
+
+    function canGetActiveEventChat(chatId, data) {
+      return isSignedIn() &&
+        hasValidEventChatMetadata(chatId, data) &&
+        eventHasMatchingActiveChat(chatId) &&
+        isActiveEventParticipant(chatId, request.auth.uid);
     }
 
     match /users/{userId} {
@@ -1092,6 +1146,12 @@ service cloud.firestore {
       }
     }
 
+    match /eventChats/{chatId} {
+      allow get: if canGetActiveEventChat(chatId, resource.data);
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
     match /users/{userId}/userWords/{wordId} {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
@@ -1172,7 +1232,7 @@ service cloud.firestore {
     }
 
     match /{document=**} {
-      allow read: if isAdmin() && !isEventCreateServerManagedPath(document);
+      allow read: if isAdmin() && !isEventProtectedFromAdminFallback(document);
     }
   }
 }
