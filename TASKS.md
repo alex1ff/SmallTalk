@@ -124,7 +124,7 @@ Date: 2026-06-14
 - [x] Allow canceled event chat message reads only for users in frozen `readAccessUserIds`.
 - [x] Deny event chat message reads for nonparticipants, users who left while the event is active, users outside canceled `readAccessUserIds`, and missing/mismatched chat metadata.
 - [x] Deny direct client creates, updates, and deletes of event chat message documents.
-- [ ] Add rules tests for create, edit, cancel, join, leave, and chat access.
+- [x] Add rules tests for create, edit, cancel, join, leave, and chat access.
 
 ## Phase 4: Flutter Data Layer
 
