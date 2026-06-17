@@ -72,6 +72,25 @@ function directEditPatch(overrides = {}) {
   };
 }
 
+function directCancelPatch(overrides = {}) {
+  return {
+    status: "canceled",
+    canceledAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    ...overrides,
+  };
+}
+
+function eventChatData(overrides = {}) {
+  return {
+    eventId: "editable-event",
+    readAccessUserIds: ["organizer", "user-a"],
+    createdAt: new Date("2026-06-14T10:00:00.000Z"),
+    updatedAt: new Date("2026-06-14T10:00:00.000Z"),
+    ...overrides,
+  };
+}
+
 function eventListQuery(db) {
   return db.collection("events")
     .where("status", "==", "active")
@@ -136,6 +155,7 @@ test.beforeEach(async () => {
       capacity: 8,
       chatId: "past-editable-event",
     }));
+    await db.doc("eventChats/editable-event").set(eventChatData());
   });
 });
 
@@ -342,4 +362,49 @@ test("direct organizer edit validates editable field values", async () => {
   await assertSucceeds(eventRef.update(directEditPatch({
     locationGeoPoint: null,
   })));
+});
+
+test("clients cannot directly cancel event documents", async () => {
+  const guest = testEnv.unauthenticatedContext();
+  const user = testEnv.authenticatedContext("user-a");
+  const organizer = testEnv.authenticatedContext("organizer");
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+
+  await assertFails(
+    guest.firestore().doc("events/editable-event").update(directCancelPatch()),
+  );
+  await assertFails(
+    user.firestore().doc("events/editable-event").update(directCancelPatch()),
+  );
+  await assertFails(
+    adminClient.firestore().doc("events/editable-event").update(directCancelPatch()),
+  );
+  await assertFails(
+    organizer.firestore().doc("events/editable-event").update(directCancelPatch()),
+  );
+  await assertFails(
+    organizer.firestore().doc("events/editable-event").update({
+      ...directEditPatch(),
+      ...directCancelPatch(),
+    }),
+  );
+});
+
+test("client cancel cannot be paired with event chat access snapshot writes", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const db = organizer.firestore();
+  const batch = db.batch();
+
+  await assertFails(db.doc("eventChats/editable-event").update({
+    readAccessUserIds: ["organizer", "user-a"],
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+
+  batch.update(db.doc("events/editable-event"), directCancelPatch());
+  batch.update(db.doc("eventChats/editable-event"), {
+    readAccessUserIds: ["organizer", "user-a"],
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await assertFails(batch.commit());
 });
