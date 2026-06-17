@@ -21,6 +21,13 @@ class EventListDateBounds {
   final DateTime upperBoundUtc;
 }
 
+enum EventListDateFilter {
+  today,
+  tomorrow,
+  currentWeek,
+  currentMonth,
+}
+
 EventListDateBounds computeEventListDateBounds({
   required String timeZoneId,
   required EventListLocalDateRange localDateRange,
@@ -70,6 +77,52 @@ EventListDateBounds computeEventListDateBoundsForLocation({
     lowerBoundUtc: lowerBoundUtc,
     upperBoundUtc: rangeEndUtc,
   );
+}
+
+EventListLocalDateRange eventListDateFilterLocalDateRange({
+  required EventListDateFilter dateFilter,
+  required String timeZoneId,
+  required DateTime nowUtc,
+}) {
+  return eventListDateFilterLocalDateRangeForLocation(
+    dateFilter: dateFilter,
+    location: eventListTimeZoneLocation(timeZoneId),
+    nowUtc: nowUtc,
+  );
+}
+
+EventListLocalDateRange eventListDateFilterLocalDateRangeForLocation({
+  required EventListDateFilter dateFilter,
+  required timezone.Location location,
+  required DateTime nowUtc,
+}) {
+  final today = eventListCityLocalDateForLocation(
+    location: location,
+    utcInstant: nowUtc,
+  );
+
+  return switch (dateFilter) {
+    EventListDateFilter.today => eventListSingleLocalDateRange(today),
+    EventListDateFilter.tomorrow => eventListSingleLocalDateRange(
+        DateTime(today.year, today.month, today.day + 1),
+      ),
+    EventListDateFilter.currentWeek => EventListLocalDateRange(
+        startDate: DateTime(
+          today.year,
+          today.month,
+          today.day - (today.weekday - DateTime.monday),
+        ),
+        exclusiveEndDate: DateTime(
+          today.year,
+          today.month,
+          today.day + (DateTime.daysPerWeek - today.weekday + 1),
+        ),
+      ),
+    EventListDateFilter.currentMonth => EventListLocalDateRange(
+        startDate: DateTime(today.year, today.month),
+        exclusiveEndDate: DateTime(today.year, today.month + 1),
+      ),
+  };
 }
 
 DateTime eventListCityLocalDate({

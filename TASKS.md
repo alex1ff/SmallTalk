@@ -142,7 +142,7 @@ Date: 2026-06-14
 - [x] Advance pagination cursors by the last raw Firestore document, not the last visible filtered event.
 - [x] Add event repository/service for detail stream.
 - [x] Add event repository/service for create, edit, cancel, join, and leave.
-- [ ] Add date filter helper for today, tomorrow, current week, and current month.
+- [x] Add date filter helper for today, tomorrow, current week, and current month.
 - [ ] Add level overlap helper.
 - [ ] Add city resolution helper from user profile.
 - [ ] Add profile city save helper that does not trust client-provided display or region fields.
