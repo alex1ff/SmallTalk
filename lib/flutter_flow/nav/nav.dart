@@ -287,6 +287,17 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             requireAuth: true,
             builder: (context, params) => ProfileEditWidget(),
           ),
+          FFRoute(
+            name: EventDetailWidget.routeName,
+            path: EventDetailWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => EventDetailWidget(
+              eventId: params.getParam(
+                'eventId',
+                ParamType.String,
+              ),
+            ),
+          ),
         ].map((r) => r.toRoute(appStateNotifier)),
 
         // ── Tab pages wrapped in ShellRoute ──

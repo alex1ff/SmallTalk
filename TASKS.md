@@ -163,7 +163,7 @@ Date: 2026-06-14
 
 - [x] Add `События` item to bottom navigation.
 - [x] Add route for event list.
-- [ ] Add route for event detail.
+- [x] Add route for event detail.
 - [ ] Add route for event create.
 - [ ] Add route for event edit.
 - [ ] Add route for event group chat.
