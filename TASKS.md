@@ -172,7 +172,7 @@ Date: 2026-06-14
 ## Phase 6: Event List Screen
 
 - [x] Build header with title `События`.
-- [ ] Add `+` create button.
+- [x] Add `+` create button.
 - [ ] Add city selector/state.
 - [ ] Show profile city by default when available.
 - [ ] Validate saved profile `countryCode + cityKey` against the canonical city catalog before using it as the default Events city.
