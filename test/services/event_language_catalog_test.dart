@@ -69,6 +69,49 @@ void main() {
     );
   });
 
+  test('public factories enforce catalog invariants', () {
+    expect(
+      () => EventLanguageCatalog(languages: const []),
+      throwsA(isA<FormatException>()),
+    );
+    expect(
+      () => EventLanguage(
+        code: 'en',
+        alternateCodes: const ['eng'],
+        nameEn: 'English',
+        nameRu: 'Английский',
+        model: 'nova-3',
+        isPopular: true,
+        iconUrl: 'https://example.com/en.png',
+      ),
+      throwsA(isA<FormatException>()),
+    );
+    expect(
+      () => EventLanguageCatalog(
+        languages: [
+          eventLanguageFixture(code: 'en', alternateCodes: ['en']),
+          eventLanguageFixture(code: 'en', alternateCodes: ['en']),
+        ],
+      ),
+      throwsA(isA<FormatException>()),
+    );
+    expect(
+      () => EventLanguageCatalog(
+        languages: [
+          eventLanguageFixture(
+            code: 'en',
+            alternateCodes: ['en', 'shared'],
+          ),
+          eventLanguageFixture(
+            code: 'ru',
+            alternateCodes: ['ru', 'shared'],
+          ),
+        ],
+      ),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
   test('returns popular languages in catalog order with optional limit', () {
     final popular = catalog.popularLanguages();
 
@@ -119,6 +162,25 @@ void main() {
     );
   });
 }
+
+EventLanguage eventLanguageFixture({
+  required String code,
+  required List<String> alternateCodes,
+  String nameEn = 'English',
+  String nameRu = 'Английский',
+  String model = 'nova-3',
+  bool isPopular = true,
+  String iconUrl = 'https://example.com/language.png',
+}) =>
+    EventLanguage(
+      code: code,
+      alternateCodes: alternateCodes,
+      nameEn: nameEn,
+      nameRu: nameRu,
+      model: model,
+      isPopular: isPopular,
+      iconUrl: iconUrl,
+    );
 
 Map<String, dynamic> languageFixture({
   required String code,

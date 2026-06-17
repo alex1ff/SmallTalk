@@ -7,10 +7,15 @@ const eventLanguageCatalogAssetPath = 'assets/jsons/languages_catalog.json';
 class EventLanguageCatalog {
   factory EventLanguageCatalog({
     required List<EventLanguage> languages,
-  }) =>
-      EventLanguageCatalog._(
-        languages: List.unmodifiable(languages),
-      );
+  }) {
+    if (languages.isEmpty) {
+      throw const FormatException('Language catalog must not be empty');
+    }
+    _assertUniqueLanguageAliases(languages);
+    return EventLanguageCatalog._(
+      languages: List.unmodifiable(languages),
+    );
+  }
 
   const EventLanguageCatalog._({
     required this.languages,
@@ -51,8 +56,6 @@ class EventLanguageCatalog {
       }
       languages.add(EventLanguage.fromMap(Map<String, dynamic>.from(item)));
     }
-    _assertUniqueLanguageAliases(languages);
-
     return EventLanguageCatalog(languages: languages);
   }
 
@@ -92,16 +95,22 @@ class EventLanguage {
     required String model,
     required bool isPopular,
     required String iconUrl,
-  }) =>
-      EventLanguage._(
-        code: code,
-        alternateCodes: List.unmodifiable(alternateCodes),
-        nameEn: nameEn,
-        nameRu: nameRu,
-        model: model,
-        isPopular: isPopular,
-        iconUrl: iconUrl,
-      );
+  }) {
+    final normalizedCode = _requiredLanguageValue(code, 'code');
+    final normalizedAlternateCodes = _normalizeAlternateCodes(
+      alternateCodes,
+      normalizedCode,
+    );
+    return EventLanguage._(
+      code: normalizedCode,
+      alternateCodes: List.unmodifiable(normalizedAlternateCodes),
+      nameEn: _requiredLanguageValue(nameEn, 'nameEn'),
+      nameRu: _requiredLanguageValue(nameRu, 'nameRu'),
+      model: _requiredLanguageValue(model, 'model'),
+      isPopular: isPopular,
+      iconUrl: _requiredLanguageValue(iconUrl, 'iconUrl'),
+    );
+  }
 
   const EventLanguage._({
     required this.code,
@@ -122,15 +131,9 @@ class EventLanguage {
   final String iconUrl;
 
   factory EventLanguage.fromMap(Map<String, dynamic> data) {
-    final code = _readRequiredString(data, 'code');
-    final alternateCodes = _readStringList(data, 'alternateCodes');
-    if (!alternateCodes.contains(code)) {
-      throw FormatException('alternateCodes must include primary code $code');
-    }
-
     return EventLanguage(
-      code: code,
-      alternateCodes: alternateCodes,
+      code: _readRequiredString(data, 'code'),
+      alternateCodes: _readStringList(data, 'alternateCodes'),
       nameEn: _readRequiredString(data, 'nameEn'),
       nameRu: _readRequiredString(data, 'nameRu'),
       model: _readRequiredString(data, 'model'),
@@ -170,6 +173,34 @@ String? _normalizeLanguageCodeKey(String? code) {
   final normalized = code?.trim().toLowerCase();
   if (normalized == null || normalized.isEmpty) {
     return null;
+  }
+  return normalized;
+}
+
+String _requiredLanguageValue(String value, String key) {
+  final normalized = value.trim();
+  if (normalized.isEmpty) {
+    throw FormatException('$key is required');
+  }
+  return normalized;
+}
+
+List<String> _normalizeAlternateCodes(
+    List<String> alternateCodes, String code) {
+  if (alternateCodes.isEmpty) {
+    throw const FormatException('alternateCodes must be a non-empty list');
+  }
+  final normalized = alternateCodes.map((item) {
+    final value = item.trim();
+    if (value.isEmpty) {
+      throw const FormatException(
+        'alternateCodes must contain only non-empty strings',
+      );
+    }
+    return value;
+  }).toList(growable: false);
+  if (!normalized.contains(code)) {
+    throw FormatException('alternateCodes must include primary code $code');
   }
   return normalized;
 }
