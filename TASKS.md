@@ -154,7 +154,7 @@ Date: 2026-06-14
 - [x] Add fallback selected city state when profile location is missing.
 - [x] Ensure temporary Events city selection does not write `users.profileCity` unless the user explicitly saves/fills profile location.
 - [x] Keep `users.Country_NS`, top-level country fields, `users.preferences.preferredLocation`, and `userPublicProfiles.Country_NS` separate from Events profile city identity.
-- [ ] Add event language helper backed by existing `assets/jsons/languages_catalog.json`.
+- [x] Add event language helper backed by existing `assets/jsons/languages_catalog.json`.
 - [ ] Add helper to resolve exact primary `languageCode` by trimmed, case-insensitive primary code or `alternateCodes`.
 - [ ] Add localized event language display helper with fallback to denormalized names, then raw `languageCode`.
 - [ ] Add user-facing error mapping for Firebase failures.
