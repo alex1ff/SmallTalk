@@ -956,6 +956,7 @@ service cloud.firestore {
       allow list: if canListActiveEvent(resource.data);
       allow create: if false;
       allow update: if canDirectlyEditOwnEvent();
+      allow delete: if false;
     }
 
     match /users/{userId}/userWords/{wordId} {

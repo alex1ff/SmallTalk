@@ -408,3 +408,33 @@ test("client cancel cannot be paired with event chat access snapshot writes", as
 
   await assertFails(batch.commit());
 });
+
+test("clients cannot hard delete active or canceled event documents", async () => {
+  const contexts = [
+    testEnv.unauthenticatedContext(),
+    testEnv.authenticatedContext("user-a"),
+    testEnv.authenticatedContext("organizer"),
+    testEnv.authenticatedContext("admin-user", {admin: true}),
+  ];
+  const eventPaths = [
+    "events/editable-event",
+    "events/canceled-editable-event",
+  ];
+
+  for (const context of contexts) {
+    for (const eventPath of eventPaths) {
+      await assertFails(context.firestore().doc(eventPath).delete());
+    }
+  }
+});
+
+test("client hard delete cannot be batched with event chat deletion", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const db = organizer.firestore();
+  const batch = db.batch();
+
+  batch.delete(db.doc("events/editable-event"));
+  batch.delete(db.doc("eventChats/editable-event"));
+
+  await assertFails(batch.commit());
+});
