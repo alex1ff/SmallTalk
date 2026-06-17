@@ -119,7 +119,7 @@ Date: 2026-06-14
 - [x] Enforce that `sendEventChatMessage` is the only MVP message write path; Firestore rules must deny direct message creates, updates, and deletes.
 - [x] Block direct leave/membership writes at or after `startsAt` using trusted request/server time.
 - [x] Block direct client creates, updates, and deletes of `eventChats/{chatId}` metadata, especially `readAccessUserIds`.
-- [ ] Block client hard delete of event chat documents.
+- [x] Block client hard delete of event chat documents.
 - [ ] Allow active event chat message reads only for active participants.
 - [ ] Allow canceled event chat message reads only for users in frozen `readAccessUserIds`.
 - [ ] Deny event chat message reads for nonparticipants, users who left while the event is active, users outside canceled `readAccessUserIds`, and missing/mismatched chat metadata.

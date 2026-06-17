@@ -1449,6 +1449,25 @@ test("clients cannot directly write event chat metadata documents", async () => 
   }
 });
 
+test("clients cannot hard delete active or canceled event chat documents", async () => {
+  const contexts = [
+    testEnv.unauthenticatedContext(),
+    testEnv.authenticatedContext("user-a"),
+    testEnv.authenticatedContext("organizer"),
+    testEnv.authenticatedContext("admin-user", {admin: true}),
+  ];
+  const chatPaths = [
+    "eventChats/editable-event",
+    "eventChats/canceled-editable-event",
+  ];
+
+  for (const context of contexts) {
+    for (const chatPath of chatPaths) {
+      await assertFails(context.firestore().doc(chatPath).delete());
+    }
+  }
+});
+
 test("client cancel cannot be paired with event chat access snapshot writes", async () => {
   const organizer = testEnv.authenticatedContext("organizer");
   const db = organizer.firestore();
