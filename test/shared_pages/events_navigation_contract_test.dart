@@ -104,6 +104,123 @@ void main() {
         contains("export '/shared_pages/events/event_list_widget.dart'"));
   });
 
+  test('teacher tabs keep existing destinations after adding events', () {
+    final navBar =
+        File('lib/components/nav_bar_widget.dart').readAsStringSync();
+    final teacherTap = _sourceBetween(
+      navBar,
+      'void _handleTeacherTap(int index) {',
+      'void _handleStudentTap(int index) {',
+    );
+
+    expect(
+        navBar, contains('final maxIndex = _usesNativeSpeakerShell ? 3 : 4'));
+    expect(
+      teacherTap,
+      contains(
+        RegExp(
+          r'case 0:[\s\S]*_isCurrentTab\(0\)[\s\S]*DashboardNSWidget\.routeName',
+        ),
+      ),
+    );
+    expect(
+      teacherTap,
+      contains(
+        RegExp(
+          r'case 1:[\s\S]*_isCurrentTab\(1\)[\s\S]*EventListWidget\.routeName',
+        ),
+      ),
+    );
+    expect(
+      teacherTap,
+      contains(
+        RegExp(
+          r'case 2:[\s\S]*_isCurrentTab\(2\)[\s\S]*FavoriteWidget\.routeName',
+        ),
+      ),
+    );
+    expect(
+      teacherTap,
+      contains(
+        RegExp(
+          r'case 3:[\s\S]*_isCurrentTab\(3\)[\s\S]*ProfileWidget\.routeName',
+        ),
+      ),
+    );
+    expect(teacherTap, isNot(contains('WordsWidget.routeName')));
+  });
+
+  test('student tabs keep existing destinations after adding events', () {
+    final navBar =
+        File('lib/components/nav_bar_widget.dart').readAsStringSync();
+    final studentTap = _sourceBetween(
+      navBar,
+      'void _handleStudentTap(int index) {',
+      '@override\n  Widget build(BuildContext context)',
+    );
+
+    expect(
+        navBar, contains('final maxIndex = _usesNativeSpeakerShell ? 3 : 4'));
+    expect(
+      studentTap,
+      contains(
+        RegExp(
+          r"case 0:[\s\S]*_isCurrentTab\(0\)[\s\S]*StudentsDashboardWidget\.routeName[\s\S]*'zn': serializeParam\(false, ParamType\.bool\)",
+        ),
+      ),
+    );
+    expect(
+      studentTap,
+      contains(
+        RegExp(
+          r'case 1:[\s\S]*_isCurrentTab\(1\)[\s\S]*EventListWidget\.routeName',
+        ),
+      ),
+    );
+    expect(
+      studentTap,
+      contains(
+        RegExp(
+          r'case 2:[\s\S]*_isCurrentTab\(2\)[\s\S]*WordsWidget\.routeName',
+        ),
+      ),
+    );
+    expect(
+      studentTap,
+      contains(
+        RegExp(
+          r'case 3:[\s\S]*_isCurrentTab\(3\)[\s\S]*FavoriteWidget\.routeName',
+        ),
+      ),
+    );
+    expect(
+      studentTap,
+      contains(
+        RegExp(
+          r'case 4:[\s\S]*_isCurrentTab\(4\)[\s\S]*ProfileWidget\.routeName',
+        ),
+      ),
+    );
+  });
+
+  test('tab shell keeps exact role-specific tab path order', () {
+    final tabShell = File('lib/shared_pages/tab_shell/tab_shell_page.dart')
+        .readAsStringSync();
+
+    expect(
+      tabShell,
+      contains(
+        RegExp(
+          r'\? \[\s*DashboardNSWidget\.routePath,\s*EventListWidget\.routePath,\s*FavoriteWidget\.routePath,\s*ProfileWidget\.routePath,\s*\]\s*: \[\s*StudentsDashboardWidget\.routePath,\s*EventListWidget\.routePath,\s*WordsWidget\.routePath,\s*FavoriteWidget\.routePath,\s*ProfileWidget\.routePath,\s*\]',
+        ),
+      ),
+    );
+    expect(
+      tabShell,
+      contains('List<String> get _pathsWithNavBar => _tabPathsOrdered;'),
+    );
+  });
+
   test('event detail route stays outside bottom tab shell', () {
     final router = File('lib/flutter_flow/nav/nav.dart').readAsStringSync();
     final index = File('lib/index.dart').readAsStringSync();
@@ -391,4 +508,16 @@ class _TestAuthUser extends BaseAuthUser {
 
   @override
   Future<void> sendEmailVerification() async {}
+}
+
+String _sourceBetween(String source, String start, String end) {
+  final startIndex = source.indexOf(start);
+  if (startIndex < 0) {
+    fail('Missing source marker: $start');
+  }
+  final endIndex = source.indexOf(end, startIndex + start.length);
+  if (endIndex < 0) {
+    fail('Missing source marker: $end');
+  }
+  return source.substring(startIndex, endIndex);
 }
