@@ -889,6 +889,45 @@ test("participant writes fail even when batched with allowed event edits", async
   await assertFails(batch.commit());
 });
 
+test("direct participant writes stay blocked after event starts", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+  const organizer = testEnv.authenticatedContext("organizer");
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("events/started-event").set(eventData({
+      startsAt: new Date("2020-06-20T15:00:00.000Z"),
+      chatId: "started-event",
+    }));
+    await db.doc("events/started-event/participants/user-a").set(
+      participantData(),
+    );
+    await db.doc("events/started-event/participants/organizer").set(
+      participantData({
+        userId: "organizer",
+        displayName: "Organizer",
+        role: "organizer",
+      }),
+    );
+  });
+
+  await assertFails(
+    user.firestore().doc("events/started-event/participants/user-a").update({
+      status: "left",
+      leftAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    user.firestore().doc("events/started-event/participants/user-a").delete(),
+  );
+  await assertFails(
+    organizer.firestore()
+      .doc("events/started-event/participants/new-user")
+      .set(participantData({userId: "new-user"})),
+  );
+});
+
 test("clients cannot directly read event creation counters", async () => {
   const contexts = [
     testEnv.unauthenticatedContext(),
