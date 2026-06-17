@@ -339,6 +339,206 @@ void main() {
       expectNoWhereCondition(where, 'levelMax');
     });
 
+    test('continues raw pages until enough visible level matches are collected',
+        () async {
+      final initialMarker = _FakeDocumentSnapshot();
+      final marker1 = _FakeQueryDocumentSnapshot();
+      final marker2 = _FakeQueryDocumentSnapshot();
+      final marker3 = _FakeQueryDocumentSnapshot();
+      final receivedCursors = <DocumentSnapshot?>[];
+      final rawPages = <FFFirestorePage<EventsRecord>>[
+        FFFirestorePage<EventsRecord>(
+          [eventFixture('hidden-low', levelMin: 'A1', levelMax: 'A2')],
+          null,
+          marker1,
+        ),
+        FFFirestorePage<EventsRecord>(
+          [
+            eventFixture('invalid', levelMin: 'C1', levelMax: 'B1'),
+            eventFixture('visible-first', levelMin: 'B1', levelMax: 'B2'),
+          ],
+          null,
+          marker2,
+        ),
+        FFFirestorePage<EventsRecord>(
+          [
+            eventFixture('visible-second', levelMin: 'B2', levelMax: 'C1'),
+            eventFixture('hidden-trailing', levelMin: 'C2', levelMax: 'C2'),
+          ],
+          null,
+          marker3,
+        ),
+      ];
+      var rawPageIndex = 0;
+
+      final page = await EventListRepository.loadLevelFilteredActiveEventPage(
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+        pageSize: 2,
+        selectedLevel: 'B2',
+        nextPageMarker: initialMarker,
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          receivedCursors.add(nextPageMarker);
+          return rawPages[rawPageIndex++];
+        },
+      );
+
+      expect(eventIds(page.data), ['visible-first', 'visible-second']);
+      expect(page.nextPageMarker, same(marker3));
+      expect(receivedCursors, hasLength(3));
+      expect(receivedCursors[0], same(initialMarker));
+      expect(receivedCursors[1], same(marker1));
+      expect(receivedCursors[2], same(marker2));
+      expect(rawPageIndex, 3);
+    });
+
+    test('stops when raw query is exhausted before enough level matches',
+        () async {
+      final marker1 = _FakeQueryDocumentSnapshot();
+      final rawPages = <FFFirestorePage<EventsRecord>>[
+        FFFirestorePage<EventsRecord>(
+          [eventFixture('hidden-low', levelMin: 'A1', levelMax: 'A2')],
+          null,
+          marker1,
+        ),
+        FFFirestorePage<EventsRecord>(const [], null, null),
+      ];
+      var rawPageIndex = 0;
+
+      final page = await EventListRepository.loadLevelFilteredActiveEventPage(
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+        pageSize: 2,
+        selectedLevel: 'B2',
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async =>
+            rawPages[rawPageIndex++],
+      );
+
+      expect(page.data, isEmpty);
+      expect(page.nextPageMarker, isNull);
+      expect(rawPageIndex, 2);
+    });
+
+    test('keeps overfilled visible page so filtered events are not skipped',
+        () async {
+      final marker = _FakeQueryDocumentSnapshot();
+      var rawPageLoads = 0;
+
+      final page = await EventListRepository.loadLevelFilteredActiveEventPage(
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+        pageSize: 1,
+        selectedLevel: 'B2',
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          rawPageLoads += 1;
+          return FFFirestorePage<EventsRecord>(
+            [
+              eventFixture('visible-first', levelMin: 'B1', levelMax: 'B2'),
+              eventFixture('visible-second', levelMin: 'B2', levelMax: 'C1'),
+            ],
+            null,
+            marker,
+          );
+        },
+      );
+
+      expect(eventIds(page.data), ['visible-first', 'visible-second']);
+      expect(page.nextPageMarker, same(marker));
+      expect(rawPageLoads, 1);
+    });
+
+    test('does not fetch additional raw pages without a selected level',
+        () async {
+      final marker = _FakeQueryDocumentSnapshot();
+      var rawPageLoads = 0;
+
+      final page = await EventListRepository.loadLevelFilteredActiveEventPage(
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+        pageSize: 5,
+        selectedLevel: ' ',
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          rawPageLoads += 1;
+          return FFFirestorePage<EventsRecord>(
+            [
+              eventFixture('raw-first', levelMin: 'B1', levelMax: 'C1'),
+              eventFixture('raw-invalid', levelMin: 'C1', levelMax: 'B1'),
+            ],
+            null,
+            marker,
+          );
+        },
+      );
+
+      expect(eventIds(page.data), ['raw-first', 'raw-invalid']);
+      expect(page.nextPageMarker, same(marker));
+      expect(rawPageLoads, 1);
+    });
+
+    test('rejects invalid selected level before loading raw pages', () async {
+      var rawPageLoads = 0;
+
+      await expectLater(
+        EventListRepository.loadLevelFilteredActiveEventPage(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          lowerBoundUtc: lowerBoundUtc,
+          upperBoundUtc: upperBoundUtc,
+          pageSize: 5,
+          selectedLevel: 'D1',
+          pageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            rawPageLoads += 1;
+            return FFFirestorePage<EventsRecord>(const [], null, null);
+          },
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(rawPageLoads, 0);
+    });
+
     test('combines date-range bounds and level filtering for one raw page',
         () async {
       Query Function(Query)? capturedQueryBuilder;

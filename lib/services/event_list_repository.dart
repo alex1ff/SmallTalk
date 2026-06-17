@@ -260,18 +260,61 @@ class EventListRepository {
     DocumentSnapshot? nextPageMarker,
     EventListPageLoader? pageLoader,
   }) async {
-    final rawPage = await loadRawActiveEventPage(
+    final selectedRange = _selectedEventLevelRange(selectedLevel);
+    if (selectedRange == null) {
+      return loadRawActiveEventPage(
+        countryCode: countryCode,
+        cityKey: cityKey,
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+        pageSize: pageSize,
+        nextPageMarker: nextPageMarker,
+        pageLoader: pageLoader,
+      );
+    }
+
+    final spec = normalizeActiveEventListQuery(
       countryCode: countryCode,
       cityKey: cityKey,
       lowerBoundUtc: lowerBoundUtc,
       upperBoundUtc: upperBoundUtc,
       pageSize: pageSize,
-      nextPageMarker: nextPageMarker,
-      pageLoader: pageLoader,
     );
-    return filterRawActiveEventPageByLevel(
-      rawPage,
-      selectedLevel: selectedLevel,
+
+    final visibleEvents = <EventsRecord>[];
+    DocumentSnapshot? rawCursor = nextPageMarker;
+    QueryDocumentSnapshot? lastRawCursor;
+
+    while (visibleEvents.length < spec.pageSize) {
+      final rawPage = await loadRawActiveEventPage(
+        countryCode: spec.countryCode,
+        cityKey: spec.cityKey,
+        lowerBoundUtc: spec.lowerBoundUtc,
+        upperBoundUtc: spec.upperBoundUtc,
+        pageSize: spec.pageSize,
+        nextPageMarker: rawCursor,
+        pageLoader: pageLoader,
+      );
+      visibleEvents.addAll(
+        filterEventsBySelectedLevel(
+          rawPage.data,
+          selectedRange: selectedRange,
+        ),
+      );
+
+      final rawNextPageMarker = rawPage.nextPageMarker;
+      if (rawNextPageMarker == null) {
+        return FFFirestorePage<EventsRecord>(visibleEvents, null, null);
+      }
+
+      lastRawCursor = rawNextPageMarker;
+      rawCursor = rawNextPageMarker;
+    }
+
+    return FFFirestorePage<EventsRecord>(
+      visibleEvents,
+      null,
+      lastRawCursor,
     );
   }
 
@@ -287,19 +330,20 @@ class EventListRepository {
     DocumentSnapshot? nextPageMarker,
     EventListPageLoader? pageLoader,
   }) async {
-    final rawPage = await loadRawActiveEventPageForDateRange(
-      countryCode: countryCode,
-      cityKey: cityKey,
+    final bounds = computeEventListDateBounds(
       timeZoneId: timeZoneId,
       localDateRange: localDateRange,
       nowUtc: nowUtc,
+    );
+    return loadLevelFilteredActiveEventPage(
+      countryCode: countryCode,
+      cityKey: cityKey,
+      lowerBoundUtc: bounds.lowerBoundUtc,
+      upperBoundUtc: bounds.upperBoundUtc,
       pageSize: pageSize,
       nextPageMarker: nextPageMarker,
-      pageLoader: pageLoader,
-    );
-    return filterRawActiveEventPageByLevel(
-      rawPage,
       selectedLevel: selectedLevel,
+      pageLoader: pageLoader,
     );
   }
 }

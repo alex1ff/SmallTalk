@@ -138,7 +138,7 @@ Date: 2026-06-14
 - [x] Implement event list query exactly as `status == active`, `countryCode == selectedCountryCode`, `cityKey == selectedCityKey`, `startsAt >= lowerBoundUtc`, `startsAt < upperBoundUtc`, `orderBy startsAt ASC`.
 - [x] Compute event list date bounds in the selected city `timeZoneId`, convert bounds to UTC timestamps, and use an exclusive upper bound.
 - [x] Apply level overlap filtering client-side after raw Firestore pages are fetched.
-- [ ] Continue raw Firestore pagination until enough visible level-matching events are collected or the query is exhausted.
+- [x] Continue raw Firestore pagination until enough visible level-matching events are collected or the query is exhausted.
 - [ ] Advance pagination cursors by the last raw Firestore document, not the last visible filtered event.
 - [ ] Add event repository/service for detail stream.
 - [ ] Add event repository/service for create, edit, cancel, join, and leave.
