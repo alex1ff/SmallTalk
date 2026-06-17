@@ -575,8 +575,6 @@ test("active event chat message get is limited to active participants", async ()
   const nonparticipant = testEnv.authenticatedContext("other-user");
   const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
   const messagePath = "eventChats/editable-event/messages/message-1";
-  const canceledMessagePath =
-    "eventChats/canceled-editable-event/messages/message-1";
 
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
@@ -584,7 +582,6 @@ test("active event chat message get is limited to active participants", async ()
       readAccessUserIds: ["organizer", "user-a", "user-left"],
     });
     await db.doc(messagePath).set(eventChatMessageData());
-    await db.doc(canceledMessagePath).set(eventChatMessageData());
   });
 
   await assertSucceeds(participant.firestore().doc(messagePath).get());
@@ -593,7 +590,6 @@ test("active event chat message get is limited to active participants", async ()
   await assertFails(leftUser.firestore().doc(messagePath).get());
   await assertFails(nonparticipant.firestore().doc(messagePath).get());
   await assertFails(adminClient.firestore().doc(messagePath).get());
-  await assertFails(participant.firestore().doc(canceledMessagePath).get());
 });
 
 test("active event chat messages cannot be listed or queried", async () => {
@@ -686,6 +682,229 @@ test("active event chat message reads fail closed for invalid parent state", asy
       createdAt: new Date("2026-06-14T10:00:00.000Z"),
       updatedAt: new Date("2026-06-14T10:00:00.000Z"),
     });
+
+    for (const messagePath of messagePaths) {
+      await db.doc(messagePath).set(eventChatMessageData());
+    }
+  });
+
+  for (const messagePath of messagePaths) {
+    await assertFails(user.firestore().doc(messagePath).get());
+  }
+});
+
+test("canceled event chat message get uses frozen read access", async () => {
+  const guest = testEnv.unauthenticatedContext();
+  const participantAtCancel = testEnv.authenticatedContext("user-a");
+  const organizer = testEnv.authenticatedContext("organizer");
+  const leftSnapshotUser = testEnv.authenticatedContext("user-left");
+  const currentOnlyUser = testEnv.authenticatedContext("current-only");
+  const otherUser = testEnv.authenticatedContext("other-user");
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+  const canceledMessagePath =
+    "eventChats/canceled-editable-event/messages/message-1";
+  const leftSnapshotMessagePath =
+    "eventChats/canceled-left-message-snapshot/messages/message-1";
+  const currentOnlyMessagePath =
+    "eventChats/canceled-current-message-only/messages/message-1";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("events/canceled-editable-event/participants/user-left").set(
+      participantData({
+        userId: "user-left",
+        displayName: "Left User",
+        status: "left",
+        leftAt: new Date("2099-06-01T09:59:59.000Z"),
+      }),
+    );
+    await db.doc(canceledMessagePath).set(eventChatMessageData());
+
+    await db.doc("events/canceled-left-message-snapshot").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-left-message-snapshot",
+    }));
+    await db.doc(
+      "events/canceled-left-message-snapshot/participants/user-left",
+    ).set(participantData({
+      userId: "user-left",
+      displayName: "Left User",
+      status: "left",
+      leftAt: new Date("2099-06-01T10:00:01.000Z"),
+    }));
+    await db.doc("eventChats/canceled-left-message-snapshot").set(
+      eventChatData({
+        eventId: "canceled-left-message-snapshot",
+        readAccessUserIds: ["user-left"],
+      }),
+    );
+    await db.doc(leftSnapshotMessagePath).set(eventChatMessageData());
+
+    await db.doc("events/canceled-current-message-only").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-current-message-only",
+    }));
+    await db.doc(
+      "events/canceled-current-message-only/participants/current-only",
+    ).set(participantData({
+      userId: "current-only",
+      displayName: "Current Only",
+    }));
+    await db.doc("eventChats/canceled-current-message-only").set(
+      eventChatData({
+        eventId: "canceled-current-message-only",
+        readAccessUserIds: ["organizer"],
+      }),
+    );
+    await db.doc(currentOnlyMessagePath).set(eventChatMessageData());
+  });
+
+  await assertSucceeds(participantAtCancel.firestore().doc(canceledMessagePath).get());
+  await assertSucceeds(organizer.firestore().doc(canceledMessagePath).get());
+  await assertFails(guest.firestore().doc(canceledMessagePath).get());
+  await assertFails(otherUser.firestore().doc(canceledMessagePath).get());
+  await assertFails(adminClient.firestore().doc(canceledMessagePath).get());
+  await assertSucceeds(
+    leftSnapshotUser.firestore().doc(leftSnapshotMessagePath).get(),
+  );
+  await assertFails(
+    currentOnlyUser.firestore().doc(currentOnlyMessagePath).get(),
+  );
+});
+
+test("canceled event chat messages cannot be listed or queried", async () => {
+  const contexts = [
+    testEnv.authenticatedContext("user-a"),
+    testEnv.authenticatedContext("organizer"),
+    testEnv.authenticatedContext("admin-user", {admin: true}),
+  ];
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore()
+      .doc("eventChats/canceled-editable-event/messages/message-1")
+      .set(eventChatMessageData());
+  });
+
+  for (const context of contexts) {
+    const db = context.firestore();
+    await assertFails(
+      db.collection("eventChats/canceled-editable-event/messages").get(),
+    );
+    await assertFails(
+      db.collection("eventChats/canceled-editable-event/messages")
+        .where("senderId", "==", "user-a")
+        .get(),
+    );
+  }
+});
+
+test("canceled event chat message reads fail closed for invalid parent state", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+  const messagePaths = [
+    "eventChats/canceled-missing-message-chat/messages/message-1",
+    "eventChats/canceled-mismatched-message-chat-metadata/messages/message-1",
+    "eventChats/canceled-mismatched-message-event-chat-id/messages/message-1",
+    "eventChats/canceled-orphan-message-chat/messages/message-1",
+    "eventChats/canceled-null-message-canceled-at/messages/message-1",
+    "eventChats/canceled-missing-message-canceled-at/messages/message-1",
+    "eventChats/canceled-missing-message-read-access/messages/message-1",
+    "eventChats/canceled-wrong-message-read-access-type/messages/message-1",
+  ];
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("events/canceled-missing-message-chat").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-missing-message-chat",
+    }));
+
+    await db.doc("events/canceled-mismatched-message-chat-metadata").set(
+      eventData({
+        status: "canceled",
+        canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+        chatId: "canceled-mismatched-message-chat-metadata",
+      }),
+    );
+    await db.doc("eventChats/canceled-mismatched-message-chat-metadata").set(
+      eventChatData({
+        eventId: "other-event",
+        readAccessUserIds: ["user-a"],
+      }),
+    );
+
+    await db.doc("events/canceled-mismatched-message-event-chat-id").set(
+      eventData({
+        status: "canceled",
+        canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+        chatId: "other-chat",
+      }),
+    );
+    await db.doc("eventChats/canceled-mismatched-message-event-chat-id").set(
+      eventChatData({
+        eventId: "canceled-mismatched-message-event-chat-id",
+        readAccessUserIds: ["user-a"],
+      }),
+    );
+
+    await db.doc("eventChats/canceled-orphan-message-chat").set(eventChatData({
+      eventId: "canceled-orphan-message-chat",
+      readAccessUserIds: ["user-a"],
+    }));
+
+    await db.doc("events/canceled-null-message-canceled-at").set(eventData({
+      status: "canceled",
+      canceledAt: null,
+      chatId: "canceled-null-message-canceled-at",
+    }));
+    await db.doc("eventChats/canceled-null-message-canceled-at").set(
+      eventChatData({
+        eventId: "canceled-null-message-canceled-at",
+        readAccessUserIds: ["user-a"],
+      }),
+    );
+
+    const missingCanceledAtEvent = eventData({
+      status: "canceled",
+      chatId: "canceled-missing-message-canceled-at",
+    });
+    delete missingCanceledAtEvent.canceledAt;
+    await db.doc("events/canceled-missing-message-canceled-at").set(
+      missingCanceledAtEvent,
+    );
+    await db.doc("eventChats/canceled-missing-message-canceled-at").set(
+      eventChatData({
+        eventId: "canceled-missing-message-canceled-at",
+        readAccessUserIds: ["user-a"],
+      }),
+    );
+
+    await db.doc("events/canceled-missing-message-read-access").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-missing-message-read-access",
+    }));
+    await db.doc("eventChats/canceled-missing-message-read-access").set({
+      eventId: "canceled-missing-message-read-access",
+      createdAt: new Date("2026-06-14T10:00:00.000Z"),
+      updatedAt: new Date("2026-06-14T10:00:00.000Z"),
+    });
+
+    await db.doc("events/canceled-wrong-message-read-access-type").set(
+      eventData({
+        status: "canceled",
+        canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+        chatId: "canceled-wrong-message-read-access-type",
+      }),
+    );
+    await db.doc("eventChats/canceled-wrong-message-read-access-type").set(
+      eventChatData({
+        eventId: "canceled-wrong-message-read-access-type",
+        readAccessUserIds: "user-a",
+      }),
+    );
 
     for (const messagePath of messagePaths) {
       await db.doc(messagePath).set(eventChatMessageData());

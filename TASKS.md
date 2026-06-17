@@ -121,7 +121,7 @@ Date: 2026-06-14
 - [x] Block direct client creates, updates, and deletes of `eventChats/{chatId}` metadata, especially `readAccessUserIds`.
 - [x] Block client hard delete of event chat documents.
 - [x] Allow active event chat message reads only for active participants.
-- [ ] Allow canceled event chat message reads only for users in frozen `readAccessUserIds`.
+- [x] Allow canceled event chat message reads only for users in frozen `readAccessUserIds`.
 - [ ] Deny event chat message reads for nonparticipants, users who left while the event is active, users outside canceled `readAccessUserIds`, and missing/mismatched chat metadata.
 - [ ] Deny direct client creates, updates, and deletes of event chat message documents.
 - [ ] Add rules tests for create, edit, cancel, join, leave, and chat access.
