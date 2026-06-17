@@ -460,6 +460,17 @@ test("canceled event chat metadata get is limited to frozen read access", async 
   const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
   const chatPath = "eventChats/canceled-editable-event";
 
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore()
+      .doc("events/canceled-editable-event/participants/user-left")
+      .set(participantData({
+        userId: "user-left",
+        displayName: "Left User",
+        status: "left",
+        leftAt: new Date("2099-06-01T09:59:59.000Z"),
+      }));
+  });
+
   await assertSucceeds(participantAtCancel.firestore().doc(chatPath).get());
   await assertSucceeds(organizer.firestore().doc(chatPath).get());
   await assertFails(guest.firestore().doc(chatPath).get());
