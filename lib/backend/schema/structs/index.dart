@@ -21,6 +21,7 @@ export 'get_session_tokens_response_struct.dart';
 export 'gift_minutes_struct.dart';
 export 'intervals_struct.dart';
 export 'preferences_struct.dart';
+export 'profile_city_struct.dart';
 export 'promo_used_by_struct.dart';
 export 'session_data_struct.dart';
 export 'student_info_struct.dart';

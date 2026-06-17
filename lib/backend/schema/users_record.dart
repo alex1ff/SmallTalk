@@ -206,6 +206,11 @@ class UsersRecord extends FirestoreRecord {
   CountryStruct get countryNS => _countryNS ?? CountryStruct();
   bool hasCountryNS() => _countryNS != null;
 
+  // "profileCity" field.
+  ProfileCityStruct? _profileCity;
+  ProfileCityStruct get profileCity => _profileCity ?? ProfileCityStruct();
+  bool hasProfileCity() => _profileCity != null;
+
   // "verif_NS" field.
   bool? _verifNS;
   bool get verifNS => _verifNS ?? false;
@@ -325,6 +330,9 @@ class UsersRecord extends FirestoreRecord {
     _countryNS = snapshotData['Country_NS'] is CountryStruct
         ? snapshotData['Country_NS']
         : CountryStruct.maybeFromMap(snapshotData['Country_NS']);
+    _profileCity = snapshotData['profileCity'] is ProfileCityStruct
+        ? snapshotData['profileCity']
+        : ProfileCityStruct.maybeFromMap(snapshotData['profileCity']);
     _verifNS = snapshotData['verif_NS'] as bool?;
     _teacherAccreditationStatus = _teacherAccreditationStatusFrom(
         snapshotData['teacherAccreditationStatus']);
@@ -415,6 +423,7 @@ Map<String, dynamic> createUsersRecordData({
   Level? level,
   bool? acquaintance,
   CountryStruct? countryNS,
+  ProfileCityStruct? profileCity,
   bool? verifNS,
   TeacherAccreditationStatus? teacherAccreditationStatus,
   DocumentReference? selectedAvatarDocRef,
@@ -454,6 +463,7 @@ Map<String, dynamic> createUsersRecordData({
       'level': level,
       'Acquaintance': acquaintance,
       'Country_NS': CountryStruct().toMap(),
+      'profileCity': ProfileCityStruct().toMap(),
       'verif_NS': verifNS,
       'teacherAccreditationStatus': teacherAccreditationStatus,
       'selectedAvatarDocRef': selectedAvatarDocRef,
@@ -480,6 +490,9 @@ Map<String, dynamic> createUsersRecordData({
 
   // Handle nested data for "Country_NS" field.
   addCountryStructData(firestoreData, countryNS, 'Country_NS');
+
+  // Handle nested data for "profileCity" field.
+  addProfileCityStructData(firestoreData, profileCity, 'profileCity');
 
   // Handle nested data for "balanceST" field.
   addBalanceStructData(firestoreData, balanceST, 'balanceST');
@@ -535,6 +548,7 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e1?.level == e2?.level &&
         e1?.acquaintance == e2?.acquaintance &&
         e1?.countryNS == e2?.countryNS &&
+        e1?.profileCity == e2?.profileCity &&
         e1?.verifNS == e2?.verifNS &&
         e1?.teacherAccreditationStatus == e2?.teacherAccreditationStatus &&
         e1?.selectedAvatarDocRef == e2?.selectedAvatarDocRef &&
@@ -577,6 +591,7 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e?.level,
         e?.acquaintance,
         e?.countryNS,
+        e?.profileCity,
         e?.verifNS,
         e?.teacherAccreditationStatus,
         e?.selectedAvatarDocRef,
