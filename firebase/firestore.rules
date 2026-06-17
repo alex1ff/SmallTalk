@@ -1055,6 +1055,19 @@ service cloud.firestore {
         data.readAccessUserIds.hasAny([request.auth.uid]);
     }
 
+    function eventChatDocumentExists(chatId) {
+      return exists(/databases/$(database)/documents/eventChats/$(chatId));
+    }
+
+    function eventChatDocumentData(chatId) {
+      return get(/databases/$(database)/documents/eventChats/$(chatId)).data;
+    }
+
+    function canGetActiveEventChatMessage(chatId) {
+      return eventChatDocumentExists(chatId) &&
+        canGetActiveEventChat(chatId, eventChatDocumentData(chatId));
+    }
+
     match /users/{userId} {
       allow create: if isAdmin() || canCreateOwnUser(userId);
       allow get, list: if canReadUserDocument(userId);
@@ -1165,6 +1178,12 @@ service cloud.firestore {
         canGetCanceledEventChat(chatId, resource.data);
       allow list: if false;
       allow create, update, delete: if false;
+
+      match /messages/{messageId} {
+        allow get: if canGetActiveEventChatMessage(chatId);
+        allow list: if false;
+        allow create, update, delete: if false;
+      }
     }
 
     match /users/{userId}/userWords/{wordId} {

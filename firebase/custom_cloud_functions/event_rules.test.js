@@ -567,19 +567,134 @@ test("active event chat metadata cannot be listed or queried", async () => {
   }
 });
 
-test("event chat message paths are not opened by metadata or admin fallback rules", async () => {
+test("active event chat message get is limited to active participants", async () => {
+  const guest = testEnv.unauthenticatedContext();
   const participant = testEnv.authenticatedContext("user-a");
+  const organizer = testEnv.authenticatedContext("organizer");
+  const leftUser = testEnv.authenticatedContext("user-left");
   const nonparticipant = testEnv.authenticatedContext("other-user");
   const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
   const messagePath = "eventChats/editable-event/messages/message-1";
+  const canceledMessagePath =
+    "eventChats/canceled-editable-event/messages/message-1";
 
   await testEnv.withSecurityRulesDisabled(async (context) => {
-    await context.firestore().doc(messagePath).set(eventChatMessageData());
+    const db = context.firestore();
+    await db.doc("eventChats/editable-event").update({
+      readAccessUserIds: ["organizer", "user-a", "user-left"],
+    });
+    await db.doc(messagePath).set(eventChatMessageData());
+    await db.doc(canceledMessagePath).set(eventChatMessageData());
   });
 
-  await assertFails(participant.firestore().doc(messagePath).get());
+  await assertSucceeds(participant.firestore().doc(messagePath).get());
+  await assertSucceeds(organizer.firestore().doc(messagePath).get());
+  await assertFails(guest.firestore().doc(messagePath).get());
+  await assertFails(leftUser.firestore().doc(messagePath).get());
   await assertFails(nonparticipant.firestore().doc(messagePath).get());
   await assertFails(adminClient.firestore().doc(messagePath).get());
+  await assertFails(participant.firestore().doc(canceledMessagePath).get());
+});
+
+test("active event chat messages cannot be listed or queried", async () => {
+  const contexts = [
+    testEnv.authenticatedContext("user-a"),
+    testEnv.authenticatedContext("organizer"),
+    testEnv.authenticatedContext("admin-user", {admin: true}),
+  ];
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore()
+      .doc("eventChats/editable-event/messages/message-1")
+      .set(eventChatMessageData());
+  });
+
+  for (const context of contexts) {
+    const db = context.firestore();
+    await assertFails(db.collection("eventChats/editable-event/messages").get());
+    await assertFails(
+      db.collection("eventChats/editable-event/messages")
+        .where("senderId", "==", "user-a")
+        .get(),
+    );
+  }
+});
+
+test("active event chat message reads fail closed for invalid parent state", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+  const messagePaths = [
+    "eventChats/missing-message-chat/messages/message-1",
+    "eventChats/mismatched-message-chat-metadata/messages/message-1",
+    "eventChats/mismatched-message-event-chat-id/messages/message-1",
+    "eventChats/orphan-message-chat/messages/message-1",
+    "eventChats/no-participant-message-chat/messages/message-1",
+    "eventChats/invalid-message-chat-metadata/messages/message-1",
+  ];
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("events/missing-message-chat").set(eventData({
+      chatId: "missing-message-chat",
+    }));
+    await db.doc("events/missing-message-chat/participants/user-a").set(
+      participantData(),
+    );
+
+    await db.doc("events/mismatched-message-chat-metadata").set(eventData({
+      chatId: "mismatched-message-chat-metadata",
+    }));
+    await db.doc(
+      "events/mismatched-message-chat-metadata/participants/user-a",
+    ).set(participantData());
+    await db.doc("eventChats/mismatched-message-chat-metadata").set(
+      eventChatData({
+        eventId: "other-event",
+      }),
+    );
+
+    await db.doc("events/mismatched-message-event-chat-id").set(eventData({
+      chatId: "other-chat",
+    }));
+    await db.doc(
+      "events/mismatched-message-event-chat-id/participants/user-a",
+    ).set(participantData());
+    await db.doc("eventChats/mismatched-message-event-chat-id").set(
+      eventChatData({
+        eventId: "mismatched-message-event-chat-id",
+      }),
+    );
+
+    await db.doc("eventChats/orphan-message-chat").set(eventChatData({
+      eventId: "orphan-message-chat",
+    }));
+
+    await db.doc("events/no-participant-message-chat").set(eventData({
+      chatId: "no-participant-message-chat",
+    }));
+    await db.doc("eventChats/no-participant-message-chat").set(eventChatData({
+      eventId: "no-participant-message-chat",
+    }));
+
+    await db.doc("events/invalid-message-chat-metadata").set(eventData({
+      chatId: "invalid-message-chat-metadata",
+    }));
+    await db.doc(
+      "events/invalid-message-chat-metadata/participants/user-a",
+    ).set(participantData());
+    await db.doc("eventChats/invalid-message-chat-metadata").set({
+      eventId: "invalid-message-chat-metadata",
+      createdAt: new Date("2026-06-14T10:00:00.000Z"),
+      updatedAt: new Date("2026-06-14T10:00:00.000Z"),
+    });
+
+    for (const messagePath of messagePaths) {
+      await db.doc(messagePath).set(eventChatMessageData());
+    }
+  });
+
+  for (const messagePath of messagePaths) {
+    await assertFails(user.firestore().doc(messagePath).get());
+  }
 });
 
 test("clients cannot directly write event chat message documents", async () => {
