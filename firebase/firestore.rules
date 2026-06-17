@@ -1024,6 +1024,13 @@ service cloud.firestore {
         eventDocumentData(chatId).canceledAt == null;
     }
 
+    function eventHasMatchingCanceledChat(chatId) {
+      return eventDocumentExists(chatId) &&
+        eventDocumentData(chatId).chatId == chatId &&
+        eventDocumentData(chatId).status == 'canceled' &&
+        eventDocumentData(chatId).canceledAt is timestamp;
+    }
+
     function isActiveEventParticipant(eventId, userId) {
       return eventParticipantDocumentExists(eventId, userId) &&
         isValidEventParticipantReadData(
@@ -1039,6 +1046,13 @@ service cloud.firestore {
         hasValidEventChatMetadata(chatId, data) &&
         eventHasMatchingActiveChat(chatId) &&
         isActiveEventParticipant(chatId, request.auth.uid);
+    }
+
+    function canGetCanceledEventChat(chatId, data) {
+      return isSignedIn() &&
+        hasValidEventChatMetadata(chatId, data) &&
+        eventHasMatchingCanceledChat(chatId) &&
+        data.readAccessUserIds.hasAny([request.auth.uid]);
     }
 
     match /users/{userId} {
@@ -1147,7 +1161,8 @@ service cloud.firestore {
     }
 
     match /eventChats/{chatId} {
-      allow get: if canGetActiveEventChat(chatId, resource.data);
+      allow get: if canGetActiveEventChat(chatId, resource.data) ||
+        canGetCanceledEventChat(chatId, resource.data);
       allow list: if false;
       allow create, update, delete: if false;
     }

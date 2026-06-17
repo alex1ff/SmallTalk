@@ -437,12 +437,74 @@ test("active event chat metadata get is limited to active participants", async (
   const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
   const chatPath = "eventChats/editable-event";
 
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc(chatPath).update({
+      readAccessUserIds: ["organizer", "user-a", "user-left"],
+    });
+  });
+
   await assertSucceeds(participant.firestore().doc(chatPath).get());
   await assertSucceeds(organizer.firestore().doc(chatPath).get());
   await assertFails(guest.firestore().doc(chatPath).get());
   await assertFails(leftUser.firestore().doc(chatPath).get());
   await assertFails(otherUser.firestore().doc(chatPath).get());
   await assertFails(adminClient.firestore().doc(chatPath).get());
+});
+
+test("canceled event chat metadata get is limited to frozen read access", async () => {
+  const guest = testEnv.unauthenticatedContext();
+  const participantAtCancel = testEnv.authenticatedContext("user-a");
+  const organizer = testEnv.authenticatedContext("organizer");
+  const leftBeforeCancel = testEnv.authenticatedContext("user-left");
+  const otherUser = testEnv.authenticatedContext("other-user");
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+  const chatPath = "eventChats/canceled-editable-event";
+
+  await assertSucceeds(participantAtCancel.firestore().doc(chatPath).get());
+  await assertSucceeds(organizer.firestore().doc(chatPath).get());
+  await assertFails(guest.firestore().doc(chatPath).get());
+  await assertFails(leftBeforeCancel.firestore().doc(chatPath).get());
+  await assertFails(otherUser.firestore().doc(chatPath).get());
+  await assertFails(adminClient.firestore().doc(chatPath).get());
+});
+
+test("canceled event chat metadata uses frozen access, not current membership", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+  const leftUser = testEnv.authenticatedContext("user-left");
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("events/canceled-editable-event/participants/user-a").set(
+      participantData({
+        status: "left",
+        leftAt: new Date("2099-06-01T10:00:01.000Z"),
+      }),
+    );
+    await db.doc("events/canceled-left-snapshot").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-left-snapshot",
+    }));
+    await db.doc("events/canceled-left-snapshot/participants/user-left").set(
+      participantData({
+        userId: "user-left",
+        displayName: "Left User",
+        status: "left",
+        leftAt: new Date("2099-06-01T10:00:01.000Z"),
+      }),
+    );
+    await db.doc("eventChats/canceled-left-snapshot").set(eventChatData({
+      eventId: "canceled-left-snapshot",
+      readAccessUserIds: ["user-left"],
+    }));
+  });
+
+  await assertSucceeds(
+    user.firestore().doc("eventChats/canceled-editable-event").get(),
+  );
+  await assertSucceeds(
+    leftUser.firestore().doc("eventChats/canceled-left-snapshot").get(),
+  );
 });
 
 test("active event chat metadata cannot be listed or queried", async () => {
@@ -540,8 +602,116 @@ test("active event chat metadata reads fail closed for invalid state", async () 
   await assertFails(
     user.firestore().doc("eventChats/no-participant-chat").get(),
   );
+});
+
+test("canceled event chat metadata reads fail closed for invalid state", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("events/canceled-mismatched-chat-metadata").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-mismatched-chat-metadata",
+    }));
+    await db.doc("eventChats/canceled-mismatched-chat-metadata").set(
+      eventChatData({
+        eventId: "other-event",
+        readAccessUserIds: ["user-a"],
+      }),
+    );
+
+    await db.doc("events/canceled-mismatched-event-chat-id").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "other-chat",
+    }));
+    await db.doc("eventChats/canceled-mismatched-event-chat-id").set(
+      eventChatData({
+        eventId: "canceled-mismatched-event-chat-id",
+        readAccessUserIds: ["user-a"],
+      }),
+    );
+
+    await db.doc("eventChats/canceled-orphan-chat").set(eventChatData({
+      eventId: "canceled-orphan-chat",
+      readAccessUserIds: ["user-a"],
+    }));
+
+    await db.doc("events/canceled-null-canceled-at").set(eventData({
+      status: "canceled",
+      canceledAt: null,
+      chatId: "canceled-null-canceled-at",
+    }));
+    await db.doc("eventChats/canceled-null-canceled-at").set(eventChatData({
+      eventId: "canceled-null-canceled-at",
+      readAccessUserIds: ["user-a"],
+    }));
+
+    const missingCanceledAtEvent = eventData({
+      status: "canceled",
+      chatId: "canceled-missing-canceled-at",
+    });
+    delete missingCanceledAtEvent.canceledAt;
+    await db.doc("events/canceled-missing-canceled-at").set(
+      missingCanceledAtEvent,
+    );
+    await db.doc("eventChats/canceled-missing-canceled-at").set(eventChatData({
+      eventId: "canceled-missing-canceled-at",
+      readAccessUserIds: ["user-a"],
+    }));
+
+    await db.doc("events/canceled-missing-read-access").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-missing-read-access",
+    }));
+    await db.doc("eventChats/canceled-missing-read-access").set({
+      eventId: "canceled-missing-read-access",
+      createdAt: new Date("2026-06-14T10:00:00.000Z"),
+      updatedAt: new Date("2026-06-14T10:00:00.000Z"),
+    });
+
+    await db.doc("events/canceled-wrong-read-access-type").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-wrong-read-access-type",
+    }));
+    await db.doc("eventChats/canceled-wrong-read-access-type").set(
+      eventChatData({
+        eventId: "canceled-wrong-read-access-type",
+        readAccessUserIds: "user-a",
+      }),
+    );
+
+    await db.doc("events/canceled-missing-chat-event").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-missing-chat-event",
+    }));
+  });
+
   await assertFails(
-    user.firestore().doc("eventChats/canceled-editable-event").get(),
+    user.firestore().doc("eventChats/canceled-mismatched-chat-metadata").get(),
+  );
+  await assertFails(
+    user.firestore().doc("eventChats/canceled-mismatched-event-chat-id").get(),
+  );
+  await assertFails(user.firestore().doc("eventChats/canceled-orphan-chat").get());
+  await assertFails(
+    user.firestore().doc("eventChats/canceled-null-canceled-at").get(),
+  );
+  await assertFails(
+    user.firestore().doc("eventChats/canceled-missing-canceled-at").get(),
+  );
+  await assertFails(
+    user.firestore().doc("eventChats/canceled-missing-read-access").get(),
+  );
+  await assertFails(
+    user.firestore().doc("eventChats/canceled-wrong-read-access-type").get(),
+  );
+  await assertFails(
+    user.firestore().doc("eventChats/canceled-missing-chat-event").get(),
   );
 });
 
@@ -1146,6 +1316,9 @@ test("client cancel cannot be paired with event chat access snapshot writes", as
   const db = organizer.firestore();
   const batch = db.batch();
 
+  await assertFails(db.doc("eventChats/direct-create").set(eventChatData({
+    eventId: "direct-create",
+  })));
   await assertFails(db.doc("eventChats/editable-event").update({
     readAccessUserIds: ["organizer", "user-a"],
     updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
