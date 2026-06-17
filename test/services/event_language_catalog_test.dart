@@ -58,6 +58,22 @@ void main() {
     expect(catalog.languageByPrimaryCode('   '), isNull);
   });
 
+  test('resolves exact primary code from primary and alternate codes', () {
+    expect(catalog.resolvePrimaryLanguageCode(' en '), 'en');
+    expect(catalog.resolvePrimaryLanguageCode('EN-us'), 'en');
+    expect(catalog.resolvePrimaryLanguageCode('zh-cn'), 'zh');
+    expect(catalog.resolvePrimaryLanguageCode('zh-Hans'), 'zh');
+    expect(catalog.resolvePrimaryLanguageCode('zh-Hant'), 'zh-TW');
+    expect(catalog.resolvePrimaryLanguageCode('ZH-tw'), 'zh-TW');
+    expect(catalog.resolvePrimaryLanguageCode('DE-ch'), 'de-CH');
+    expect(catalog.resolvePrimaryLanguageCode('DE-CH'), 'de-CH');
+    expect(catalog.resolvePrimaryLanguageCode('NL-be'), 'nl-BE');
+    expect(catalog.resolvePrimaryLanguageCode('NL-BE'), 'nl-BE');
+    expect(catalog.resolvePrimaryLanguageCode('unknown'), isNull);
+    expect(catalog.resolvePrimaryLanguageCode('   '), isNull);
+    expect(catalog.resolvePrimaryLanguageCode(null), isNull);
+  });
+
   test('exposes immutable language lists', () {
     expect(
       () => catalog.languages.add(catalog.languages.first),

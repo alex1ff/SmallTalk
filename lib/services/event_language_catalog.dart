@@ -72,6 +72,26 @@ class EventLanguageCatalog {
     return null;
   }
 
+  /// Resolves primary or alternate language code input to the catalog primary
+  /// code, preserving the exact catalog casing for codes like `zh-TW`.
+  String? resolvePrimaryLanguageCode(String? code) {
+    final normalizedCode = _normalizeLanguageCodeKey(code);
+    if (normalizedCode == null) {
+      return null;
+    }
+    for (final language in languages) {
+      for (final candidate in <String>[
+        language.code,
+        ...language.alternateCodes,
+      ]) {
+        if (_normalizeLanguageCodeKey(candidate) == normalizedCode) {
+          return language.code;
+        }
+      }
+    }
+    return null;
+  }
+
   List<EventLanguage> popularLanguages({int? limit}) {
     if (limit != null && limit <= 0) {
       return const [];
