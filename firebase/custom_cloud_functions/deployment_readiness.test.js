@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const {
   REQUIRED_FUNCTIONS,
   analyzeFunctionsDeployment,
@@ -101,6 +103,38 @@ test("deployment readiness requires core call runtime exports", () => {
     failure.id === "getSessionTokens" &&
       failure.reason === "missing_function",
   ));
+});
+
+test("deployment readiness exposes no event chat message mutation callables", () => {
+  const functionIds = new Set(REQUIRED_FUNCTIONS.map((item) => item.id));
+  const indexSource = fs.readFileSync(
+      path.join(__dirname, "index.js"),
+      "utf8",
+  );
+  const packageJson = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "package.json"),
+      "utf8",
+  ));
+  const deployScript = packageJson.scripts["deploy:readiness-functions"];
+  const disallowedIds = [
+    "editEventChatMessage",
+    "updateEventChatMessage",
+    "deleteEventChatMessage",
+    "softDeleteEventChatMessage",
+    "hardDeleteEventChatMessage",
+  ];
+
+  assert.ok(functionIds.has("sendEventChatMessage"));
+  assert.match(indexSource, /exports\.sendEventChatMessage\b/);
+  assert.match(deployScript, /functions:custom_cloud_functions:sendEventChatMessage\b/);
+  for (const id of disallowedIds) {
+    assert.equal(functionIds.has(id), false);
+    assert.doesNotMatch(indexSource, new RegExp(`exports\\.${id}\\b`));
+    assert.doesNotMatch(
+        deployScript,
+        new RegExp(`functions:custom_cloud_functions:${id}\\b`),
+    );
+  }
 });
 
 test("deployment readiness rejects wrong triggers and missing secrets", () => {

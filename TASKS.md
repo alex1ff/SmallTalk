@@ -98,7 +98,7 @@ Date: 2026-06-14
 - [x] Fail closed when event chat metadata is missing or `eventChats/{chatId}.eventId` does not match the owning event id.
 - [x] Implement callable Cloud Function `sendEventChatMessage` with exact request schema `{eventId, text}`; reject unknown request keys; validate `eventId` as a non-empty Firestore document id/path segment with no `/`; use authenticated uid as `senderId`; generate `messageId`; return `messageId` and `createdAt`; and check active event status, matching chat metadata, active participant membership, allowed message fields, trusted `createdAt`, `deletedAt = null`, normalized non-empty text, and max 1000 grapheme clusters.
 - [x] Derive event chat message `senderDisplayName` and `senderPhotoUrl` server-side from trusted participant/profile data during send.
-- [ ] Block ordinary event chat message edit, soft delete, hard delete, and sender snapshot mutation in MVP.
+- [x] Block ordinary event chat message edit, soft delete, hard delete, and sender snapshot mutation in MVP.
 
 ## Phase 3: Firebase Security Rules
 

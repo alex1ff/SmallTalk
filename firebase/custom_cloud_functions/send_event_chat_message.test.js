@@ -197,7 +197,20 @@ test("normalizeSendEventChatMessagePayload rejects unknown and missing keys", ()
       "senderId",
       "unknown_key",
   );
-  for (const key of ["createdAt", "deletedAt", "messageId"]) {
+  for (const key of [
+    "createdAt",
+    "deletedAt",
+    "deletedBy",
+    "deletedText",
+    "editedAt",
+    "isDeleted",
+    "messageId",
+    "operation",
+    "action",
+    "senderDisplayName",
+    "senderPhotoUrl",
+    "updatedAt",
+  ]) {
     assertHttpsError(
         () => normalizeSendEventChatMessagePayload({
           eventId: "event-1",
