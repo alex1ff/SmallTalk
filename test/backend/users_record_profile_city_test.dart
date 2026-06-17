@@ -20,12 +20,15 @@ void main() {
           'preferences': {
             'preferredLocation': {'code': 'US'},
           },
+          'countryCode': 'IT',
+          'cityKey': 'rome',
         },
         UsersRecord.collection.doc('uid-1'),
       );
 
       expect(user.hasProfileCity(), isFalse);
       expect(user.profileCity.countryCode, '');
+      expect(user.profileCity.cityKey, '');
       expect(user.countryNS.code, 'RU');
       expect(user.preferences.preferredLocation.code, 'US');
     });
@@ -120,6 +123,8 @@ void main() {
 
       expect(countryData['Country_NS.code'], 'US');
       expect(preferenceData['preferences.preferredLocation.code'], 'IT');
+      expectNoTopLevelEventCityIdentityWrite(countryData);
+      expectNoTopLevelEventCityIdentityWrite(preferenceData);
       expectNoProfileCityWrite(countryData);
       expectNoProfileCityWrite(preferenceData);
     });
@@ -132,4 +137,9 @@ void expectNoProfileCityWrite(Map<String, dynamic> data) {
         .where((key) => key == 'profileCity' || key.startsWith('profileCity.')),
     isEmpty,
   );
+}
+
+void expectNoTopLevelEventCityIdentityWrite(Map<String, dynamic> data) {
+  expect(data, isNot(contains('countryCode')));
+  expect(data, isNot(contains('cityKey')));
 }

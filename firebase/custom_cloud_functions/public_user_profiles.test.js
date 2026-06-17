@@ -44,6 +44,12 @@ test("public profile projection exposes only non-private matching fields", () =>
         nameRu: "SShA",
         flag: "us",
       },
+      countryCode: "IT",
+      cityKey: "rome",
+      profileCity: {
+        countryCode: "RU",
+        cityKey: "moscow",
+      },
       level: "Fluent",
       rating: {
         average: 4.7,
@@ -105,6 +111,30 @@ test("public profile projection exposes only non-private matching fields", () =>
   for (const privateField of PUBLIC_PROFILE_PRIVATE_FIELDS) {
     assert.equal(profile[privateField], undefined);
   }
+  assert.equal(profile.countryCode, undefined);
+  assert.equal(profile.cityKey, undefined);
+  assert.equal(profile.profileCity, undefined);
+});
+
+test("public profile projection does not derive country from event city fields", () => {
+  const profile = buildPublicUserProfile(
+    "student-event-city-only",
+    {
+      display_name: " Student ",
+      countryCode: "IT",
+      cityKey: "rome",
+      profileCity: {
+        countryCode: "RU",
+        cityKey: "moscow",
+      },
+    },
+    {updatedAt: "fixed"},
+  );
+
+  assert.equal(profile.Country_NS, undefined);
+  assert.equal(profile.countryCode, undefined);
+  assert.equal(profile.cityKey, undefined);
+  assert.equal(profile.profileCity, undefined);
 });
 
 test("public profile sync is exported and has a backfill script", () => {
