@@ -846,6 +846,7 @@ service cloud.firestore {
 
     match /events/{eventId} {
       allow list: if canListActiveEvent(resource.data);
+      allow create: if false;
     }
 
     match /users/{userId}/userWords/{wordId} {

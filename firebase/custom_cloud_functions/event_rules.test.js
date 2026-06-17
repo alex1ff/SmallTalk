@@ -146,3 +146,30 @@ test("direct event detail get remains separate from event list reads", async () 
   await assertFails(db.doc("events/active-moscow").get());
   await assertFails(db.doc("events/canceled-moscow").get());
 });
+
+test("clients cannot directly create event documents", async () => {
+  const guest = testEnv.unauthenticatedContext();
+  const user = testEnv.authenticatedContext("user-a");
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+
+  await assertFails(
+    guest.firestore().doc("events/direct-create-guest").set(eventData({
+      chatId: "direct-create-guest",
+    })),
+  );
+  await assertFails(
+    user.firestore().doc("events/direct-create-user").set(eventData({
+      chatId: "direct-create-user",
+    })),
+  );
+  await assertFails(
+    adminClient.firestore().doc("events/direct-create-admin").set(eventData({
+      chatId: "direct-create-admin",
+    })),
+  );
+  await assertFails(
+    user.firestore().collection("events").add(eventData({
+      chatId: "direct-create-auto-id",
+    })),
+  );
+});
