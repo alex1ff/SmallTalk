@@ -10,6 +10,7 @@ import 'schema/user_public_profiles_record.dart';
 import 'schema/video_sessions_record.dart';
 import 'schema/conversations_record.dart';
 import 'schema/messages_record.dart';
+import 'schema/events_record.dart';
 import 'schema/chat_utils.dart';
 import 'schema/caption_logs_record.dart';
 import 'schema/user_words_record.dart';
@@ -37,6 +38,7 @@ export 'schema/users_friend_utils.dart';
 export 'schema/video_sessions_record.dart';
 export 'schema/conversations_record.dart';
 export 'schema/messages_record.dart';
+export 'schema/events_record.dart';
 export 'schema/chat_utils.dart';
 export 'schema/caption_logs_record.dart';
 export 'schema/user_words_record.dart';
@@ -204,6 +206,43 @@ Future<List<VideoSessionsRecord>> fetchRecentHubCallSessions(
 
   return sessions;
 }
+
+/// Functions to query EventsRecords (as a Stream and as a Future).
+Future<int> queryEventsRecordCount({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      EventsRecord.collection,
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<EventsRecord>> queryEventsRecord({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      EventsRecord.collection,
+      EventsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<EventsRecord>> queryEventsRecordOnce({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      EventsRecord.collection,
+      EventsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
 
 /// Functions to query ConversationsRecords (as a Stream and as a Future).
 Future<int> queryConversationsRecordCount({

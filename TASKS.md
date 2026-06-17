@@ -128,7 +128,7 @@ Date: 2026-06-14
 
 ## Phase 4: Flutter Data Layer
 
-- [ ] Add event model matching the `events/{eventId}` field contract, including server-managed fields, catalog-derived fields, organizer snapshot fields, and `timeZoneId`.
+- [x] Add event model matching the `events/{eventId}` field contract, including server-managed fields, catalog-derived fields, organizer snapshot fields, and `timeZoneId`.
 - [ ] Add event participant model matching the `events/{eventId}/participants/{userId}` field contract with `active|left` membership status and immutable role.
 - [ ] Add event chat metadata model matching the `eventChats/{chatId}` contract and event chat message model matching `eventChats/{chatId}/messages/{messageId}`, or reuse existing chat model only if it matches the contract exactly.
 - [ ] Add `users.profileCity` model/struct with `countryCode`, `cityKey`, catalog-derived localized display fields, catalog-derived region fields, `catalogVersion`, and server-time `updatedAt`.
