@@ -9,5 +9,7 @@ export '/backend/schema/conversations_record.dart';
 export '/backend/schema/messages_record.dart';
 export '/backend/schema/events_record.dart';
 export '/backend/schema/event_participants_record.dart';
+export '/backend/schema/event_chats_record.dart';
+export '/backend/schema/event_chat_messages_record.dart';
 export '/backend/schema/chat_utils.dart';
 export 'structs/index.dart';

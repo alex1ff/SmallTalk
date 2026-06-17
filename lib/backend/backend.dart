@@ -12,6 +12,8 @@ import 'schema/conversations_record.dart';
 import 'schema/messages_record.dart';
 import 'schema/events_record.dart';
 import 'schema/event_participants_record.dart';
+import 'schema/event_chats_record.dart';
+import 'schema/event_chat_messages_record.dart';
 import 'schema/chat_utils.dart';
 import 'schema/caption_logs_record.dart';
 import 'schema/user_words_record.dart';
@@ -41,6 +43,8 @@ export 'schema/conversations_record.dart';
 export 'schema/messages_record.dart';
 export 'schema/events_record.dart';
 export 'schema/event_participants_record.dart';
+export 'schema/event_chats_record.dart';
+export 'schema/event_chat_messages_record.dart';
 export 'schema/chat_utils.dart';
 export 'schema/caption_logs_record.dart';
 export 'schema/user_words_record.dart';
@@ -281,6 +285,83 @@ Future<List<EventParticipantsRecord>> queryEventParticipantsRecordOnce({
     queryCollectionOnce(
       EventParticipantsRecord.collection(parent),
       EventParticipantsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+/// Functions to query EventChatsRecords (as a Stream and as a Future).
+Future<int> queryEventChatsRecordCount({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      EventChatsRecord.collection,
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<EventChatsRecord>> queryEventChatsRecord({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      EventChatsRecord.collection,
+      EventChatsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<EventChatsRecord>> queryEventChatsRecordOnce({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      EventChatsRecord.collection,
+      EventChatsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+/// Functions to query EventChatMessagesRecords (as a Stream and as a Future).
+Future<int> queryEventChatMessagesRecordCount({
+  required DocumentReference parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      EventChatMessagesRecord.collection(parent),
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<EventChatMessagesRecord>> queryEventChatMessagesRecord({
+  required DocumentReference parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      EventChatMessagesRecord.collection(parent),
+      EventChatMessagesRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<EventChatMessagesRecord>> queryEventChatMessagesRecordOnce({
+  required DocumentReference parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      EventChatMessagesRecord.collection(parent),
+      EventChatMessagesRecord.fromSnapshot,
       queryBuilder: queryBuilder,
       limit: limit,
       singleRecord: singleRecord,
