@@ -7,6 +7,7 @@ import 'package:small_talk/components/nav_bar_widget.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
+import 'package:small_talk/shared_pages/events/event_edit_widget.dart';
 import 'package:small_talk/shared_pages/events/event_list_widget.dart';
 
 void main() {
@@ -34,6 +35,11 @@ void main() {
   test('event create route exposes the canonical create route', () {
     expect(EventCreateWidget.routeName, 'eventCreate');
     expect(EventCreateWidget.routePath, '/events/create');
+  });
+
+  test('event edit route exposes the canonical edit route', () {
+    expect(EventEditWidget.routeName, 'eventEdit');
+    expect(EventEditWidget.routePath, '/events/:eventId/edit');
   });
 
   test('bottom navigation exposes events between home and existing tabs', () {
@@ -108,12 +114,24 @@ void main() {
       router,
       contains(
         RegExp(
+          r'FFRoute\([\s\S]*name: EventEditWidget\.routeName,[\s\S]*path: EventEditWidget\.routePath,[\s\S]*requireAuth: true,[\s\S]*eventId[\s\S]*ParamType\.String',
+        ),
+      ),
+    );
+    expect(
+      router,
+      contains(
+        RegExp(
           r'FFRoute\([\s\S]*name: EventDetailWidget\.routeName,[\s\S]*path: EventDetailWidget\.routePath,[\s\S]*requireAuth: true,[\s\S]*eventId[\s\S]*ParamType\.String',
         ),
       ),
     );
     expect(
       router.indexOf('name: EventCreateWidget.routeName'),
+      lessThan(router.indexOf('name: EventEditWidget.routeName')),
+    );
+    expect(
+      router.indexOf('name: EventEditWidget.routeName'),
       lessThan(router.indexOf('name: EventDetailWidget.routeName')),
     );
     expect(
@@ -124,8 +142,14 @@ void main() {
       router.indexOf('name: EventCreateWidget.routeName'),
       lessThan(router.indexOf('ShellRoute(')),
     );
+    expect(
+      router.indexOf('name: EventEditWidget.routeName'),
+      lessThan(router.indexOf('ShellRoute(')),
+    );
     expect(index,
         contains("export '/shared_pages/events/event_create_widget.dart'"));
+    expect(index,
+        contains("export '/shared_pages/events/event_edit_widget.dart'"));
     expect(index,
         contains("export '/shared_pages/events/event_detail_widget.dart'"));
   });
@@ -154,28 +178,37 @@ void main() {
     expect(create, isNot(contains('.createEvent(')));
   });
 
+  test('event edit screen stays a route placeholder before Phase 9', () {
+    final edit = File('lib/shared_pages/events/event_edit_widget.dart')
+        .readAsStringSync();
+
+    expect(edit, contains('final String eventId;'));
+    expect(edit, contains('Редактировать событие'));
+    expect(edit, contains('Edit event'));
+    expect(edit, isNot(contains('EventActionsRepository')));
+    expect(edit, isNot(contains('EventEditableFields')));
+    expect(edit, isNot(contains('EventDetailRepository')));
+    expect(edit, isNot(contains('watchEventDetail')));
+    expect(edit, isNot(contains('.editEvent(')));
+  });
+
   testWidgets('event create route redirects signed-out users to onboarding',
       (tester) async {
-    final notifier = AppStateNotifier.instance;
-    notifier.initialUser = null;
-    notifier.clearRedirectLocation();
-    notifier.showSplashImage = true;
+    final harness = await _pumpSignedOutEventsRouter(tester, '/events/create');
 
-    final user = _TestAuthUser(userId: null, isLoggedIn: false);
-    currentUser = user;
-    notifier.update(user);
-    notifier.stopShowingSplashImage();
+    expect(harness.router.getCurrentLocation(), '/onboarding');
+    expect(harness.notifier.hasRedirect(), isTrue);
+    expect(harness.notifier.getRedirectLocation(), '/events/create');
+  });
 
-    final router = createRouter(notifier);
-    router.go('/events/create');
+  testWidgets('event edit route redirects signed-out users to onboarding',
+      (tester) async {
+    final harness =
+        await _pumpSignedOutEventsRouter(tester, '/events/event-123/edit');
 
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(router.getCurrentLocation(), '/onboarding');
-    expect(notifier.hasRedirect(), isTrue);
-    expect(notifier.getRedirectLocation(), '/events/create');
+    expect(harness.router.getCurrentLocation(), '/onboarding');
+    expect(harness.notifier.hasRedirect(), isTrue);
+    expect(harness.notifier.getRedirectLocation(), '/events/event-123/edit');
   });
 
   testWidgets('router opens event create path before dynamic detail route',
@@ -185,6 +218,17 @@ void main() {
     expect(router.getCurrentLocation(), '/events/create');
     expect(find.byType(EventCreateWidget), findsOneWidget);
     expect(find.byType(EventDetailWidget), findsNothing);
+    expect(find.byType(NavBarWidget), findsNothing);
+  });
+
+  testWidgets('router opens event edit path before dynamic detail route',
+      (tester) async {
+    final router = await _pumpEventsRouter(tester, '/events/event-123/edit');
+
+    expect(router.getCurrentLocation(), '/events/event-123/edit');
+    expect(find.byType(EventEditWidget), findsOneWidget);
+    expect(find.byType(EventDetailWidget), findsNothing);
+    expect(find.text('event-123'), findsOneWidget);
     expect(find.byType(NavBarWidget), findsNothing);
   });
 
@@ -221,6 +265,40 @@ Future<GoRouter> _pumpEventsRouter(
   await tester.pump(const Duration(milliseconds: 400));
 
   return router;
+}
+
+Future<_RouterHarness> _pumpSignedOutEventsRouter(
+  WidgetTester tester,
+  String location,
+) async {
+  final notifier = AppStateNotifier.instance;
+  notifier.initialUser = null;
+  notifier.clearRedirectLocation();
+  notifier.showSplashImage = true;
+
+  final user = _TestAuthUser(userId: null, isLoggedIn: false);
+  currentUser = user;
+  notifier.update(user);
+  notifier.stopShowingSplashImage();
+
+  final router = createRouter(notifier);
+  router.go(location);
+
+  await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+
+  return _RouterHarness(router: router, notifier: notifier);
+}
+
+class _RouterHarness {
+  const _RouterHarness({
+    required this.router,
+    required this.notifier,
+  });
+
+  final GoRouter router;
+  final AppStateNotifier notifier;
 }
 
 class _TestAuthUser extends BaseAuthUser {

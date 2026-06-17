@@ -294,6 +294,17 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             builder: (context, params) => EventCreateWidget(),
           ),
           FFRoute(
+            name: EventEditWidget.routeName,
+            path: EventEditWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => EventEditWidget(
+              eventId: params.getParam(
+                'eventId',
+                ParamType.String,
+              ),
+            ),
+          ),
+          FFRoute(
             name: EventDetailWidget.routeName,
             path: EventDetailWidget.routePath,
             requireAuth: true,

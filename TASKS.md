@@ -165,7 +165,7 @@ Date: 2026-06-14
 - [x] Add route for event list.
 - [x] Add route for event detail.
 - [x] Add route for event create.
-- [ ] Add route for event edit.
+- [x] Add route for event edit.
 - [ ] Add route for event group chat.
 - [ ] Ensure existing tabs keep current behavior.
 
