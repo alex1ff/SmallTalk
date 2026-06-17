@@ -100,6 +100,21 @@ function eventChatData(overrides = {}) {
   };
 }
 
+function participantData(overrides = {}) {
+  return {
+    userId: "user-a",
+    displayName: "User A",
+    photoUrl: "https://cdn.example.com/user-a.jpg",
+    role: "participant",
+    status: "active",
+    joinedAt: new Date("2026-06-14T10:00:00.000Z"),
+    leftAt: null,
+    createdAt: new Date("2026-06-14T10:00:00.000Z"),
+    updatedAt: new Date("2026-06-14T10:00:00.000Z"),
+    ...overrides,
+  };
+}
+
 function eventListQuery(db) {
   return db.collection("events")
     .where("status", "==", "active")
@@ -165,6 +180,37 @@ test.beforeEach(async () => {
       chatId: "past-editable-event",
     }));
     await db.doc("eventChats/editable-event").set(eventChatData());
+    await db.doc("events/editable-event/participants/organizer").set(
+      participantData({
+        userId: "organizer",
+        displayName: "Organizer",
+        photoUrl: "https://cdn.example.com/organizer.jpg",
+        role: "organizer",
+      }),
+    );
+    await db.doc("events/editable-event/participants/user-a").set(
+      participantData(),
+    );
+    await db.doc("events/editable-event/participants/user-left").set(
+      participantData({
+        userId: "user-left",
+        displayName: "Left User",
+        status: "left",
+        leftAt: new Date("2026-06-15T10:00:00.000Z"),
+      }),
+    );
+    await db.doc("events/editable-event/participants/malformed-owner").set(
+      participantData({
+        userId: "malformed-owner",
+        displayName: "",
+        status: "left",
+        leftAt: new Date("2026-06-15T10:00:00.000Z"),
+        privateEmail: "malformed-owner@example.com",
+      }),
+    );
+    await db.doc("events/canceled-editable-event/participants/user-a").set(
+      participantData(),
+    );
   });
 });
 
@@ -221,6 +267,111 @@ test("direct event detail get remains separate from event list reads", async () 
 
   await assertFails(db.doc("events/active-moscow").get());
   await assertFails(db.doc("events/canceled-moscow").get());
+});
+
+test("authorized user can list active event participants for roster UI", async () => {
+  const db = testEnv.authenticatedContext("viewer").firestore();
+
+  const snapshot = await assertSucceeds(
+    db.collection("events/editable-event/participants")
+      .where("status", "==", "active")
+      .limit(50)
+      .get(),
+  );
+
+  assert.deepEqual(
+    snapshot.docs.map((doc) => doc.id).sort(),
+    ["organizer", "user-a"],
+  );
+});
+
+test("participant roster queries must be scoped to active participant status", async () => {
+  const db = testEnv.authenticatedContext("viewer").firestore();
+
+  await assertFails(
+    db.collection("events/editable-event/participants")
+      .where("status", "==", "active")
+      .get(),
+  );
+  await assertFails(
+    db.collection("events/editable-event/participants")
+      .where("status", "==", "active")
+      .limit(51)
+      .get(),
+  );
+  await assertFails(
+    db.collection("events/editable-event/participants").get(),
+  );
+  await assertFails(
+    db.collection("events/editable-event/participants")
+      .where("role", "==", "participant")
+      .limit(50)
+      .get(),
+  );
+  await assertFails(
+    db.collection("events/editable-event/participants")
+      .where("status", "==", "left")
+      .limit(50)
+      .get(),
+  );
+});
+
+test("participant get is limited to active roster docs and own membership state", async () => {
+  const viewer = testEnv.authenticatedContext("viewer");
+  const activeUser = testEnv.authenticatedContext("user-a");
+  const leftUser = testEnv.authenticatedContext("user-left");
+  const malformedOwner = testEnv.authenticatedContext("malformed-owner");
+  const missingUser = testEnv.authenticatedContext("missing-user");
+
+  await assertSucceeds(
+    viewer.firestore().doc("events/editable-event/participants/user-a").get(),
+  );
+  await assertFails(
+    viewer.firestore().doc("events/editable-event/participants/user-left").get(),
+  );
+  await assertSucceeds(
+    activeUser.firestore().doc("events/editable-event/participants/user-a").get(),
+  );
+  await assertSucceeds(
+    leftUser.firestore().doc("events/editable-event/participants/user-left").get(),
+  );
+  await assertFails(
+    malformedOwner.firestore()
+      .doc("events/editable-event/participants/malformed-owner")
+      .get(),
+  );
+
+  const missingSnapshot = await assertSucceeds(
+    missingUser.firestore()
+      .doc("events/editable-event/participants/missing-user")
+      .get(),
+  );
+  assert.equal(missingSnapshot.exists, false);
+});
+
+test("participant reads require auth and an active parent event", async () => {
+  const guest = testEnv.unauthenticatedContext();
+  const db = testEnv.authenticatedContext("user-a").firestore();
+
+  await assertFails(
+    guest.firestore().doc("events/editable-event/participants/user-a").get(),
+  );
+  await assertFails(
+    guest.firestore()
+      .collection("events/editable-event/participants")
+      .where("status", "==", "active")
+      .limit(50)
+      .get(),
+  );
+  await assertFails(
+    db.collection("events/canceled-editable-event/participants")
+      .where("status", "==", "active")
+      .limit(50)
+      .get(),
+  );
+  await assertFails(
+    db.doc("events/canceled-editable-event/participants/user-a").get(),
+  );
 });
 
 test("clients cannot directly create event documents", async () => {
