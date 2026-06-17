@@ -7,6 +7,9 @@ const {
   assertFails,
   assertSucceeds,
 } = require("@firebase/rules-unit-testing");
+const firebaseCompat = require("firebase/compat/app");
+
+require("firebase/compat/firestore");
 
 const projectId = process.env.GCLOUD_PROJECT || "demo-smalltalk";
 const firestoreHostRaw = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
@@ -19,11 +22,17 @@ const firestoreRules = fs.readFileSync(
 
 let testEnv;
 
+const farFutureStartsAt = new Date("2099-06-20T15:00:00.000Z");
+const farFutureEditStartsAt = new Date("2099-06-21T15:00:00.000Z");
+
 function eventData(overrides = {}) {
   return {
     status: "active",
     countryCode: "RU",
     cityKey: "moscow",
+    cityNameRu: "Москва",
+    cityNameEn: "Moscow",
+    cityDisplayContext: "Россия",
     startsAt: new Date("2026-06-20T15:00:00.000Z"),
     title: "Conversation club",
     description: "Practice English in a small offline group.",
@@ -33,14 +42,32 @@ function eventData(overrides = {}) {
     levelMin: "B1",
     levelMax: "C1",
     locationName: "Starbucks, Arbat",
+    locationGeoPoint: null,
     organizerId: "organizer",
     organizerDisplayName: "Organizer",
     organizerPhotoUrl: "https://cdn.example.com/organizer.jpg",
     participantsCount: 1,
     capacity: 10,
     chatId: "event-active-moscow",
+    timeZoneId: "Europe/Moscow",
     createdAt: new Date("2026-06-14T10:00:00.000Z"),
     updatedAt: new Date("2026-06-14T10:00:00.000Z"),
+    canceledAt: null,
+    ...overrides,
+  };
+}
+
+function directEditPatch(overrides = {}) {
+  return {
+    title: "Updated conversation club",
+    description: "Updated practice plan.",
+    levelMin: "A2",
+    levelMax: "B2",
+    locationName: "Updated cafe",
+    locationGeoPoint: new firebaseCompat.firestore.GeoPoint(55.751244, 37.618423),
+    startsAt: farFutureEditStartsAt,
+    capacity: 3,
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
     ...overrides,
   };
 }
@@ -88,6 +115,26 @@ test.beforeEach(async () => {
       status: "canceled",
       canceledAt: new Date("2026-06-15T10:00:00.000Z"),
       chatId: "event-canceled-moscow",
+    }));
+    await db.doc("events/editable-event").set(eventData({
+      startsAt: farFutureStartsAt,
+      participantsCount: 3,
+      capacity: 8,
+      chatId: "editable-event",
+    }));
+    await db.doc("events/canceled-editable-event").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      startsAt: farFutureStartsAt,
+      participantsCount: 3,
+      capacity: 8,
+      chatId: "canceled-editable-event",
+    }));
+    await db.doc("events/past-editable-event").set(eventData({
+      startsAt: new Date("2020-06-20T15:00:00.000Z"),
+      participantsCount: 3,
+      capacity: 8,
+      chatId: "past-editable-event",
     }));
   });
 });
@@ -172,4 +219,127 @@ test("clients cannot directly create event documents", async () => {
       chatId: "direct-create-auto-id",
     })),
   );
+});
+
+test("organizer can directly edit validated safe event fields", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+
+  await assertSucceeds(
+    organizer.firestore().doc("events/editable-event").update(directEditPatch()),
+  );
+});
+
+test("guest and non-organizer cannot directly edit event fields", async () => {
+  const guest = testEnv.unauthenticatedContext();
+  const user = testEnv.authenticatedContext("user-a");
+
+  await assertFails(
+    guest.firestore().doc("events/editable-event").update(directEditPatch()),
+  );
+  await assertFails(
+    user.firestore().doc("events/editable-event").update(directEditPatch()),
+  );
+  await assertFails(
+    user.firestore().doc("events/editable-event").update({
+      ...directEditPatch(),
+      organizerId: "user-a",
+    }),
+  );
+});
+
+test("organizer cannot directly edit canceled or past events", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+
+  await assertFails(
+    organizer.firestore()
+      .doc("events/canceled-editable-event")
+      .update(directEditPatch()),
+  );
+  await assertFails(
+    organizer.firestore()
+      .doc("events/past-editable-event")
+      .update(directEditPatch()),
+  );
+});
+
+test("direct organizer edit enforces capacity and server updatedAt", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const eventRef = organizer.firestore().doc("events/editable-event");
+
+  await assertSucceeds(eventRef.update(directEditPatch({capacity: 3})));
+  await assertFails(eventRef.update(directEditPatch({capacity: 2})));
+  await assertFails(eventRef.update(directEditPatch({
+    updatedAt: new Date("2099-06-20T10:00:00.000Z"),
+  })));
+});
+
+test("direct organizer edit cannot mutate protected or catalog-derived fields", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const eventRef = organizer.firestore().doc("events/editable-event");
+  const protectedSamples = {
+    organizerId: "other-organizer",
+    organizerDisplayName: "Other Organizer",
+    organizerPhotoUrl: "https://cdn.example.com/other.jpg",
+    participantsCount: 4,
+    chatId: "other-chat",
+    status: "canceled",
+    createdAt: new Date("2099-06-20T10:00:00.000Z"),
+    canceledAt: new Date("2099-06-20T10:00:00.000Z"),
+    languageCode: "it",
+    languageNameEn: "Italian",
+    languageNameRu: "Итальянский",
+    countryCode: "IT",
+    cityKey: "rome",
+    cityNameRu: "Рим",
+    cityNameEn: "Rome",
+    cityDisplayContext: "Италия",
+    timeZoneId: "Europe/Rome",
+  };
+
+  for (const [field, value] of Object.entries(protectedSamples)) {
+    await assertFails(eventRef.update({
+      ...directEditPatch(),
+      [field]: value,
+    }));
+  }
+});
+
+test("direct organizer edit rejects unknown fields and field deletion", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const eventRef = organizer.firestore().doc("events/editable-event");
+
+  await assertFails(eventRef.update({
+    ...directEditPatch(),
+    unexpectedField: true,
+  }));
+  await assertFails(eventRef.update({
+    title: firebaseCompat.firestore.FieldValue.delete(),
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+});
+
+test("direct organizer edit validates editable field values", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const eventRef = organizer.firestore().doc("events/editable-event");
+  const invalidPatches = [
+    {title: ""},
+    {title: "x".repeat(71)},
+    {description: ""},
+    {description: "x".repeat(1001)},
+    {levelMin: "C1", levelMax: "B1"},
+    {levelMin: "A0"},
+    {locationName: ""},
+    {locationName: "x".repeat(201)},
+    {locationGeoPoint: "not-a-geopoint"},
+    {startsAt: new Date("2020-06-20T15:00:00.000Z")},
+    {capacity: 51},
+  ];
+
+  for (const patch of invalidPatches) {
+    await assertFails(eventRef.update(directEditPatch(patch)));
+  }
+
+  await assertSucceeds(eventRef.update(directEditPatch({
+    locationGeoPoint: null,
+  })));
 });

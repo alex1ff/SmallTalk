@@ -753,6 +753,114 @@ service cloud.firestore {
       return isSignedIn() && data.status == 'active';
     }
 
+    function directEventEditFields() {
+      return [
+        'title',
+        'description',
+        'levelMin',
+        'levelMax',
+        'locationName',
+        'locationGeoPoint',
+        'startsAt',
+        'capacity',
+        'updatedAt'
+      ];
+    }
+
+    function directEventEditRequiredFields() {
+      return [
+        'title',
+        'description',
+        'levelMin',
+        'levelMax',
+        'locationName',
+        'locationGeoPoint',
+        'startsAt',
+        'capacity',
+        'participantsCount',
+        'updatedAt',
+        'status',
+        'canceledAt'
+      ];
+    }
+
+    function isValidEventLevel(value) {
+      return value in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+    }
+
+    function isValidEventLevelRange(data) {
+      return (
+          data.levelMin == 'A1' &&
+          data.levelMax in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+        ) ||
+        (
+          data.levelMin == 'A2' &&
+          data.levelMax in ['A2', 'B1', 'B2', 'C1', 'C2']
+        ) ||
+        (
+          data.levelMin == 'B1' &&
+          data.levelMax in ['B1', 'B2', 'C1', 'C2']
+        ) ||
+        (
+          data.levelMin == 'B2' &&
+          data.levelMax in ['B2', 'C1', 'C2']
+        ) ||
+        (
+          data.levelMin == 'C1' &&
+          data.levelMax in ['C1', 'C2']
+        ) ||
+        (
+          data.levelMin == 'C2' &&
+          data.levelMax == 'C2'
+        );
+    }
+
+    function isValidEventGeoPoint(data) {
+      return !data.keys().hasAny(['locationGeoPoint']) ||
+        data.locationGeoPoint == null ||
+        data.locationGeoPoint is latlng;
+    }
+
+    function isValidDirectEventEditData(data) {
+      return data.keys().hasAll(directEventEditRequiredFields()) &&
+        data.title is string &&
+        data.title.size() > 0 &&
+        data.title.size() <= 70 &&
+        data.description is string &&
+        data.description.size() > 0 &&
+        data.description.size() <= 1000 &&
+        isValidEventLevel(data.levelMin) &&
+        isValidEventLevel(data.levelMax) &&
+        isValidEventLevelRange(data) &&
+        data.locationName is string &&
+        data.locationName.size() > 0 &&
+        data.locationName.size() <= 200 &&
+        isValidEventGeoPoint(data) &&
+        data.startsAt is timestamp &&
+        data.startsAt > request.time &&
+        data.capacity is int &&
+        data.capacity >= 2 &&
+        data.capacity <= 50 &&
+        data.participantsCount is int &&
+        data.participantsCount >= 1 &&
+        data.capacity >= data.participantsCount &&
+        data.updatedAt == request.time &&
+        data.status == 'active' &&
+        data.canceledAt == null;
+    }
+
+    function canDirectlyEditOwnEvent() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return isSignedIn() &&
+        resource.data.organizerId == request.auth.uid &&
+        resource.data.status == 'active' &&
+        resource.data.canceledAt == null &&
+        resource.data.startsAt is timestamp &&
+        resource.data.startsAt > request.time &&
+        changedKeys.hasOnly(directEventEditFields()) &&
+        isValidDirectEventEditData(request.resource.data);
+    }
+
     match /users/{userId} {
       allow create: if isAdmin() || canCreateOwnUser(userId);
       allow get, list: if canReadUserDocument(userId);
@@ -847,6 +955,7 @@ service cloud.firestore {
     match /events/{eventId} {
       allow list: if canListActiveEvent(resource.data);
       allow create: if false;
+      allow update: if canDirectlyEditOwnEvent();
     }
 
     match /users/{userId}/userWords/{wordId} {

@@ -104,7 +104,7 @@ Date: 2026-06-14
 
 - [x] Allow authorized users to read active event list data.
 - [x] Deny direct client event creates outside the trusted `createEvent` callable/Admin SDK path.
-- [ ] Allow only organizer to edit own event.
+- [x] Allow only organizer to edit own event.
 - [ ] Allow only organizer to cancel own event.
 - [ ] Deny organizer/client hard delete of active and canceled event documents.
 - [ ] Deny any client-created or client-updated `events.status` outside `active|canceled`.
