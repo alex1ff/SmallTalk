@@ -374,6 +374,116 @@ test("participant reads require auth and an active parent event", async () => {
   );
 });
 
+test("clients cannot directly create event participant documents", async () => {
+  const guest = testEnv.unauthenticatedContext();
+  const user = testEnv.authenticatedContext("user-new");
+  const organizer = testEnv.authenticatedContext("organizer");
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+
+  await assertFails(
+    guest.firestore()
+      .doc("events/editable-event/participants/guest-user")
+      .set(participantData({userId: "guest-user"})),
+  );
+  await assertFails(
+    user.firestore()
+      .doc("events/editable-event/participants/user-new")
+      .set(participantData({userId: "user-new"})),
+  );
+  await assertFails(
+    user.firestore()
+      .doc("events/editable-event/participants/other-user")
+      .set(participantData({userId: "other-user"})),
+  );
+  await assertFails(
+    organizer.firestore()
+      .doc("events/editable-event/participants/organizer-extra")
+      .set(participantData({
+        userId: "organizer-extra",
+        role: "organizer",
+      })),
+  );
+  await assertFails(
+    adminClient.firestore()
+      .doc("events/editable-event/participants/admin-user")
+      .set(participantData({userId: "admin-user"})),
+  );
+});
+
+test("clients cannot directly update or replace event participant documents", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+  const leftUser = testEnv.authenticatedContext("user-left");
+  const organizer = testEnv.authenticatedContext("organizer");
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+  const participantRef = user.firestore()
+    .doc("events/editable-event/participants/user-a");
+  const leftParticipantRef = leftUser.firestore()
+    .doc("events/editable-event/participants/user-left");
+
+  await assertFails(participantRef.update({
+    status: "left",
+    leftAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+  await assertFails(leftParticipantRef.update({
+    status: "active",
+    leftAt: null,
+    joinedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+  await assertFails(participantRef.set(participantData({
+    displayName: "Replaced User",
+  })));
+  await assertFails(participantRef.set({
+    photoUrl: null,
+  }, {merge: true}));
+  await assertFails(
+    organizer.firestore()
+      .doc("events/editable-event/participants/user-a")
+      .update({role: "organizer"}),
+  );
+  await assertFails(
+    adminClient.firestore()
+      .doc("events/editable-event/participants/user-a")
+      .update({displayName: "Admin Edited"}),
+  );
+});
+
+test("clients cannot directly delete event participant documents", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+  const leftUser = testEnv.authenticatedContext("user-left");
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+
+  await assertFails(
+    user.firestore().doc("events/editable-event/participants/user-a").delete(),
+  );
+  await assertFails(
+    leftUser.firestore()
+      .doc("events/editable-event/participants/user-left")
+      .delete(),
+  );
+  await assertFails(
+    adminClient.firestore()
+      .doc("events/editable-event/participants/user-a")
+      .delete(),
+  );
+});
+
+test("participant writes fail even when batched with allowed event edits", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const db = organizer.firestore();
+  const batch = db.batch();
+
+  batch.update(db.doc("events/editable-event"), directEditPatch());
+  batch.update(db.doc("events/editable-event/participants/user-a"), {
+    status: "left",
+    leftAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await assertFails(batch.commit());
+});
+
 test("clients cannot directly create event documents", async () => {
   const guest = testEnv.unauthenticatedContext();
   const user = testEnv.authenticatedContext("user-a");

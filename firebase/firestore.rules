@@ -1084,6 +1084,7 @@ service cloud.firestore {
         allow get: if canGetOwnEventParticipant(eventId, userId, resource.data) ||
           canGetEventParticipant(eventId, userId, resource.data);
         allow list: if canListActiveEventParticipants(eventId, resource.data);
+        allow create, update, delete: if false;
       }
     }
 
