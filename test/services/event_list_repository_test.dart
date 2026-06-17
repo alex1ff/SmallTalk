@@ -202,6 +202,194 @@ void main() {
         DateTime.parse('2026-03-09T04:00:00Z'),
       );
     });
+
+    test('filters event level ranges inclusively after raw fetch', () {
+      final filtered = EventListRepository.filterEventsBySelectedLevel(
+        [
+          eventFixture('a1-only', levelMin: 'A1', levelMax: 'A1'),
+          eventFixture('a2-b1', levelMin: 'A2', levelMax: 'B1'),
+          eventFixture('b2-c1', levelMin: 'B2', levelMax: 'C1'),
+          eventFixture('c2-only', levelMin: 'C2', levelMax: 'C2'),
+        ],
+        selectedRange: eventLevelRange(levelMin: ' b1 ', levelMax: ' b1 '),
+      );
+
+      expect(eventIds(filtered), ['a2-b1']);
+      expect(
+        eventLevelRange(levelMin: 'B1', levelMax: 'B2').overlaps(
+          eventLevelRange(levelMin: 'B2', levelMax: 'C1'),
+        ),
+        isTrue,
+      );
+    });
+
+    test('rejects invalid selected level filters', () {
+      expect(
+        () => EventListRepository.filterRawActiveEventPageByLevel(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+          selectedLevel: 'D1',
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('hides invalid event levels without failing the list', () {
+      final filtered = EventListRepository.filterEventsBySelectedLevel(
+        [
+          eventFixture('valid', levelMin: 'B1', levelMax: 'C1'),
+          eventFixture('unknown', levelMin: 'B1', levelMax: 'D1'),
+          eventFixture('reversed', levelMin: 'C1', levelMax: 'B1'),
+          eventFixture('missing-min', levelMax: 'C1'),
+        ],
+        selectedRange: eventLevelRange(levelMin: 'B2', levelMax: 'B2'),
+      );
+
+      expect(eventIds(filtered), ['valid']);
+    });
+
+    test('does not filter by levels when selected level is empty', () {
+      final rawEvents = [
+        eventFixture('valid', levelMin: 'B1', levelMax: 'C1'),
+        eventFixture('unknown', levelMin: 'B1', levelMax: 'D1'),
+        eventFixture('reversed', levelMin: 'C1', levelMax: 'B1'),
+        eventFixture('missing-min', levelMax: 'C1'),
+      ];
+
+      expect(
+        eventIds(EventListRepository.filterEventsBySelectedLevel(rawEvents)),
+        ['valid', 'unknown', 'reversed', 'missing-min'],
+      );
+      expect(
+        eventIds(
+          EventListRepository.filterRawActiveEventPageByLevel(
+            FFFirestorePage<EventsRecord>(rawEvents, null, null),
+            selectedLevel: ' ',
+          ).data,
+        ),
+        ['valid', 'unknown', 'reversed', 'missing-min'],
+      );
+      expect(
+        eventIds(
+          EventListRepository.filterRawActiveEventPageByLevel(
+            FFFirestorePage<EventsRecord>(rawEvents, null, null),
+          ).data,
+        ),
+        ['valid', 'unknown', 'reversed', 'missing-min'],
+      );
+    });
+
+    test('filters a raw page while preserving raw cursor and raw order', () {
+      final marker = _FakeQueryDocumentSnapshot();
+      final page = EventListRepository.filterRawActiveEventPageByLevel(
+        FFFirestorePage<EventsRecord>(
+          [
+            eventFixture('hidden-low', levelMin: 'A1', levelMax: 'A2'),
+            eventFixture('visible-first', levelMin: 'B1', levelMax: 'C1'),
+            eventFixture('invalid', levelMin: 'C2', levelMax: 'B1'),
+            eventFixture('visible-second', levelMin: 'B2', levelMax: 'B2'),
+          ],
+          null,
+          marker,
+        ),
+        selectedLevel: ' b2 ',
+      );
+
+      expect(eventIds(page.data), ['visible-first', 'visible-second']);
+      expect(page.nextPageMarker, same(marker));
+    });
+
+    test('loads one level-filtered page without adding level Firestore filters',
+        () async {
+      Query Function(Query)? capturedQueryBuilder;
+
+      final page = await EventListRepository.loadLevelFilteredActiveEventPage(
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+        pageSize: 5,
+        selectedLevel: 'C1',
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          capturedQueryBuilder = queryBuilder;
+          return FFFirestorePage<EventsRecord>(
+            [
+              eventFixture('hidden', levelMin: 'A1', levelMax: 'B2'),
+              eventFixture('visible', levelMin: 'B2', levelMax: 'C2'),
+            ],
+            null,
+            null,
+          );
+        },
+      );
+
+      expect(eventIds(page.data), ['visible']);
+      final query = capturedQueryBuilder!(EventsRecord.collection);
+      final where = query.parameters['where'] as List<dynamic>;
+      expect(where, hasLength(5));
+      expectWhereCondition(where, 'startsAt', '>=', lowerBoundUtc);
+      expectWhereCondition(where, 'startsAt', '<', upperBoundUtc);
+      expectNoWhereCondition(where, 'levelMin');
+      expectNoWhereCondition(where, 'levelMax');
+    });
+
+    test('combines date-range bounds and level filtering for one raw page',
+        () async {
+      Query Function(Query)? capturedQueryBuilder;
+
+      final page = await EventListRepository
+          .loadLevelFilteredActiveEventPageForDateRange(
+        countryCode: 'US',
+        cityKey: 'new_york',
+        timeZoneId: 'America/New_York',
+        localDateRange: eventListSingleLocalDateRange(DateTime(2026, 3, 8)),
+        nowUtc: DateTime.parse('2026-03-01T00:00:00Z'),
+        pageSize: 5,
+        selectedLevel: 'B2',
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          capturedQueryBuilder = queryBuilder;
+          return FFFirestorePage<EventsRecord>(
+            [
+              eventFixture('visible', levelMin: 'B1', levelMax: 'C1'),
+              eventFixture('hidden', levelMin: 'C2', levelMax: 'C2'),
+            ],
+            null,
+            null,
+          );
+        },
+      );
+
+      expect(eventIds(page.data), ['visible']);
+      final query = capturedQueryBuilder!(EventsRecord.collection);
+      final where = query.parameters['where'] as List<dynamic>;
+      expectWhereCondition(
+        where,
+        'startsAt',
+        '>=',
+        DateTime.parse('2026-03-08T05:00:00Z'),
+      );
+      expectWhereCondition(
+        where,
+        'startsAt',
+        '<',
+        DateTime.parse('2026-03-09T04:00:00Z'),
+      );
+      expectNoWhereCondition(where, 'levelMin');
+      expectNoWhereCondition(where, 'levelMax');
+    });
   });
 }
 
@@ -228,12 +416,69 @@ void expectWhereCondition(
   );
 }
 
+void expectNoWhereCondition(List<dynamic> conditions, String field) {
+  final expectedField = FieldPath.fromString(field);
+  final hasCondition = conditions.any(
+    (condition) =>
+        condition is List<dynamic> &&
+        condition.isNotEmpty &&
+        condition[0] == expectedField,
+  );
+
+  expect(
+    hasCondition,
+    isFalse,
+    reason: 'Expected no where($field ...).',
+  );
+}
+
+EventsRecord eventFixture(
+  String id, {
+  String? levelMin,
+  String? levelMax,
+}) {
+  return EventsRecord.getDocumentFromData(
+    {
+      if (levelMin != null) 'levelMin': levelMin,
+      if (levelMax != null) 'levelMax': levelMax,
+    },
+    EventsRecord.collection.doc(id),
+  );
+}
+
+List<String> eventIds(Iterable<EventsRecord> events) =>
+    events.map((event) => event.reference.id).toList(growable: false);
+
 // Test-only cursor token used to verify that the injected page loader receives
 // the exact marker instance. It is never passed to the real Firestore SDK.
 // ignore: subtype_of_sealed_class
 class _FakeDocumentSnapshot implements DocumentSnapshot<Object?> {
   @override
   String get id => 'cursor';
+
+  @override
+  bool get exists => true;
+
+  @override
+  SnapshotMetadata get metadata => throw UnimplementedError();
+
+  @override
+  DocumentReference<Object?> get reference => throw UnimplementedError();
+
+  @override
+  Object? data() => const <String, Object?>{};
+
+  @override
+  Object? get(Object field) => throw UnimplementedError();
+
+  @override
+  Object? operator [](Object field) => get(field);
+}
+
+// ignore: subtype_of_sealed_class
+class _FakeQueryDocumentSnapshot implements QueryDocumentSnapshot<Object?> {
+  @override
+  String get id => 'query-cursor';
 
   @override
   bool get exists => true;
