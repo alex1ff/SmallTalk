@@ -152,7 +152,7 @@ Date: 2026-06-14
 - [x] Add manual city search normalization that resolves aliases/transliterations to canonical city records.
 - [x] Add ambiguous city search handling that shows all matching city options with `displayContext`.
 - [x] Add fallback selected city state when profile location is missing.
-- [ ] Ensure temporary Events city selection does not write `users.profileCity` unless the user explicitly saves/fills profile location.
+- [x] Ensure temporary Events city selection does not write `users.profileCity` unless the user explicitly saves/fills profile location.
 - [ ] Keep `users.Country_NS`, top-level country fields, `users.preferences.preferredLocation`, and `userPublicProfiles.Country_NS` separate from Events profile city identity.
 - [ ] Add event language helper backed by existing `assets/jsons/languages_catalog.json`.
 - [ ] Add helper to resolve exact primary `languageCode` by trimmed, case-insensitive primary code or `alternateCodes`.

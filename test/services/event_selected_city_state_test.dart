@@ -197,6 +197,39 @@ void main() {
       expect(state.canLoadEvents, isTrue);
     });
 
+    test('temporary selection is not persisted as profile city', () {
+      final user = userFixture(
+        data: {
+          'uid': 'uid-temporary-not-saved',
+          'Country_NS': {'code': 'US'},
+        },
+      );
+
+      final temporaryState = resolveEventSelectedCityState(
+        user: user,
+        catalog: catalog,
+        temporarySelection: const EventSelectedCityInput(
+          countryCode: 'US',
+          cityKey: 'new_york',
+          source: EventCitySelectionSource.manual,
+        ),
+      );
+      final nextState = resolveEventSelectedCityState(
+        user: user,
+        catalog: catalog,
+      );
+
+      expect(temporaryState.canLoadEvents, isTrue);
+      expect(temporaryState.selected?.city.identity, 'US:new_york');
+      expect(temporaryState.selectedTemporarily, isTrue);
+      expect(user.hasProfileCity(), isFalse);
+      expect(nextState.profileStatus,
+          EventCityResolutionStatus.missingProfileCity);
+      expect(nextState.countryCodeHint, 'US');
+      expect(nextState.selected, isNull);
+      expect(nextState.canLoadEvents, isFalse);
+    });
+
     test('manual temporary selection overrides a valid profile city', () {
       final user = userFixture(
         data: {

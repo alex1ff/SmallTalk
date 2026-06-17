@@ -3,6 +3,9 @@ import 'event_city_catalog.dart';
 import 'event_city_resolution.dart';
 import 'event_city_selection_source.dart';
 
+/// Session-only city selection for Events browsing.
+///
+/// Persisting a profile city must go through ProfileCitySaveService.
 class EventSelectedCityInput {
   const EventSelectedCityInput({
     required this.countryCode,

@@ -100,5 +100,36 @@ void main() {
       );
       expect(data['profileCity.updatedAt'], same(serverTimestamp));
     });
+
+    test('does not write profileCity from country or preference updates', () {
+      final countryData = createUsersRecordData(
+        countryNS: createCountryStruct(
+          code: 'US',
+          clearUnsetFields: false,
+        ),
+      );
+      final preferenceData = createUsersRecordData(
+        preferences: createPreferencesStruct(
+          preferredLocation: createCountryStruct(
+            code: 'IT',
+            clearUnsetFields: false,
+          ),
+          clearUnsetFields: false,
+        ),
+      );
+
+      expect(countryData['Country_NS.code'], 'US');
+      expect(preferenceData['preferences.preferredLocation.code'], 'IT');
+      expectNoProfileCityWrite(countryData);
+      expectNoProfileCityWrite(preferenceData);
+    });
   });
+}
+
+void expectNoProfileCityWrite(Map<String, dynamic> data) {
+  expect(
+    data.keys
+        .where((key) => key == 'profileCity' || key.startsWith('profileCity.')),
+    isEmpty,
+  );
 }
