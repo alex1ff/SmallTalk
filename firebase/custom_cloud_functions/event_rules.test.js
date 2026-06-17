@@ -800,6 +800,32 @@ test("canceled event chat messages cannot be listed or queried", async () => {
   }
 });
 
+test("event chat messages cannot be read through collection group queries", async () => {
+  const contexts = [
+    testEnv.authenticatedContext("user-a"),
+    testEnv.authenticatedContext("organizer"),
+    testEnv.authenticatedContext("admin-user", {admin: true}),
+  ];
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("eventChats/editable-event/messages/message-1")
+      .set(eventChatMessageData());
+    await db.doc("eventChats/canceled-editable-event/messages/message-1")
+      .set(eventChatMessageData());
+  });
+
+  for (const context of contexts) {
+    const db = context.firestore();
+    await assertFails(db.collectionGroup("messages").get());
+    await assertFails(
+      db.collectionGroup("messages")
+        .where("senderId", "==", "user-a")
+        .get(),
+    );
+  }
+});
+
 test("canceled event chat message reads fail closed for invalid parent state", async () => {
   const user = testEnv.authenticatedContext("user-a");
   const messagePaths = [
