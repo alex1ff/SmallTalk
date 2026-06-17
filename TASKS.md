@@ -132,7 +132,7 @@ Date: 2026-06-14
 - [x] Add event participant model matching the `events/{eventId}/participants/{userId}` field contract with `active|left` membership status and immutable role.
 - [x] Add event chat metadata model matching the `eventChats/{chatId}` contract and event chat message model matching `eventChats/{chatId}/messages/{messageId}`, or reuse existing chat model only if it matches the contract exactly.
 - [x] Add `users.profileCity` model/struct with `countryCode`, `cityKey`, catalog-derived localized display fields, catalog-derived region fields, `catalogVersion`, and server-time `updatedAt`.
-- [ ] Add static curated city catalog with `countryCode`, `cityKey`, localized names, region metadata required for duplicate-name disambiguation, IANA `timeZoneId`, aliases/transliterations, country/region display context, and priority.
+- [x] Add static curated city catalog with `countryCode`, `cityKey`, localized names, region metadata required for duplicate-name disambiguation, IANA `timeZoneId`, aliases/transliterations, country/region display context, and priority.
 - [ ] Add event repository/service for list queries.
 - [ ] Add the `events` composite index to `firebase/firestore.indexes.json`: `status ASC`, `countryCode ASC`, `cityKey ASC`, `startsAt ASC`.
 - [ ] Implement event list query exactly as `status == active`, `countryCode == selectedCountryCode`, `cityKey == selectedCityKey`, `startsAt >= lowerBoundUtc`, `startsAt < upperBoundUtc`, `orderBy startsAt ASC`.
