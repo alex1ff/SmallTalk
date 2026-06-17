@@ -101,11 +101,13 @@ class _TabShellPageState extends State<TabShellPage> {
   List<String> get _tabPathsOrdered => _usesNativeSpeakerShell
       ? [
           DashboardNSWidget.routePath,
+          EventListWidget.routePath,
           FavoriteWidget.routePath,
           ProfileWidget.routePath,
         ]
       : [
           StudentsDashboardWidget.routePath,
+          EventListWidget.routePath,
           WordsWidget.routePath,
           FavoriteWidget.routePath,
           ProfileWidget.routePath,

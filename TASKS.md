@@ -161,8 +161,8 @@ Date: 2026-06-14
 
 ## Phase 5: Navigation
 
-- [ ] Add `События` item to bottom navigation.
-- [ ] Add route for event list.
+- [x] Add `События` item to bottom navigation.
+- [x] Add route for event list.
 - [ ] Add route for event detail.
 - [ ] Add route for event create.
 - [ ] Add route for event edit.

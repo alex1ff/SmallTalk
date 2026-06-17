@@ -43,3 +43,4 @@ export '/teachers_pages/my_rew_n_s/my_rew_n_s_widget.dart' show MyRewNSWidget;
 export '/students_pages/favorite/favorite_widget.dart' show FavoriteWidget;
 export '/students_pages/flashcard/flashcard_widget.dart' show FlashcardWidget;
 export '/shared_pages/my_calls/my_calls_widget.dart' show MyCallsWidget;
+export '/shared_pages/events/event_list_widget.dart' show EventListWidget;

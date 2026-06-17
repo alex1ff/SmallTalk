@@ -49,7 +49,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
   bool get _hasActiveSelection => widget.indexCurrentPage != null;
 
   int get _selectedIndex {
-    final maxIndex = _usesNativeSpeakerShell ? 2 : 3;
+    final maxIndex = _usesNativeSpeakerShell ? 3 : 4;
     return widget.indexCurrentPage!.clamp(0, maxIndex).toInt();
   }
 
@@ -65,6 +65,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           label: FFLocalizations.of(context).getVariableText(
             ruText: 'Главная',
             enText: 'Home',
+          ),
+        ),
+        _NavBarDestination(
+          icon: FFIcons.kcalendar,
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'События',
+            enText: 'Events',
           ),
         ),
         _NavBarDestination(
@@ -90,6 +97,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         label: FFLocalizations.of(context).getVariableText(
           ruText: 'Главная',
           enText: 'Home',
+        ),
+      ),
+      _NavBarDestination(
+        icon: FFIcons.kcalendar,
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'События',
+          enText: 'Events',
         ),
       ),
       _NavBarDestination(
@@ -136,11 +150,17 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       case 1:
         if (_isCurrentTab(1)) return;
         context.goNamed(
-          FavoriteWidget.routeName,
+          EventListWidget.routeName,
         );
         return;
       case 2:
         if (_isCurrentTab(2)) return;
+        context.goNamed(
+          FavoriteWidget.routeName,
+        );
+        return;
+      case 3:
+        if (_isCurrentTab(3)) return;
         context.goNamed(
           ProfileWidget.routeName,
         );
@@ -162,17 +182,23 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       case 1:
         if (_isCurrentTab(1)) return;
         context.goNamed(
-          WordsWidget.routeName,
+          EventListWidget.routeName,
         );
         return;
       case 2:
         if (_isCurrentTab(2)) return;
         context.goNamed(
-          FavoriteWidget.routeName,
+          WordsWidget.routeName,
         );
         return;
       case 3:
         if (_isCurrentTab(3)) return;
+        context.goNamed(
+          FavoriteWidget.routeName,
+        );
+        return;
+      case 4:
+        if (_isCurrentTab(4)) return;
         context.goNamed(
           ProfileWidget.routeName,
         );
