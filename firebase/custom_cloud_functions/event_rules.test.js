@@ -101,6 +101,18 @@ function eventChatData(overrides = {}) {
   };
 }
 
+function eventChatMessageData(overrides = {}) {
+  return {
+    senderId: "user-a",
+    senderDisplayName: "User A",
+    senderPhotoUrl: "https://cdn.example.com/user-a.jpg",
+    text: "Hello",
+    createdAt: new Date("2026-06-14T10:00:00.000Z"),
+    deletedAt: null,
+    ...overrides,
+  };
+}
+
 function participantData(overrides = {}) {
   return {
     userId: "user-a",
@@ -562,19 +574,41 @@ test("event chat message paths are not opened by metadata or admin fallback rule
   const messagePath = "eventChats/editable-event/messages/message-1";
 
   await testEnv.withSecurityRulesDisabled(async (context) => {
-    await context.firestore().doc(messagePath).set({
-      senderId: "user-a",
-      senderDisplayName: "User A",
-      senderPhotoUrl: "https://cdn.example.com/user-a.jpg",
-      text: "Hello",
-      createdAt: new Date("2026-06-14T10:00:00.000Z"),
-      deletedAt: null,
-    });
+    await context.firestore().doc(messagePath).set(eventChatMessageData());
   });
 
   await assertFails(participant.firestore().doc(messagePath).get());
   await assertFails(nonparticipant.firestore().doc(messagePath).get());
   await assertFails(adminClient.firestore().doc(messagePath).get());
+});
+
+test("clients cannot directly write event chat message documents", async () => {
+  const contexts = [
+    testEnv.unauthenticatedContext(),
+    testEnv.authenticatedContext("user-a"),
+    testEnv.authenticatedContext("organizer"),
+    testEnv.authenticatedContext("other-user"),
+    testEnv.authenticatedContext("admin-user", {admin: true}),
+  ];
+  const existingMessagePath = "eventChats/editable-event/messages/existing";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore()
+      .doc(existingMessagePath)
+      .set(eventChatMessageData());
+  });
+
+  for (const [index, context] of contexts.entries()) {
+    const db = context.firestore();
+    await assertFails(
+      db.doc(`eventChats/editable-event/messages/direct-create-${index}`)
+        .set(eventChatMessageData()),
+    );
+    await assertFails(db.doc(existingMessagePath).update({
+      text: "Edited",
+    }));
+    await assertFails(db.doc(existingMessagePath).delete());
+  }
 });
 
 test("active event chat metadata reads fail closed for invalid state", async () => {
