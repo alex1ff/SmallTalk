@@ -196,7 +196,7 @@ void main() {
           'uid': 'uid-2',
           'Country_NS': {'code': 'RU'},
           'preferences': {
-            'preferredLocation': {'code': 'US'},
+            'preferredLocation': {'code': 'IT'},
           },
           'countryCode': 'IT',
           'cityKey': 'rome',
@@ -216,6 +216,7 @@ void main() {
       expect(result.status, EventCityResolutionStatus.resolved);
       expect(result.city?.countryCode, 'US');
       expect(result.city?.cityKey, 'new_york');
+      expect(resolveEventCityCountryCodeHintFromUserProfile(user: user), 'RU');
     });
   });
 
@@ -289,7 +290,7 @@ void main() {
     });
 
     test('does not use preferredLocation as a country hint', () {
-      final user = userFixture(
+      final preferredOnlyUser = userFixture(
         data: {
           'uid': 'uid-preferred-location-only',
           'preferences': {
@@ -297,12 +298,46 @@ void main() {
           },
         },
       );
+      final malformedCountryUser = userFixture(
+        data: {
+          'uid': 'uid-preferred-location-with-malformed-country',
+          'Country_NS': <String, dynamic>{},
+          'preferences': {
+            'preferredLocation': {'code': 'US'},
+          },
+        },
+      );
+      final conflictingCountryUser = userFixture(
+        data: {
+          'uid': 'uid-preferred-location-with-country',
+          'Country_NS': {'code': 'RU'},
+          'preferences': {
+            'preferredLocation': {'code': 'US'},
+          },
+        },
+      );
 
       expect(
-          resolveEventCityCountryCodeHintFromUserProfile(user: user), isNull);
+        resolveEventCityCountryCodeHintFromUserProfile(
+          user: preferredOnlyUser,
+        ),
+        isNull,
+      );
+      expect(
+        resolveEventCityCountryCodeHintFromUserProfile(
+          user: malformedCountryUser,
+        ),
+        isNull,
+      );
+      expect(
+        resolveEventCityCountryCodeHintFromUserProfile(
+          user: conflictingCountryUser,
+        ),
+        'RU',
+      );
       expect(
         resolveSelectedEventCityFromUserProfile(
-          user: user,
+          user: preferredOnlyUser,
           catalog: catalog,
         ).status,
         EventCityResolutionStatus.missingProfileCity,
