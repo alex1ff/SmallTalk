@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_chip_source.dart';
+import 'package:small_talk/services/event_city_selection_source.dart';
 
 void main() {
   late EventCityCatalog catalog;

@@ -3,15 +3,9 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'event_city_catalog.dart';
+import 'event_city_selection_source.dart';
 
 const eventRecentCitySelectionsPrefsKey = 'ff_events_recent_city_selections_v1';
-
-enum EventCitySelectionSource {
-  profile,
-  recent,
-  static,
-  manual,
-}
 
 class EventCityChip {
   const EventCityChip({
