@@ -288,6 +288,12 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             builder: (context, params) => ProfileEditWidget(),
           ),
           FFRoute(
+            name: EventCreateWidget.routeName,
+            path: EventCreateWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => EventCreateWidget(),
+          ),
+          FFRoute(
             name: EventDetailWidget.routeName,
             path: EventDetailWidget.routePath,
             requireAuth: true,

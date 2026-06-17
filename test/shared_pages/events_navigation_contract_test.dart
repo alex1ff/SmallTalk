@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/auth/base_auth_user_provider.dart';
 import 'package:small_talk/components/nav_bar_widget.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
+import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/shared_pages/events/event_list_widget.dart';
 
@@ -28,6 +29,11 @@ void main() {
   test('event detail route exposes the canonical deep link route', () {
     expect(EventDetailWidget.routeName, 'eventDetail');
     expect(EventDetailWidget.routePath, '/events/:eventId');
+  });
+
+  test('event create route exposes the canonical create route', () {
+    expect(EventCreateWidget.routeName, 'eventCreate');
+    expect(EventCreateWidget.routePath, '/events/create');
   });
 
   test('bottom navigation exposes events between home and existing tabs', () {
@@ -94,14 +100,32 @@ void main() {
       router,
       contains(
         RegExp(
+          r'FFRoute\([\s\S]*name: EventCreateWidget\.routeName,[\s\S]*path: EventCreateWidget\.routePath,[\s\S]*requireAuth: true',
+        ),
+      ),
+    );
+    expect(
+      router,
+      contains(
+        RegExp(
           r'FFRoute\([\s\S]*name: EventDetailWidget\.routeName,[\s\S]*path: EventDetailWidget\.routePath,[\s\S]*requireAuth: true,[\s\S]*eventId[\s\S]*ParamType\.String',
         ),
       ),
     );
     expect(
+      router.indexOf('name: EventCreateWidget.routeName'),
+      lessThan(router.indexOf('name: EventDetailWidget.routeName')),
+    );
+    expect(
       router.indexOf('name: EventDetailWidget.routeName'),
       lessThan(router.indexOf('ShellRoute(')),
     );
+    expect(
+      router.indexOf('name: EventCreateWidget.routeName'),
+      lessThan(router.indexOf('ShellRoute(')),
+    );
+    expect(index,
+        contains("export '/shared_pages/events/event_create_widget.dart'"));
     expect(index,
         contains("export '/shared_pages/events/event_detail_widget.dart'"));
   });
@@ -117,24 +141,56 @@ void main() {
     expect(detail, isNot(contains('EventsRecord')));
   });
 
-  testWidgets('router opens event detail path outside the tab shell',
+  test('event create screen stays a route placeholder for Phase 5', () {
+    final create = File('lib/shared_pages/events/event_create_widget.dart')
+        .readAsStringSync();
+
+    expect(create, contains('Создать событие'));
+    expect(create, contains('Create event'));
+    expect(create, isNot(contains('EventActionsRepository')));
+    expect(create, isNot(contains('EventEditableFields')));
+    expect(create, isNot(contains('createRequestId')));
+    expect(create, isNot(contains('newEventCreateRequestId')));
+    expect(create, isNot(contains('.createEvent(')));
+  });
+
+  testWidgets('event create route redirects signed-out users to onboarding',
       (tester) async {
     final notifier = AppStateNotifier.instance;
     notifier.initialUser = null;
     notifier.clearRedirectLocation();
     notifier.showSplashImage = true;
 
-    final user = _TestAuthUser(userId: 'events-user');
+    final user = _TestAuthUser(userId: null, isLoggedIn: false);
     currentUser = user;
     notifier.update(user);
     notifier.stopShowingSplashImage();
 
     final router = createRouter(notifier);
-    router.go('/events/event-123');
+    router.go('/events/create');
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+
+    expect(router.getCurrentLocation(), '/onboarding');
+    expect(notifier.hasRedirect(), isTrue);
+    expect(notifier.getRedirectLocation(), '/events/create');
+  });
+
+  testWidgets('router opens event create path before dynamic detail route',
+      (tester) async {
+    final router = await _pumpEventsRouter(tester, '/events/create');
+
+    expect(router.getCurrentLocation(), '/events/create');
+    expect(find.byType(EventCreateWidget), findsOneWidget);
+    expect(find.byType(EventDetailWidget), findsNothing);
+    expect(find.byType(NavBarWidget), findsNothing);
+  });
+
+  testWidgets('router opens event detail path outside the tab shell',
+      (tester) async {
+    final router = await _pumpEventsRouter(tester, '/events/event-123');
 
     expect(router.getCurrentLocation(), '/events/event-123');
     expect(find.byType(EventDetailWidget), findsOneWidget);
@@ -143,13 +199,41 @@ void main() {
   });
 }
 
-class _TestAuthUser extends BaseAuthUser {
-  _TestAuthUser({required this.userId});
+Future<GoRouter> _pumpEventsRouter(
+  WidgetTester tester,
+  String location,
+) async {
+  final notifier = AppStateNotifier.instance;
+  notifier.initialUser = null;
+  notifier.clearRedirectLocation();
+  notifier.showSplashImage = true;
 
-  final String userId;
+  final user = _TestAuthUser(userId: 'events-user');
+  currentUser = user;
+  notifier.update(user);
+  notifier.stopShowingSplashImage();
+
+  final router = createRouter(notifier);
+  router.go(location);
+
+  await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+
+  return router;
+}
+
+class _TestAuthUser extends BaseAuthUser {
+  _TestAuthUser({
+    required this.userId,
+    this.isLoggedIn = true,
+  });
+
+  final String? userId;
+  final bool isLoggedIn;
 
   @override
-  bool get loggedIn => true;
+  bool get loggedIn => isLoggedIn;
 
   @override
   bool get emailVerified => true;
