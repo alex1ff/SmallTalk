@@ -1414,6 +1414,41 @@ test("clients cannot directly cancel event documents", async () => {
   );
 });
 
+test("clients cannot directly write event chat metadata documents", async () => {
+  const actors = [
+    {name: "guest", context: testEnv.unauthenticatedContext()},
+    {name: "participant", context: testEnv.authenticatedContext("user-a")},
+    {name: "organizer", context: testEnv.authenticatedContext("organizer")},
+    {
+      name: "admin",
+      context: testEnv.authenticatedContext("admin-user", {admin: true}),
+    },
+  ];
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    for (const {name} of actors) {
+      await db.doc(`events/direct-create-chat-${name}`).set(eventData({
+        chatId: `direct-create-chat-${name}`,
+      }));
+    }
+  });
+
+  for (const {name, context} of actors) {
+    const db = context.firestore();
+    const createPath = `eventChats/direct-create-chat-${name}`;
+
+    await assertFails(db.doc(createPath).set(eventChatData({
+      eventId: `direct-create-chat-${name}`,
+    })));
+    await assertFails(db.doc("eventChats/editable-event").update({
+      readAccessUserIds: ["organizer", "user-a", "other-user"],
+      updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }));
+    await assertFails(db.doc("eventChats/editable-event").delete());
+  }
+});
+
 test("client cancel cannot be paired with event chat access snapshot writes", async () => {
   const organizer = testEnv.authenticatedContext("organizer");
   const db = organizer.firestore();
