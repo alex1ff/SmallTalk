@@ -82,11 +82,11 @@ Date: 2026-06-14
 - [x] Block duplicate join.
 - [x] Allow rejoin after leave before `startsAt` only when event is active, future, and not full, reusing the same participant document.
 - [x] Block join for full, canceled, past by `startsAt`, or missing events.
-- [ ] Implement transaction-safe leave.
-- [ ] Block leave at or after `startsAt` without changing occupancy or chat access.
-- [ ] Block organizer from leaving through participant leave flow.
-- [ ] Mark participant membership as `status = left` on leave, set `leftAt` to trusted server/request time, and do not delete the participant document in MVP.
-- [ ] Update chat access after join and leave.
+- [x] Implement transaction-safe leave.
+- [x] Block leave at or after `startsAt` without changing occupancy or chat access.
+- [x] Block organizer from leaving through participant leave flow.
+- [x] Mark participant membership as `status = left` on leave, set `leftAt` to trusted server/request time, and do not delete the participant document in MVP.
+- [x] Update chat access after join and leave.
 - [x] Implement organizer-only event edit.
 - [x] Block capacity reduction below active participant count.
 - [x] Implement organizer-only event cancel.

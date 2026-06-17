@@ -1,0 +1,605 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+
+const {
+  __private__: {
+    executeLeaveEventTransaction,
+    normalizeLeaveEventPayload,
+  },
+} = require("./leave_event");
+
+const fixedNow = new Date("2026-06-16T10:00:00.000Z");
+const oldDate = new Date("2026-06-15T10:00:00.000Z");
+const fixedTimestamp = {
+  toMillis: () => fixedNow.getTime(),
+  toDate: () => fixedNow,
+};
+const oldTimestamp = {
+  toMillis: () => oldDate.getTime(),
+  toDate: () => oldDate,
+};
+const futureStartsAt = {
+  toMillis: () => Date.parse("2026-06-20T15:00:00.000Z"),
+  toDate: () => new Date("2026-06-20T15:00:00.000Z"),
+};
+const pastStartsAt = {
+  toMillis: () => Date.parse("2026-06-16T09:00:00.000Z"),
+  toDate: () => new Date("2026-06-16T09:00:00.000Z"),
+};
+const equalStartsAt = {
+  toMillis: () => fixedNow.getTime(),
+  toDate: () => fixedNow,
+};
+
+function assertHttpsError(fn, code, domainCode, field, reason) {
+  assert.throws(fn, (err) => {
+    assert.equal(err.code, code);
+    assert.equal(err.details?.domainCode, domainCode);
+    if (field) {
+      assert.equal(err.details?.field, field);
+    }
+    if (reason) {
+      assert.equal(err.details?.reason, reason);
+    }
+    return true;
+  });
+}
+
+async function assertRejectsHttpsError(promiseFactory, code, domainCode) {
+  await assert.rejects(promiseFactory, (err) => {
+    assert.equal(err.code, code);
+    assert.equal(err.details?.domainCode, domainCode);
+    return true;
+  });
+}
+
+function createFakeFirestore(seed = {}, options = {}) {
+  const store = new Map(Object.entries(seed));
+  const reads = [];
+  const writes = [];
+  let attempts = 0;
+
+  const makeRef = (path) => ({
+    path,
+    id: path.split("/").pop(),
+    collection(name) {
+      return makeCollection(`${path}/${name}`);
+    },
+    async get() {
+      const data = store.get(path);
+      return {
+        exists: data !== undefined,
+        data: () => data,
+        ref: makeRef(path),
+      };
+    },
+  });
+
+  const makeQuery = (collectionPath, filters) => ({
+    path: `${collectionPath}?${filters
+        .map((filter) => `${filter.field}${filter.op}${filter.value}`)
+        .join("&")}`,
+    async get() {
+      const docs = [];
+      const prefix = `${collectionPath}/`;
+      for (const [path, data] of store.entries()) {
+        if (!path.startsWith(prefix)) {
+          continue;
+        }
+        const remainder = path.slice(prefix.length);
+        if (!remainder || remainder.includes("/")) {
+          continue;
+        }
+        const matches = filters.every((filter) => (
+          filter.op === "==" && data?.[filter.field] === filter.value
+        ));
+        if (matches) {
+          docs.push({
+            id: remainder,
+            exists: true,
+            data: () => data,
+            ref: makeRef(path),
+          });
+        }
+      }
+      docs.sort((left, right) => left.id.localeCompare(right.id));
+      return {docs};
+    },
+  });
+
+  const makeCollection = (path) => ({
+    doc(id) {
+      return makeRef(`${path}/${id}`);
+    },
+    where(field, op, value) {
+      return makeQuery(path, [{field, op, value}]);
+    },
+  });
+
+  const db = {
+    collection(name) {
+      return makeCollection(name);
+    },
+    async runTransaction(callback) {
+      while (true) {
+        let hasWrites = false;
+        const pendingWrites = [];
+        const tx = {
+          async get(refOrQuery) {
+            if (hasWrites) {
+              throw new Error("Firestore transactions require reads first");
+            }
+            reads.push(refOrQuery.path);
+            return refOrQuery.get();
+          },
+          update(ref, data) {
+            hasWrites = true;
+            if (!store.has(ref.path)) {
+              throw new Error(`Document does not exist: ${ref.path}`);
+            }
+            pendingWrites.push({type: "update", path: ref.path, data});
+          },
+        };
+        attempts += 1;
+        const result = await callback(tx);
+        if (attempts <= (options.retryBeforeCommitCount || 0)) {
+          continue;
+        }
+        for (const write of pendingWrites) {
+          writes.push(write);
+          store.set(write.path, {...store.get(write.path), ...write.data});
+        }
+        return result;
+      }
+    },
+  };
+
+  return {db, reads, store, writes, get attempts() {
+    return attempts;
+  }};
+}
+
+function activeEvent(overrides = {}) {
+  return {
+    organizerId: "organizer",
+    chatId: "event-1",
+    status: "active",
+    canceledAt: null,
+    startsAt: futureStartsAt,
+    participantsCount: 2,
+    capacity: 3,
+    updatedAt: oldTimestamp,
+    ...overrides,
+  };
+}
+
+function eventChat(overrides = {}) {
+  return {
+    eventId: "event-1",
+    readAccessUserIds: ["organizer", "uid"],
+    createdAt: oldTimestamp,
+    updatedAt: oldTimestamp,
+    ...overrides,
+  };
+}
+
+function organizerParticipant(overrides = {}) {
+  return {
+    userId: "organizer",
+    displayName: "Анастасия",
+    photoUrl: null,
+    role: "organizer",
+    status: "active",
+    joinedAt: oldTimestamp,
+    leftAt: null,
+    createdAt: oldTimestamp,
+    updatedAt: oldTimestamp,
+    ...overrides,
+  };
+}
+
+function participant(overrides = {}) {
+  return {
+    userId: "uid",
+    displayName: "Марко",
+    photoUrl: null,
+    role: "participant",
+    status: "active",
+    joinedAt: oldTimestamp,
+    leftAt: null,
+    createdAt: oldTimestamp,
+    updatedAt: oldTimestamp,
+    ...overrides,
+  };
+}
+
+function counterData() {
+  return {
+    userId: "organizer",
+    dayKeyUtc: "2026-06-16",
+    count: 1,
+    eventIds: ["event-1"],
+    requestEventIds: {request1: "event-1"},
+    requestPayloadHashes: {request1: "a".repeat(64)},
+    windowStartAt: oldTimestamp,
+    windowEndAt: oldTimestamp,
+    createdAt: oldTimestamp,
+    updatedAt: oldTimestamp,
+  };
+}
+
+function validLeaveSeed(overrides = {}) {
+  return {
+    "events/event-1": activeEvent(overrides.event),
+    "eventChats/event-1": eventChat(overrides.chat),
+    "events/event-1/participants/organizer": organizerParticipant(
+        overrides.organizer,
+    ),
+    "events/event-1/participants/uid": participant(overrides.participant),
+  };
+}
+
+function fixedLeaveTime() {
+  return {
+    leaveDate: fixedNow,
+    leaveTimestamp: fixedTimestamp,
+  };
+}
+
+function executeLeave(params) {
+  return executeLeaveEventTransaction({
+    ...params,
+    getLeaveTime: params.getLeaveTime || fixedLeaveTime,
+  });
+}
+
+test("normalizeLeaveEventPayload rejects unknown and missing keys", () => {
+  assertHttpsError(
+      () => normalizeLeaveEventPayload({eventId: "event-1", leftAt: "now"}),
+      "invalid-argument",
+      "invalid_leave_request",
+      "leftAt",
+      "unknown_key",
+  );
+  assertHttpsError(
+      () => normalizeLeaveEventPayload({}),
+      "invalid-argument",
+      "invalid_leave_request",
+      "eventId",
+      "missing",
+  );
+  assertHttpsError(
+      () => normalizeLeaveEventPayload({eventId: "events/event-1"}),
+      "invalid-argument",
+      "invalid_leave_request",
+      "eventId",
+      "invalid_format",
+  );
+});
+
+test("executeLeaveEventTransaction marks participant left", async () => {
+  const counterBefore = counterData();
+  const {db, reads, store, writes} = createFakeFirestore({
+    ...validLeaveSeed(),
+    "eventCreationCounters/organizer/days/20260616": counterBefore,
+  });
+
+  const response = await executeLeave({
+    db,
+    uid: "uid",
+    leaveDate: fixedNow,
+    leaveTimestamp: fixedTimestamp,
+    payload: {eventId: "event-1"},
+  });
+  const membership = store.get("events/event-1/participants/uid");
+
+  assert.deepEqual(response, {
+    eventId: "event-1",
+    participantStatus: "left",
+    participantsCount: 1,
+    leftAt: "2026-06-16T10:00:00.000Z",
+  });
+  assert.equal(store.get("events/event-1").participantsCount, 1);
+  assert.equal(store.get("events/event-1").updatedAt, fixedTimestamp);
+  assert.equal(membership.status, "left");
+  assert.equal(membership.leftAt, fixedTimestamp);
+  assert.equal(membership.updatedAt, fixedTimestamp);
+  assert.equal(membership.role, "participant");
+  assert.equal(membership.createdAt, oldTimestamp);
+  assert.equal(membership.joinedAt, oldTimestamp);
+  assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+    "organizer",
+  ]);
+  assert.strictEqual(
+      store.get("eventCreationCounters/organizer/days/20260616"),
+      counterBefore,
+  );
+  assert.deepEqual(reads, [
+    "events/event-1",
+    "events/event-1/participants/uid",
+    "events/event-1/participants/organizer",
+    "eventChats/event-1",
+    "events/event-1/participants?status==active",
+  ]);
+  assert.deepEqual(
+      writes.map((write) => `${write.type}:${write.path}`),
+      [
+        "update:events/event-1",
+        "update:events/event-1/participants/uid",
+        "update:eventChats/event-1",
+      ],
+  );
+});
+
+test("executeLeaveEventTransaction blocks leave at or after startsAt", async () => {
+  for (const startsAt of [pastStartsAt, equalStartsAt]) {
+    const {db, store, writes} = createFakeFirestore(
+        validLeaveSeed({event: {startsAt}}),
+    );
+
+    await assertRejectsHttpsError(
+        () => executeLeave({
+          db,
+          uid: "uid",
+          leaveDate: fixedNow,
+          leaveTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "event_not_leaveable",
+    );
+    assert.equal(store.get("events/event-1").participantsCount, 2);
+    assert.equal(store.get("events/event-1/participants/uid").status, "active");
+    assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+      "organizer",
+      "uid",
+    ]);
+    assert.deepEqual(writes, []);
+  }
+});
+
+test("executeLeaveEventTransaction rechecks startsAt on retry", async () => {
+  const retryNow = new Date("2026-06-20T15:00:00.000Z");
+  const retryTimestamp = {
+    toMillis: () => retryNow.getTime(),
+    toDate: () => retryNow,
+  };
+  const leaveTimes = [
+    {
+      leaveDate: fixedNow,
+      leaveTimestamp: fixedTimestamp,
+    },
+    {
+      leaveDate: retryNow,
+      leaveTimestamp: retryTimestamp,
+    },
+  ];
+  let leaveTimeIndex = 0;
+  const fake = createFakeFirestore(
+      validLeaveSeed(),
+      {retryBeforeCommitCount: 1},
+  );
+  const {db, store, writes} = fake;
+
+  await assertRejectsHttpsError(
+      () => executeLeave({
+        db,
+        uid: "uid",
+        getLeaveTime: () => leaveTimes[leaveTimeIndex++] ||
+          leaveTimes[leaveTimes.length - 1],
+        payload: {eventId: "event-1"},
+      }),
+      "failed-precondition",
+      "event_not_leaveable",
+  );
+  assert.equal(fake.attempts, 2);
+  assert.equal(store.get("events/event-1").participantsCount, 2);
+  assert.equal(store.get("events/event-1/participants/uid").status, "active");
+  assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+    "organizer",
+    "uid",
+  ]);
+  assert.deepEqual(writes, []);
+});
+
+test("executeLeaveEventTransaction blocks organizer leave", async () => {
+  const {db, writes} = createFakeFirestore({
+    "events/event-1": activeEvent({
+      organizerId: "organizer",
+      participantsCount: 1,
+    }),
+    "eventChats/event-1": eventChat({readAccessUserIds: ["organizer"]}),
+    "events/event-1/participants/organizer": organizerParticipant(),
+  });
+
+  await assertRejectsHttpsError(
+      () => executeLeave({
+        db,
+        uid: "organizer",
+        leaveDate: fixedNow,
+        leaveTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      }),
+      "failed-precondition",
+      "organizer_cannot_leave",
+  );
+  assert.deepEqual(writes, []);
+});
+
+test("executeLeaveEventTransaction blocks missing, canceled, and corrupt events", async () => {
+  await assertRejectsHttpsError(
+      () => executeLeave({
+        db: createFakeFirestore({
+          "eventChats/event-1": eventChat(),
+        }).db,
+        uid: "uid",
+        leaveDate: fixedNow,
+        leaveTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      }),
+      "not-found",
+      "event_not_found",
+  );
+
+  for (const [eventData, domainCode] of [
+    [
+      activeEvent({
+        status: "canceled",
+        canceledAt: fixedTimestamp,
+      }),
+      "event_not_leaveable",
+    ],
+    [activeEvent({participantsCount: 1}), "event_participant_state_inconsistent"],
+    [activeEvent({capacity: 100}), "event_participant_state_inconsistent"],
+    [activeEvent({chatId: "other-chat"}), "event_chat_metadata_invalid"],
+  ]) {
+    const {db, writes} = createFakeFirestore({
+      ...validLeaveSeed(),
+      "events/event-1": eventData,
+    });
+
+    await assertRejectsHttpsError(
+        () => executeLeave({
+          db,
+          uid: "uid",
+          leaveDate: fixedNow,
+          leaveTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        domainCode,
+    );
+    assert.deepEqual(writes, []);
+  }
+});
+
+test("executeLeaveEventTransaction fails closed on organizer membership drift", async () => {
+  for (const organizerSeed of [
+    null,
+    organizerParticipant({status: "left", leftAt: oldTimestamp}),
+    organizerParticipant({userId: "other"}),
+    organizerParticipant({role: "participant"}),
+    organizerParticipant({leftAt: oldTimestamp}),
+  ]) {
+    const seed = {
+      "events/event-1": activeEvent(),
+      "eventChats/event-1": eventChat(),
+      "events/event-1/participants/uid": participant(),
+    };
+    if (organizerSeed) {
+      seed["events/event-1/participants/organizer"] = organizerSeed;
+    }
+    const {db, writes} = createFakeFirestore(seed);
+
+    await assertRejectsHttpsError(
+        () => executeLeave({
+          db,
+          uid: "uid",
+          leaveDate: fixedNow,
+          leaveTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "participant_membership_inconsistent",
+    );
+    assert.deepEqual(writes, []);
+  }
+});
+
+test("executeLeaveEventTransaction fails closed on invalid participant", async () => {
+  for (const [participantSeed, domainCode] of [
+    [null, "not_active_participant"],
+    [participant({status: "left", leftAt: oldTimestamp}), "not_active_participant"],
+    [participant({status: "unknown"}), "participant_membership_inconsistent"],
+    [participant({userId: "other"}), "participant_membership_inconsistent"],
+    [participant({role: "organizer"}), "participant_membership_inconsistent"],
+    [participant({leftAt: oldTimestamp}), "participant_membership_inconsistent"],
+  ]) {
+    const seed = {
+      "events/event-1": activeEvent(),
+      "eventChats/event-1": eventChat(),
+      "events/event-1/participants/organizer": organizerParticipant(),
+    };
+    if (participantSeed) {
+      seed["events/event-1/participants/uid"] = participantSeed;
+    }
+    const {db, writes} = createFakeFirestore(seed);
+
+    await assertRejectsHttpsError(
+        () => executeLeave({
+          db,
+          uid: "uid",
+          leaveDate: fixedNow,
+          leaveTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        domainCode,
+    );
+    assert.deepEqual(writes, []);
+  }
+});
+
+test("executeLeaveEventTransaction fails closed on corrupt active participant set", async () => {
+  for (const otherParticipant of [
+    participant({userId: "attacker"}),
+    participant({userId: "other", role: "organizer"}),
+    participant({userId: "other", leftAt: oldTimestamp}),
+  ]) {
+    const {db, writes} = createFakeFirestore({
+      ...validLeaveSeed({
+        event: {participantsCount: 3, capacity: 3},
+        chat: {readAccessUserIds: ["organizer", "uid", "other"]},
+      }),
+      "events/event-1/participants/other": otherParticipant,
+    });
+
+    await assertRejectsHttpsError(
+        () => executeLeave({
+          db,
+          uid: "uid",
+          leaveDate: fixedNow,
+          leaveTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "event_participant_state_inconsistent",
+    );
+    assert.deepEqual(writes, []);
+  }
+});
+
+test("executeLeaveEventTransaction fails closed on invalid chat metadata", async () => {
+  for (const chatSeed of [
+    null,
+    eventChat({eventId: "other-event"}),
+    eventChat({readAccessUserIds: ["uid"]}),
+    eventChat({readAccessUserIds: ["organizer"]}),
+    eventChat({readAccessUserIds: ["organizer", "uid", "extra"]}),
+    eventChat({readAccessUserIds: ["organizer", "uid", "uid"]}),
+    eventChat({readAccessUserIds: ["organizer", "attacker"]}),
+  ]) {
+    const seed = {
+      "events/event-1": activeEvent(),
+      "events/event-1/participants/organizer": organizerParticipant(),
+      "events/event-1/participants/uid": participant(),
+    };
+    if (chatSeed) {
+      seed["eventChats/event-1"] = chatSeed;
+    }
+    const {db, writes} = createFakeFirestore(seed);
+
+    await assertRejectsHttpsError(
+        () => executeLeave({
+          db,
+          uid: "uid",
+          leaveDate: fixedNow,
+          leaveTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "event_chat_metadata_invalid",
+    );
+    assert.deepEqual(writes, []);
+  }
+});

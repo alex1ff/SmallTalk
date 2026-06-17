@@ -77,6 +77,7 @@ const REQUIRED_FUNCTIONS = [
   {id: "editEvent", trigger: "callable"},
   {id: "cancelEvent", trigger: "callable"},
   {id: "joinEvent", trigger: "callable"},
+  {id: "leaveEvent", trigger: "callable"},
   {id: "requestWithdrawal", trigger: "callable"},
   {id: "syncUserPublicProfile", trigger: "firestore"},
   {
