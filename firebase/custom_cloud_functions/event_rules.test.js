@@ -950,7 +950,59 @@ test("clients cannot directly write event chat message documents", async () => {
     testEnv.authenticatedContext("other-user"),
     testEnv.authenticatedContext("admin-user", {admin: true}),
   ];
+  const chatIds = [
+    "editable-event",
+    "canceled-editable-event",
+  ];
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    for (const chatId of chatIds) {
+      await db.doc(`eventChats/${chatId}/messages/existing`)
+        .set(eventChatMessageData());
+    }
+  });
+
+  for (const [index, context] of contexts.entries()) {
+    const db = context.firestore();
+    for (const chatId of chatIds) {
+      const existingMessagePath = `eventChats/${chatId}/messages/existing`;
+      await assertFails(
+        db.doc(`eventChats/${chatId}/messages/direct-create-${index}`)
+          .set(eventChatMessageData()),
+      );
+      await assertFails(
+        db.doc(existingMessagePath).set(eventChatMessageData({
+          text: "Replaced",
+        })),
+      );
+      await assertFails(
+        db.doc(existingMessagePath).set({
+          text: "Merged",
+        }, {merge: true}),
+      );
+      await assertFails(db.doc(existingMessagePath).update({
+        text: "Edited",
+      }));
+      await assertFails(db.doc(existingMessagePath).delete());
+    }
+  }
+});
+
+test("event chat message writes fail inside otherwise allowed batches", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const db = organizer.firestore();
   const existingMessagePath = "eventChats/editable-event/messages/existing";
+  const deniedBatchWrites = [
+    (batch) => batch.set(
+      db.doc("eventChats/editable-event/messages/batched-create"),
+      eventChatMessageData(),
+    ),
+    (batch) => batch.update(db.doc(existingMessagePath), {
+      text: "Edited",
+    }),
+    (batch) => batch.delete(db.doc(existingMessagePath)),
+  ];
 
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await context.firestore()
@@ -958,16 +1010,11 @@ test("clients cannot directly write event chat message documents", async () => {
       .set(eventChatMessageData());
   });
 
-  for (const [index, context] of contexts.entries()) {
-    const db = context.firestore();
-    await assertFails(
-      db.doc(`eventChats/editable-event/messages/direct-create-${index}`)
-        .set(eventChatMessageData()),
-    );
-    await assertFails(db.doc(existingMessagePath).update({
-      text: "Edited",
-    }));
-    await assertFails(db.doc(existingMessagePath).delete());
+  for (const applyDeniedWrite of deniedBatchWrites) {
+    const batch = db.batch();
+    batch.update(db.doc("events/editable-event"), directEditPatch());
+    applyDeniedWrite(batch);
+    await assertFails(batch.commit());
   }
 });
 
