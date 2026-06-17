@@ -1,0 +1,352 @@
+const functions = require("firebase-functions/v1");
+const admin = require("firebase-admin");
+
+const REQUEST_TIMEOUT_SECONDS = 30;
+const EVENT_STATUS_ACTIVE = "active";
+const PARTICIPANT_STATUS_ACTIVE = "active";
+const EVENT_CHAT_COLLECTION = "eventChats";
+const SEND_EVENT_CHAT_MESSAGE_KEYS = Object.freeze(["eventId", "text"]);
+const SEND_EVENT_CHAT_MESSAGE_KEY_SET =
+  new Set(SEND_EVENT_CHAT_MESSAGE_KEYS);
+const GRAPHEME_SEGMENTER = typeof Intl !== "undefined" && Intl.Segmenter ?
+  new Intl.Segmenter("und", {granularity: "grapheme"}) :
+  null;
+
+function throwSendError(code, message, details) {
+  throw new functions.https.HttpsError(code, message, details);
+}
+
+function throwInvalidSendRequest(field, reason, message) {
+  throwSendError(
+      "invalid-argument",
+      message || "Invalid event chat message request",
+      {domainCode: "invalid_event_chat_message_request", field, reason},
+  );
+}
+
+function validateExactSendEventChatMessageKeys(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throwInvalidSendRequest("payload", "invalid_type");
+  }
+  for (const key of Object.keys(data)) {
+    if (!SEND_EVENT_CHAT_MESSAGE_KEY_SET.has(key)) {
+      throwInvalidSendRequest(key, "unknown_key");
+    }
+  }
+  for (const key of SEND_EVENT_CHAT_MESSAGE_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(data, key)) {
+      throwInvalidSendRequest(key, "missing");
+    }
+  }
+}
+
+function countGraphemes(value) {
+  if (!GRAPHEME_SEGMENTER) {
+    return Array.from(value).length;
+  }
+  return Array.from(GRAPHEME_SEGMENTER.segment(value)).length;
+}
+
+function normalizeEventId(value) {
+  if (typeof value !== "string") {
+    throwInvalidSendRequest("eventId", "invalid_type");
+  }
+  const eventId = value.trim();
+  if (
+    !eventId ||
+    eventId === "." ||
+    eventId === ".." ||
+    eventId.includes("/") ||
+    Buffer.byteLength(eventId, "utf8") > 1500
+  ) {
+    throwInvalidSendRequest("eventId", "invalid_format");
+  }
+  return eventId;
+}
+
+function normalizeMessageText(value) {
+  if (typeof value !== "string") {
+    throwInvalidSendRequest("text", "invalid_type");
+  }
+  const text = value
+      .normalize("NFC")
+      .replace(/\r\n?/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  if (!text) {
+    throwInvalidSendRequest("text", "missing");
+  }
+  if (countGraphemes(text) > 1000) {
+    throwInvalidSendRequest("text", "too_long");
+  }
+  return text;
+}
+
+function normalizeSendEventChatMessagePayload(data) {
+  validateExactSendEventChatMessageKeys(data);
+  return {
+    eventId: normalizeEventId(data.eventId),
+    text: normalizeMessageText(data.text),
+  };
+}
+
+function isValidPathSegment(value) {
+  return typeof value === "string" && value.length > 0 && !value.includes("/");
+}
+
+function normalizeProfileString(value) {
+  return typeof value === "string" ? value.normalize("NFC").trim() : "";
+}
+
+function failParticipantMembershipInconsistent() {
+  throwSendError(
+      "failed-precondition",
+      "Participant membership is inconsistent",
+      {domainCode: "participant_membership_inconsistent"},
+  );
+}
+
+function assertEventAllowsChatWrites({eventExists, eventData, eventId}) {
+  if (!eventExists) {
+    throwSendError(
+        "not-found",
+        "Event not found",
+        {domainCode: "event_not_found"},
+    );
+  }
+  if (eventData.status !== EVENT_STATUS_ACTIVE || eventData.canceledAt !== null) {
+    throwSendError(
+        "failed-precondition",
+        "Event chat is read-only",
+        {domainCode: "event_chat_writes_blocked", reason: "event_canceled"},
+    );
+  }
+  if (eventData.chatId !== eventId) {
+    throwSendError(
+        "failed-precondition",
+        "Event chat id does not match event id",
+        {
+          domainCode: "event_chat_metadata_invalid",
+          reason: "event_chat_id_mismatch",
+        },
+    );
+  }
+}
+
+function assertChatMetadata({chatExists, chatData, eventId}) {
+  if (!chatExists) {
+    throwSendError(
+        "failed-precondition",
+        "Event chat metadata is missing",
+        {domainCode: "event_chat_metadata_invalid", reason: "missing"},
+    );
+  }
+  if (chatData.eventId !== eventId) {
+    throwSendError(
+        "failed-precondition",
+        "Event chat metadata does not match event id",
+        {
+          domainCode: "event_chat_metadata_invalid",
+          reason: "chat_event_id_mismatch",
+        },
+    );
+  }
+}
+
+function assertParticipantCanSend({
+  participantExists,
+  participantData,
+  uid,
+}) {
+  if (!participantExists || participantData.status === "left") {
+    throwSendError(
+        "failed-precondition",
+        "User is not an active event participant",
+        {domainCode: "not_active_participant"},
+    );
+  }
+  if (
+    participantData.userId !== uid ||
+    !["organizer", "participant"].includes(participantData.role)
+  ) {
+    failParticipantMembershipInconsistent();
+  }
+  if (
+    participantData.status !== PARTICIPANT_STATUS_ACTIVE ||
+    participantData.leftAt !== null
+  ) {
+    failParticipantMembershipInconsistent();
+  }
+}
+
+function normalizeSenderPhotoUrl({participantData, userData}) {
+  const photoUrl = normalizeProfileString(participantData.photoUrl) ||
+    normalizeProfileString(userData.photo_url);
+  if (countGraphemes(photoUrl) > 2048) {
+    throwSendError(
+        "failed-precondition",
+        "Sender photo URL is invalid",
+        {domainCode: "sender_profile_invalid", field: "photo_url"},
+    );
+  }
+  return photoUrl || null;
+}
+
+function buildSenderSnapshot({
+  participantData,
+  userExists,
+  userData = {},
+}) {
+  const displayName = normalizeProfileString(participantData.displayName) ||
+    (userExists ? normalizeProfileString(userData.display_name) : "");
+  if (!displayName) {
+    throwSendError(
+        "failed-precondition",
+        "Sender display name is required",
+        {domainCode: "sender_profile_required", field: "display_name"},
+    );
+  }
+  if (countGraphemes(displayName) > 70) {
+    throwSendError(
+        "failed-precondition",
+        "Sender display name is invalid",
+        {domainCode: "sender_profile_invalid", field: "display_name"},
+    );
+  }
+  return {
+    displayName,
+    photoUrl: normalizeSenderPhotoUrl({participantData, userData}),
+  };
+}
+
+function buildMessageData({
+  uid,
+  senderSnapshot,
+  text,
+  messageTimestamp,
+}) {
+  return {
+    senderId: uid,
+    senderDisplayName: senderSnapshot.displayName,
+    senderPhotoUrl: senderSnapshot.photoUrl,
+    text,
+    createdAt: messageTimestamp,
+    deletedAt: null,
+  };
+}
+
+async function executeSendEventChatMessageTransaction({
+  db,
+  uid,
+  messageDate,
+  messageTimestamp,
+  payload,
+}) {
+  if (!isValidPathSegment(uid)) {
+    failParticipantMembershipInconsistent();
+  }
+  const eventRef = db.collection("events").doc(payload.eventId);
+  const chatRef = db.collection(EVENT_CHAT_COLLECTION).doc(payload.eventId);
+  const participantRef = eventRef.collection("participants").doc(uid);
+  const userRef = db.collection("users").doc(uid);
+  const messageRef = chatRef.collection("messages").doc();
+
+  return await db.runTransaction(async (tx) => {
+    const [eventDoc, chatDoc, participantDoc, userDoc] = await Promise.all([
+      tx.get(eventRef),
+      tx.get(chatRef),
+      tx.get(participantRef),
+      tx.get(userRef),
+    ]);
+    const eventData = eventDoc.exists ? eventDoc.data() || {} : {};
+    const chatData = chatDoc.exists ? chatDoc.data() || {} : {};
+    const participantData = participantDoc.exists ?
+      participantDoc.data() || {} :
+      {};
+    const userData = userDoc.exists ? userDoc.data() || {} : {};
+
+    assertEventAllowsChatWrites({
+      eventExists: eventDoc.exists,
+      eventData,
+      eventId: payload.eventId,
+    });
+    assertChatMetadata({
+      chatExists: chatDoc.exists,
+      chatData,
+      eventId: payload.eventId,
+    });
+    assertParticipantCanSend({
+      participantExists: participantDoc.exists,
+      participantData,
+      uid,
+    });
+    const senderSnapshot = buildSenderSnapshot({
+      participantData,
+      userExists: userDoc.exists,
+      userData,
+    });
+
+    tx.create(messageRef, buildMessageData({
+      uid,
+      senderSnapshot,
+      text: payload.text,
+      messageTimestamp,
+    }));
+
+    return {
+      eventId: payload.eventId,
+      messageId: messageRef.id,
+      createdAt: messageDate.toISOString(),
+    };
+  });
+}
+
+exports.__private__ = {
+  SEND_EVENT_CHAT_MESSAGE_KEYS,
+  buildMessageData,
+  buildSenderSnapshot,
+  executeSendEventChatMessageTransaction,
+  normalizeMessageText,
+  normalizeSendEventChatMessagePayload,
+};
+
+exports.sendEventChatMessage = functions
+    .runWith({timeoutSeconds: REQUEST_TIMEOUT_SECONDS, memory: "256MB"})
+    .https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated",
+            "User must be authenticated",
+            {domainCode: "auth_required"},
+        );
+      }
+
+      const uid = context.auth.uid;
+      const payload = normalizeSendEventChatMessagePayload(data);
+      const messageDate = new Date();
+      const messageTimestamp = admin.firestore.Timestamp.fromDate(messageDate);
+      const db = admin.firestore();
+
+      try {
+        return await executeSendEventChatMessageTransaction({
+          db,
+          uid,
+          messageDate,
+          messageTimestamp,
+          payload,
+        });
+      } catch (err) {
+        if (err instanceof functions.https.HttpsError) {
+          throw err;
+        }
+        console.error("sendEventChatMessage failed", {
+          uid,
+          eventId: payload.eventId,
+          err,
+        });
+        throw new functions.https.HttpsError(
+            "internal",
+            "Unable to send event chat message",
+        );
+      }
+    });
