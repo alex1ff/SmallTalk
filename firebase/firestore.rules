@@ -788,6 +788,10 @@ service cloud.firestore {
       return value in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
     }
 
+    function isAllowedEventStatus(value) {
+      return value in ['active', 'canceled'];
+    }
+
     function isValidEventLevelRange(data) {
       return (
           data.levelMin == 'A1' &&
@@ -845,6 +849,7 @@ service cloud.firestore {
         data.participantsCount >= 1 &&
         data.capacity >= data.participantsCount &&
         data.updatedAt == request.time &&
+        isAllowedEventStatus(data.status) &&
         data.status == 'active' &&
         data.canceledAt == null;
     }

@@ -24,6 +24,15 @@ let testEnv;
 
 const farFutureStartsAt = new Date("2099-06-20T15:00:00.000Z");
 const farFutureEditStartsAt = new Date("2099-06-21T15:00:00.000Z");
+const disallowedEventStatuses = [
+  "draft",
+  "past",
+  "completed",
+  "deleted",
+  "archived",
+  "cancelled",
+  "unknown",
+];
 
 function eventData(overrides = {}) {
   return {
@@ -437,4 +446,43 @@ test("client hard delete cannot be batched with event chat deletion", async () =
   batch.delete(db.doc("eventChats/editable-event"));
 
   await assertFails(batch.commit());
+});
+
+test("client-created event statuses outside MVP allowlist are denied", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+
+  for (const status of disallowedEventStatuses) {
+    await assertFails(
+      user.firestore().doc(`events/direct-create-${status}`).set(eventData({
+        status,
+        chatId: `direct-create-${status}`,
+      })),
+    );
+  }
+});
+
+test("client updates cannot set event status outside MVP allowlist", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const eventRef = organizer.firestore().doc("events/editable-event");
+
+  for (const status of disallowedEventStatuses) {
+    await assertFails(eventRef.update(directEditPatch({status})));
+  }
+  await assertFails(eventRef.update(directEditPatch({status: null})));
+  await assertFails(eventRef.update({
+    ...directEditPatch(),
+    status: firebaseCompat.firestore.FieldValue.delete(),
+  }));
+});
+
+test("client updates cannot restore canceled events to active", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+
+  await assertFails(
+    organizer.firestore().doc("events/canceled-editable-event").update({
+      status: "active",
+      canceledAt: null,
+      updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }),
+  );
 });
