@@ -70,6 +70,7 @@ GoRouter _buildEventCreateRouter({
   DateTime? initialDate,
   TimeOfDay? initialTime,
   int? initialCapacity,
+  int? minimumCapacity,
   DateTime Function()? currentUtcProvider,
   EventCallableInvoker? createEventInvoker,
   String Function()? createRequestIdGenerator,
@@ -100,6 +101,7 @@ GoRouter _buildEventCreateRouter({
           initialDate: initialDate,
           initialTime: initialTime,
           initialCapacity: initialCapacity,
+          minimumCapacity: minimumCapacity,
           currentUtcProvider: currentUtcProvider,
           createEventInvoker: createEventInvoker,
           createRequestIdGenerator: createRequestIdGenerator,
@@ -1576,6 +1578,98 @@ void main() {
 
     expect(find.text('Укажите минимум 2 участника'), findsNothing);
     expect(find.text('Укажите максимум 50 участников'), findsNothing);
+  });
+
+  testWidgets('edit mode blocks participant limit below active participants',
+      (tester) async {
+    var submitCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          formMode: EventFormMode.edit,
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialTitle: 'Conversation club',
+          initialDescription: 'Casual practice in a cafe.',
+          initialSelectedCity: const EventSelectedCity(
+            city: _moscowCity,
+            source: EventCitySelectionSource.static,
+          ),
+          initialLocationName: 'Starbucks, ул. Арбат, 5',
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          initialCapacity: 8,
+          minimumCapacity: 5,
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createEventInvoker: (_, __) async {
+            submitCount += 1;
+            return _createEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '4');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(submitCount, 0);
+    expect(
+      find.text('Лимит не может быть меньше текущих участников (5)'),
+      findsOneWidget,
+    );
+    expect(find.text('Укажите минимум 2 участника'), findsNothing);
+    expect(find.text('Укажите максимум 50 участников'), findsNothing);
+
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '5');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(submitCount, 0);
+    expect(
+      find.text('Лимит не может быть меньше текущих участников (5)'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('active participant capacity error is localized in English',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('en'),
+        home: EventCreateWidget(
+          formMode: EventFormMode.edit,
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialTitle: 'Conversation club',
+          initialDescription: 'Casual practice in a cafe.',
+          initialSelectedCity: const EventSelectedCity(
+            city: _moscowCity,
+            source: EventCitySelectionSource.static,
+          ),
+          initialLocationName: 'Starbucks, Arbat 5',
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          initialCapacity: 8,
+          minimumCapacity: 5,
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '4');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Capacity cannot be below current participants (5)'),
+      findsOneWidget,
+    );
+    expect(find.text('Enter at least 2 participants'), findsNothing);
+    expect(find.text('Enter no more than 50 participants'), findsNothing);
   });
 
   testWidgets('valid required fields submit through create callable',

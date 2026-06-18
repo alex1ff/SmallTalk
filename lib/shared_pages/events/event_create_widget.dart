@@ -225,6 +225,7 @@ class EventCreateWidget extends StatefulWidget {
     this.initialDate,
     this.initialTime,
     this.initialCapacity,
+    this.minimumCapacity,
     this.currentUtcProvider,
     this.createEventInvoker,
     this.createRequestIdGenerator,
@@ -257,6 +258,7 @@ class EventCreateWidget extends StatefulWidget {
   final DateTime? initialDate;
   final TimeOfDay? initialTime;
   final int? initialCapacity;
+  final int? minimumCapacity;
   final DateTime Function()? currentUtcProvider;
   final EventCallableInvoker? createEventInvoker;
   final String Function()? createRequestIdGenerator;
@@ -1778,6 +1780,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                       _eventCreateCapacityValidationText(
                                     context,
                                     value,
+                                    minimumCapacity: widget.minimumCapacity,
                                   ),
                                 ),
                               ],
@@ -3388,8 +3391,9 @@ bool _isEventCreateDefaultLanguageCode(String value) {
 
 String? _eventCreateCapacityValidationText(
   BuildContext context,
-  String? value,
-) {
+  String? value, {
+  int? minimumCapacity,
+}) {
   final requiredText = _eventCreateRequiredText(
     context,
     value,
@@ -3411,6 +3415,21 @@ String? _eventCreateCapacityValidationText(
     return FFLocalizations.of(context).getVariableText(
       ruText: 'Укажите максимум 50 участников',
       enText: 'Enter no more than 50 participants',
+    );
+  }
+  final resolvedMinimumCapacity = minimumCapacity == null
+      ? null
+      : minimumCapacity < 0
+          ? 0
+          : minimumCapacity;
+  if (capacity != null &&
+      resolvedMinimumCapacity != null &&
+      capacity < resolvedMinimumCapacity) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Лимит не может быть меньше текущих участников '
+          '($resolvedMinimumCapacity)',
+      enText: 'Capacity cannot be below current participants '
+          '($resolvedMinimumCapacity)',
     );
   }
 

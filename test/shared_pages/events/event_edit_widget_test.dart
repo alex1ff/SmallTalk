@@ -90,6 +90,7 @@ void main() {
                   startsAt: DateTime.parse('2026-06-18T15:30:00Z'),
                   timeZoneId: 'Europe/Moscow',
                   capacity: 8,
+                  participantsCount: 5,
                 ),
               ),
             );
@@ -120,6 +121,49 @@ void main() {
           .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
           .onPressed,
       isNotNull,
+    );
+  });
+
+  testWidgets('blocks capacity below active participant count', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventEditWidget(
+          eventId: 'event-1',
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          snapshotStream: (eventRef) {
+            return Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(
+                  capacity: 8,
+                  participantsCount: 5,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '4');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Лимит не может быть меньше текущих участников (5)'),
+      findsOneWidget,
+    );
+    expect(find.text('Укажите минимум 2 участника'), findsNothing);
+
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '5');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Лимит не может быть меньше текущих участников (5)'),
+      findsNothing,
     );
   });
 
@@ -622,6 +666,7 @@ Map<String, dynamic> _eventData({
   DateTime? startsAt,
   String timeZoneId = 'Europe/Moscow',
   int capacity = 10,
+  int participantsCount = 0,
   String organizerId = 'organizer-1',
 }) =>
     <String, dynamic>{
@@ -636,6 +681,7 @@ Map<String, dynamic> _eventData({
       'startsAt': startsAt ?? DateTime.parse('2026-06-18T15:00:00Z'),
       'timeZoneId': timeZoneId,
       'capacity': capacity,
+      'participantsCount': participantsCount,
       'organizerId': organizerId,
       'status': 'active',
     };

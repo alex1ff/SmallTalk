@@ -163,6 +163,7 @@ class _EventEditWidgetState extends State<EventEditWidget> {
           initialDate: initialData.localDate,
           initialTime: initialData.localTime,
           initialCapacity: initialData.capacity,
+          minimumCapacity: initialData.participantsCount,
         );
       },
     );
@@ -200,6 +201,7 @@ class _EventEditInitialData {
     required this.localDate,
     required this.localTime,
     required this.capacity,
+    required this.participantsCount,
   });
 
   factory _EventEditInitialData.fromEvent({
@@ -229,6 +231,8 @@ class _EventEditInitialData {
       localDate: localStart?.date,
       localTime: localStart?.time,
       capacity: event.hasCapacity() ? event.capacity : null,
+      participantsCount:
+          event.hasParticipantsCount() ? event.participantsCount : 0,
     );
   }
 
@@ -243,6 +247,7 @@ class _EventEditInitialData {
   final DateTime? localDate;
   final TimeOfDay? localTime;
   final int? capacity;
+  final int participantsCount;
 }
 
 class _EventEditLocalStart {
