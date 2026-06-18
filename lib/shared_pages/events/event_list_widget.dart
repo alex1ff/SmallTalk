@@ -137,10 +137,9 @@ class _EventListWidgetState extends State<EventListWidget> {
                         selectedCity: selectedState?.selected,
                         hasOutdatedProfileCity:
                             selectedState?.hasOutdatedProfileCity ?? false,
-                        hasCountryHintOnly: selectedState != null &&
-                            selectedState.selected == null &&
-                            !selectedState.hasOutdatedProfileCity &&
-                            selectedState.countryCodeHint != null,
+                        showsMissingLocationPrompt: selectedState != null &&
+                            selectedState.needsCitySelection &&
+                            !selectedState.hasOutdatedProfileCity,
                         onPressed: widget.onCitySelectorPressed,
                       ),
                     ],
@@ -178,13 +177,13 @@ class _EventCitySelector extends StatelessWidget {
   const _EventCitySelector({
     required this.selectedCity,
     required this.hasOutdatedProfileCity,
-    required this.hasCountryHintOnly,
+    required this.showsMissingLocationPrompt,
     required this.onPressed,
   });
 
   final EventSelectedCity? selectedCity;
   final bool hasOutdatedProfileCity;
-  final bool hasCountryHintOnly;
+  final bool showsMissingLocationPrompt;
   final VoidCallback? onPressed;
 
   @override
@@ -251,7 +250,7 @@ class _EventCitySelector extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (hasOutdatedProfileCity || hasCountryHintOnly) ...[
+                if (hasOutdatedProfileCity || showsMissingLocationPrompt) ...[
                   const SizedBox(height: ExpatlioDesign.space8),
                   Text(
                     _helperText(context),

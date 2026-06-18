@@ -4,12 +4,12 @@ import 'package:firebase_auth_platform_interface/firebase_auth_platform_interfac
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/custom_icons.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
+import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/shared_pages/events/event_list_widget.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
@@ -27,12 +27,12 @@ const List<LocalizationsDelegate<dynamic>> _localizationsDelegates = [
   FallbackCupertinoLocalizationDelegate(),
 ];
 
-Widget _buildTestApp({Widget home = const EventListWidget()}) {
+Widget _buildTestApp({Widget? home}) {
   return MaterialApp(
     locale: Locale('ru'),
     supportedLocales: _supportedLocales,
     localizationsDelegates: _localizationsDelegates,
-    home: home,
+    home: home ?? const EventListWidget(cityCatalogOverride: _catalog),
   );
 }
 
@@ -104,6 +104,7 @@ void main() {
 
   testWidgets('shows the events screen header title', (tester) async {
     await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
 
     final title = find.text('События');
 
@@ -116,6 +117,7 @@ void main() {
 
   testWidgets('shows the create event button in the header', (tester) async {
     await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
 
     expect(find.byKey(eventListCreateButtonKey), findsOneWidget);
     expect(find.byIcon(Icons.add_sharp), findsOneWidget);
@@ -124,6 +126,7 @@ void main() {
   testWidgets('shows a city selector placeholder below the header',
       (tester) async {
     await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
 
     expect(find.byKey(eventListCitySelectorKey), findsOneWidget);
     expect(find.byIcon(Icons.location_on_outlined), findsOneWidget);
@@ -136,6 +139,7 @@ void main() {
     await tester.pumpWidget(
       _buildTestApp(
         home: EventListWidget(
+          cityCatalogOverride: _catalog,
           initialSelectedCity: EventSelectedCity(
             city: _cityFixture(
               countryCode: 'RU',
@@ -149,6 +153,7 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
     expect(find.text('Москва · Россия'), findsOneWidget);
     expect(find.textContaining('RU:moscow'), findsNothing);
@@ -173,7 +178,7 @@ void main() {
         home: EventListWidget(cityCatalogOverride: _catalog),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Москва · Россия'), findsOneWidget);
     expect(find.textContaining('Stored city'), findsNothing);
@@ -196,8 +201,32 @@ void main() {
         home: EventListWidget(cityCatalogOverride: _catalog),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
+    expect(find.text('Выберите город'), findsOneWidget);
+    expect(find.text('Выберите город, чтобы увидеть события.'), findsOneWidget);
+    expect(find.text('Выберите город заново'), findsNothing);
+    expect(find.textContaining('Сохранённый город больше недоступен'),
+        findsNothing);
+    expect(find.text('Москва · Россия'), findsNothing);
+  });
+
+  testWidgets(
+      'shows location prompt when profile city is missing without country hint',
+      (tester) async {
+    currentUserDocument = _userFixture(
+      uid: 'missing-profile-city-user',
+      data: {},
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(cityCatalogOverride: _catalog),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCitySelectorKey), findsOneWidget);
     expect(find.text('Выберите город'), findsOneWidget);
     expect(find.text('Выберите город, чтобы увидеть события.'), findsOneWidget);
     expect(find.text('Выберите город заново'), findsNothing);
@@ -242,7 +271,7 @@ void main() {
           home: EventListWidget(cityCatalogOverride: _catalog),
         ),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.text('Выберите город заново'), findsOneWidget);
       expect(
@@ -286,10 +315,11 @@ void main() {
         ),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Нью-Йорк · United States'), findsOneWidget);
     expect(find.text('Москва · Россия'), findsNothing);
+    expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
   });
 
   testWidgets('city selector delegates taps when a callback is provided',
@@ -298,10 +328,12 @@ void main() {
     await tester.pumpWidget(
       _buildTestApp(
         home: EventListWidget(
+          cityCatalogOverride: _catalog,
           onCitySelectorPressed: () => taps += 1,
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(eventListCitySelectorKey));
 
@@ -316,7 +348,8 @@ void main() {
         GoRoute(
           name: EventListWidget.routeName,
           path: EventListWidget.routePath,
-          builder: (context, state) => const EventListWidget(),
+          builder: (context, state) =>
+              const EventListWidget(cityCatalogOverride: _catalog),
         ),
         GoRoute(
           name: EventCreateWidget.routeName,
@@ -332,13 +365,13 @@ void main() {
     await tester.tap(find.byKey(eventListCreateButtonKey));
     await tester.pumpAndSettle();
 
-    expect(router.routeInformationProvider.value.uri.path, '/events/create');
+    expect(router.getCurrentLocation(), '/events/create');
     expect(find.byType(EventCreateWidget), findsOneWidget);
 
     await tester.tap(find.byIcon(FFIcons.kchevronLeft));
     await tester.pumpAndSettle();
 
-    expect(router.routeInformationProvider.value.uri.path, '/events');
+    expect(router.getCurrentLocation(), '/events');
     expect(find.byType(EventListWidget), findsOneWidget);
   });
 
