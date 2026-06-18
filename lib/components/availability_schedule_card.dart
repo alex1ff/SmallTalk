@@ -8,38 +8,44 @@ class AvailabilityScheduleCard extends StatelessWidget {
     super.key,
     required this.availabilityEnabled,
     required this.intervals,
-    required this.switchControl,
+    this.switchControl,
     required this.onAddInterval,
     required this.onRemoveInterval,
   });
 
   final bool availabilityEnabled;
   final List<IntervalsStruct> intervals;
-  final Widget switchControl;
+  final Widget? switchControl;
   final Future<void> Function() onAddInterval;
   final Future<void> Function(IntervalsStruct interval) onRemoveInterval;
 
   @override
   Widget build(BuildContext context) {
+    final switchControl = this.switchControl;
     final children = <Widget>[
-      _AvailabilitySwitchRow(switchControl: switchControl),
+      if (switchControl != null)
+        _AvailabilitySwitchRow(switchControl: switchControl),
     ];
 
     if (availabilityEnabled) {
       for (final interval in intervals) {
-        children
-          ..add(const _AvailabilityDivider())
-          ..add(
-            _AvailabilityIntervalRow(
-              interval: interval,
-              onRemoveInterval: onRemoveInterval,
-            ),
-          );
+        if (children.isNotEmpty) {
+          children.add(const _AvailabilityDivider());
+        }
+        children.add(_AvailabilityIntervalRow(
+          interval: interval,
+          onRemoveInterval: onRemoveInterval,
+        ));
       }
 
-      children
-        ..add(const _AvailabilityDivider())
-        ..add(_AvailabilityAddRow(onAddInterval: onAddInterval));
+      if (children.isNotEmpty) {
+        children.add(const _AvailabilityDivider());
+      }
+      children.add(_AvailabilityAddRow(onAddInterval: onAddInterval));
+    }
+
+    if (children.isEmpty) {
+      return const SizedBox.shrink();
     }
 
     return Container(

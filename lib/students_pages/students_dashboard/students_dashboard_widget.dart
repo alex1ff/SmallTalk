@@ -7,7 +7,6 @@ import '/components/availability_schedule_card.dart';
 import '/components/dashboard_inline_filter_button.dart';
 import '/components/orbiting_avatars_cta.dart';
 import '/components/profile_dropdown_menu_item.dart';
-import '/components/student_availability_switch_control.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -166,9 +165,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   bool get _effectiveAvailabilityEnabled =>
       currentUserDocument?.availabilityToday.enabled ?? false;
 
-  bool get _effectiveSwitchValue =>
-      _model.switchValue ?? _effectiveAvailabilityEnabled;
-
   Widget _buildLoadingState(BuildContext context) {
     return Center(
       child: SizedBox(
@@ -232,73 +228,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       safeSetState(() {});
     }
     return intervalAdded ?? false;
-  }
-
-  Future<void> _handleAvailabilitySwitchChanged(bool newValue) async {
-    final userRef = currentUserReference;
-    if (userRef == null) {
-      return;
-    }
-
-    safeSetState(() => _model.switchValue = newValue);
-    if (newValue) {
-      if (currentUserDocument!.availabilityToday.intervals.isNotEmpty) {
-        final availabilityUpdate = createUsersRecordData(
-          availabilityToday: createAvailabilityTodayStruct(
-            enabled: true,
-            clearUnsetFields: false,
-          ),
-        );
-        availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
-        await userRef.update(availabilityUpdate);
-      } else {
-        safeSetState(() => _model.switchValue = false);
-        final intervalAdded = await _openAddInterBottomSheet();
-        if (!mounted) {
-          return;
-        }
-
-        if (intervalAdded) {
-          safeSetState(() => _model.switchValue = true);
-        } else {
-          final availabilityUpdate = createUsersRecordData(
-            availabilityToday: createAvailabilityTodayStruct(
-              enabled: false,
-              clearUnsetFields: false,
-            ),
-          );
-          availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
-          await userRef.update(availabilityUpdate);
-          if (mounted) {
-            safeSetState(() => _model.switchValue = false);
-          }
-        }
-      }
-      if (mounted) {
-        safeSetState(() {});
-      }
-    } else {
-      final availabilityUpdate = createUsersRecordData(
-        availabilityToday: createAvailabilityTodayStruct(
-          enabled: false,
-          clearUnsetFields: false,
-        ),
-      );
-      availabilityUpdate.addAll(_buildTimezoneMetadataUpdate());
-      await userRef.update(availabilityUpdate);
-      if (mounted) {
-        safeSetState(() {});
-      }
-    }
-  }
-
-  Widget _buildAvailabilitySwitch() {
-    return StudentAvailabilitySwitchControl(
-      value: _effectiveSwitchValue,
-      onChanged: (newValue) async {
-        await _handleAvailabilitySwitchChanged(newValue);
-      },
-    );
   }
 
   String _localizedText({
@@ -850,7 +779,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
             AvailabilityScheduleCard(
               availabilityEnabled: _effectiveAvailabilityEnabled,
               intervals: intervals,
-              switchControl: _buildAvailabilitySwitch(),
               onAddInterval: () async {
                 await _openAddInterBottomSheet();
               },

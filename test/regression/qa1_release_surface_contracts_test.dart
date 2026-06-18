@@ -400,7 +400,8 @@ void main() {
       expect(teacherDashboard, isNot(contains('FFIcons.kuser03')));
     });
 
-    test('student dashboard exposes availability controls for all-to-all calls',
+    test(
+        'student dashboard hides passive availability switch for all-to-all calls',
         () {
       final studentDashboard = _source(
           'lib/students_pages/students_dashboard/students_dashboard_widget.dart');
@@ -410,9 +411,13 @@ void main() {
       expect(studentDashboard, contains('AddInterWidget()'));
       expect(
           studentDashboard,
-          contains(
-              "import '/components/student_availability_switch_control.dart';"));
-      expect(studentDashboard, contains('StudentAvailabilitySwitchControl('));
+          isNot(contains(
+              "import '/components/student_availability_switch_control.dart';")));
+      expect(studentDashboard,
+          isNot(contains('StudentAvailabilitySwitchControl(')));
+      expect(studentDashboard, isNot(contains('_buildAvailabilitySwitch')));
+      expect(studentDashboard,
+          isNot(contains('_handleAvailabilitySwitchChanged')));
       expect(studentDashboard, contains('availabilityToday:'));
       expect(studentDashboard, isNot(contains('isInCall: false')));
       expect(studentDashboard, contains('FieldValue.arrayRemove'));

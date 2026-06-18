@@ -13,9 +13,11 @@ void main() {
     expect(source, contains("'/components/orbiting_avatars_cta.dart'"));
     expect(
       source,
-      contains("'/components/student_availability_switch_control.dart'"),
+      isNot(contains("'/components/student_availability_switch_control.dart'")),
     );
-    expect(source, contains('StudentAvailabilitySwitchControl('));
+    expect(source, isNot(contains('StudentAvailabilitySwitchControl(')));
+    expect(source, isNot(contains('_buildAvailabilitySwitch')));
+    expect(source, isNot(contains('_handleAvailabilitySwitchChanged')));
     expect(source, contains('DashboardInlineFilterButton('));
     expect(source, contains('OrbitingAvatarsCta('));
     expect(source, contains('_buildAnimatedAvailabilitySection(context)'));
