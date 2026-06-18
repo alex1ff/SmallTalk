@@ -19,6 +19,8 @@ const ValueKey<String> eventDetailLevelRangeBadgeKey =
     ValueKey<String>('event_detail_level_range_badge');
 const ValueKey<String> eventDetailLanguageBadgeKey =
     ValueKey<String>('event_detail_language_badge');
+const ValueKey<String> eventDetailCanceledBannerKey =
+    ValueKey<String>('event_detail_canceled_banner');
 const ValueKey<String> eventDetailTitleKey =
     ValueKey<String>('event_detail_title');
 const ValueKey<String> eventDetailDescriptionKey =
@@ -165,6 +167,7 @@ class EventDetailWidget extends StatelessWidget {
       participants: participants,
       participantsCount: participantsCount,
     );
+    final isCanceled = joinCtaState == EventDetailJoinCtaState.canceled;
 
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
@@ -210,6 +213,10 @@ class EventDetailWidget extends StatelessWidget {
                                   ),
                               ],
                             ),
+                            const SizedBox(height: ExpatlioDesign.space20),
+                          ],
+                          if (isCanceled) ...[
+                            const _EventDetailCanceledBanner(),
                             const SizedBox(height: ExpatlioDesign.space20),
                           ],
                           Text(
@@ -391,6 +398,80 @@ class _EventDetailInfoBadge extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _EventDetailCanceledBanner extends StatelessWidget {
+  const _EventDetailCanceledBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final title = FFLocalizations.of(context).getVariableText(
+      ruText: 'Событие отменено',
+      enText: 'Event canceled',
+    );
+    final description = FFLocalizations.of(context).getVariableText(
+      ruText: 'Присоединение и новые действия недоступны.',
+      enText: 'Joining and new actions are unavailable.',
+    );
+
+    return Semantics(
+      key: eventDetailCanceledBannerKey,
+      container: true,
+      label: '$title. $description',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsetsDirectional.all(ExpatlioDesign.space16),
+          decoration: BoxDecoration(
+            color: _eventDetailDestructiveCtaBackground.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+            border: Border.all(
+              color: _eventDetailDestructiveCtaBackground.withValues(
+                alpha: 0.32,
+              ),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.event_busy_outlined,
+                color: _eventDetailDestructiveCtaBackground,
+                size: 24,
+              ),
+              const SizedBox(width: ExpatlioDesign.space12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: _eventDetailDestructiveCtaBackground,
+                        size: 18,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: ExpatlioDesign.space4),
+                    Text(
+                      description,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.muted,
+                        size: 15,
+                        height: 1.32,
+                        weight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

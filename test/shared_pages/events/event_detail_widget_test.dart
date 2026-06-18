@@ -496,6 +496,133 @@ void main() {
     expect(chatTapCount, 1);
   });
 
+  testWidgets('canceled state shows direct-link banner and disabled CTA',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    var primaryTapCount = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            title: 'Разговорный клуб',
+            startsAt: DateTime.utc(2026, 6, 14, 15),
+            timeZoneId: 'Europe/Moscow',
+            locationName: 'Starbucks, ул. Арбат, 5',
+            participantsCount: 5,
+            capacity: 10,
+            joinCtaState: EventDetailJoinCtaState.canceled,
+            onPrimaryCtaPressed: () => primaryTapCount += 1,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
+      expect(find.text('Событие отменено'), findsOneWidget);
+      expect(
+        find.text('Присоединение и новые действия недоступны.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(eventDetailTitleKey), findsOneWidget);
+      expect(find.byKey(eventDetailDetailsBlockKey), findsOneWidget);
+      expect(find.byKey(eventDetailOccupancyKey), findsOneWidget);
+
+      final bannerSemantics =
+          tester.getSemantics(find.byKey(eventDetailCanceledBannerKey));
+      expect(bannerSemantics.label, contains('Событие отменено'));
+      expect(
+        bannerSemantics.label,
+        contains('Присоединение и новые действия недоступны.'),
+      );
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isButton, isTrue);
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, contains('Событие отменено'));
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(primaryTapCount, 0);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('canceled banner is hidden for active states', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          joinCtaState: EventDetailJoinCtaState.join,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailCanceledBannerKey), findsNothing);
+    expect(find.text('Событие отменено'), findsNothing);
+  });
+
+  testWidgets('canceled state shows English banner', (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('en'),
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            joinCtaState: EventDetailJoinCtaState.canceled,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
+      expect(find.text('Event canceled'), findsOneWidget);
+      expect(
+        find.text('Joining and new actions are unavailable.'),
+        findsOneWidget,
+      );
+      final bannerSemantics =
+          tester.getSemantics(find.byKey(eventDetailCanceledBannerKey));
+      expect(bannerSemantics.label, contains('Event canceled'));
+      expect(
+        bannerSemantics.label,
+        contains('Joining and new actions are unavailable.'),
+      );
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('canceled state keeps chat callback independent', (tester) async {
+    var chatTapCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          joinCtaState: EventDetailJoinCtaState.canceled,
+          onChatPressed: () => chatTapCount += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
+    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailChatCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(chatTapCount, 1);
+  });
+
   testWidgets('bottom action bar stays outside scrollable content',
       (tester) async {
     var joinTapCount = 0;
@@ -554,7 +681,7 @@ void main() {
         child: _buildTestApp(
           home: const EventDetailWidget(
             eventId: 'event-123',
-            joinCtaState: EventDetailJoinCtaState.past,
+            joinCtaState: EventDetailJoinCtaState.canceled,
           ),
         ),
       ),
@@ -562,9 +689,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventDetailBottomActionBarKey), findsOneWidget);
+    expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
     expect(find.byKey(eventDetailPrimaryCtaKey), findsOneWidget);
     expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
-    expect(find.text('Уже началось'), findsOneWidget);
+    expect(find.text('Событие отменено'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1657,7 +1785,56 @@ void main() {
     expect(find.text('Open detail'), findsOneWidget);
   });
 
-  test('event detail level badge stays presentation-only', () {
+  testWidgets('direct detail route can render canceled presentation state',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        MaterialApp.router(
+          locale: const Locale('ru'),
+          supportedLocales: _supportedLocales,
+          localizationsDelegates: _localizationsDelegates,
+          routerConfig: GoRouter(
+            initialLocation: '/events/event-123',
+            routes: [
+              GoRoute(
+                path: EventDetailWidget.routePath,
+                builder: (context, state) => EventDetailWidget(
+                  eventId: state.pathParameters['eventId']!,
+                  title: 'Разговорный клуб',
+                  startsAt: DateTime.utc(2026, 6, 14, 15),
+                  timeZoneId: 'Europe/Moscow',
+                  locationName: 'Starbucks, ул. Арбат, 5',
+                  participantsCount: 5,
+                  capacity: 10,
+                  joinCtaState: EventDetailJoinCtaState.canceled,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(EventDetailWidget), findsOneWidget);
+      expect(find.text('event-123'), findsNothing);
+      expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
+      expect(find.text('Событие отменено'), findsOneWidget);
+      expect(find.byKey(eventDetailTitleKey), findsOneWidget);
+      expect(find.byKey(eventDetailDetailsBlockKey), findsOneWidget);
+      expect(find.byKey(eventDetailOccupancyKey), findsOneWidget);
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, contains('Событие отменено'));
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  test('event detail stays presentation-only before data binding phase', () {
     final source = File('lib/shared_pages/events/event_detail_widget.dart')
         .readAsStringSync();
 
