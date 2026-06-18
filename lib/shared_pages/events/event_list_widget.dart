@@ -14,6 +14,7 @@ import '/services/event_city_resolution.dart';
 import '/services/event_city_selection_source.dart';
 import '/services/event_selected_city_state.dart';
 import '/services/event_temporary_city_selection.dart';
+import '/services/event_list_date_bounds.dart';
 
 const ValueKey<String> eventListCreateButtonKey =
     ValueKey<String>('event_list_create_button');
@@ -43,6 +44,7 @@ class EventListWidget extends StatefulWidget {
 
 class _EventListWidgetState extends State<EventListWidget> {
   late EventSelectedCity? _selectedCity;
+  EventListDateFilter _selectedDateFilter = EventListDateFilter.today;
   Future<EventCityCatalog>? _cityCatalogFuture;
   Future<List<EventCityChip>>? _cityChipsFuture;
   EventCityCatalog? _cityChipsCatalog;
@@ -165,6 +167,13 @@ class _EventListWidgetState extends State<EventListWidget> {
                         ],
                       ),
                       const SizedBox(height: ExpatlioDesign.space16),
+                      _EventDateChips(
+                        selectedFilter: _selectedDateFilter,
+                        onChanged: (filter) => setState(() {
+                          _selectedDateFilter = filter;
+                        }),
+                      ),
+                      const SizedBox(height: ExpatlioDesign.space12),
                       _EventCitySelector(
                         selectedCity: selectedState?.selected,
                         hasOutdatedProfileCity:
@@ -318,6 +327,87 @@ class _EventListWidgetState extends State<EventListWidget> {
       catalog: catalog,
     );
   }
+}
+
+class _EventDateChips extends StatelessWidget {
+  const _EventDateChips({
+    required this.selectedFilter,
+    required this.onChanged,
+  });
+
+  static const List<EventListDateFilter> _filters = [
+    EventListDateFilter.today,
+    EventListDateFilter.tomorrow,
+    EventListDateFilter.currentWeek,
+    EventListDateFilter.currentMonth,
+  ];
+
+  final EventListDateFilter selectedFilter;
+  final ValueChanged<EventListDateFilter> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: ExpatlioDesign.space8,
+      runSpacing: ExpatlioDesign.space8,
+      children: [
+        for (final filter in _filters)
+          ChoiceChip(
+            key: _eventDateFilterChipKey(filter),
+            label: Text(_eventDateFilterLabel(context, filter)),
+            selected: selectedFilter == filter,
+            onSelected: (_) => onChanged(filter),
+            showCheckmark: false,
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            backgroundColor: ExpatlioDesign.secondarySystemBackground,
+            selectedColor: ExpatlioDesign.primary.withValues(alpha: 0.12),
+            side: BorderSide(
+              color: selectedFilter == filter
+                  ? ExpatlioDesign.primary
+                  : ExpatlioDesign.separator,
+            ),
+            labelStyle: ExpatlioDesign.textStyle(
+              context,
+              color: selectedFilter == filter
+                  ? ExpatlioDesign.primary
+                  : ExpatlioDesign.text,
+              size: 14,
+              weight: FontWeight.w600,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+ValueKey<String> _eventDateFilterChipKey(EventListDateFilter filter) =>
+    ValueKey<String>('event_date_filter_${filter.name}');
+
+String _eventDateFilterLabel(
+  BuildContext context,
+  EventListDateFilter filter,
+) {
+  return switch (filter) {
+    EventListDateFilter.today => FFLocalizations.of(context).getVariableText(
+        ruText: 'Сегодня',
+        enText: 'Today',
+      ),
+    EventListDateFilter.tomorrow => FFLocalizations.of(context).getVariableText(
+        ruText: 'Завтра',
+        enText: 'Tomorrow',
+      ),
+    EventListDateFilter.currentWeek =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'На этой неделе',
+        enText: 'This week',
+      ),
+    EventListDateFilter.currentMonth =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'В этом месяце',
+        enText: 'This month',
+      ),
+  };
 }
 
 class _EventManualCityPicker extends StatefulWidget {

@@ -182,7 +182,7 @@ Date: 2026-06-14
 - [x] Add city chips in missing-location flow: recent selections first, static popular cities second.
 - [x] Add manual city selection action because chips are shortcuts, not the full city set.
 - [x] Allow chip/manual city selection to unlock the event list without saving profile location.
-- [ ] Add date filter chips: `Сегодня`, `Завтра`, `На этой неделе`, `В этом месяце`.
+- [x] Add date filter chips: `Сегодня`, `Завтра`, `На этой неделе`, `В этом месяце`.
 - [ ] Add level filter chips: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
 - [ ] Build event card layout from design.
 - [ ] Show organizer avatar/name.

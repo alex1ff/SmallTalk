@@ -16,6 +16,7 @@ import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_chip_source.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
+import 'package:small_talk/services/event_list_date_bounds.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -123,6 +124,46 @@ void main() {
 
     expect(find.byKey(eventListCreateButtonKey), findsOneWidget);
     expect(find.byIcon(Icons.add_sharp), findsOneWidget);
+  });
+
+  testWidgets('shows date filter chips with today selected by default',
+      (tester) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Сегодня'), findsOneWidget);
+    expect(find.text('Завтра'), findsOneWidget);
+    expect(find.text('На этой неделе'), findsOneWidget);
+    expect(find.text('В этом месяце'), findsOneWidget);
+    expect(_dateFilterChip(tester, EventListDateFilter.today).selected, isTrue);
+    expect(_dateFilterChip(tester, EventListDateFilter.tomorrow).selected,
+        isFalse);
+    expect(_dateFilterChip(tester, EventListDateFilter.currentWeek).selected,
+        isFalse);
+    expect(_dateFilterChip(tester, EventListDateFilter.currentMonth).selected,
+        isFalse);
+  });
+
+  testWidgets('changes selected date filter when a date chip is tapped',
+      (tester) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.tomorrow));
+    await tester.pumpAndSettle();
+
+    expect(
+        _dateFilterChip(tester, EventListDateFilter.today).selected, isFalse);
+    expect(
+        _dateFilterChip(tester, EventListDateFilter.tomorrow).selected, isTrue);
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.currentMonth));
+    await tester.pumpAndSettle();
+
+    expect(_dateFilterChip(tester, EventListDateFilter.tomorrow).selected,
+        isFalse);
+    expect(_dateFilterChip(tester, EventListDateFilter.currentMonth).selected,
+        isTrue);
   });
 
   testWidgets('shows a city selector placeholder below the header',
@@ -594,6 +635,15 @@ Finder _citySelectorText(String text) => find.descendant(
       of: find.byKey(eventListCitySelectorKey),
       matching: find.text(text),
     );
+
+Finder _dateFilterFinder(EventListDateFilter filter) =>
+    find.byKey(ValueKey<String>('event_date_filter_${filter.name}'));
+
+ChoiceChip _dateFilterChip(
+  WidgetTester tester,
+  EventListDateFilter filter,
+) =>
+    tester.widget<ChoiceChip>(_dateFilterFinder(filter));
 
 EventCity _cityFixture({
   required String countryCode,
