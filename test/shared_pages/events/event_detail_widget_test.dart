@@ -271,8 +271,7 @@ void main() {
     }
   });
 
-  testWidgets('joined CTA state shows leave action for participants',
-      (tester) async {
+  testWidgets('joined CTA state confirms before leave action', (tester) async {
     final semanticsHandle = tester.ensureSemantics();
     var leaveTapCount = 0;
 
@@ -313,14 +312,45 @@ void main() {
       await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
       await tester.pumpAndSettle();
 
+      expect(leaveTapCount, 0);
+      expect(find.byKey(eventDetailLeaveDialogKey), findsOneWidget);
+      expect(find.text('Покинуть событие?'), findsOneWidget);
+      expect(
+        find.text(
+          'Вы потеряете место в списке участников. Вернуться можно будет, если останутся свободные места.',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(eventDetailLeaveDialogDismissButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailLeaveDialogKey), findsNothing);
+      expect(leaveTapCount, 0);
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(1, 1));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailLeaveDialogKey), findsNothing);
+      expect(leaveTapCount, 0);
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+      await tester.pumpAndSettle();
+
       expect(leaveTapCount, 1);
     } finally {
       semanticsHandle.dispose();
     }
   });
 
-  testWidgets('joined CTA state shows English leave label', (tester) async {
+  testWidgets('joined CTA state shows English leave confirmation',
+      (tester) async {
     final semanticsHandle = tester.ensureSemantics();
+    var leaveTapCount = 0;
 
     try {
       await tester.pumpWidget(
@@ -341,6 +371,39 @@ void main() {
       expect(primarySemantics.flagsCollection.isEnabled, isFalse);
       expect(primarySemantics.label, contains('Joined'));
       expect(primarySemantics.label, contains('Leave event'));
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailLeaveDialogKey), findsNothing);
+      expect(leaveTapCount, 0);
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('en'),
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            joinCtaState: EventDetailJoinCtaState.joined,
+            onPrimaryCtaPressed: () => leaveTapCount += 1,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Leave event?'), findsOneWidget);
+      expect(
+        find.text(
+          'You will lose your participant spot. You can join again if there are still open spots.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(leaveTapCount, 1);
     } finally {
       semanticsHandle.dispose();
     }

@@ -149,8 +149,11 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     }
   }
 
-  Future<void> _handleLeave() async {
+  Future<void> _handleLeave(String eventId) async {
     if (_isJoining || _isLeaving) {
+      return;
+    }
+    if (_locallyJoinedEventId != eventId) {
       return;
     }
 
@@ -162,7 +165,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     });
     try {
       final result = await EventActionsRepository.leaveEvent(
-        eventId: widget.eventId,
+        eventId: eventId,
         invoker: widget.leaveEventInvoker,
       );
       if (!mounted || requestGeneration != _participantActionGeneration) {
@@ -281,7 +284,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
               ? canJoin
                   ? _handleJoin
                   : canLeave
-                      ? _handleLeave
+                      ? () => _handleLeave(eventId)
                       : null
               : null,
         );

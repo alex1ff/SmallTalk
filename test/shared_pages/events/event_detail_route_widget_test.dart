@@ -433,6 +433,12 @@ void main() {
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
     await tester.pumpAndSettle();
 
+    expect(find.byKey(eventDetailLeaveDialogKey), findsOneWidget);
+    expect(leaveCalls, 0);
+
+    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+    await tester.pumpAndSettle();
+
     expect(leaveCalls, 1);
     expect(functionName, leaveEventFunctionName);
     expect(payload, <String, dynamic>{'eventId': 'event-1'});
@@ -470,6 +476,8 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
       await tester.pump();
       await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
       await tester.pump();
@@ -519,6 +527,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
     await tester.pumpAndSettle();
 
     expect(leaveCalls, 1);
@@ -724,6 +734,8 @@ void main() {
     expect(find.text('Покинуть'), findsOneWidget);
 
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
     await tester.pump();
 
     expect(leaveCalls, 1);
@@ -762,6 +774,113 @@ void main() {
     expect(find.text('Second event'), findsOneWidget);
     expect(find.text('Покинуть'), findsOneWidget);
     expect(find.text('Присоединиться'), findsNothing);
+  });
+
+  testWidgets('leave confirmation ignores confirm after leave becomes stale',
+      (tester) async {
+    final streamController = StreamController<DocumentSnapshot>();
+    addTearDown(streamController.close);
+    var leaveCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => streamController.stream,
+          joinEventInvoker: (_, __) async => _joinEventResponse(),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            return _leaveEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Покинуть'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLeaveDialogKey), findsOneWidget);
+    expect(leaveCalls, 0);
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(status: 'canceled'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(leaveCalls, 0);
+    expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
+  });
+
+  testWidgets('leave confirmation survives active snapshot refresh',
+      (tester) async {
+    final streamController = StreamController<DocumentSnapshot>();
+    addTearDown(streamController.close);
+    var leaveCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => streamController.stream,
+          joinEventInvoker: (_, __) async => _joinEventResponse(),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            return _leaveEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(title: 'First event'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLeaveDialogKey), findsOneWidget);
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(title: 'Updated event'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(leaveCalls, 1);
+    expect(find.text('Присоединиться'), findsOneWidget);
   });
 
   testWidgets('successful cancellation keeps organizer on detail route',

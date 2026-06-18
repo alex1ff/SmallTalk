@@ -263,7 +263,7 @@ Date: 2026-06-14
 - [x] Show success state after join.
 - [x] Update occupancy after join.
 - [x] Add leave action for active participants.
-- [ ] Add leave confirmation.
+- [x] Add leave confirmation.
 - [ ] Hide or disable leave action at or after `startsAt`.
 - [ ] Update occupancy after leave.
 - [ ] Remove chat access after leave.

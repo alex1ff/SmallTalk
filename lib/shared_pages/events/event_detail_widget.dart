@@ -47,6 +47,12 @@ const ValueKey<String> eventDetailCancelDialogDismissButtonKey =
     ValueKey<String>('event_detail_cancel_dialog_dismiss_button');
 const ValueKey<String> eventDetailCancelDialogConfirmButtonKey =
     ValueKey<String>('event_detail_cancel_dialog_confirm_button');
+const ValueKey<String> eventDetailLeaveDialogKey =
+    ValueKey<String>('event_detail_leave_dialog');
+const ValueKey<String> eventDetailLeaveDialogDismissButtonKey =
+    ValueKey<String>('event_detail_leave_dialog_dismiss_button');
+const ValueKey<String> eventDetailLeaveDialogConfirmButtonKey =
+    ValueKey<String>('event_detail_leave_dialog_confirm_button');
 const ValueKey<String> eventDetailDetailsBlockKey =
     ValueKey<String>('event_detail_details_block');
 const ValueKey<String> eventDetailDateRowKey =
@@ -181,6 +187,7 @@ class EventDetailWidget extends StatelessWidget {
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
       bottomNavigationBar: _EventDetailBottomActionBar(
+        eventId: eventId,
         joinCtaState: joinCtaState,
         onPrimaryPressed: onPrimaryCtaPressed,
         onChatPressed: onChatPressed,
@@ -1292,11 +1299,13 @@ class _EventDetailParticipantAvatar extends StatelessWidget {
 
 class _EventDetailBottomActionBar extends StatelessWidget {
   const _EventDetailBottomActionBar({
+    required this.eventId,
     required this.joinCtaState,
     required this.onPrimaryPressed,
     required this.onChatPressed,
   });
 
+  final String eventId;
   final EventDetailJoinCtaState joinCtaState;
   final VoidCallback? onPrimaryPressed;
   final VoidCallback? onChatPressed;
@@ -1328,6 +1337,7 @@ class _EventDetailBottomActionBar extends StatelessWidget {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final primaryCta = _EventDetailPrimaryCta(
+                    eventId: eventId,
                     state: joinCtaState,
                     onPressed: onPrimaryPressed,
                   );
@@ -1367,23 +1377,97 @@ class _EventDetailBottomActionBar extends StatelessWidget {
   }
 }
 
-class _EventDetailPrimaryCta extends StatelessWidget {
+class _EventDetailPrimaryCta extends StatefulWidget {
   const _EventDetailPrimaryCta({
+    required this.eventId,
     required this.state,
     required this.onPressed,
   });
 
+  final String eventId;
   final EventDetailJoinCtaState state;
   final VoidCallback? onPressed;
 
   @override
+  State<_EventDetailPrimaryCta> createState() => _EventDetailPrimaryCtaState();
+}
+
+class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
+  int _confirmationGeneration = 0;
+
+  @override
+  void didUpdateWidget(covariant _EventDetailPrimaryCta oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.eventId != widget.eventId ||
+        oldWidget.state != widget.state ||
+        (oldWidget.onPressed == null) != (widget.onPressed == null)) {
+      _confirmationGeneration += 1;
+    }
+  }
+
+  Future<void> _confirmLeave(BuildContext context) async {
+    final generation = _confirmationGeneration;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          key: eventDetailLeaveDialogKey,
+          title: Text(
+            FFLocalizations.of(dialogContext).getVariableText(
+              ruText: 'Покинуть событие?',
+              enText: 'Leave event?',
+            ),
+          ),
+          content: Text(
+            FFLocalizations.of(dialogContext).getVariableText(
+              ruText:
+                  'Вы потеряете место в списке участников. Вернуться можно будет, если останутся свободные места.',
+              enText:
+                  'You will lose your participant spot. You can join again if there are still open spots.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              key: eventDetailLeaveDialogDismissButtonKey,
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(
+                FFLocalizations.of(dialogContext).getVariableText(
+                  ruText: 'Остаться',
+                  enText: 'Stay',
+                ),
+              ),
+            ),
+            TextButton(
+              key: eventDetailLeaveDialogConfirmButtonKey,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(
+                FFLocalizations.of(dialogContext).getVariableText(
+                  ruText: 'Покинуть событие',
+                  enText: 'Leave event',
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || generation != _confirmationGeneration) {
+      return;
+    }
+    if (confirmed == true && widget.state == EventDetailJoinCtaState.joined) {
+      widget.onPressed?.call();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final state = widget.state;
     final label = _eventDetailJoinCtaLabel(context, state);
     final semanticsLabel = _eventDetailJoinCtaSemanticsLabel(context, state);
     final enabled = switch (state) {
       EventDetailJoinCtaState.join ||
       EventDetailJoinCtaState.joined =>
-        onPressed != null,
+        widget.onPressed != null,
       EventDetailJoinCtaState.joining ||
       EventDetailJoinCtaState.full ||
       EventDetailJoinCtaState.canceled ||
@@ -1414,6 +1498,13 @@ class _EventDetailPrimaryCta extends StatelessWidget {
               ExpatlioDesign.muted,
           }
         : ExpatlioDesign.muted;
+    final effectiveOnPressed = enabled
+        ? state == EventDetailJoinCtaState.joined
+            ? () {
+                unawaited(_confirmLeave(context));
+              }
+            : widget.onPressed
+        : null;
 
     return Semantics(
       key: eventDetailPrimaryCtaKey,
@@ -1421,10 +1512,10 @@ class _EventDetailPrimaryCta extends StatelessWidget {
       button: true,
       enabled: enabled,
       label: semanticsLabel,
-      onTap: enabled ? onPressed : null,
+      onTap: effectiveOnPressed,
       child: ExcludeSemantics(
         child: TextButton(
-          onPressed: enabled ? onPressed : null,
+          onPressed: effectiveOnPressed,
           style: TextButton.styleFrom(
             minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
             padding: const EdgeInsetsDirectional.symmetric(
