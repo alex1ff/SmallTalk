@@ -1358,6 +1358,8 @@ void main() {
           path: EventGroupChatWidget.routePath,
           builder: (context, state) => EventGroupChatWidget(
             eventId: state.pathParameters['eventId']!,
+            messagesStream: (_) =>
+                Stream.value(const <EventChatMessagesRecord>[]),
           ),
         ),
       ],
@@ -1377,7 +1379,7 @@ void main() {
 
     expect(router.getCurrentLocation(), '/events/event-123/chat');
     expect(find.byType(EventGroupChatWidget), findsOneWidget);
-    expect(find.text('event-123'), findsOneWidget);
+    expect(find.text('Чат события'), findsOneWidget);
   });
 
   testWidgets('does not open event chat from non-participant card CTA',
@@ -1402,6 +1404,8 @@ void main() {
           path: EventGroupChatWidget.routePath,
           builder: (context, state) => EventGroupChatWidget(
             eventId: state.pathParameters['eventId']!,
+            messagesStream: (_) =>
+                Stream.value(const <EventChatMessagesRecord>[]),
           ),
         ),
       ],

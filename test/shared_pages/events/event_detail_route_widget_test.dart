@@ -418,6 +418,8 @@ void main() {
           path: EventGroupChatWidget.routePath,
           builder: (context, state) => EventGroupChatWidget(
             eventId: state.pathParameters['eventId']!,
+            messagesStream: (_) =>
+                Stream.value(const <EventChatMessagesRecord>[]),
           ),
         ),
       ],
@@ -445,7 +447,7 @@ void main() {
 
     expect(router.getCurrentLocation(), '/events/event-1/chat');
     expect(find.byType(EventGroupChatWidget), findsOneWidget);
-    expect(find.text('event-1'), findsOneWidget);
+    expect(find.text('Чат события'), findsOneWidget);
   });
 
   testWidgets('active participant can open chat from direct detail',
@@ -482,6 +484,8 @@ void main() {
           path: EventGroupChatWidget.routePath,
           builder: (context, state) => EventGroupChatWidget(
             eventId: state.pathParameters['eventId']!,
+            messagesStream: (_) =>
+                Stream.value(const <EventChatMessagesRecord>[]),
           ),
         ),
       ],
@@ -531,6 +535,8 @@ void main() {
           path: EventGroupChatWidget.routePath,
           builder: (context, state) => EventGroupChatWidget(
             eventId: state.pathParameters['eventId']!,
+            messagesStream: (_) =>
+                Stream.value(const <EventChatMessagesRecord>[]),
           ),
         ),
       ],

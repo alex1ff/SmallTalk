@@ -386,18 +386,23 @@ void main() {
     expect(edit, isNot(contains('.editEvent(')));
   });
 
-  test('event group chat screen stays a route placeholder before Phase 11', () {
+  test('event group chat screen loads messages without direct sends', () {
     final chat = File('lib/shared_pages/events/event_group_chat_widget.dart')
+        .readAsStringSync();
+    final repository = File('lib/services/event_group_chat_repository.dart')
         .readAsStringSync();
 
     expect(chat, contains('final String eventId;'));
     expect(chat, contains('Чат события'));
     expect(chat, contains('Event chat'));
+    expect(chat, contains('EventGroupChatRepository'));
+    expect(chat, contains('EventChatMessagesRecord'));
+    expect(repository, contains('EventChatsRecord.collection.doc'));
+    expect(repository, contains('queryEventChatMessagesRecord'));
+    expect(repository, contains("orderBy('createdAt', descending: true)"));
     expect(chat, isNot(contains('ChatThreadWidget')));
-    expect(chat, isNot(contains('EventChatsRecord')));
-    expect(chat, isNot(contains('EventChatMessagesRecord')));
     expect(chat, isNot(contains('sendEventChatMessage')));
-    expect(chat, isNot(contains('queryEventChatMessagesRecord')));
+    expect(repository, isNot(contains('sendEventChatMessage')));
   });
 
   testWidgets('event create route redirects signed-out users to onboarding',
@@ -460,7 +465,7 @@ void main() {
     expect(router.getCurrentLocation(), '/events/event-123/chat');
     expect(find.byType(EventGroupChatWidget), findsOneWidget);
     expect(find.byType(EventDetailWidget), findsNothing);
-    expect(find.text('event-123'), findsOneWidget);
+    expect(find.text('Event chat'), findsOneWidget);
     expect(find.byType(NavBarWidget), findsNothing);
   });
 

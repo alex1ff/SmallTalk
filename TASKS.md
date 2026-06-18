@@ -276,7 +276,7 @@ Date: 2026-06-14
 - [x] Open chat from event card only for participants.
 - [x] Open chat from event detail only for participants.
 - [x] Show `Сначала присоединитесь к событию` for non-participants.
-- [ ] Load event chat messages.
+- [x] Load event chat messages.
 - [ ] Send event chat messages through `sendEventChatMessage`.
 - [ ] Show sender name/avatar.
 - [ ] Render removed/tombstoned message state when `deletedAt` is non-null, if such messages are encountered.

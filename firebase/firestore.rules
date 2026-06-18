@@ -1073,6 +1073,12 @@ service cloud.firestore {
         canGetCanceledEventChat(chatId, eventChatDocumentData(chatId));
     }
 
+    function hasBoundedEventChatMessagesQuery() {
+      return request.query.limit is int &&
+        request.query.limit > 0 &&
+        request.query.limit <= 100;
+    }
+
     match /users/{userId} {
       allow create: if isAdmin() || canCreateOwnUser(userId);
       allow get, list: if canReadUserDocument(userId);
@@ -1187,7 +1193,11 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow get: if canGetActiveEventChatMessage(chatId) ||
           canGetCanceledEventChatMessage(chatId);
-        allow list: if false;
+        allow list: if hasBoundedEventChatMessagesQuery() &&
+          (
+            canGetActiveEventChatMessage(chatId) ||
+            canGetCanceledEventChatMessage(chatId)
+          );
         allow create, update, delete: if false;
       }
     }
