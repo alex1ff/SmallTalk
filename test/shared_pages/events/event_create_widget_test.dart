@@ -2686,6 +2686,41 @@ void main() {
     expect(generatedRequestIds, isEmpty);
   });
 
+  testWidgets('discard confirmation copy does not promise draft restore',
+      (tester) async {
+    final router = _buildEventCreateRouter();
+
+    await tester.pumpWidget(
+      _buildRouterTestApp(
+        router,
+        locale: const Locale('en'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventCreateTitleFieldKey),
+      'Weekend club',
+    );
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateDiscardDialogKey), findsOneWidget);
+    expect(find.text('Leave create form?'), findsOneWidget);
+    expect(find.text('Entered details will be lost.'), findsOneWidget);
+    expect(find.text('Keep editing'), findsOneWidget);
+    expect(find.text('Discard'), findsOneWidget);
+    expect(
+      find.textContaining(
+        RegExp(
+          r'\b(saved|restore|draft|restart|logout|reinstall)\b',
+          caseSensitive: false,
+        ),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('cleared capacity confirms discard before leaving',
       (tester) async {
     final router = _buildEventCreateRouter();
