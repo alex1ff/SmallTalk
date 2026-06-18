@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/event_level_helper.dart';
 
 const ValueKey<String> eventDetailTopBarKey =
     ValueKey<String>('event_detail_top_bar');
@@ -10,22 +11,33 @@ const ValueKey<String> eventDetailBackButtonKey =
     ValueKey<String>('event_detail_back_button');
 const ValueKey<String> eventDetailShareButtonKey =
     ValueKey<String>('event_detail_share_button');
+const ValueKey<String> eventDetailLevelRangeBadgeKey =
+    ValueKey<String>('event_detail_level_range_badge');
 
 class EventDetailWidget extends StatelessWidget {
   const EventDetailWidget({
     super.key,
     required this.eventId,
     this.onSharePressed,
+    this.levelMin,
+    this.levelMax,
   });
 
   final String eventId;
   final VoidCallback? onSharePressed;
+  final String? levelMin;
+  final String? levelMax;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
 
   @override
   Widget build(BuildContext context) {
+    final levelRangeLabel = _eventDetailLevelRangeLabel(
+      levelMin: levelMin,
+      levelMax: levelMax,
+    );
+
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
       body: SafeArea(
@@ -40,6 +52,10 @@ class EventDetailWidget extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (levelRangeLabel.isNotEmpty) ...[
+                        _EventDetailLevelRangeBadge(label: levelRangeLabel),
+                        const SizedBox(height: ExpatlioDesign.space12),
+                      ],
                       Text(
                         FFLocalizations.of(context).getVariableText(
                           ruText: 'Событие',
@@ -71,6 +87,64 @@ class EventDetailWidget extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EventDetailLevelRangeBadge extends StatelessWidget {
+  const _EventDetailLevelRangeBadge({
+    required this.label,
+  });
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final semanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Уровень $label',
+      enText: 'Level $label',
+    );
+
+    return Semantics(
+      key: eventDetailLevelRangeBadgeKey,
+      label: semanticsLabel,
+      child: ExcludeSemantics(
+        child: Align(
+          alignment: AlignmentDirectional.center,
+          child: Container(
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: ExpatlioDesign.space12,
+              vertical: ExpatlioDesign.space8,
+            ),
+            decoration: ExpatlioDesign.softPrimaryDecoration(
+              radius: ExpatlioDesign.radiusCapsule,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.school_outlined,
+                  color: ExpatlioDesign.primary,
+                  size: 16,
+                ),
+                const SizedBox(width: ExpatlioDesign.space4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: ExpatlioDesign.primary,
+                    size: 14,
+                    weight: FontWeight.w700,
+                    height: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -163,4 +237,27 @@ class _EventDetailTopBar extends StatelessWidget {
       ),
     );
   }
+}
+
+String _eventDetailLevelRangeLabel({
+  required String? levelMin,
+  required String? levelMax,
+}) {
+  final normalizedMin = levelMin?.trim() ?? '';
+  final normalizedMax = levelMax?.trim() ?? '';
+  if (normalizedMin.isEmpty || normalizedMax.isEmpty) {
+    return '';
+  }
+
+  final range = tryEventLevelRange(
+    levelMin: normalizedMin,
+    levelMax: normalizedMax,
+  );
+  if (range == null) {
+    return '';
+  }
+
+  return range.levelMin == range.levelMax
+      ? range.levelMin
+      : '${range.levelMin}-${range.levelMax}';
 }

@@ -199,7 +199,7 @@ Date: 2026-06-14
 ## Phase 7: Event Detail Screen
 
 - [x] Build top bar with back and share actions.
-- [ ] Show level/range badge.
+- [x] Show level/range badge.
 - [ ] Show language badge.
 - [ ] Show title and full description.
 - [ ] Show organizer card.

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -98,6 +100,113 @@ void main() {
     expect(shareTapCount, 1);
   });
 
+  testWidgets('shows normalized level range badge', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          levelMin: ' b1 ',
+          levelMax: ' c1 ',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLevelRangeBadgeKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailLevelRangeBadgeKey),
+        matching: find.text('B1-C1'),
+      ),
+      findsOneWidget,
+    );
+
+    final badgeSemantics = tester.widget<Semantics>(
+      find.byKey(eventDetailLevelRangeBadgeKey),
+    );
+    expect(badgeSemantics.properties.label, 'Уровень B1-C1');
+  });
+
+  testWidgets('shows same-level range as a single level', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          levelMin: 'B1',
+          levelMax: 'B1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailLevelRangeBadgeKey),
+        matching: find.text('B1'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('B1-B1'), findsNothing);
+  });
+
+  testWidgets('hides level range badge when range is missing or invalid',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          levelMin: 'C1',
+          levelMax: 'B1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLevelRangeBadgeKey), findsNothing);
+    final invalidRangeTitleDy = tester.getCenter(_detailBodyTitle()).dy;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          levelMin: 'B1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLevelRangeBadgeKey), findsNothing);
+    final missingRangeTitleDy = tester.getCenter(_detailBodyTitle()).dy;
+    expect((invalidRangeTitleDy - missingRangeTitleDy).abs(), lessThan(1.0));
+  });
+
+  testWidgets('level range badge fits narrow large-text layouts',
+      (tester) async {
+    tester.view.physicalSize = const Size(640, 1200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+        child: _buildTestApp(
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            levelMin: 'B1',
+            levelMax: 'C1',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLevelRangeBadgeKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('back action pops the detail route when possible',
       (tester) async {
     await tester.pumpWidget(
@@ -135,6 +244,15 @@ void main() {
     expect(find.byType(EventDetailWidget), findsNothing);
     expect(find.text('Open detail'), findsOneWidget);
   });
+
+  test('event detail level badge stays presentation-only', () {
+    final source = File('lib/shared_pages/events/event_detail_widget.dart')
+        .readAsStringSync();
+
+    expect(source, isNot(contains('EventDetailRepository')));
+    expect(source, isNot(contains('watchEventDetail')));
+    expect(source, isNot(contains('EventsRecord')));
+  });
 }
 
 class _StackRoot extends StatelessWidget {
@@ -154,3 +272,8 @@ class _StackRoot extends StatelessWidget {
     );
   }
 }
+
+Finder _detailBodyTitle() => find.descendant(
+      of: find.byType(Center),
+      matching: find.text('Событие'),
+    );
