@@ -4,13 +4,22 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 
+const ValueKey<String> eventDetailTopBarKey =
+    ValueKey<String>('event_detail_top_bar');
+const ValueKey<String> eventDetailBackButtonKey =
+    ValueKey<String>('event_detail_back_button');
+const ValueKey<String> eventDetailShareButtonKey =
+    ValueKey<String>('event_detail_share_button');
+
 class EventDetailWidget extends StatelessWidget {
   const EventDetailWidget({
     super.key,
     required this.eventId,
+    this.onSharePressed,
   });
 
   final String eventId;
+  final VoidCallback? onSharePressed;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
@@ -23,7 +32,7 @@ class EventDetailWidget extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const _EventDetailTopBar(),
+            _EventDetailTopBar(onSharePressed: onSharePressed),
             Expanded(
               child: Center(
                 child: Padding(
@@ -69,24 +78,50 @@ class EventDetailWidget extends StatelessWidget {
 }
 
 class _EventDetailTopBar extends StatelessWidget {
-  const _EventDetailTopBar();
+  const _EventDetailTopBar({
+    required this.onSharePressed,
+  });
+
+  final VoidCallback? onSharePressed;
 
   @override
   Widget build(BuildContext context) {
+    final backLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Назад',
+      enText: 'Back',
+    );
+    final shareLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Поделиться событием',
+      enText: 'Share event',
+    );
+    void handleBackPressed() => context.safePop();
+
     return SizedBox(
+      key: eventDetailTopBarKey,
       height: ExpatlioDesign.pageHeaderHeight,
       child: Row(
         children: [
-          FlutterFlowIconButton(
-            borderColor: Colors.transparent,
-            borderRadius: 24,
-            buttonSize: 48,
-            icon: Icon(
-              FFIcons.kchevronLeft,
-              color: ExpatlioDesign.text,
-              size: 24,
+          Tooltip(
+            message: backLabel,
+            child: Semantics(
+              key: eventDetailBackButtonKey,
+              button: true,
+              label: backLabel,
+              onTap: handleBackPressed,
+              child: ExcludeSemantics(
+                child: FlutterFlowIconButton(
+                  borderColor: Colors.transparent,
+                  borderRadius: 24,
+                  buttonSize: 48,
+                  icon: Icon(
+                    FFIcons.kchevronLeft,
+                    color: ExpatlioDesign.text,
+                    size: 24,
+                  ),
+                  onPressed: handleBackPressed,
+                ),
+              ),
             ),
-            onPressed: () => context.safePop(),
           ),
           Expanded(
             child: Text(
@@ -100,7 +135,30 @@ class _EventDetailTopBar extends StatelessWidget {
               style: ExpatlioDesign.pageHeaderTitleStyle(context),
             ),
           ),
-          const SizedBox(width: 48),
+          Tooltip(
+            message: shareLabel,
+            child: Semantics(
+              key: eventDetailShareButtonKey,
+              button: true,
+              enabled: onSharePressed != null,
+              label: shareLabel,
+              onTap: onSharePressed,
+              child: ExcludeSemantics(
+                child: FlutterFlowIconButton(
+                  borderColor: Colors.transparent,
+                  borderRadius: 24,
+                  buttonSize: 48,
+                  disabledIconColor: ExpatlioDesign.disabled,
+                  icon: Icon(
+                    Icons.ios_share,
+                    color: ExpatlioDesign.text,
+                    size: 24,
+                  ),
+                  onPressed: onSharePressed,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
