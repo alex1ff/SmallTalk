@@ -276,6 +276,94 @@ void main() {
     expect(capacityField.controller?.text, '10');
   });
 
+  testWidgets('emits title and description drafts locally', (tester) async {
+    final titleDrafts = <EventCreateTitleDraft>[];
+    final descriptionDrafts = <EventCreateDescriptionDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialTitle: '  Клуб выходного дня  ',
+          initialDescription: 'Первая строка\nВторая строка',
+          onTitleDraftChanged: titleDrafts.add,
+          onDescriptionDraftChanged: descriptionDrafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(titleDrafts.map(_titleDraftValue), ['  Клуб выходного дня  ']);
+    expect(
+      descriptionDrafts.map(_descriptionDraftValue),
+      ['Первая строка\nВторая строка'],
+    );
+
+    await tester.enterText(
+      find.byKey(eventCreateTitleFieldKey),
+      'Разговорная встреча',
+    );
+    await tester.enterText(
+      find.byKey(eventCreateDescriptionFieldKey),
+      'Говорим о фильмах и путешествиях.',
+    );
+    await tester.pump();
+
+    expect(titleDrafts.map(_titleDraftValue),
+        ['  Клуб выходного дня  ', 'Разговорная встреча']);
+    expect(
+      descriptionDrafts.map(_descriptionDraftValue),
+      ['Первая строка\nВторая строка', 'Говорим о фильмах и путешествиях.'],
+    );
+  });
+
+  testWidgets('emits text drafts when callbacks are added later',
+      (tester) async {
+    final titleDrafts = <EventCreateTitleDraft>[];
+    final descriptionDrafts = <EventCreateDescriptionDraft>[];
+    var callbackEnabled = false;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              onTitleDraftChanged: callbackEnabled ? titleDrafts.add : null,
+              onDescriptionDraftChanged:
+                  callbackEnabled ? descriptionDrafts.add : null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventCreateTitleFieldKey),
+      'Книжный клуб',
+    );
+    await tester.enterText(
+      find.byKey(eventCreateDescriptionFieldKey),
+      'Обсуждаем короткий рассказ.',
+    );
+    await tester.pump();
+
+    expect(titleDrafts, isEmpty);
+    expect(descriptionDrafts, isEmpty);
+
+    setHostState(() {
+      callbackEnabled = true;
+    });
+    await tester.pumpAndSettle();
+
+    expect(titleDrafts.map(_titleDraftValue), ['Книжный клуб']);
+    expect(descriptionDrafts.map(_descriptionDraftValue),
+        ['Обсуждаем короткий рассказ.']);
+  });
+
   testWidgets('renders language selector from catalog in Russian',
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
@@ -2539,11 +2627,21 @@ void main() {
   testWidgets('create form avoids backend submit before user submits',
       (tester) async {
     var submitCount = 0;
+    final generatedRequestIds = <String>[];
+    final titleDrafts = <EventCreateTitleDraft>[];
+    final descriptionDrafts = <EventCreateDescriptionDraft>[];
 
     await tester.pumpWidget(
       _buildTestApp(
         home: EventCreateWidget(
           languageCatalogOverride: _languageCatalog,
+          onTitleDraftChanged: titleDrafts.add,
+          onDescriptionDraftChanged: descriptionDrafts.add,
+          createRequestIdGenerator: () {
+            final id = _requestId(generatedRequestIds.length);
+            generatedRequestIds.add(id);
+            return id;
+          },
           createEventInvoker: (_, __) async {
             submitCount += 1;
             return _createEventResponse();
@@ -2553,7 +2651,22 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.enterText(
+      find.byKey(eventCreateTitleFieldKey),
+      'Частично заполненная встреча',
+    );
+    await tester.enterText(
+      find.byKey(eventCreateDescriptionFieldKey),
+      'Описание пока без остальных обязательных полей.',
+    );
+    await tester.pump();
+
+    expect(titleDrafts.map(_titleDraftValue),
+        ['', 'Частично заполненная встреча']);
+    expect(descriptionDrafts.map(_descriptionDraftValue),
+        ['', 'Описание пока без остальных обязательных полей.']);
     expect(submitCount, 0);
+    expect(generatedRequestIds, isEmpty);
   });
 }
 
@@ -2561,6 +2674,11 @@ Finder _levelSelectorText(String text) => find.descendant(
       of: find.byKey(eventCreateLevelSelectorKey),
       matching: find.text(text),
     );
+
+String _titleDraftValue(EventCreateTitleDraft draft) => draft.title;
+
+String _descriptionDraftValue(EventCreateDescriptionDraft draft) =>
+    draft.description;
 
 String _levelDraftValue(EventCreateLevelDraft draft) =>
     '${draft.levelMin}:${draft.levelMax}';

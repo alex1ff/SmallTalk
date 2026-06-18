@@ -118,6 +118,22 @@ class EventCreateLanguageDraft {
   final String languageCode;
 }
 
+class EventCreateTitleDraft {
+  const EventCreateTitleDraft({
+    required this.title,
+  });
+
+  final String title;
+}
+
+class EventCreateDescriptionDraft {
+  const EventCreateDescriptionDraft({
+    required this.description,
+  });
+
+  final String description;
+}
+
 class EventCreateLevelDraft {
   const EventCreateLevelDraft({
     required this.levelMin,
@@ -183,6 +199,8 @@ class EventCreateWidget extends StatefulWidget {
     super.key,
     this.languageCatalogOverride,
     this.cityCatalogOverride,
+    this.initialTitle,
+    this.initialDescription,
     this.initialLanguageCode,
     this.initialLevelMin,
     this.initialLevelMax,
@@ -195,6 +213,8 @@ class EventCreateWidget extends StatefulWidget {
     this.createEventInvoker,
     this.createRequestIdGenerator,
     this.onLanguageCodeChanged,
+    this.onTitleDraftChanged,
+    this.onDescriptionDraftChanged,
     this.onLanguageDraftChanged,
     this.onLevelDraftChanged,
     this.onCityDraftChanged,
@@ -210,6 +230,8 @@ class EventCreateWidget extends StatefulWidget {
 
   final EventLanguageCatalog? languageCatalogOverride;
   final EventCityCatalog? cityCatalogOverride;
+  final String? initialTitle;
+  final String? initialDescription;
   final String? initialLanguageCode;
   final String? initialLevelMin;
   final String? initialLevelMax;
@@ -222,6 +244,8 @@ class EventCreateWidget extends StatefulWidget {
   final EventCallableInvoker? createEventInvoker;
   final String Function()? createRequestIdGenerator;
   final ValueChanged<String>? onLanguageCodeChanged;
+  final ValueChanged<EventCreateTitleDraft>? onTitleDraftChanged;
+  final ValueChanged<EventCreateDescriptionDraft>? onDescriptionDraftChanged;
   final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
   final ValueChanged<EventCreateLevelDraft>? onLevelDraftChanged;
   final ValueChanged<EventCreateCityDraft>? onCityDraftChanged;
@@ -260,6 +284,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   EventSelectedCity? _lastVisibleSelectedCity;
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
+  String? _lastEmittedTitleDraftText;
+  String? _pendingTitleDraftText;
+  bool _titleDraftCallbackScheduled = false;
+  String? _lastEmittedDescriptionDraftText;
+  String? _pendingDescriptionDraftText;
+  bool _descriptionDraftCallbackScheduled = false;
   String? _lastEmittedLanguageDraftCode;
   String? _pendingLanguageDraftCode;
   bool _languageDraftCallbackScheduled = false;
@@ -291,6 +321,10 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   @override
   void initState() {
     super.initState();
+    _titleTextController.text = widget.initialTitle ?? '';
+    _titleTextController.addListener(_handleTitleTextChanged);
+    _descriptionTextController.text = widget.initialDescription ?? '';
+    _descriptionTextController.addListener(_handleDescriptionTextChanged);
     _selectedLanguageCode = widget.initialLanguageCode;
     _selectedLevelMin = widget.initialLevelMin;
     _selectedLevelMax = widget.initialLevelMax;
@@ -339,6 +373,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       );
       _clearCityChipsCache();
     }
+    if (oldWidget.initialTitle != widget.initialTitle) {
+      _titleTextController.text = widget.initialTitle ?? '';
+    }
+    if (oldWidget.initialDescription != widget.initialDescription) {
+      _descriptionTextController.text = widget.initialDescription ?? '';
+    }
     if (oldWidget.initialLanguageCode != widget.initialLanguageCode) {
       _selectedLanguageCode = widget.initialLanguageCode;
     }
@@ -374,6 +414,8 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
 
   @override
   void dispose() {
+    _titleTextController.removeListener(_handleTitleTextChanged);
+    _descriptionTextController.removeListener(_handleDescriptionTextChanged);
     _locationTextController.removeListener(_handleLocationTextChanged);
     _capacityTextController.removeListener(_handleCapacityTextChanged);
     _titleTextController.dispose();
@@ -421,6 +463,90 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       return popular.first.code;
     }
     return catalog.languages.first.code;
+  }
+
+  void _emitTitleDraftNow(String title) {
+    _pendingTitleDraftText = null;
+    if (_lastEmittedTitleDraftText == title) {
+      return;
+    }
+    final onTitleDraftChanged = widget.onTitleDraftChanged;
+    if (onTitleDraftChanged == null) {
+      return;
+    }
+    _lastEmittedTitleDraftText = title;
+    onTitleDraftChanged(
+      EventCreateTitleDraft(title: title),
+    );
+  }
+
+  void _queueTitleDraft(String title) {
+    if (_lastEmittedTitleDraftText == title && _pendingTitleDraftText == null) {
+      return;
+    }
+    _pendingTitleDraftText = title;
+    if (_titleDraftCallbackScheduled) {
+      return;
+    }
+    _titleDraftCallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _titleDraftCallbackScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      final pendingTitle = _pendingTitleDraftText;
+      if (pendingTitle == null || _lastEmittedTitleDraftText == pendingTitle) {
+        return;
+      }
+      _emitTitleDraftNow(pendingTitle);
+    });
+  }
+
+  void _handleTitleTextChanged() {
+    _queueTitleDraft(_titleTextController.text);
+  }
+
+  void _emitDescriptionDraftNow(String description) {
+    _pendingDescriptionDraftText = null;
+    if (_lastEmittedDescriptionDraftText == description) {
+      return;
+    }
+    final onDescriptionDraftChanged = widget.onDescriptionDraftChanged;
+    if (onDescriptionDraftChanged == null) {
+      return;
+    }
+    _lastEmittedDescriptionDraftText = description;
+    onDescriptionDraftChanged(
+      EventCreateDescriptionDraft(description: description),
+    );
+  }
+
+  void _queueDescriptionDraft(String description) {
+    if (_lastEmittedDescriptionDraftText == description &&
+        _pendingDescriptionDraftText == null) {
+      return;
+    }
+    _pendingDescriptionDraftText = description;
+    if (_descriptionDraftCallbackScheduled) {
+      return;
+    }
+    _descriptionDraftCallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _descriptionDraftCallbackScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      final pendingDescription = _pendingDescriptionDraftText;
+      if (pendingDescription == null ||
+          _lastEmittedDescriptionDraftText == pendingDescription) {
+        return;
+      }
+      _emitDescriptionDraftNow(pendingDescription);
+    });
+  }
+
+  void _handleDescriptionTextChanged() {
+    _queueDescriptionDraft(_descriptionTextController.text);
   }
 
   EventLevelRange _resolvedSelectedLevelRange() {
@@ -1137,6 +1263,8 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   Widget build(BuildContext context) {
     final selectedLevelRange = _resolvedSelectedLevelRange();
     final submitFailure = _submitFailure;
+    _queueTitleDraft(_titleTextController.text);
+    _queueDescriptionDraft(_descriptionTextController.text);
     _queueLevelDraft(selectedLevelRange);
     _queueLocationDraft(
       _normalizeEventCreateLocationName(_locationTextController.text),
