@@ -190,7 +190,7 @@ Date: 2026-06-14
 - [x] Show language badge from `languageCode`.
 - [x] Show participant avatar stack.
 - [x] Show occupancy like `5/10 мест`.
-- [ ] Add card CTA states: join, joined, full, canceled/past unavailable.
+- [x] Add card CTA states: join, joined, full, canceled/past unavailable.
 - [ ] Add `Чат` CTA with participant-only behavior.
 - [ ] Add loading state.
 - [ ] Add empty state.

@@ -38,6 +38,8 @@ const ValueKey<String> eventListCardFooterKey =
     ValueKey<String>('event_list_card_footer');
 const ValueKey<String> eventListCardActionsKey =
     ValueKey<String>('event_list_card_actions');
+const ValueKey<String> eventListCardPrimaryCtaKey =
+    ValueKey<String>('event_list_card_primary_cta');
 const ValueKey<String> eventListCardOrganizerAvatarKey =
     ValueKey<String>('event_list_card_organizer_avatar');
 const ValueKey<String> eventListCardOrganizerNameKey =
@@ -73,6 +75,14 @@ class EventListParticipantViewModel {
   final String? photoUrl;
 }
 
+enum EventListJoinCtaState {
+  join,
+  joined,
+  full,
+  canceled,
+  past,
+}
+
 class EventListCardViewModel {
   const EventListCardViewModel({
     required this.organizerDisplayName,
@@ -90,6 +100,7 @@ class EventListCardViewModel {
     this.participants = const <EventListParticipantViewModel>[],
     this.participantsCount,
     this.capacity,
+    this.joinCtaState = EventListJoinCtaState.join,
   });
 
   final String organizerDisplayName;
@@ -97,6 +108,7 @@ class EventListCardViewModel {
   final List<EventListParticipantViewModel> participants;
   final int? participantsCount;
   final int? capacity;
+  final EventListJoinCtaState joinCtaState;
   final String languageCode;
   final String? languageNameEn;
   final String? languageNameRu;
@@ -533,7 +545,7 @@ class _EventCardShell extends StatelessWidget {
             _EventCardFooterShell(card: card),
           ],
           const SizedBox(height: ExpatlioDesign.space16),
-          const _EventCardActionsShell(),
+          _EventCardActionsShell(card: card),
         ],
       ),
     );
@@ -1387,21 +1399,118 @@ class _EventParticipantOverflowBadge extends StatelessWidget {
 }
 
 class _EventCardActionsShell extends StatelessWidget {
-  const _EventCardActionsShell();
+  const _EventCardActionsShell({
+    required this.card,
+  });
+
+  final EventListCardViewModel? card;
 
   @override
   Widget build(BuildContext context) {
+    final event = card;
+    if (event == null) {
+      return Row(
+        key: eventListCardActionsKey,
+        children: const [
+          Expanded(
+            child: _EventCardPillPlaceholder(height: 48),
+          ),
+          SizedBox(width: ExpatlioDesign.space12),
+          _EventCardPillPlaceholder(width: 96, height: 48),
+        ],
+      );
+    }
+
     return Row(
       key: eventListCardActionsKey,
-      children: const [
+      children: [
         Expanded(
-          child: _EventCardPillPlaceholder(height: 48),
+          child: _EventCardPrimaryCta(state: event.joinCtaState),
         ),
-        SizedBox(width: ExpatlioDesign.space12),
-        _EventCardPillPlaceholder(width: 96, height: 48),
+        const SizedBox(width: ExpatlioDesign.space12),
+        const _EventCardPillPlaceholder(width: 96, height: 48),
       ],
     );
   }
+}
+
+class _EventCardPrimaryCta extends StatelessWidget {
+  const _EventCardPrimaryCta({
+    required this.state,
+  });
+
+  final EventListJoinCtaState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = state == EventListJoinCtaState.join;
+    final backgroundColor = enabled
+        ? ExpatlioDesign.primary
+        : ExpatlioDesign.secondarySystemBackground;
+    final textColor = enabled
+        ? Colors.white
+        : state == EventListJoinCtaState.joined
+            ? ExpatlioDesign.primary
+            : ExpatlioDesign.muted;
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: Container(
+        key: eventListCardPrimaryCtaKey,
+        height: 48,
+        alignment: Alignment.center,
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: ExpatlioDesign.space16,
+        ),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+        ),
+        child: Text(
+          _eventPrimaryCtaLabel(context, state),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: ExpatlioDesign.textStyle(
+            context,
+            color: textColor,
+            size: 16,
+            weight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _eventPrimaryCtaLabel(
+  BuildContext context,
+  EventListJoinCtaState state,
+) {
+  return switch (state) {
+    EventListJoinCtaState.join => FFLocalizations.of(context).getVariableText(
+        ruText: 'Присоединиться',
+        enText: 'Join',
+      ),
+    EventListJoinCtaState.joined => FFLocalizations.of(context).getVariableText(
+        ruText: 'Вы участвуете',
+        enText: 'Joined',
+      ),
+    EventListJoinCtaState.full => FFLocalizations.of(context).getVariableText(
+        ruText: 'Мест нет',
+        enText: 'Full',
+      ),
+    EventListJoinCtaState.canceled =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Отменено',
+        enText: 'Canceled',
+      ),
+    EventListJoinCtaState.past => FFLocalizations.of(context).getVariableText(
+        ruText: 'Уже началось',
+        enText: 'Already started',
+      ),
+  };
 }
 
 class _EventCardCirclePlaceholder extends StatelessWidget {

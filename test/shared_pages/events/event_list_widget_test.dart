@@ -902,6 +902,78 @@ void main() {
     expect(find.byKey(eventListCardOccupancyKey), findsNothing);
   });
 
+  testWidgets('shows join CTA state as enabled primary action', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(joinCtaState: EventListJoinCtaState.join),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardPrimaryCtaKey), findsOneWidget);
+    expect(find.text('Присоединиться'), findsOneWidget);
+    final semantics =
+        tester.getSemantics(find.byKey(eventListCardPrimaryCtaKey));
+    expect(semantics.flagsCollection.isButton, isTrue);
+    expect(semantics.flagsCollection.isEnabled, isTrue);
+  });
+
+  testWidgets('shows joined full canceled and past CTA disabled states',
+      (tester) async {
+    for (final entry in <MapEntry<EventListJoinCtaState, String>>[
+      const MapEntry(EventListJoinCtaState.joined, 'Вы участвуете'),
+      const MapEntry(EventListJoinCtaState.full, 'Мест нет'),
+      const MapEntry(EventListJoinCtaState.canceled, 'Отменено'),
+      const MapEntry(EventListJoinCtaState.past, 'Уже началось'),
+    ]) {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: EventSelectedCity(
+              city: _cityFixture(
+                countryCode: 'RU',
+                cityKey: 'moscow',
+                cityNameRu: 'Москва',
+                cityNameEn: 'Moscow',
+                cityDisplayContext: 'Россия',
+              ),
+              source: EventCitySelectionSource.manual,
+            ),
+            eventCardsOverride: [
+              _eventCardFixture(joinCtaState: entry.key),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventListCardPrimaryCtaKey), findsOneWidget);
+      expect(find.text(entry.value), findsOneWidget);
+      final semantics =
+          tester.getSemantics(find.byKey(eventListCardPrimaryCtaKey));
+      expect(semantics.flagsCollection.isButton, isTrue);
+      expect(semantics.flagsCollection.isEnabled, isFalse);
+    }
+  });
+
   testWidgets('hides participant avatar stack for empty participants',
       (tester) async {
     await tester.pumpWidget(
@@ -1482,6 +1554,7 @@ EventListCardViewModel _eventCardFixture({
       const <EventListParticipantViewModel>[],
   int? participantsCount,
   int? capacity,
+  EventListJoinCtaState joinCtaState = EventListJoinCtaState.join,
 }) {
   return EventListCardViewModel(
     organizerDisplayName: organizerDisplayName,
@@ -1489,6 +1562,7 @@ EventListCardViewModel _eventCardFixture({
     participants: participants,
     participantsCount: participantsCount,
     capacity: capacity,
+    joinCtaState: joinCtaState,
     languageCode: languageCode,
     languageNameEn: languageNameEn,
     languageNameRu: languageNameRu,
