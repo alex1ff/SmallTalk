@@ -304,7 +304,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(joinCalls, 1);
-    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Покинуть'), findsOneWidget);
     expect(find.text('Присоединяемся...'), findsNothing);
   });
 
@@ -343,7 +343,53 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(joinCalls, 1);
-    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Покинуть'), findsOneWidget);
+  });
+
+  testWidgets('successful join shows joined state without occupancy update',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    var joinCalls = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(participantsCount: 5),
+              ),
+            ),
+            joinEventInvoker: (_, __) async {
+              joinCalls += 1;
+              return _joinEventResponse(participantsCount: 6);
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('5/10 мест'), findsOneWidget);
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(joinCalls, 1);
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.text('5/10 мест'), findsOneWidget);
+      expect(find.text('6/10 мест'), findsNothing);
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      final chatSemantics =
+          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+    } finally {
+      semanticsHandle.dispose();
+    }
   });
 
   testWidgets('join failure clears loading state without changing CTA',
@@ -379,7 +425,9 @@ void main() {
 
   testWidgets('event change clears in-flight join loading state',
       (tester) async {
-    final completer = Completer<Object?>();
+    final firstJoinCompleter = Completer<Object?>();
+    final secondJoinCompleter = Completer<Object?>();
+    final joinedEventIds = <String>[];
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -391,7 +439,10 @@ void main() {
               data: _eventData(title: 'First event'),
             ),
           ),
-          joinEventInvoker: (_, __) => completer.future,
+          joinEventInvoker: (_, payload) {
+            joinedEventIds.add(payload['eventId'] as String);
+            return firstJoinCompleter.future;
+          },
         ),
       ),
     );
@@ -412,7 +463,10 @@ void main() {
               data: _eventData(title: 'Second event'),
             ),
           ),
-          joinEventInvoker: (_, __) => completer.future,
+          joinEventInvoker: (_, payload) {
+            joinedEventIds.add(payload['eventId'] as String);
+            return secondJoinCompleter.future;
+          },
         ),
       ),
     );
@@ -422,10 +476,22 @@ void main() {
     expect(find.text('Присоединиться'), findsOneWidget);
     expect(find.text('Присоединяемся...'), findsNothing);
 
-    completer.complete(_joinEventResponse());
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pump();
+
+    expect(joinedEventIds, <String>['event-1', 'event-2']);
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+
+    firstJoinCompleter.complete(_joinEventResponse(eventId: 'event-1'));
+    await tester.pump();
+
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+    expect(find.text('Покинуть'), findsNothing);
+
+    secondJoinCompleter.complete(_joinEventResponse(eventId: 'event-2'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Покинуть'), findsOneWidget);
   });
 
   testWidgets('successful cancellation keeps organizer on detail route',
@@ -483,6 +549,7 @@ Map<String, dynamic> _eventData({
   String title = 'Conversation club',
   String status = 'active',
   String organizerId = 'organizer-1',
+  int participantsCount = 5,
 }) =>
     <String, dynamic>{
       'title': title,
@@ -496,7 +563,7 @@ Map<String, dynamic> _eventData({
       'startsAt': DateTime.utc(2099, 6, 18, 15),
       'timeZoneId': 'Europe/Moscow',
       'capacity': 10,
-      'participantsCount': 5,
+      'participantsCount': participantsCount,
       'organizerId': organizerId,
       'organizerDisplayName': 'Anastasia Ivanova',
       'status': status,
@@ -508,10 +575,14 @@ Map<String, dynamic> _cancelEventResponse() => <String, dynamic>{
       'canceledAt': '2026-06-14T12:00:00.000Z',
     };
 
-Map<String, dynamic> _joinEventResponse() => <String, dynamic>{
-      'eventId': 'event-1',
+Map<String, dynamic> _joinEventResponse({
+  String eventId = 'event-1',
+  int participantsCount = 6,
+}) =>
+    <String, dynamic>{
+      'eventId': eventId,
       'participantStatus': 'active',
-      'participantsCount': 6,
+      'participantsCount': participantsCount,
       'joinedAt': '2026-06-14T12:01:00.000Z',
     };
 
