@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/timezone.dart' as timezone;
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
@@ -40,15 +41,41 @@ const ValueKey<String> eventListCardOrganizerAvatarKey =
     ValueKey<String>('event_list_card_organizer_avatar');
 const ValueKey<String> eventListCardOrganizerNameKey =
     ValueKey<String>('event_list_card_organizer_name');
+const ValueKey<String> eventListCardTitleKey =
+    ValueKey<String>('event_list_card_title');
+const ValueKey<String> eventListCardDescriptionKey =
+    ValueKey<String>('event_list_card_description');
+const ValueKey<String> eventListCardLevelRangeKey =
+    ValueKey<String>('event_list_card_level_range');
+const ValueKey<String> eventListCardDateKey =
+    ValueKey<String>('event_list_card_date');
+const ValueKey<String> eventListCardTimeKey =
+    ValueKey<String>('event_list_card_time');
+const ValueKey<String> eventListCardPlaceKey =
+    ValueKey<String>('event_list_card_place');
 
 class EventListCardViewModel {
   const EventListCardViewModel({
     required this.organizerDisplayName,
+    required this.title,
+    required this.description,
+    required this.levelMin,
+    required this.levelMax,
+    required this.startsAt,
+    required this.timeZoneId,
+    required this.locationName,
     this.organizerPhotoUrl,
   });
 
   final String organizerDisplayName;
   final String? organizerPhotoUrl;
+  final String title;
+  final String description;
+  final String levelMin;
+  final String levelMax;
+  final DateTime startsAt;
+  final String timeZoneId;
+  final String locationName;
 }
 
 class EventListWidget extends StatefulWidget {
@@ -414,9 +441,9 @@ class _EventCardShell extends StatelessWidget {
         children: [
           _EventCardHeaderShell(card: card),
           const SizedBox(height: ExpatlioDesign.space16),
-          const _EventCardBodyShell(),
+          _EventCardBodyShell(card: card),
           const SizedBox(height: ExpatlioDesign.space16),
-          const _EventCardMetaShell(),
+          _EventCardMetaShell(card: card),
           const SizedBox(height: ExpatlioDesign.space16),
           const _EventCardFooterShell(),
           const SizedBox(height: ExpatlioDesign.space16),
@@ -463,7 +490,13 @@ class _EventCardHeaderShell extends StatelessWidget {
                 ),
         ),
         const SizedBox(width: ExpatlioDesign.space12),
-        const _EventCardPillPlaceholder(width: 72, height: 32),
+        if (organizer == null)
+          const _EventCardPillPlaceholder(width: 72, height: 32)
+        else
+          _EventLevelRangeBadge(
+            levelMin: organizer.levelMin,
+            levelMax: organizer.levelMax,
+          ),
       ],
     );
   }
@@ -586,41 +619,352 @@ class _EventOrganizerAvatar extends StatelessWidget {
 }
 
 class _EventCardBodyShell extends StatelessWidget {
-  const _EventCardBodyShell();
+  const _EventCardBodyShell({
+    required this.card,
+  });
+
+  final EventListCardViewModel? card;
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    final event = card;
+    if (event == null) {
+      return const Column(
+        key: eventListCardBodyKey,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _EventCardLinePlaceholder(widthFactor: 0.86, height: 24),
+          SizedBox(height: ExpatlioDesign.space12),
+          _EventCardLinePlaceholder(widthFactor: 1, height: 16),
+          SizedBox(height: ExpatlioDesign.space8),
+          _EventCardLinePlaceholder(widthFactor: 0.72, height: 16),
+        ],
+      );
+    }
+
+    final title = event.title.trim();
+    final description = event.description.trim();
+
+    return Column(
       key: eventListCardBodyKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _EventCardLinePlaceholder(widthFactor: 0.86, height: 24),
-        SizedBox(height: ExpatlioDesign.space12),
-        _EventCardLinePlaceholder(widthFactor: 1, height: 16),
-        SizedBox(height: ExpatlioDesign.space8),
-        _EventCardLinePlaceholder(widthFactor: 0.72, height: 16),
+        Text(
+          key: eventListCardTitleKey,
+          title.isEmpty
+              ? FFLocalizations.of(context).getVariableText(
+                  ruText: 'Без названия',
+                  enText: 'Untitled',
+                )
+              : title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: ExpatlioDesign.textStyle(
+            context,
+            size: 21,
+            weight: FontWeight.w700,
+          ),
+        ),
+        if (description.isNotEmpty) ...[
+          const SizedBox(height: ExpatlioDesign.space8),
+          Text(
+            key: eventListCardDescriptionKey,
+            description,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.muted,
+              size: 16,
+              height: 1.35,
+              weight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }
 }
 
 class _EventCardMetaShell extends StatelessWidget {
-  const _EventCardMetaShell();
+  const _EventCardMetaShell({
+    required this.card,
+  });
+
+  final EventListCardViewModel? card;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
+    final event = card;
+    if (event == null) {
+      return const Wrap(
+        key: eventListCardMetaKey,
+        spacing: ExpatlioDesign.space8,
+        runSpacing: ExpatlioDesign.space8,
+        children: [
+          _EventCardPillPlaceholder(width: 104, height: 34),
+          _EventCardPillPlaceholder(width: 92, height: 34),
+          _EventCardPillPlaceholder(width: 184, height: 34),
+        ],
+      );
+    }
+
+    final locale = FFLocalizations.of(context).languageCode;
+    final eventLocalDateTime = _eventLocalDateTime(
+      startsAt: event.startsAt,
+      timeZoneId: event.timeZoneId,
+    );
+    final locationName = event.locationName.trim();
+
+    return Column(
       key: eventListCardMetaKey,
-      spacing: ExpatlioDesign.space8,
-      runSpacing: ExpatlioDesign.space8,
-      children: const [
-        _EventCardPillPlaceholder(width: 104, height: 34),
-        _EventCardPillPlaceholder(width: 92, height: 34),
-        _EventCardPillPlaceholder(width: 184, height: 34),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: ExpatlioDesign.space8,
+          runSpacing: ExpatlioDesign.space8,
+          children: [
+            _EventInfoChip(
+              key: eventListCardDateKey,
+              icon: Icons.calendar_month_outlined,
+              label: _eventDateLabel(
+                context,
+                eventLocalDateTime: eventLocalDateTime,
+                timeZoneId: event.timeZoneId,
+              ),
+            ),
+            _EventInfoChip(
+              key: eventListCardTimeKey,
+              icon: Icons.schedule,
+              label: dateTimeFormat(
+                'Hm',
+                eventLocalDateTime,
+                locale: locale,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: ExpatlioDesign.space12),
+        Row(
+          key: eventListCardPlaceKey,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.location_on_outlined,
+              color: ExpatlioDesign.muted,
+              size: 20,
+            ),
+            const SizedBox(width: ExpatlioDesign.space8),
+            Expanded(
+              child: Text(
+                locationName.isEmpty
+                    ? FFLocalizations.of(context).getVariableText(
+                        ruText: 'Место не указано',
+                        enText: 'Place not specified',
+                      )
+                    : locationName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 16,
+                  weight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
 }
+
+class _EventLevelRangeBadge extends StatelessWidget {
+  const _EventLevelRangeBadge({
+    required this.levelMin,
+    required this.levelMax,
+  });
+
+  final String levelMin;
+  final String levelMax;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: eventListCardLevelRangeKey,
+      padding: const EdgeInsetsDirectional.symmetric(
+        horizontal: ExpatlioDesign.space12,
+        vertical: ExpatlioDesign.space8,
+      ),
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+      ),
+      child: Text(
+        _eventLevelRangeLabel(levelMin: levelMin, levelMax: levelMax),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: ExpatlioDesign.primary,
+          size: 14,
+          weight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _EventInfoChip extends StatelessWidget {
+  const _EventInfoChip({
+    super.key,
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsetsDirectional.symmetric(
+        horizontal: ExpatlioDesign.space12,
+        vertical: ExpatlioDesign.space8,
+      ),
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.secondarySystemBackground,
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: ExpatlioDesign.primary,
+            size: 18,
+          ),
+          const SizedBox(width: ExpatlioDesign.space8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ExpatlioDesign.textStyle(
+              context,
+              size: 15,
+              weight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _eventLevelRangeLabel({
+  required String levelMin,
+  required String levelMax,
+}) {
+  final range = tryEventLevelRange(
+    levelMin: levelMin,
+    levelMax: levelMax,
+  );
+  if (range != null) {
+    return range.levelMin == range.levelMax
+        ? range.levelMin
+        : '${range.levelMin}-${range.levelMax}';
+  }
+
+  final normalizedMin = levelMin.trim().toUpperCase();
+  final normalizedMax = levelMax.trim().toUpperCase();
+  if (normalizedMin.isEmpty) {
+    return normalizedMax;
+  }
+  if (normalizedMax.isEmpty || normalizedMin == normalizedMax) {
+    return normalizedMin;
+  }
+  return '$normalizedMin-$normalizedMax';
+}
+
+DateTime _eventLocalDateTime({
+  required DateTime startsAt,
+  required String timeZoneId,
+}) {
+  final utcStartsAt = startsAt.isUtc ? startsAt : startsAt.toUtc();
+  try {
+    final local = timezone.TZDateTime.from(
+      utcStartsAt,
+      eventListTimeZoneLocation(timeZoneId),
+    );
+    return DateTime(
+      local.year,
+      local.month,
+      local.day,
+      local.hour,
+      local.minute,
+      local.second,
+      local.millisecond,
+      local.microsecond,
+    );
+  } on ArgumentError {
+    return startsAt.toLocal();
+  }
+}
+
+String _eventDateLabel(
+  BuildContext context, {
+  required DateTime eventLocalDateTime,
+  required String timeZoneId,
+}) {
+  final locale = FFLocalizations.of(context).languageCode;
+  final eventLocalDate = DateTime(
+    eventLocalDateTime.year,
+    eventLocalDateTime.month,
+    eventLocalDateTime.day,
+  );
+  final nowUtc = DateTime.now().toUtc();
+  final today = _safeEventCityLocalDate(
+    timeZoneId: timeZoneId,
+    utcInstant: nowUtc,
+  );
+  if (today != null && _sameCalendarDate(eventLocalDate, today)) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Сегодня',
+      enText: 'Today',
+    );
+  }
+
+  final tomorrow =
+      today == null ? null : DateTime(today.year, today.month, today.day + 1);
+  if (tomorrow != null && _sameCalendarDate(eventLocalDate, tomorrow)) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Завтра',
+      enText: 'Tomorrow',
+    );
+  }
+
+  return dateTimeFormat('d MMM', eventLocalDateTime, locale: locale);
+}
+
+DateTime? _safeEventCityLocalDate({
+  required String timeZoneId,
+  required DateTime utcInstant,
+}) {
+  try {
+    return eventListCityLocalDate(
+      timeZoneId: timeZoneId,
+      utcInstant: utcInstant,
+    );
+  } on ArgumentError {
+    return null;
+  }
+}
+
+bool _sameCalendarDate(DateTime left, DateTime right) =>
+    left.year == right.year &&
+    left.month == right.month &&
+    left.day == right.day;
 
 class _EventCardFooterShell extends StatelessWidget {
   const _EventCardFooterShell();

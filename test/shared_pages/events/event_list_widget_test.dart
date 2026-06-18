@@ -4,6 +4,7 @@ import 'package:firebase_auth_platform_interface/firebase_auth_platform_interfac
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
@@ -94,6 +95,8 @@ void main() {
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
+    initializeEventListTimeZones();
+    await initializeDateFormatting('ru');
     setupFirebaseCoreMocks();
     await FFLocalizations.initialize();
     await Firebase.initializeApp();
@@ -345,8 +348,8 @@ void main() {
             ),
             source: EventCitySelectionSource.manual,
           ),
-          eventCardsOverride: const [
-            EventListCardViewModel(
+          eventCardsOverride: [
+            _eventCardFixture(
               organizerDisplayName: 'Анастасия Иванова',
               organizerPhotoUrl: '',
             ),
@@ -379,8 +382,8 @@ void main() {
             ),
             source: EventCitySelectionSource.manual,
           ),
-          eventCardsOverride: const [
-            EventListCardViewModel(
+          eventCardsOverride: [
+            _eventCardFixture(
               organizerDisplayName: 'Alex',
               organizerPhotoUrl: 'not-a-valid-url',
             ),
@@ -394,6 +397,87 @@ void main() {
     expect(find.text('Alex'), findsOneWidget);
     expect(find.text('AL'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'shows event card title description level date time and place in event timezone',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'US',
+              cityKey: 'new_york',
+              cityNameRu: 'Нью-Йорк',
+              cityNameEn: 'New York',
+              cityDisplayContext: 'United States',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              title: 'Разговорный клуб: кофе и английский',
+              description:
+                  'Неформальная встреча для практики разговорного английского.',
+              levelMin: ' b1 ',
+              levelMax: ' c1 ',
+              startsAt: DateTime.utc(2035, 6, 15, 2, 30),
+              timeZoneId: 'America/New_York',
+              locationName: 'Starbucks, ул. Арбат, 5',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardTitleKey), findsOneWidget);
+    expect(find.byKey(eventListCardDescriptionKey), findsOneWidget);
+    expect(find.byKey(eventListCardLevelRangeKey), findsOneWidget);
+    expect(find.byKey(eventListCardDateKey), findsOneWidget);
+    expect(find.byKey(eventListCardTimeKey), findsOneWidget);
+    expect(find.byKey(eventListCardPlaceKey), findsOneWidget);
+    expect(find.text('Разговорный клуб: кофе и английский'), findsOneWidget);
+    expect(
+      find.text('Неформальная встреча для практики разговорного английского.'),
+      findsOneWidget,
+    );
+    expect(_textInsideKey(eventListCardLevelRangeKey, 'B1-C1'), findsOneWidget);
+    expect(_textInsideKey(eventListCardDateKey, '14 июн.'), findsOneWidget);
+    expect(_textInsideKey(eventListCardTimeKey, '22:30'), findsOneWidget);
+    expect(find.text('Starbucks, ул. Арбат, 5'), findsOneWidget);
+  });
+
+  testWidgets('shows same-level event range as a single level', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              levelMin: 'B1',
+              levelMax: 'B1',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_textInsideKey(eventListCardLevelRangeKey, 'B1'), findsOneWidget);
+    expect(_textInsideKey(eventListCardLevelRangeKey, 'B1-B1'), findsNothing);
   });
 
   testWidgets('shows resolved profile city as the default selector value',
@@ -638,10 +722,16 @@ void main() {
             ),
             source: EventCitySelectionSource.manual,
           ),
-          eventCardsOverride: const [
-            EventListCardViewModel(
+          eventCardsOverride: [
+            _eventCardFixture(
               organizerDisplayName: 'Анастасия Иванова',
               organizerPhotoUrl: '',
+              title:
+                  'Очень длинное название встречи для проверки карточки на узком экране',
+              description:
+                  'Длинное описание события должно оставаться внутри карточки и не ломать раскладку.',
+              locationName:
+                  'Очень длинный адрес, который должен корректно переноситься',
             ),
           ],
         ),
@@ -869,6 +959,11 @@ Finder _citySelectorText(String text) => find.descendant(
       matching: find.text(text),
     );
 
+Finder _textInsideKey(ValueKey<String> key, String text) => find.descendant(
+      of: find.byKey(key),
+      matching: find.text(text),
+    );
+
 Finder _dateFilterFinder(EventListDateFilter filter) =>
     find.byKey(ValueKey<String>('event_date_filter_${filter.name}'));
 
@@ -886,6 +981,31 @@ ChoiceChip _levelFilterChip(
   String level,
 ) =>
     tester.widget<ChoiceChip>(_levelFilterFinder(level));
+
+EventListCardViewModel _eventCardFixture({
+  String organizerDisplayName = 'Анастасия Иванова',
+  String? organizerPhotoUrl = '',
+  String title = 'Разговорный клуб: кофе и английский',
+  String description =
+      'Неформальная встреча для практики разговорного английского.',
+  String levelMin = 'B1',
+  String levelMax = 'C1',
+  DateTime? startsAt,
+  String timeZoneId = 'Europe/Moscow',
+  String locationName = 'Starbucks, ул. Арбат, 5',
+}) {
+  return EventListCardViewModel(
+    organizerDisplayName: organizerDisplayName,
+    organizerPhotoUrl: organizerPhotoUrl,
+    title: title,
+    description: description,
+    levelMin: levelMin,
+    levelMax: levelMax,
+    startsAt: startsAt ?? DateTime.utc(2035, 6, 14, 15),
+    timeZoneId: timeZoneId,
+    locationName: locationName,
+  );
+}
 
 EventCity _cityFixture({
   required String countryCode,

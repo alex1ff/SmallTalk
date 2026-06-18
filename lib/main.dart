@@ -1,7 +1,8 @@
 import 'dart:async';
 
-import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:provider/provider.dart';
 
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -77,6 +78,7 @@ void main() async {
   final appState = FFAppState();
   await Future.wait([
     FFLocalizations.initialize(),
+    initializeDateFormatting(),
     appState.initializePersistedState(),
   ]);
 
