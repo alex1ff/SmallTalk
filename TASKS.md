@@ -227,7 +227,7 @@ Date: 2026-06-14
 - [x] Add participant limit input.
 - [x] Validate required fields.
 - [x] Interpret date/time in the selected event city's `timeZoneId` and block past values using trusted-time validation feedback.
-- [ ] Block capacity below 2.
+- [x] Block capacity below 2.
 - [ ] Block capacity above 50.
 - [ ] Handle daily creation limit error.
 - [ ] Generate one `createRequestId` per create-form submit attempt and reuse it for retries of the same in-flight logical submit.

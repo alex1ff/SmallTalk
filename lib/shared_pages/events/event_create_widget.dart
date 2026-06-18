@@ -88,6 +88,7 @@ const ValueKey<String> eventCreateSubmitButtonKey =
     ValueKey<String>('event_create_submit_button');
 const TimeOfDay _eventCreateDefaultTime = TimeOfDay(hour: 18, minute: 0);
 const int _eventCreateDefaultCapacity = 10;
+const int _eventCreateMinCapacity = 2;
 
 ValueKey<String> eventCreateLanguageOptionKey(String code) =>
     ValueKey<String>('event_create_language_option_$code');
@@ -1325,11 +1326,10 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                 inputFormatters: [
                                   FilteringTextInputFormatter.digitsOnly,
                                 ],
-                                validator: (value) => _eventCreateRequiredText(
+                                validator: (value) =>
+                                    _eventCreateCapacityValidationText(
                                   context,
                                   value,
-                                  ruText: 'Введите лимит участников',
-                                  enText: 'Enter participant limit',
                                 ),
                               ),
                             ],
@@ -2788,6 +2788,31 @@ String _eventCreateCapacityText(int? capacity) =>
 
 int _eventCreateCapacityFromText(String value) =>
     int.tryParse(value) ?? _eventCreateDefaultCapacity;
+
+String? _eventCreateCapacityValidationText(
+  BuildContext context,
+  String? value,
+) {
+  final requiredText = _eventCreateRequiredText(
+    context,
+    value,
+    ruText: 'Введите лимит участников',
+    enText: 'Enter participant limit',
+  );
+  if (requiredText != null) {
+    return requiredText;
+  }
+
+  final capacity = int.tryParse(value!.trim());
+  if (capacity != null && capacity < _eventCreateMinCapacity) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Укажите минимум 2 участника',
+      enText: 'Enter at least 2 participants',
+    );
+  }
+
+  return null;
+}
 
 String? _eventCreateRequiredText(
   BuildContext context,

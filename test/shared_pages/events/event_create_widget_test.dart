@@ -1225,6 +1225,99 @@ void main() {
     expect(find.text('Введите место'), findsNothing);
   });
 
+  testWidgets('participant limit below 2 is blocked on submit', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '1');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Укажите минимум 2 участника'), findsOneWidget);
+    expect(find.text('Введите лимит участников'), findsNothing);
+    expect(find.text('Введите название'), findsNothing);
+    expect(find.text('Введите описание'), findsNothing);
+    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Введите место'), findsNothing);
+  });
+
+  testWidgets('participant limit below 2 error is localized in English',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('en'),
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '1');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter at least 2 participants'), findsOneWidget);
+    expect(find.text('Enter participant limit'), findsNothing);
+  });
+
+  testWidgets('participant limit lower bound accepts 2 and leaves 51 unblocked',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '2');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Укажите минимум 2 участника'), findsNothing);
+
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '51');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Укажите минимум 2 участника'), findsNothing);
+  });
+
   testWidgets('valid required fields submit without backend side effects',
       (tester) async {
     EventSelectedCity? selectedCity;
