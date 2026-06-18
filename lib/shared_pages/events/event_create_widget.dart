@@ -29,12 +29,21 @@ const ValueKey<String> eventCreateLanguageSheetKey =
 ValueKey<String> eventCreateLanguageOptionKey(String code) =>
     ValueKey<String>('event_create_language_option_$code');
 
+class EventCreateLanguageDraft {
+  const EventCreateLanguageDraft({
+    required this.languageCode,
+  });
+
+  final String languageCode;
+}
+
 class EventCreateWidget extends StatefulWidget {
   const EventCreateWidget({
     super.key,
     this.languageCatalogOverride,
     this.initialLanguageCode,
     this.onLanguageCodeChanged,
+    this.onLanguageDraftChanged,
   });
 
   static String routeName = 'eventCreate';
@@ -43,6 +52,7 @@ class EventCreateWidget extends StatefulWidget {
   final EventLanguageCatalog? languageCatalogOverride;
   final String? initialLanguageCode;
   final ValueChanged<String>? onLanguageCodeChanged;
+  final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
 
   @override
   State<EventCreateWidget> createState() => _EventCreateWidgetState();
@@ -57,6 +67,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   Future<EventLanguageCatalog>? _languageCatalogFuture;
   AssetBundle? _languageCatalogBundle;
   String? _selectedLanguageCode;
+  String? _lastEmittedLanguageDraftCode;
+  String? _pendingLanguageDraftCode;
+  bool _languageDraftCallbackScheduled = false;
 
   @override
   void initState() {
@@ -122,6 +135,42 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     return catalog.languages.first.code;
   }
 
+  void _emitLanguageDraftNow(String languageCode) {
+    _pendingLanguageDraftCode = null;
+    final onLanguageDraftChanged = widget.onLanguageDraftChanged;
+    if (onLanguageDraftChanged == null) {
+      return;
+    }
+    _lastEmittedLanguageDraftCode = languageCode;
+    onLanguageDraftChanged(
+      EventCreateLanguageDraft(languageCode: languageCode),
+    );
+  }
+
+  void _queueLanguageDraft(String languageCode) {
+    if (_lastEmittedLanguageDraftCode == languageCode &&
+        _pendingLanguageDraftCode == null) {
+      return;
+    }
+    _pendingLanguageDraftCode = languageCode;
+    if (_languageDraftCallbackScheduled) {
+      return;
+    }
+    _languageDraftCallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _languageDraftCallbackScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      final pendingLanguageCode = _pendingLanguageDraftCode;
+      if (pendingLanguageCode == null ||
+          _lastEmittedLanguageDraftCode == pendingLanguageCode) {
+        return;
+      }
+      _emitLanguageDraftNow(pendingLanguageCode);
+    });
+  }
+
   Future<void> _showLanguageSelector(
     EventLanguageCatalog catalog,
     String selectedLanguageCode,
@@ -143,6 +192,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       _selectedLanguageCode = selectedCode;
     });
     widget.onLanguageCodeChanged?.call(selectedCode);
+    _emitLanguageDraftNow(selectedCode);
   }
 
   @override
@@ -233,6 +283,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                 }
                                 final selectedLanguageCode =
                                     _resolvedSelectedLanguageCode(catalog);
+                                _queueLanguageDraft(selectedLanguageCode);
                                 return _EventCreateLanguageSelector(
                                   state: _EventCreateLanguageSelectorState
                                       .selected,

@@ -194,15 +194,67 @@ void main() {
     expect(_languageSelectorText('Английский'), findsNothing);
   });
 
+  testWidgets('emits normalized initial language draft for submit handoff',
+      (tester) async {
+    final drafts = <EventCreateLanguageDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialLanguageCode: ' ES-419 ',
+          onLanguageDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts.map((draft) => draft.languageCode), ['es']);
+  });
+
+  testWidgets('emits language draft when handoff callback is added later',
+      (tester) async {
+    final drafts = <EventCreateLanguageDraft>[];
+    var callbackEnabled = false;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              onLanguageDraftChanged:
+                  callbackEnabled ? drafts.add : null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts, isEmpty);
+
+    setHostState(() {
+      callbackEnabled = true;
+    });
+    await tester.pumpAndSettle();
+
+    expect(drafts.map((draft) => draft.languageCode), ['en']);
+  });
+
   testWidgets('opens language sheet and selects primary language code',
       (tester) async {
     final selectedCodes = <String>[];
+    final drafts = <EventCreateLanguageDraft>[];
 
     await tester.pumpWidget(
       _buildTestApp(
         home: EventCreateWidget(
           languageCatalogOverride: _languageCatalog,
           onLanguageCodeChanged: selectedCodes.add,
+          onLanguageDraftChanged: drafts.add,
         ),
       ),
     );
@@ -222,6 +274,7 @@ void main() {
     expect(find.byKey(eventCreateLanguageSheetKey), findsNothing);
     expect(_languageSelectorText('Испанский'), findsOneWidget);
     expect(selectedCodes, ['es']);
+    expect(drafts.map((draft) => draft.languageCode), ['en', 'es']);
   });
 
   testWidgets('shows language loading state before catalog resolves',
@@ -537,7 +590,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('create form fields stay presentation-only before submit phase', () {
+  test('create form avoids backend submit before submit phase', () {
     final source = File('lib/shared_pages/events/event_create_widget.dart')
         .readAsStringSync();
 
@@ -548,6 +601,8 @@ void main() {
     expect(source, isNot(contains('.createEvent(')));
     expect(source, isNot(contains('EventsRecord')));
     expect(source, isNot(contains('FirebaseFirestore')));
+    expect(source, isNot(contains('languageNameEn')));
+    expect(source, isNot(contains('languageNameRu')));
   });
 }
 
