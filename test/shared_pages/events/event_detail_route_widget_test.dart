@@ -831,6 +831,156 @@ void main() {
     expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
   });
 
+  testWidgets('started joined event disables leave action', (tester) async {
+    final streamController = StreamController<DocumentSnapshot>();
+    addTearDown(streamController.close);
+    var leaveCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-2',
+          snapshotStream: (eventRef) => streamController.stream,
+          joinEventInvoker: (_, __) async =>
+              _joinEventResponse(eventId: 'event-2'),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            return _leaveEventResponse(eventId: 'event-2');
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-2'),
+        data: _eventData(
+          startsAt: DateTime.utc(2099, 6, 18, 15),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Покинуть'), findsOneWidget);
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-2'),
+        data: _eventData(startsAt: DateTime.utc(2000)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Вы участвуете'), findsOneWidget);
+    expect(find.text('Покинуть'), findsNothing);
+    expect(find.byKey(eventDetailLeaveDialogKey), findsNothing);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(leaveCalls, 0);
+    expect(find.byKey(eventDetailLeaveDialogKey), findsNothing);
+  });
+
+  testWidgets('leave confirmation confirm is ignored after event starts',
+      (tester) async {
+    final streamController = StreamController<DocumentSnapshot>();
+    addTearDown(streamController.close);
+    var leaveCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => streamController.stream,
+          joinEventInvoker: (_, __) async => _joinEventResponse(),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            return _leaveEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(startsAt: DateTime.utc(2099, 6, 18, 15)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLeaveDialogKey), findsOneWidget);
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(startsAt: DateTime.utc(2000)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(leaveCalls, 0);
+    expect(find.text('Вы участвуете'), findsOneWidget);
+  });
+
+  testWidgets('joined leave action locks automatically at startsAt',
+      (tester) async {
+    const startsAfter = Duration(seconds: 30);
+    final startsAt = DateTime.now().toUtc().add(startsAfter);
+    var leaveCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(startsAt: startsAt),
+            ),
+          ),
+          joinEventInvoker: (_, __) async => _joinEventResponse(),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            return _leaveEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Покинуть'), findsOneWidget);
+
+    await tester.pump(startsAfter + const Duration(milliseconds: 1));
+
+    expect(find.text('Вы участвуете'), findsOneWidget);
+    expect(find.text('Покинуть'), findsNothing);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(leaveCalls, 0);
+    expect(find.byKey(eventDetailLeaveDialogKey), findsNothing);
+  });
+
   testWidgets('leave confirmation survives active snapshot refresh',
       (tester) async {
     final streamController = StreamController<DocumentSnapshot>();
@@ -939,6 +1089,7 @@ Map<String, dynamic> _eventData({
   String status = 'active',
   String organizerId = 'organizer-1',
   int participantsCount = 5,
+  DateTime? startsAt,
 }) =>
     <String, dynamic>{
       'title': title,
@@ -949,7 +1100,7 @@ Map<String, dynamic> _eventData({
       'levelMin': 'B1',
       'levelMax': 'C1',
       'locationName': 'Cafe on Arbat',
-      'startsAt': DateTime.utc(2099, 6, 18, 15),
+      'startsAt': startsAt ?? DateTime.utc(2099, 6, 18, 15),
       'timeZoneId': 'Europe/Moscow',
       'capacity': 10,
       'participantsCount': participantsCount,

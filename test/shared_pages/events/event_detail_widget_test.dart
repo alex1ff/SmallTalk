@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
+import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
@@ -461,6 +462,57 @@ void main() {
           tester.getSemantics(find.byKey(eventDetailChatCtaKey));
       expect(chatSemantics.flagsCollection.isButton, isTrue);
       expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('joined locked CTA shows membership without leave action',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    var primaryTapCount = 0;
+    var chatTapCount = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            joinCtaState: EventDetailJoinCtaState.joinedLocked,
+            onPrimaryCtaPressed: () => primaryTapCount += 1,
+            onChatPressed: () => chatTapCount += 1,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Вы участвуете'), findsOneWidget);
+      expect(find.text('Покинуть'), findsNothing);
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isButton, isTrue);
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, 'Вы участвуете');
+
+      final primaryButton = tester.widget<TextButton>(
+        find.descendant(
+          of: find.byKey(eventDetailPrimaryCtaKey),
+          matching: find.byType(TextButton),
+        ),
+      );
+      expect(
+        primaryButton.style?.backgroundColor?.resolve(<WidgetState>{}),
+        ExpatlioDesign.secondarySystemBackground,
+      );
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailChatCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(primaryTapCount, 0);
+      expect(chatTapCount, 1);
     } finally {
       semanticsHandle.dispose();
     }

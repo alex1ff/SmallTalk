@@ -43,6 +43,11 @@ class EventDetailRouteWidget extends StatefulWidget {
 
 class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   late Stream<EventsRecord?> _eventStream;
+  Timer? _startsAtRefreshTimer;
+  String? _startsAtRefreshEventId;
+  DateTime? _startsAtRefreshAt;
+  String? _locallyStartedEventId;
+  DateTime? _locallyStartedAt;
   bool _isCanceling = false;
   bool _isJoining = false;
   bool _isLeaving = false;
@@ -63,6 +68,9 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     if (oldWidget.eventId != widget.eventId ||
         oldWidget.snapshotStream != widget.snapshotStream) {
       _eventStream = _watchEvent();
+      _clearStartsAtRefreshTimer();
+      _locallyStartedEventId = null;
+      _locallyStartedAt = null;
       _locallyCanceledEventId = null;
       _locallyJoinedEventId = null;
       _locallyJoinedParticipantsCount = null;
@@ -70,6 +78,12 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _isLeaving = false;
       _isJoining = false;
     }
+  }
+
+  @override
+  void dispose() {
+    _clearStartsAtRefreshTimer();
+    super.dispose();
   }
 
   Stream<EventsRecord?> _watchEvent() => EventDetailRepository.watchEventDetail(
@@ -149,11 +163,20 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     }
   }
 
-  Future<void> _handleLeave(String eventId) async {
+  Future<void> _handleLeave({
+    required String eventId,
+    required DateTime? startsAt,
+  }) async {
     if (_isJoining || _isLeaving) {
       return;
     }
     if (_locallyJoinedEventId != eventId) {
+      return;
+    }
+    if (_eventDetailHasStartedForRoute(
+      eventId: eventId,
+      startsAt: startsAt,
+    )) {
       return;
     }
 
@@ -238,15 +261,28 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         final status = event.status.trim();
         final isActive = status == 'active';
         final isCanceled = isLocallyCanceled || status == 'canceled';
+        final hasStarted = _eventDetailHasStartedForRoute(
+          eventId: eventId,
+          startsAt: event.startsAt,
+        );
         final canManage = _eventDetailCanCurrentUserManage(event);
         final joinCtaState = _eventDetailJoinStateForEvent(
           event,
           isCanceled: isCanceled,
           isJoined: isLocallyJoined,
           isJoining: _isJoining,
+          hasStarted: hasStarted,
         );
         final canJoin = joinCtaState == EventDetailJoinCtaState.join;
         final canLeave = joinCtaState == EventDetailJoinCtaState.joined;
+        _scheduleStartsAtRefreshIfNeeded(
+          eventId: eventId,
+          startsAt: event.startsAt,
+          hasStarted: hasStarted,
+          isActive: isActive,
+          isCanceled: isCanceled,
+          isJoined: isLocallyJoined,
+        );
         _clearLocalParticipantsCountIfSnapshotCaughtUp(
           eventId: eventId,
           snapshotParticipantsCount: snapshotParticipantsCount,
@@ -284,12 +320,67 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
               ? canJoin
                   ? _handleJoin
                   : canLeave
-                      ? () => _handleLeave(eventId)
+                      ? () => _handleLeave(
+                            eventId: eventId,
+                            startsAt: event.startsAt,
+                          )
                       : null
               : null,
         );
       },
     );
+  }
+
+  void _scheduleStartsAtRefreshIfNeeded({
+    required String eventId,
+    required DateTime? startsAt,
+    required bool hasStarted,
+    required bool isActive,
+    required bool isCanceled,
+    required bool isJoined,
+  }) {
+    if (!isActive ||
+        isCanceled ||
+        !isJoined ||
+        startsAt == null ||
+        hasStarted) {
+      _clearStartsAtRefreshTimer();
+      return;
+    }
+
+    if (_startsAtRefreshTimer?.isActive == true &&
+        _startsAtRefreshEventId == eventId &&
+        _startsAtRefreshAt == startsAt) {
+      return;
+    }
+
+    _clearStartsAtRefreshTimer();
+    _startsAtRefreshEventId = eventId;
+    _startsAtRefreshAt = startsAt;
+    _startsAtRefreshTimer =
+        Timer(startsAt.difference(DateTime.now().toUtc()), () {
+      if (mounted) {
+        setState(() {
+          _locallyStartedEventId = eventId;
+          _locallyStartedAt = startsAt;
+        });
+      }
+    });
+  }
+
+  void _clearStartsAtRefreshTimer() {
+    _startsAtRefreshTimer?.cancel();
+    _startsAtRefreshTimer = null;
+    _startsAtRefreshEventId = null;
+    _startsAtRefreshAt = null;
+  }
+
+  bool _eventDetailHasStartedForRoute({
+    required String eventId,
+    required DateTime? startsAt,
+  }) {
+    return _eventDetailHasStarted(startsAt) ||
+        (_locallyStartedEventId == eventId && _locallyStartedAt == startsAt);
   }
 
   void _clearLocalParticipantsCountIfSnapshotCaughtUp({
@@ -389,6 +480,7 @@ EventDetailJoinCtaState _eventDetailJoinStateForEvent(
   required bool isCanceled,
   required bool isJoined,
   required bool isJoining,
+  required bool hasStarted,
 }) {
   if (isCanceled) {
     return EventDetailJoinCtaState.canceled;
@@ -396,12 +488,13 @@ EventDetailJoinCtaState _eventDetailJoinStateForEvent(
   if (isJoining) {
     return EventDetailJoinCtaState.joining;
   }
-  if (isJoined) {
-    return EventDetailJoinCtaState.joined;
-  }
 
-  final startsAt = event.startsAt;
-  if (startsAt != null && !startsAt.isAfter(DateTime.now().toUtc())) {
+  if (isJoined) {
+    return hasStarted
+        ? EventDetailJoinCtaState.joinedLocked
+        : EventDetailJoinCtaState.joined;
+  }
+  if (hasStarted) {
     return EventDetailJoinCtaState.past;
   }
 
@@ -415,6 +508,10 @@ EventDetailJoinCtaState _eventDetailJoinStateForEvent(
   }
 
   return EventDetailJoinCtaState.join;
+}
+
+bool _eventDetailHasStarted(DateTime? startsAt) {
+  return startsAt != null && !startsAt.isAfter(DateTime.now().toUtc());
 }
 
 int? _eventDetailParticipantsCountForEvent({

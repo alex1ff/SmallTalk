@@ -264,7 +264,7 @@ Date: 2026-06-14
 - [x] Update occupancy after join.
 - [x] Add leave action for active participants.
 - [x] Add leave confirmation.
-- [ ] Hide or disable leave action at or after `startsAt`.
+- [x] Hide or disable leave action at or after `startsAt`.
 - [ ] Update occupancy after leave.
 - [ ] Remove chat access after leave.
 - [ ] Show clear errors for full event, canceled event, past event, and duplicate join.

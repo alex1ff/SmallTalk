@@ -93,6 +93,7 @@ enum EventDetailJoinCtaState {
   join,
   joining,
   joined,
+  joinedLocked,
   full,
   canceled,
   past,
@@ -1468,6 +1469,7 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
       EventDetailJoinCtaState.join ||
       EventDetailJoinCtaState.joined =>
         widget.onPressed != null,
+      EventDetailJoinCtaState.joinedLocked ||
       EventDetailJoinCtaState.joining ||
       EventDetailJoinCtaState.full ||
       EventDetailJoinCtaState.canceled ||
@@ -1481,6 +1483,8 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
               ExpatlioDesign.secondarySystemBackground,
             EventDetailJoinCtaState.joined =>
               _eventDetailDestructiveCtaBackground,
+            EventDetailJoinCtaState.joinedLocked =>
+              ExpatlioDesign.secondarySystemBackground,
             EventDetailJoinCtaState.full ||
             EventDetailJoinCtaState.canceled ||
             EventDetailJoinCtaState.past =>
@@ -1492,6 +1496,7 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
             EventDetailJoinCtaState.join => Colors.white,
             EventDetailJoinCtaState.joining => ExpatlioDesign.muted,
             EventDetailJoinCtaState.joined => Colors.white,
+            EventDetailJoinCtaState.joinedLocked => ExpatlioDesign.muted,
             EventDetailJoinCtaState.full ||
             EventDetailJoinCtaState.canceled ||
             EventDetailJoinCtaState.past =>
@@ -1882,6 +1887,11 @@ String _eventDetailJoinCtaLabel(
         ruText: 'Покинуть',
         enText: 'Leave',
       ),
+    EventDetailJoinCtaState.joinedLocked =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Вы участвуете',
+        enText: 'Joined',
+      ),
     EventDetailJoinCtaState.full => FFLocalizations.of(context)
         .getVariableText(ruText: 'Мест нет', enText: 'Full'),
     EventDetailJoinCtaState.canceled => FFLocalizations.of(context)
@@ -1906,6 +1916,11 @@ String _eventDetailJoinCtaSemanticsLabel(
       FFLocalizations.of(context).getVariableText(
         ruText: 'Вы участвуете. Покинуть событие',
         enText: 'Joined. Leave event',
+      ),
+    EventDetailJoinCtaState.joinedLocked =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Вы участвуете',
+        enText: 'Joined',
       ),
     EventDetailJoinCtaState.full => FFLocalizations.of(context)
         .getVariableText(ruText: 'Мест нет', enText: 'Event is full'),
