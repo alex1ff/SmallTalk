@@ -223,7 +223,7 @@ Date: 2026-06-14
 - [x] Add date picker.
 - [x] Add time picker.
 - [x] Add city selector.
-- [ ] Add place/address input.
+- [x] Add place/address input.
 - [ ] Add participant limit input.
 - [ ] Validate required fields.
 - [ ] Interpret date/time in the selected event city's `timeZoneId` and block past values using trusted-time validation feedback.

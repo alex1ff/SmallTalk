@@ -56,6 +56,12 @@ const ValueKey<String> eventCreateCitySheetKey =
     ValueKey<String>('event_create_city_sheet');
 const ValueKey<String> eventCreateCitySearchFieldKey =
     ValueKey<String>('event_create_city_search_field');
+const ValueKey<String> eventCreateLocationLabelKey =
+    ValueKey<String>('event_create_location_label');
+const ValueKey<String> eventCreateLocationFieldSemanticsKey =
+    ValueKey<String>('event_create_location_field_semantics');
+const ValueKey<String> eventCreateLocationFieldKey =
+    ValueKey<String>('event_create_location_field');
 const ValueKey<String> eventCreateDateLabelKey =
     ValueKey<String>('event_create_date_label');
 const ValueKey<String> eventCreateDateSelectorSemanticsKey =
@@ -119,6 +125,16 @@ class EventCreateCityDraft {
   String get identity => '$countryCode:$cityKey';
 }
 
+class EventCreateLocationDraft {
+  const EventCreateLocationDraft({
+    required this.locationName,
+    this.locationGeoPoint,
+  });
+
+  final String locationName;
+  final LatLng? locationGeoPoint;
+}
+
 class EventCreateDateDraft {
   const EventCreateDateDraft({
     required this.localDate,
@@ -144,12 +160,14 @@ class EventCreateWidget extends StatefulWidget {
     this.initialLevelMin,
     this.initialLevelMax,
     this.initialSelectedCity,
+    this.initialLocationName,
     this.initialDate,
     this.initialTime,
     this.onLanguageCodeChanged,
     this.onLanguageDraftChanged,
     this.onLevelDraftChanged,
     this.onCityDraftChanged,
+    this.onLocationDraftChanged,
     this.onDateDraftChanged,
     this.onTimeDraftChanged,
   });
@@ -163,12 +181,14 @@ class EventCreateWidget extends StatefulWidget {
   final String? initialLevelMin;
   final String? initialLevelMax;
   final EventSelectedCity? initialSelectedCity;
+  final String? initialLocationName;
   final DateTime? initialDate;
   final TimeOfDay? initialTime;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
   final ValueChanged<EventCreateLevelDraft>? onLevelDraftChanged;
   final ValueChanged<EventCreateCityDraft>? onCityDraftChanged;
+  final ValueChanged<EventCreateLocationDraft>? onLocationDraftChanged;
   final ValueChanged<EventCreateDateDraft>? onDateDraftChanged;
   final ValueChanged<EventCreateTimeDraft>? onTimeDraftChanged;
 
@@ -180,8 +200,10 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   final _formKey = GlobalKey<FormState>();
   final _titleTextController = TextEditingController();
   final _descriptionTextController = TextEditingController();
+  final _locationTextController = TextEditingController();
   final _titleFocusNode = FocusNode();
   final _descriptionFocusNode = FocusNode();
+  final _locationFocusNode = FocusNode();
   Future<EventLanguageCatalog>? _languageCatalogFuture;
   AssetBundle? _languageCatalogBundle;
   Future<EventCityCatalog>? _cityCatalogFuture;
@@ -205,6 +227,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   String? _lastEmittedCityDraftKey;
   EventSelectedCity? _pendingCityDraft;
   bool _cityDraftCallbackScheduled = false;
+  String? _lastEmittedLocationDraftName;
+  String? _pendingLocationDraftName;
+  bool _locationDraftCallbackScheduled = false;
   String? _lastEmittedDateDraftKey;
   DateTime? _pendingDateDraft;
   bool _dateDraftCallbackScheduled = false;
@@ -219,6 +244,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _selectedLevelMin = widget.initialLevelMin;
     _selectedLevelMax = widget.initialLevelMax;
     _selectedCity = widget.initialSelectedCity;
+    _locationTextController.text =
+        _normalizeEventCreateLocationName(widget.initialLocationName ?? '');
+    _locationTextController.addListener(_handleLocationTextChanged);
     _selectedDate = _eventCreateDateOnly(widget.initialDate ?? DateTime.now());
     _selectedTime = widget.initialTime ?? _eventCreateDefaultTime;
   }
@@ -269,6 +297,10 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       _selectedCity = widget.initialSelectedCity;
       _clearCityChipsCache();
     }
+    if (oldWidget.initialLocationName != widget.initialLocationName) {
+      _locationTextController.text =
+          _normalizeEventCreateLocationName(widget.initialLocationName ?? '');
+    }
     if (oldWidget.initialDate != widget.initialDate) {
       _selectedDate = _eventCreateDateOnly(
         widget.initialDate ?? DateTime.now(),
@@ -281,10 +313,13 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
 
   @override
   void dispose() {
+    _locationTextController.removeListener(_handleLocationTextChanged);
     _titleTextController.dispose();
     _descriptionTextController.dispose();
+    _locationTextController.dispose();
     _titleFocusNode.dispose();
     _descriptionFocusNode.dispose();
+    _locationFocusNode.dispose();
     super.dispose();
   }
 
@@ -458,6 +493,54 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       }
       _emitCityDraftNow(pendingCity);
     });
+  }
+
+  void _emitLocationDraftNow(String locationName) {
+    _pendingLocationDraftName = null;
+    if (_lastEmittedLocationDraftName == locationName) {
+      return;
+    }
+    final onLocationDraftChanged = widget.onLocationDraftChanged;
+    if (onLocationDraftChanged == null) {
+      return;
+    }
+    _lastEmittedLocationDraftName = locationName;
+    onLocationDraftChanged(
+      EventCreateLocationDraft(
+        locationName: locationName,
+        locationGeoPoint: null,
+      ),
+    );
+  }
+
+  void _queueLocationDraft(String locationName) {
+    if (_lastEmittedLocationDraftName == locationName &&
+        _pendingLocationDraftName == null) {
+      return;
+    }
+    _pendingLocationDraftName = locationName;
+    if (_locationDraftCallbackScheduled) {
+      return;
+    }
+    _locationDraftCallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _locationDraftCallbackScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      final pendingLocationName = _pendingLocationDraftName;
+      if (pendingLocationName == null ||
+          _lastEmittedLocationDraftName == pendingLocationName) {
+        return;
+      }
+      _emitLocationDraftNow(pendingLocationName);
+    });
+  }
+
+  void _handleLocationTextChanged() {
+    _queueLocationDraft(
+      _normalizeEventCreateLocationName(_locationTextController.text),
+    );
   }
 
   void _emitDateDraftNow(DateTime localDate) {
@@ -813,6 +896,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   Widget build(BuildContext context) {
     final selectedLevelRange = _resolvedSelectedLevelRange();
     _queueLevelDraft(selectedLevelRange);
+    _queueLocationDraft(
+      _normalizeEventCreateLocationName(_locationTextController.text),
+    );
     _queueDateDraft(_selectedDate);
     _queueTimeDraft(_selectedTime);
     return AuthUserStreamWidget(
@@ -999,6 +1085,29 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                     ],
                                   );
                                 },
+                              ),
+                              const SizedBox(height: ExpatlioDesign.space20),
+                              _EventCreateTextField(
+                                labelKey: eventCreateLocationLabelKey,
+                                semanticsKey:
+                                    eventCreateLocationFieldSemanticsKey,
+                                fieldKey: eventCreateLocationFieldKey,
+                                label:
+                                    FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Место',
+                                  enText: 'Place',
+                                ),
+                                hintText:
+                                    FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Кафе, адрес или ориентир',
+                                  enText: 'Cafe, address, or landmark',
+                                ),
+                                controller: _locationTextController,
+                                focusNode: _locationFocusNode,
+                                textInputAction: TextInputAction.done,
+                                keyboardType: TextInputType.streetAddress,
+                                minLines: 1,
+                                maxLines: 2,
                               ),
                               const SizedBox(height: ExpatlioDesign.space20),
                               _EventCreateDateSelector(
@@ -2310,6 +2419,9 @@ String _eventCreateCityDraftKey(EventSelectedCity selectedCity) {
       '${selectedCity.city.timeZoneId}:'
       '${selectedCity.source.analyticsValue}';
 }
+
+String _normalizeEventCreateLocationName(String value) =>
+    value.trim().replaceAll(RegExp(r'\s+'), ' ');
 
 DateTime _eventCreateDateOnly(DateTime value) =>
     DateTime(value.year, value.month, value.day);

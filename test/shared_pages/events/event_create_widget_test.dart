@@ -167,6 +167,10 @@ void main() {
     expect(find.byKey(eventCreateCityLabelKey), findsOneWidget);
     expect(find.byKey(eventCreateCitySelectorKey), findsOneWidget);
     expect(find.text('Город'), findsOneWidget);
+    expect(find.byKey(eventCreateLocationLabelKey), findsOneWidget);
+    expect(find.byKey(eventCreateLocationFieldKey), findsOneWidget);
+    expect(find.text('Место'), findsOneWidget);
+    expect(find.text('Кафе, адрес или ориентир'), findsOneWidget);
     expect(find.byKey(eventCreateDateLabelKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.text('Дата'), findsOneWidget);
@@ -194,6 +198,16 @@ void main() {
     expect(descriptionField.maxLines, 8);
     expect(descriptionField.keyboardType, TextInputType.multiline);
     expect(descriptionField.textInputAction, TextInputAction.newline);
+    final locationField = tester.widget<TextField>(
+      find.descendant(
+        of: find.byKey(eventCreateLocationFieldKey),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(locationField.minLines, 1);
+    expect(locationField.maxLines, 2);
+    expect(locationField.keyboardType, TextInputType.streetAddress);
+    expect(locationField.textInputAction, TextInputAction.done);
   });
 
   testWidgets('renders title and description fields in English',
@@ -222,6 +236,8 @@ void main() {
     expect(find.text('Level'), findsOneWidget);
     expect(_levelSelectorText('B1-C1'), findsOneWidget);
     expect(find.text('City'), findsOneWidget);
+    expect(find.text('Place'), findsOneWidget);
+    expect(find.text('Cafe, address, or landmark'), findsOneWidget);
     expect(find.text('Date'), findsOneWidget);
     expect(find.text('Time'), findsOneWidget);
     expect(_timeSelectorText('18:00'), findsOneWidget);
@@ -907,6 +923,101 @@ void main() {
     expect(drafts.map(_cityDraftValue), ['IT:rome:Europe/Rome:manual']);
   });
 
+  testWidgets('emits default empty location draft for submit handoff',
+      (tester) async {
+    final drafts = <EventCreateLocationDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onLocationDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts.map(_locationDraftValue), ['']);
+    expect(drafts.single.locationGeoPoint, isNull);
+  });
+
+  testWidgets('normalizes initial location for submit handoff', (tester) async {
+    final drafts = <EventCreateLocationDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialLocationName: '  Starbucks,   ул. Арбат, 5  ',
+          onLocationDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Starbucks, ул. Арбат, 5'), findsOneWidget);
+    expect(drafts.map(_locationDraftValue), ['Starbucks, ул. Арбат, 5']);
+  });
+
+  testWidgets('emits location draft when handoff callback is added later',
+      (tester) async {
+    final drafts = <EventCreateLocationDraft>[];
+    var callbackEnabled = false;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              initialLocationName: 'Коворкинг на Ленина',
+              onLocationDraftChanged: callbackEnabled ? drafts.add : null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts, isEmpty);
+
+    setHostState(() {
+      callbackEnabled = true;
+    });
+    await tester.pumpAndSettle();
+
+    expect(drafts.map(_locationDraftValue), ['Коворкинг на Ленина']);
+  });
+
+  testWidgets('edits place field and emits normalized location draft',
+      (tester) async {
+    final drafts = <EventCreateLocationDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onLocationDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventCreateLocationFieldKey),
+      '  Starbucks,\n  ул.   Арбат, 5  ',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('  Starbucks,\n  ул.   Арбат, 5  '), findsOneWidget);
+    expect(
+      drafts.map(_locationDraftValue),
+      ['', 'Starbucks, ул. Арбат, 5'],
+    );
+  });
+
   testWidgets('emits default date draft for submit handoff', (tester) async {
     final drafts = <EventCreateDateDraft>[];
     final todayBefore = _dateOnly(DateTime.now());
@@ -1343,6 +1454,15 @@ void main() {
       expect(citySemantics.flagsCollection.isEnabled, isTrue);
       expect(citySemantics.label, contains('Город события'));
       expect(citySemantics.value, isNotEmpty);
+      final locationSemantics =
+          tester.getSemantics(find.byKey(eventCreateLocationFieldSemanticsKey));
+      expect(locationSemantics.flagsCollection.isTextField, isTrue);
+      expect(locationSemantics.flagsCollection.isMultiline, isTrue);
+      expect(locationSemantics.label, contains('Место'));
+      expect(
+        locationSemantics.hint,
+        contains('Кафе, адрес или ориентир'),
+      );
       final dateSemantics =
           tester.getSemantics(find.byKey(eventCreateDateSelectorSemanticsKey));
       expect(dateSemantics.flagsCollection.isButton, isTrue);
@@ -1407,6 +1527,15 @@ void main() {
       expect(citySemantics.flagsCollection.isEnabled, isTrue);
       expect(citySemantics.label, contains('Event city'));
       expect(citySemantics.value, isNotEmpty);
+      final locationSemantics =
+          tester.getSemantics(find.byKey(eventCreateLocationFieldSemanticsKey));
+      expect(locationSemantics.flagsCollection.isTextField, isTrue);
+      expect(locationSemantics.flagsCollection.isMultiline, isTrue);
+      expect(locationSemantics.label, contains('Place'));
+      expect(
+        locationSemantics.hint,
+        contains('Cafe, address, or landmark'),
+      );
       final dateSemantics =
           tester.getSemantics(find.byKey(eventCreateDateSelectorSemanticsKey));
       expect(dateSemantics.flagsCollection.isButton, isTrue);
@@ -1467,6 +1596,10 @@ void main() {
       find.byKey(eventCreateDescriptionFieldKey),
       'Смотрим короткий фильм и обсуждаем лексику.',
     );
+    await tester.enterText(
+      find.byKey(eventCreateLocationFieldKey),
+      'Лофт на Ленина',
+    );
     await tester.pump();
 
     await tester.pumpWidget(
@@ -1483,6 +1616,7 @@ void main() {
       find.text('Смотрим короткий фильм и обсуждаем лексику.'),
       findsOneWidget,
     );
+    expect(find.text('Лофт на Ленина'), findsOneWidget);
   });
 
   testWidgets('create route renders the form fields', (tester) async {
@@ -1508,6 +1642,7 @@ void main() {
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateCitySelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateLocationFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
   });
@@ -1536,6 +1671,7 @@ void main() {
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateCitySelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateLocationFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -1576,6 +1712,9 @@ Finder _citySelectorText(String text) => find.descendant(
 String _cityDraftValue(EventCreateCityDraft draft) =>
     '${draft.countryCode}:${draft.cityKey}:${draft.timeZoneId}:'
     '${draft.citySource}';
+
+String _locationDraftValue(EventCreateLocationDraft draft) =>
+    draft.locationName;
 
 int _widgetIndex(WidgetTester tester, Finder finder) {
   expect(finder, findsOneWidget);
