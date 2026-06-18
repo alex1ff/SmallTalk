@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,7 +11,9 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_city_catalog.dart';
 import '/services/event_city_chip_source.dart';
 import '/services/event_city_resolution.dart';
+import '/services/event_city_selection_source.dart';
 import '/services/event_selected_city_state.dart';
+import '/services/event_temporary_city_selection.dart';
 
 const ValueKey<String> eventListCreateButtonKey =
     ValueKey<String>('event_list_create_button');
@@ -170,9 +174,20 @@ class _EventListWidgetState extends State<EventListWidget> {
                             !selectedState.hasOutdatedProfileCity,
                         onPressed: onCitySelectorPressed,
                       ),
-                      if (cityChipsFuture != null) ...[
+                      if (cityChipsFuture != null && catalog != null) ...[
                         const SizedBox(height: ExpatlioDesign.space12),
-                        _EventCityChips(chipsFuture: cityChipsFuture),
+                        _EventCityChips(
+                          chipsFuture: cityChipsFuture,
+                          onChipPressed: (chip) {
+                            unawaited(
+                              _selectTemporaryCity(
+                                catalog: catalog,
+                                city: chip.city,
+                                source: chip.source,
+                              ),
+                            );
+                          },
+                        ),
                       ],
                     ],
                   ),
@@ -188,8 +203,8 @@ class _EventListWidgetState extends State<EventListWidget> {
   Future<void> _openManualCityPicker({
     required EventCityCatalog catalog,
     required String? countryCodeHint,
-  }) {
-    return showModalBottomSheet<void>(
+  }) async {
+    final city = await showModalBottomSheet<EventCity>(
       context: context,
       isScrollControlled: true,
       backgroundColor: ExpatlioDesign.card,
@@ -203,6 +218,42 @@ class _EventListWidgetState extends State<EventListWidget> {
         countryCodeHint: countryCodeHint,
       ),
     );
+    if (city == null) {
+      return;
+    }
+    await _selectTemporaryCity(
+      catalog: catalog,
+      city: city,
+      source: EventCitySelectionSource.manual,
+    );
+  }
+
+  Future<void> _selectTemporaryCity({
+    required EventCityCatalog catalog,
+    required EventCity city,
+    required EventCitySelectionSource source,
+  }) async {
+    final chipSource = await _loadCityChipSource();
+    final input = await EventTemporaryCitySelectionService(
+      chipSource: chipSource,
+    ).selectCity(
+      city: city,
+      source: source,
+    );
+    final selectedState = resolveEventSelectedCityState(
+      user: currentUserDocument,
+      catalog: catalog,
+      temporarySelection: input,
+    );
+    final selected = selectedState.selected;
+    if (selected == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _selectedCity = selected;
+      _cityChipsFuture = null;
+      _cityChipsCatalog = null;
+    });
   }
 
   Future<List<EventCityChip>> _loadCityChips({
@@ -232,16 +283,20 @@ class _EventListWidgetState extends State<EventListWidget> {
     required EventCity? selectedCityToExclude,
     required String? countryCodeHint,
   }) async {
-    final preferences = await SharedPreferences.getInstance();
-    final chipSource = EventCityChipSource(
-      recentStore: SharedPreferencesEventRecentCityStore(
-        preferences: preferences,
-      ),
-    );
+    final chipSource = await _loadCityChipSource();
     return chipSource.loadChips(
       catalog: catalog,
       selectedCityToExclude: selectedCityToExclude,
       countryCodeHint: countryCodeHint,
+    );
+  }
+
+  Future<EventCityChipSource> _loadCityChipSource() async {
+    final preferences = await SharedPreferences.getInstance();
+    return EventCityChipSource(
+      recentStore: SharedPreferencesEventRecentCityStore(
+        preferences: preferences,
+      ),
     );
   }
 
@@ -357,9 +412,13 @@ class _EventManualCityPickerState extends State<_EventManualCityPicker> {
                   itemCount: options.length,
                   separatorBuilder: (context, index) =>
                       const SizedBox(height: ExpatlioDesign.space8),
-                  itemBuilder: (context, index) => _EventManualCityOptionTile(
-                    option: options[index],
-                  ),
+                  itemBuilder: (context, index) {
+                    final option = options[index];
+                    return _EventManualCityOptionTile(
+                      option: option,
+                      onTap: () => Navigator.of(context).pop(option.city),
+                    );
+                  },
                 ),
               ),
             ],
@@ -386,32 +445,41 @@ class _EventManualCityPickerState extends State<_EventManualCityPicker> {
 class _EventManualCityOptionTile extends StatelessWidget {
   const _EventManualCityOptionTile({
     required this.option,
+    required this.onTap,
   });
 
   final EventCitySearchOption option;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: _eventManualCityOptionKey(option.city),
-      padding: const EdgeInsetsDirectional.fromSTEB(
-        ExpatlioDesign.space12,
-        ExpatlioDesign.space12,
-        ExpatlioDesign.space12,
-        ExpatlioDesign.space12,
-      ),
-      decoration: ExpatlioDesign.cardDecoration(
-        borderColor: ExpatlioDesign.separator,
-        radius: ExpatlioDesign.controlRadius,
-      ),
-      child: Text(
-        _cityChipLabel(context, option.city),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: ExpatlioDesign.textStyle(
-          context,
-          size: 16,
-          weight: FontWeight.w600,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: _eventManualCityOptionKey(option.city),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
+        child: Container(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space12,
+          ),
+          decoration: ExpatlioDesign.cardDecoration(
+            borderColor: ExpatlioDesign.separator,
+            radius: ExpatlioDesign.controlRadius,
+          ),
+          child: Text(
+            _cityChipLabel(context, option.city),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ExpatlioDesign.textStyle(
+              context,
+              size: 16,
+              weight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );
@@ -424,9 +492,11 @@ ValueKey<String> _eventManualCityOptionKey(EventCity city) => ValueKey<String>(
 class _EventCityChips extends StatelessWidget {
   const _EventCityChips({
     required this.chipsFuture,
+    required this.onChipPressed,
   });
 
   final Future<List<EventCityChip>> chipsFuture;
+  final ValueChanged<EventCityChip> onChipPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -442,9 +512,10 @@ class _EventCityChips extends StatelessWidget {
           runSpacing: ExpatlioDesign.space8,
           children: [
             for (final chip in chips)
-              Chip(
+              ActionChip(
                 key: _eventCityChipKey(chip.city),
                 label: Text(_cityChipLabel(context, chip.city)),
+                onPressed: () => onChipPressed(chip),
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 backgroundColor: ExpatlioDesign.secondarySystemBackground,

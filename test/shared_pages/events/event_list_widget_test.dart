@@ -282,6 +282,37 @@ void main() {
   });
 
   testWidgets(
+      'chip city selection unlocks events city state without profile save',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      eventRecentCitySelectionsPrefsKey: const <String>[
+        '{"countryCode":"IT","cityKey":"rome"}',
+      ],
+    });
+    currentUserDocument = _userFixture(
+      uid: 'chip-selection-user',
+      data: {},
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(cityCatalogOverride: _catalog),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester
+        .tap(find.byKey(const ValueKey<String>('event_city_chip_IT_rome')));
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Рим · Italy'), findsOneWidget);
+    expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
+    expect(find.byKey(const ValueKey<String>('event_city_chip_IT_rome')),
+        findsNothing);
+    expect(currentUserDocument!.hasProfileCity(), isFalse);
+  });
+
+  testWidgets(
       'opens manual city picker from selector without injected callback',
       (tester) async {
     final fullCatalog = EventCityCatalog.fromJsonString(
@@ -318,6 +349,35 @@ void main() {
     );
     expect(find.text('Тбилиси · საქართველო'), findsOneWidget);
     expect(_citySelectorText('Тбилиси · საქართველო'), findsNothing);
+  });
+
+  testWidgets(
+      'manual city selection unlocks events city state without profile save',
+      (tester) async {
+    currentUserDocument = _userFixture(
+      uid: 'manual-selection-user',
+      data: {},
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(cityCatalogOverride: _catalog),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventListCitySelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+          const ValueKey<String>('event_manual_city_option_US_new_york')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Нью-Йорк · United States'), findsOneWidget);
+    expect(find.byKey(eventManualCitySearchFieldKey), findsNothing);
+    expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
+    expect(currentUserDocument!.hasProfileCity(), isFalse);
   });
 
   testWidgets('leaves stale malformed and unknown profile cities unselected',
@@ -472,6 +532,7 @@ void main() {
 
     expect(source, isNot(contains('EventListRepository')));
     expect(source, isNot(contains('EventsRecord')));
+    expect(source, isNot(contains('ProfileCitySaveService')));
     expect(source, isNot(contains('queryEventsRecord')));
   });
 }
