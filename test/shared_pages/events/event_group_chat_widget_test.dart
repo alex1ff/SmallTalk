@@ -218,6 +218,38 @@ void main() {
     expect(image.imageUrl, 'https://example.com/avatar.png');
   });
 
+  testWidgets('renders deleted event chat message without original text',
+      (tester) async {
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final message = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'message-1',
+      text: 'Скрытый исходный текст',
+      senderDisplayName: 'Марко',
+      deletedAt: DateTime.parse('2026-06-15T11:30:00Z'),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            message,
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatMessageBubbleKey('message-1')),
+        findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageTombstoneKey('message-1')),
+        findsOneWidget);
+    expect(find.text('Сообщение удалено'), findsOneWidget);
+    expect(find.text('Скрытый исходный текст'), findsNothing);
+    expect(find.text('Марко'), findsOneWidget);
+  });
+
   testWidgets('sends event chat message through callable and clears input',
       (tester) async {
     String? functionName;
@@ -340,6 +372,7 @@ EventChatMessagesRecord _messageFixture({
   String senderId = 'uid-1',
   String senderDisplayName = 'Marco',
   String? senderPhotoUrl,
+  DateTime? deletedAt,
 }) {
   return EventChatMessagesRecord.getDocumentFromData(
     {
@@ -348,7 +381,7 @@ EventChatMessagesRecord _messageFixture({
       'senderPhotoUrl': senderPhotoUrl,
       'text': text,
       'createdAt': DateTime.parse('2026-06-14T10:00:00Z'),
-      'deletedAt': null,
+      'deletedAt': deletedAt,
     },
     EventChatMessagesRecord.createDoc(chatRef, id: messageId),
   );

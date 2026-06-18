@@ -279,7 +279,7 @@ Date: 2026-06-14
 - [x] Load event chat messages.
 - [x] Send event chat messages through `sendEventChatMessage`.
 - [x] Show sender name/avatar.
-- [ ] Render removed/tombstoned message state when `deletedAt` is non-null, if such messages are encountered.
+- [x] Render removed/tombstoned message state when `deletedAt` is non-null, if such messages are encountered.
 - [ ] Prevent read/write after participant leaves.
 - [ ] Show canceled event chats as read-only for eligible organizer/participants.
 - [ ] Show read-only status/banner for canceled event chats.

@@ -34,6 +34,9 @@ ValueKey<String> eventGroupChatMessageSenderNameKey(String messageId) =>
 ValueKey<String> eventGroupChatMessageSenderAvatarKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_sender_avatar_$messageId');
 
+ValueKey<String> eventGroupChatMessageTombstoneKey(String messageId) =>
+    ValueKey<String>('event_group_chat_message_tombstone_$messageId');
+
 /// Event chat intentionally uses an event-specific surface.
 ///
 /// The existing one-to-one chat UI is backed by conversation documents and
@@ -380,12 +383,28 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
     final messageId = message.reference.id;
     final isCurrentUser = message.senderId.trim() == currentUserUid.trim() &&
         currentUserUid.trim().isNotEmpty;
-    final bubbleColor =
-        isCurrentUser ? ExpatlioDesign.primary : ExpatlioDesign.card;
-    final textColor = isCurrentUser ? Colors.white : ExpatlioDesign.text;
+    final isDeleted = message.deletedAt != null;
+    final bubbleColor = isDeleted
+        ? ExpatlioDesign.secondarySystemBackground
+        : isCurrentUser
+            ? ExpatlioDesign.primary
+            : ExpatlioDesign.card;
+    final textColor = isDeleted
+        ? ExpatlioDesign.muted
+        : isCurrentUser
+            ? Colors.white
+            : ExpatlioDesign.text;
     final senderNameColor =
-        isCurrentUser ? Colors.white : ExpatlioDesign.primary;
+        isDeleted || !isCurrentUser ? ExpatlioDesign.primary : Colors.white;
     final text = message.text.trim();
+    final messageText = isDeleted
+        ? FFLocalizations.of(context).getVariableText(
+            ruText: 'Сообщение удалено',
+            enText: 'Message removed',
+          )
+        : text.isEmpty
+            ? message.text
+            : text;
     final senderName = _senderDisplayName(context);
     final avatar = _EventGroupChatSenderAvatar(
       messageId: messageId,
@@ -432,7 +451,10 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                text.isEmpty ? message.text : text,
+                messageText,
+                key: isDeleted
+                    ? eventGroupChatMessageTombstoneKey(messageId)
+                    : null,
                 style: ExpatlioDesign.textStyle(
                   context,
                   color: textColor,
