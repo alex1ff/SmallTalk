@@ -175,7 +175,7 @@ Date: 2026-06-14
 - [x] Add `+` create button.
 - [x] Add city selector/state.
 - [x] Show profile city by default when available.
-- [ ] Validate saved profile `countryCode + cityKey` against the canonical city catalog before using it as the default Events city.
+- [x] Validate saved profile `countryCode + cityKey` against the canonical city catalog before using it as the default Events city.
 - [ ] Route stale/unknown saved profile city to the missing/outdated city flow instead of unlocking the list.
 - [ ] If profile has only existing `Country_NS`, show missing-city flow and use country only to prioritize city suggestions.
 - [ ] Show location prompt when profile city is missing.

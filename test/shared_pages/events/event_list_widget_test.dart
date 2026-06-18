@@ -175,6 +175,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Москва · Россия'), findsOneWidget);
+    expect(find.textContaining('Stored city'), findsNothing);
+    expect(find.textContaining('Stored context'), findsNothing);
     expect(find.text('Выберите город'), findsNothing);
   });
 
@@ -198,7 +200,7 @@ void main() {
     expect(find.text('Москва · Россия'), findsNothing);
   });
 
-  testWidgets('leaves stale and unknown profile cities unselected for now',
+  testWidgets('leaves stale malformed and unknown profile cities unselected',
       (tester) async {
     for (final fixture in <Map<String, dynamic>>[
       {
@@ -206,6 +208,13 @@ void main() {
           countryCode: 'RU',
           cityKey: 'moscow',
           catalogVersion: 'old-version',
+        ).toMap(),
+      },
+      {
+        'profileCity': _profileCityFixture(
+          countryCode: 'Russia',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
         ).toMap(),
       },
       {
