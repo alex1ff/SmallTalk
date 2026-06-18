@@ -325,7 +325,7 @@ void main() {
     expect(detail, isNot(contains('EventsRecord')));
   });
 
-  test('event create screen submits through event actions only', () {
+  test('event form submits through event actions only', () {
     final create = File('lib/shared_pages/events/event_create_widget.dart')
         .readAsStringSync();
 
@@ -333,12 +333,12 @@ void main() {
     expect(create, contains('Create event'));
     expect(create, contains('eventCreateSubmitErrorKey'));
     expect(create, contains('EventActionsRepository.createEvent'));
+    expect(create, contains('EventActionsRepository.editEvent'));
     expect(create, contains('EventEditableFields'));
     expect(create, contains('newEventCreateRequestId'));
     expect(create, contains('context.goNamed('));
     expect(create, contains('EventDetailWidget.routeName'));
-    expect(create, contains("'eventId': createResult.eventId"));
-    expect(create, isNot(contains('.editEvent(')));
+    expect(create, contains("'eventId': savedEventId"));
     expect(create, isNot(contains('pushNamed(')));
     expect(create, isNot(contains('EventsRecord')));
     expect(create, isNot(contains('EventChatsRecord')));
@@ -355,14 +355,15 @@ void main() {
     expect(create, isNot(contains('ProfileCitySaveService')));
   });
 
-  test('event edit screen loads detail data without save repository wiring',
-      () {
+  test('event edit screen loads detail data into save-enabled form', () {
     final edit = File('lib/shared_pages/events/event_edit_widget.dart')
         .readAsStringSync();
 
     expect(edit, contains('final String eventId;'));
     expect(edit, contains('EventCreateWidget('));
     expect(edit, contains('formMode: EventFormMode.edit'));
+    expect(edit, contains('eventId: widget.eventId'));
+    expect(edit, contains('editEventInvoker'));
     expect(edit, contains('EventDetailRepository'));
     expect(edit, contains('watchEventDetail'));
     expect(edit, contains('EventsRecord'));

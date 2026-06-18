@@ -12,6 +12,7 @@ import 'package:small_talk/flutter_flow/flutter_flow_util.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/shared_pages/events/event_edit_widget.dart';
+import 'package:small_talk/services/event_actions_repository.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
@@ -165,6 +166,159 @@ void main() {
       find.text('Лимит не может быть меньше текущих участников (5)'),
       findsNothing,
     );
+  });
+
+  testWidgets('saves organizer edits through edit callable', (tester) async {
+    String? functionName;
+    Map<String, dynamic>? payload;
+    var submitCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventEditWidget(
+          eventId: 'event-1',
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          editEventInvoker: (calledFunctionName, calledPayload) async {
+            submitCount += 1;
+            functionName = calledFunctionName;
+            payload = calledPayload;
+            throw StateError('stop after payload capture');
+          },
+          snapshotStream: (eventRef) {
+            return Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(
+                  title: 'Conversation club',
+                  description: 'Casual practice in a cafe.',
+                  languageCode: 'en',
+                  levelMin: 'A2',
+                  levelMax: 'B2',
+                  countryCode: 'RU',
+                  cityKey: 'moscow',
+                  locationName: 'Starbucks, ул. Арбат, 5',
+                  locationGeoPoint: const LatLng(55.7522, 37.6156),
+                  startsAt: DateTime.parse('2026-06-20T15:00:00Z'),
+                  timeZoneId: 'Europe/Moscow',
+                  capacity: 8,
+                  participantsCount: 5,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventCreateTitleFieldKey),
+      'Updated club',
+    );
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(submitCount, 1);
+    expect(functionName, editEventFunctionName);
+    expect(payload, containsPair('eventId', 'event-1'));
+    expect(payload, containsPair('title', 'Updated club'));
+    expect(payload, containsPair('capacity', 8));
+    expect(
+        payload,
+        containsPair('locationGeoPoint', <String, dynamic>{
+          'latitude': 55.7522,
+          'longitude': 37.6156,
+        }));
+    expect(payload, isNot(containsPair('createRequestId', anything)));
+  });
+
+  testWidgets('clears saved geo point when organizer changes place',
+      (tester) async {
+    Map<String, dynamic>? payload;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventEditWidget(
+          eventId: 'event-1',
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          editEventInvoker: (_, calledPayload) async {
+            payload = calledPayload;
+            throw StateError('stop after payload capture');
+          },
+          snapshotStream: (eventRef) {
+            return Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(
+                  locationName: 'Starbucks, ул. Арбат, 5',
+                  locationGeoPoint: const LatLng(55.7522, 37.6156),
+                  startsAt: DateTime.parse('2026-06-20T15:00:00Z'),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventCreateLocationFieldKey),
+      'Новое место',
+    );
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(payload, containsPair('locationName', 'Новое место'));
+    expect(payload, containsPair('locationGeoPoint', null));
+  });
+
+  testWidgets('clears saved geo point when organizer changes city',
+      (tester) async {
+    Map<String, dynamic>? payload;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventEditWidget(
+          eventId: 'event-1',
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          editEventInvoker: (_, calledPayload) async {
+            payload = calledPayload;
+            throw StateError('stop after payload capture');
+          },
+          snapshotStream: (eventRef) {
+            return Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(
+                  locationName: 'Starbucks, ул. Арбат, 5',
+                  locationGeoPoint: const LatLng(55.7522, 37.6156),
+                  startsAt: DateTime.parse('2026-06-20T15:00:00Z'),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _ensureVisibleInForm(tester, find.byKey(eventCreateCitySelectorKey));
+    await tester.tap(find.byKey(eventCreateCitySelectorKey));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(eventCreateCitySearchFieldKey), 'rome');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateCityOptionKey(_romeCity)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(payload, containsPair('countryCode', 'IT'));
+    expect(payload, containsPair('cityKey', 'rome'));
+    expect(payload, containsPair('locationGeoPoint', null));
   });
 
   testWidgets('keeps form hidden while the event snapshot is loading',
@@ -654,6 +808,19 @@ class _TestAuthUser extends BaseAuthUser {
   Future<void> sendEmailVerification() async {}
 }
 
+Future<void> _ensureVisibleInForm(
+  WidgetTester tester,
+  Finder finder,
+) async {
+  expect(finder, findsOneWidget);
+  await Scrollable.ensureVisible(
+    tester.element(finder),
+    alignment: 0.25,
+    duration: Duration.zero,
+  );
+  await tester.pumpAndSettle();
+}
+
 Map<String, dynamic> _eventData({
   String title = 'Conversation club',
   String description = 'Casual practice',
@@ -663,6 +830,7 @@ Map<String, dynamic> _eventData({
   String countryCode = 'RU',
   String cityKey = 'moscow',
   String locationName = 'Cafe on Arbat',
+  LatLng? locationGeoPoint,
   DateTime? startsAt,
   String timeZoneId = 'Europe/Moscow',
   int capacity = 10,
@@ -678,6 +846,7 @@ Map<String, dynamic> _eventData({
       'countryCode': countryCode,
       'cityKey': cityKey,
       'locationName': locationName,
+      if (locationGeoPoint != null) 'locationGeoPoint': locationGeoPoint,
       'startsAt': startsAt ?? DateTime.parse('2026-06-18T15:00:00Z'),
       'timeZoneId': timeZoneId,
       'capacity': capacity,

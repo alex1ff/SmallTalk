@@ -250,7 +250,7 @@ Date: 2026-06-14
 - [x] Do not show permanent delete action for active or canceled events.
 - [x] Validate edited values.
 - [x] Block capacity below active participant count.
-- [ ] Save organizer edits.
+- [x] Save organizer edits.
 - [ ] Add cancel confirmation dialog.
 - [ ] Set event status to `canceled`.
 - [ ] Return user to detail or list after cancellation.

@@ -222,12 +222,15 @@ class EventCreateWidget extends StatefulWidget {
     this.initialLevelMax,
     this.initialSelectedCity,
     this.initialLocationName,
+    this.initialLocationGeoPoint,
     this.initialDate,
     this.initialTime,
     this.initialCapacity,
     this.minimumCapacity,
+    this.eventId,
     this.currentUtcProvider,
     this.createEventInvoker,
+    this.editEventInvoker,
     this.createRequestIdGenerator,
     this.onLanguageCodeChanged,
     this.onTitleDraftChanged,
@@ -255,12 +258,15 @@ class EventCreateWidget extends StatefulWidget {
   final String? initialLevelMax;
   final EventSelectedCity? initialSelectedCity;
   final String? initialLocationName;
+  final LatLng? initialLocationGeoPoint;
   final DateTime? initialDate;
   final TimeOfDay? initialTime;
   final int? initialCapacity;
   final int? minimumCapacity;
+  final String? eventId;
   final DateTime Function()? currentUtcProvider;
   final EventCallableInvoker? createEventInvoker;
+  final EventCallableInvoker? editEventInvoker;
   final String Function()? createRequestIdGenerator;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateTitleDraft>? onTitleDraftChanged;
@@ -1374,13 +1380,26 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     return startTimeValidation;
   }
 
+  LatLng? _currentLocationGeoPointForSubmit() {
+    if (widget.formMode != EventFormMode.edit) {
+      return null;
+    }
+    final baseline = _editDirtyBaseline;
+    final current = _EventFormDirtySnapshot.fromState(this);
+    if (baseline == null ||
+        baseline.cityIdentity != current.cityIdentity ||
+        baseline.locationName != current.locationName) {
+      return null;
+    }
+    return widget.initialLocationGeoPoint;
+  }
+
   Future<void> _handleSubmitPressed() async {
     if (_isSubmitting) {
       return;
     }
     final startTimeValidation = _validateCurrentEventForm();
-    if (startTimeValidation == null ||
-        widget.formMode != EventFormMode.create) {
+    if (startTimeValidation == null) {
       return;
     }
     final selectedCity = _lastVisibleSelectedCity;
@@ -1393,7 +1412,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     setState(() {
       _isSubmitting = true;
     });
-    CreateEventResult? createResult;
+    String? savedEventId;
     try {
       final languageCatalog = await _languageCatalogFuture;
       if (!mounted) {
@@ -1417,25 +1436,40 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         locationName: _normalizeEventCreateLocationName(
           _locationTextController.text,
         ),
-        locationGeoPoint: null,
+        locationGeoPoint: _currentLocationGeoPointForSubmit(),
         startsAt: startTimeValidation.startsAtUtc,
         capacity: capacity,
       );
-      final payloadSignature = _eventCreatePayloadSignature(fields);
-      var createRequestId = _activeCreateRequestId;
-      if (createRequestId == null ||
-          _activeCreatePayloadSignature != payloadSignature) {
-        createRequestId =
-            (widget.createRequestIdGenerator ?? newEventCreateRequestId).call();
-        _activeCreateRequestId = createRequestId;
-        _activeCreatePayloadSignature = payloadSignature;
-      }
+      if (widget.formMode == EventFormMode.create) {
+        final payloadSignature = _eventCreatePayloadSignature(fields);
+        var createRequestId = _activeCreateRequestId;
+        if (createRequestId == null ||
+            _activeCreatePayloadSignature != payloadSignature) {
+          createRequestId =
+              (widget.createRequestIdGenerator ?? newEventCreateRequestId)
+                  .call();
+          _activeCreateRequestId = createRequestId;
+          _activeCreatePayloadSignature = payloadSignature;
+        }
 
-      createResult = await EventActionsRepository.createEvent(
-        createRequestId: createRequestId,
-        fields: fields,
-        invoker: widget.createEventInvoker,
-      );
+        final createResult = await EventActionsRepository.createEvent(
+          createRequestId: createRequestId,
+          fields: fields,
+          invoker: widget.createEventInvoker,
+        );
+        savedEventId = createResult.eventId;
+      } else {
+        final editEventId = widget.eventId?.trim();
+        if (editEventId == null || editEventId.isEmpty) {
+          throw StateError('Event id is required to edit an event.');
+        }
+        final editResult = await EventActionsRepository.editEvent(
+          eventId: editEventId,
+          fields: fields,
+          invoker: widget.editEventInvoker,
+        );
+        savedEventId = editResult.eventId;
+      }
     } catch (error) {
       if (!mounted) {
         return;
@@ -1450,13 +1484,13 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       });
       widget.onSubmitFailureChanged?.call(failure);
     } finally {
-      if (mounted && createResult == null) {
+      if (mounted && savedEventId == null) {
         setState(() {
           _isSubmitting = false;
         });
       }
     }
-    if (createResult == null || !mounted || _isLeavingEventForm) {
+    if (savedEventId == null || !mounted || _isLeavingEventForm) {
       return;
     }
     setState(() {
@@ -1465,7 +1499,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     context.goNamed(
       EventDetailWidget.routeName,
       pathParameters: <String, String>{
-        'eventId': createResult.eventId,
+        'eventId': savedEventId,
       },
     );
   }

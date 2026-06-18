@@ -60,6 +60,7 @@ Widget _buildRouterTestApp(
 
 GoRouter _buildEventCreateRouter({
   EventFormMode formMode = EventFormMode.create,
+  String eventId = 'event-1',
   String? initialTitle,
   String? initialDescription,
   String? initialLanguageCode,
@@ -73,6 +74,7 @@ GoRouter _buildEventCreateRouter({
   int? minimumCapacity,
   DateTime Function()? currentUtcProvider,
   EventCallableInvoker? createEventInvoker,
+  EventCallableInvoker? editEventInvoker,
   String Function()? createRequestIdGenerator,
 }) {
   return GoRouter(
@@ -89,6 +91,7 @@ GoRouter _buildEventCreateRouter({
         path: EventCreateWidget.routePath,
         builder: (context, state) => EventCreateWidget(
           formMode: formMode,
+          eventId: eventId,
           languageCatalogOverride: _languageCatalog,
           cityCatalogOverride: _cityCatalog,
           initialTitle: initialTitle,
@@ -104,6 +107,7 @@ GoRouter _buildEventCreateRouter({
           minimumCapacity: minimumCapacity,
           currentUtcProvider: currentUtcProvider,
           createEventInvoker: createEventInvoker,
+          editEventInvoker: editEventInvoker,
           createRequestIdGenerator: createRequestIdGenerator,
         ),
       ),
@@ -3332,14 +3336,16 @@ void main() {
     );
   });
 
-  testWidgets('valid edit mode save validates without backend create submit',
+  testWidgets('valid edit mode save calls edit backend without create submit',
       (tester) async {
-    var submitCount = 0;
+    var createSubmitCount = 0;
+    var editSubmitCount = 0;
 
     await tester.pumpWidget(
       _buildTestApp(
         home: EventCreateWidget(
           formMode: EventFormMode.edit,
+          eventId: 'event-1',
           languageCatalogOverride: _languageCatalog,
           cityCatalogOverride: _cityCatalog,
           initialTitle: 'Conversation club',
@@ -3356,8 +3362,12 @@ void main() {
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
           createEventInvoker: (_, __) async {
-            submitCount += 1;
+            createSubmitCount += 1;
             return _createEventResponse();
+          },
+          editEventInvoker: (_, __) async {
+            editSubmitCount += 1;
+            throw _eventNotEditableError();
           },
         ),
       ),
@@ -3367,13 +3377,140 @@ void main() {
     await tester.tap(find.byKey(eventCreateSubmitButtonKey));
     await tester.pumpAndSettle();
 
-    expect(submitCount, 0);
+    expect(createSubmitCount, 0);
+    expect(editSubmitCount, 1);
     expect(find.text('Введите название'), findsNothing);
     expect(find.text('Введите описание'), findsNothing);
     expect(find.text('Выберите город события'), findsNothing);
     expect(find.text('Введите место'), findsNothing);
     expect(find.byKey(eventCreateStartTimeErrorKey), findsNothing);
-    expect(find.byKey(eventCreateSubmitErrorKey), findsNothing);
+    expect(find.byKey(eventCreateSubmitErrorKey), findsOneWidget);
+    expect(find.text('Событие больше нельзя редактировать.'), findsOneWidget);
+  });
+
+  testWidgets('successful edit sends payload and opens event detail',
+      (tester) async {
+    String? functionName;
+    Map<String, dynamic>? payload;
+    var createSubmitCount = 0;
+    var editSubmitCount = 0;
+    final router = _buildEventCreateRouter(
+      formMode: EventFormMode.edit,
+      eventId: ' event-1 ',
+      initialTitle: 'Conversation club',
+      initialDescription: 'Casual practice in a cafe.',
+      initialLanguageCode: 'en',
+      initialLevelMin: 'A2',
+      initialLevelMax: 'B2',
+      initialSelectedCity: const EventSelectedCity(
+        city: _moscowCity,
+        source: EventCitySelectionSource.static,
+      ),
+      initialLocationName: 'Starbucks, ул. Арбат, 5',
+      initialDate: DateTime(2026, 6, 20),
+      initialTime: const TimeOfDay(hour: 18, minute: 0),
+      initialCapacity: 8,
+      currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+      createEventInvoker: (_, __) async {
+        createSubmitCount += 1;
+        return _createEventResponse();
+      },
+      editEventInvoker: (calledFunctionName, calledPayload) async {
+        editSubmitCount += 1;
+        functionName = calledFunctionName;
+        payload = calledPayload;
+        return _editEventResponse();
+      },
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(createSubmitCount, 0);
+    expect(editSubmitCount, 1);
+    expect(functionName, editEventFunctionName);
+    expect(payload, <String, dynamic>{
+      'eventId': 'event-1',
+      'title': 'Conversation club',
+      'description': 'Casual practice in a cafe.',
+      'languageCode': 'en',
+      'levelMin': 'A2',
+      'levelMax': 'B2',
+      'countryCode': 'RU',
+      'cityKey': 'moscow',
+      'locationName': 'Starbucks, ул. Арбат, 5',
+      'locationGeoPoint': null,
+      'startsAt': '2026-06-20T15:00:00.000Z',
+      'capacity': 8,
+    });
+    expect(payload, isNot(containsPair('createRequestId', anything)));
+    expect(router.getCurrentLocation(), '/events/event-1');
+    expect(find.byType(EventCreateWidget), findsNothing);
+    expect(find.byType(EventDetailWidget), findsOneWidget);
+  });
+
+  testWidgets('edit submit is disabled while request is in flight',
+      (tester) async {
+    final editCompleter = Completer<Object?>();
+    var submitCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          formMode: EventFormMode.edit,
+          eventId: 'event-1',
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialTitle: 'Conversation club',
+          initialDescription: 'Casual practice in a cafe.',
+          initialSelectedCity: const EventSelectedCity(
+            city: _moscowCity,
+            source: EventCitySelectionSource.static,
+          ),
+          initialLocationName: 'Starbucks, ул. Арбат, 5',
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          editEventInvoker: (_, __) {
+            submitCount += 1;
+            return editCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pump();
+
+    expect(submitCount, 1);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
+          .onPressed,
+      isNull,
+    );
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pump();
+
+    expect(submitCount, 1);
+
+    editCompleter.completeError(_eventNotEditableError());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
+          .onPressed,
+      isNotNull,
+    );
   });
 
   testWidgets('clean prefilled edit mode leaves without discard confirmation',
@@ -3560,6 +3697,11 @@ Map<String, dynamic> _createEventResponse() => <String, dynamic>{
       },
     };
 
+Map<String, dynamic> _editEventResponse() => <String, dynamic>{
+      'eventId': 'event-1',
+      'updatedAt': '2026-06-14T11:00:00.000Z',
+    };
+
 FirebaseFunctionsException _dailyLimitError() =>
     _TestFirebaseFunctionsException(
       code: 'resource-exhausted',
@@ -3570,6 +3712,15 @@ FirebaseFunctionsException _dailyLimitError() =>
         'count': 5,
         'dayKeyUtc': '2026-06-14',
         'resetAtUtc': '2026-06-15T00:00:00.000Z',
+      },
+    );
+
+FirebaseFunctionsException _eventNotEditableError() =>
+    _TestFirebaseFunctionsException(
+      code: 'failed-precondition',
+      message: 'Raw backend message',
+      details: <String, dynamic>{
+        'domainCode': 'event_not_editable',
       },
     );
 

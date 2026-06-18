@@ -7,6 +7,7 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/events/event_create_widget.dart';
+import '/services/event_actions_repository.dart';
 import '/services/event_city_catalog.dart';
 import '/services/event_city_selection_source.dart';
 import '/services/event_detail_repository.dart';
@@ -29,12 +30,14 @@ class EventEditWidget extends StatefulWidget {
     this.snapshotStream,
     this.cityCatalogOverride,
     this.languageCatalogOverride,
+    this.editEventInvoker,
   });
 
   final String eventId;
   final EventDetailSnapshotStream? snapshotStream;
   final EventCityCatalog? cityCatalogOverride;
   final EventLanguageCatalog? languageCatalogOverride;
+  final EventCallableInvoker? editEventInvoker;
 
   static String routeName = 'eventEdit';
   static String routePath = '/events/:eventId/edit';
@@ -151,6 +154,7 @@ class _EventEditWidgetState extends State<EventEditWidget> {
 
         return EventCreateWidget(
           formMode: EventFormMode.edit,
+          eventId: widget.eventId,
           languageCatalogOverride: widget.languageCatalogOverride,
           cityCatalogOverride: initialData.cityCatalog,
           initialTitle: initialData.title,
@@ -160,10 +164,12 @@ class _EventEditWidgetState extends State<EventEditWidget> {
           initialLevelMax: initialData.levelMax,
           initialSelectedCity: initialData.selectedCity,
           initialLocationName: initialData.locationName,
+          initialLocationGeoPoint: initialData.locationGeoPoint,
           initialDate: initialData.localDate,
           initialTime: initialData.localTime,
           initialCapacity: initialData.capacity,
           minimumCapacity: initialData.participantsCount,
+          editEventInvoker: widget.editEventInvoker,
         );
       },
     );
@@ -198,6 +204,7 @@ class _EventEditInitialData {
     required this.levelMax,
     required this.selectedCity,
     required this.locationName,
+    required this.locationGeoPoint,
     required this.localDate,
     required this.localTime,
     required this.capacity,
@@ -228,6 +235,7 @@ class _EventEditInitialData {
               source: EventCitySelectionSource.static,
             ),
       locationName: event.locationName,
+      locationGeoPoint: event.locationGeoPoint,
       localDate: localStart?.date,
       localTime: localStart?.time,
       capacity: event.hasCapacity() ? event.capacity : null,
@@ -244,6 +252,7 @@ class _EventEditInitialData {
   final String levelMax;
   final EventSelectedCity? selectedCity;
   final String locationName;
+  final LatLng? locationGeoPoint;
   final DateTime? localDate;
   final TimeOfDay? localTime;
   final int? capacity;
