@@ -35,6 +35,7 @@ class EventActionFailure {
     this.domainCode,
     this.reason,
     this.dailyLimit,
+    this.createRequestConflict,
     this.retryable = false,
   });
 
@@ -43,6 +44,7 @@ class EventActionFailure {
   final String? domainCode;
   final String? reason;
   final EventDailyLimitContext? dailyLimit;
+  final EventCreateRequestConflictContext? createRequestConflict;
   final bool retryable;
 }
 
@@ -58,6 +60,18 @@ class EventDailyLimitContext {
   final String? dayKeyUtc;
   final int? count;
   final int? limit;
+}
+
+class EventCreateRequestConflictContext {
+  const EventCreateRequestConflictContext({
+    required this.eventId,
+    required this.createRequestId,
+    required this.dayKeyUtc,
+  });
+
+  final String? eventId;
+  final String? createRequestId;
+  final String? dayKeyUtc;
 }
 
 EventActionFailure mapEventActionFailure(Object error) {
@@ -121,9 +135,9 @@ String eventActionFailureMessageForLocalizations(
     case EventActionFailureKind.createRequestConflict:
       return localizations.getVariableText(
         ruText:
-            'Не удалось создать событие из-за повторной отправки формы. Обновите экран и попробуйте снова.',
+            'Не удалось повторно отправить форму: данные события изменились. Проверьте форму и попробуйте снова.',
         enText:
-            'We could not create the event because the form was submitted again. Refresh and try again.',
+            'We could not reuse this submit request because the event details changed. Check the form and try again.',
       );
     case EventActionFailureKind.eventNotFound:
       return localizations.getVariableText(
@@ -273,6 +287,7 @@ EventActionFailure? _failureFromDomainCode({
         firebaseCode: firebaseCode,
         domainCode: domainCode,
         reason: reason,
+        createRequestConflict: _createRequestConflictContext(details),
       );
     case 'event_not_found':
       return _failure(
@@ -444,6 +459,7 @@ EventActionFailure _failure({
   required String? domainCode,
   required String? reason,
   EventDailyLimitContext? dailyLimit,
+  EventCreateRequestConflictContext? createRequestConflict,
   bool retryable = false,
 }) =>
     EventActionFailure(
@@ -452,6 +468,7 @@ EventActionFailure _failure({
       domainCode: domainCode,
       reason: reason,
       dailyLimit: dailyLimit,
+      createRequestConflict: createRequestConflict,
       retryable: retryable,
     );
 
@@ -493,6 +510,15 @@ EventDailyLimitContext _dailyLimitContext(Map<String, dynamic> details) =>
       dayKeyUtc: _stringValue(details['dayKeyUtc']),
       count: _intValue(details['count']),
       limit: _intValue(details['limit']),
+    );
+
+EventCreateRequestConflictContext _createRequestConflictContext(
+  Map<String, dynamic> details,
+) =>
+    EventCreateRequestConflictContext(
+      eventId: _stringValue(details['eventId']),
+      createRequestId: _stringValue(details['createRequestId']),
+      dayKeyUtc: _stringValue(details['dayKeyUtc']),
     );
 
 DateTime? _dateTimeValue(Object? value) {

@@ -1530,6 +1530,57 @@ void main() {
     expect(find.text('Raw backend message'), findsNothing);
   });
 
+  testWidgets('create request conflict error is shown on submit in Russian',
+      (tester) async {
+    final failures = <EventActionFailure?>[];
+    var submitCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createEventInvoker: (_, __) async {
+            submitCount += 1;
+            throw _createRequestConflictError();
+          },
+          onSubmitFailureChanged: failures.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(EventCreateWidget), findsOneWidget);
+    expect(find.byKey(eventCreateSubmitErrorKey), findsOneWidget);
+    expect(
+      find.text(
+        'Не удалось повторно отправить форму: данные события изменились. '
+        'Проверьте форму и попробуйте снова.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Raw backend message'), findsNothing);
+    expect(submitCount, 1);
+    expect(failures, hasLength(2));
+    expect(failures.first, isNull);
+    final failure = failures.last!;
+    expect(failure.kind, EventActionFailureKind.createRequestConflict);
+    expect(failure.createRequestConflict?.eventId, 'event-1');
+    expect(failure.createRequestConflict?.createRequestId, _requestId(0));
+    expect(failure.createRequestConflict?.dayKeyUtc, '2026-06-14');
+  });
+
   testWidgets('retries the same create payload with one createRequestId',
       (tester) async {
     final requestIds = <String>[];
@@ -2510,6 +2561,18 @@ FirebaseFunctionsException _dailyLimitError() =>
         'count': 5,
         'dayKeyUtc': '2026-06-14',
         'resetAtUtc': '2026-06-15T00:00:00.000Z',
+      },
+    );
+
+FirebaseFunctionsException _createRequestConflictError() =>
+    _TestFirebaseFunctionsException(
+      code: 'already-exists',
+      message: 'Raw backend message',
+      details: <String, dynamic>{
+        'domainCode': 'create_request_conflict',
+        'eventId': 'event-1',
+        'createRequestId': _requestId(0),
+        'dayKeyUtc': '2026-06-14',
       },
     );
 

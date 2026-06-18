@@ -112,6 +112,51 @@ void main() {
       expect(failure.dailyLimit?.resetAtUtc, isNull);
     });
 
+    test('maps create request conflict support context safely', () {
+      final failure = mapEventActionFailure(
+        _domainError(
+          'create_request_conflict',
+          code: 'already-exists',
+          details: <String, dynamic>{
+            'eventId': 'event-1',
+            'createRequestId': '550e8400-e29b-41d4-a716-446655440000',
+            'dayKeyUtc': '2026-06-14',
+          },
+        ),
+      );
+
+      expect(failure.kind, EventActionFailureKind.createRequestConflict);
+      expect(failure.firebaseCode, 'already-exists');
+      expect(failure.domainCode, 'create_request_conflict');
+      expect(failure.retryable, isFalse);
+      expect(failure.dailyLimit, isNull);
+      expect(failure.createRequestConflict?.eventId, 'event-1');
+      expect(
+        failure.createRequestConflict?.createRequestId,
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
+      expect(failure.createRequestConflict?.dayKeyUtc, '2026-06-14');
+    });
+
+    test('ignores malformed create request conflict context safely', () {
+      final failure = mapEventActionFailure(
+        _domainError(
+          'create_request_conflict',
+          code: 'already-exists',
+          details: <String, dynamic>{
+            'eventId': '',
+            'createRequestId': 42,
+            'dayKeyUtc': '   ',
+          },
+        ),
+      );
+
+      expect(failure.kind, EventActionFailureKind.createRequestConflict);
+      expect(failure.createRequestConflict?.eventId, isNull);
+      expect(failure.createRequestConflict?.createRequestId, isNull);
+      expect(failure.createRequestConflict?.dayKeyUtc, isNull);
+    });
+
     test('preserves reason for temporal join and leave failures', () {
       final joinFailure = mapEventActionFailure(
         _domainError(
@@ -129,9 +174,11 @@ void main() {
       expect(joinFailure.kind, EventActionFailureKind.eventNotJoinable);
       expect(joinFailure.reason, 'past_event');
       expect(joinFailure.dailyLimit, isNull);
+      expect(joinFailure.createRequestConflict, isNull);
       expect(leaveFailure.kind, EventActionFailureKind.eventNotLeaveable);
       expect(leaveFailure.reason, 'event_started');
       expect(leaveFailure.dailyLimit, isNull);
+      expect(leaveFailure.createRequestConflict, isNull);
     });
 
     test('keeps invariant backend state failures non-retryable', () {
