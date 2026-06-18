@@ -89,6 +89,7 @@ const ValueKey<String> eventCreateSubmitButtonKey =
 const TimeOfDay _eventCreateDefaultTime = TimeOfDay(hour: 18, minute: 0);
 const int _eventCreateDefaultCapacity = 10;
 const int _eventCreateMinCapacity = 2;
+const int _eventCreateMaxCapacity = 50;
 
 ValueKey<String> eventCreateLanguageOptionKey(String code) =>
     ValueKey<String>('event_create_language_option_$code');
@@ -2808,6 +2809,12 @@ String? _eventCreateCapacityValidationText(
     return FFLocalizations.of(context).getVariableText(
       ruText: 'Укажите минимум 2 участника',
       enText: 'Enter at least 2 participants',
+    );
+  }
+  if (capacity != null && capacity > _eventCreateMaxCapacity) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Укажите максимум 50 участников',
+      enText: 'Enter no more than 50 participants',
     );
   }
 
