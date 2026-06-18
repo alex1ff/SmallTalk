@@ -28,6 +28,8 @@ const ValueKey<String> eventManualCitySearchFieldKey =
     ValueKey<String>('event_manual_city_search_field');
 const ValueKey<String> eventListLoadingStateKey =
     ValueKey<String>('event_list_loading_state');
+const ValueKey<String> eventListEmptyStateKey =
+    ValueKey<String>('event_list_empty_state');
 const ValueKey<String> eventListCardShellKey =
     ValueKey<String>('event_list_card_shell');
 const ValueKey<String> eventListCardHeaderKey =
@@ -368,6 +370,8 @@ class _EventListWidgetState extends State<EventListWidget> {
                                 const SizedBox(height: ExpatlioDesign.space16),
                                 if (isLoadingEvents)
                                   const _EventListLoadingState()
+                                else if (eventCards.isEmpty)
+                                  const _EventListEmptyState()
                                 else
                                   FutureBuilder<EventLanguageCatalog>(
                                     future: _languageCatalogFuture,
@@ -525,6 +529,80 @@ class _EventListWidgetState extends State<EventListWidget> {
     return resolveEventSelectedCityState(
       user: currentUserDocument,
       catalog: catalog,
+    );
+  }
+}
+
+class _EventListEmptyState extends StatelessWidget {
+  const _EventListEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final title = FFLocalizations.of(context).getVariableText(
+      ruText: 'Пока нет событий',
+      enText: 'No events yet',
+    );
+    final description = FFLocalizations.of(context).getVariableText(
+      ruText: 'Выберите другой день, уровень или город.',
+      enText: 'Choose another day, level, or city.',
+    );
+
+    return Semantics(
+      key: eventListEmptyStateKey,
+      container: true,
+      liveRegion: true,
+      label: '$title. $description',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space32,
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space32,
+          ),
+          decoration: ExpatlioDesign.cardDecoration(
+            borderColor: ExpatlioDesign.separator,
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: ExpatlioDesign.softPrimaryDecoration(
+                  radius: ExpatlioDesign.radiusCapsule,
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.calendar_month_outlined,
+                  color: ExpatlioDesign.primary,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: ExpatlioDesign.space16),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  size: 20,
+                  weight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: ExpatlioDesign.space8),
+              Text(
+                description,
+                textAlign: TextAlign.center,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 15,
+                  height: 1.36,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

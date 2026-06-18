@@ -407,6 +407,75 @@ void main() {
     expect(find.text('Реальное событие'), findsNothing);
   });
 
+  testWidgets('shows empty state when selected city has no event cards',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: const [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+    expect(find.text('Пока нет событий'), findsOneWidget);
+    expect(
+        find.text('Выберите другой день, уровень или город.'), findsOneWidget);
+
+    final emptySemantics = tester.widget<Semantics>(
+      find.byKey(eventListEmptyStateKey),
+    );
+    expect(
+      emptySemantics.properties.label,
+      'Пока нет событий. Выберите другой день, уровень или город.',
+    );
+    expect(emptySemantics.properties.liveRegion, isTrue);
+    expect(emptySemantics.container, isTrue);
+  });
+
+  testWidgets('does not show empty state before city is selected',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          eventCardsOverride: const [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+  });
+
+  testWidgets('loading state takes priority over empty event cards',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: const [],
+          isLoadingEvents: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+  });
+
   testWidgets('hides loading state when event cards are available',
       (tester) async {
     await tester.pumpWidget(
@@ -422,6 +491,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
     expect(find.text('Реальное событие'), findsOneWidget);
     expect(find.byKey(eventListCardPrimaryCtaKey), findsOneWidget);
     expect(find.byKey(eventListCardChatCtaKey), findsOneWidget);

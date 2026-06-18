@@ -193,7 +193,7 @@ Date: 2026-06-14
 - [x] Add card CTA states: join, joined, full, canceled/past unavailable.
 - [x] Add `Чат` CTA with participant-only behavior.
 - [x] Add loading state.
-- [ ] Add empty state.
+- [x] Add empty state.
 - [ ] Add error state with retry.
 
 ## Phase 7: Event Detail Screen
