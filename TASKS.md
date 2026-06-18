@@ -219,7 +219,7 @@ Date: 2026-06-14
 - [x] Build form fields for title and description.
 - [x] Add language selector backed by the existing app language catalog.
 - [x] Submit selected language as primary `languageCode`; backend persists denormalized `languageNameEn` and `languageNameRu` from the synchronized allowlist.
-- [ ] Add level/range selector.
+- [x] Add level/range selector.
 - [ ] Add date picker.
 - [ ] Add time picker.
 - [ ] Add city selector.

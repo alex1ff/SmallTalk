@@ -4,6 +4,7 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_language_catalog.dart';
+import '/services/event_level_helper.dart';
 
 const ValueKey<String> eventCreateTitleLabelKey =
     ValueKey<String>('event_create_title_label');
@@ -25,9 +26,25 @@ const ValueKey<String> eventCreateLanguageSelectorKey =
     ValueKey<String>('event_create_language_selector');
 const ValueKey<String> eventCreateLanguageSheetKey =
     ValueKey<String>('event_create_language_sheet');
+const ValueKey<String> eventCreateLevelLabelKey =
+    ValueKey<String>('event_create_level_label');
+const ValueKey<String> eventCreateLevelSelectorSemanticsKey =
+    ValueKey<String>('event_create_level_selector_semantics');
+const ValueKey<String> eventCreateLevelSelectorKey =
+    ValueKey<String>('event_create_level_selector');
+const ValueKey<String> eventCreateLevelSheetKey =
+    ValueKey<String>('event_create_level_sheet');
+const ValueKey<String> eventCreateLevelDoneButtonKey =
+    ValueKey<String>('event_create_level_done_button');
 
 ValueKey<String> eventCreateLanguageOptionKey(String code) =>
     ValueKey<String>('event_create_language_option_$code');
+
+ValueKey<String> eventCreateLevelMinOptionKey(String level) =>
+    ValueKey<String>('event_create_level_min_option_$level');
+
+ValueKey<String> eventCreateLevelMaxOptionKey(String level) =>
+    ValueKey<String>('event_create_level_max_option_$level');
 
 class EventCreateLanguageDraft {
   const EventCreateLanguageDraft({
@@ -37,13 +54,26 @@ class EventCreateLanguageDraft {
   final String languageCode;
 }
 
+class EventCreateLevelDraft {
+  const EventCreateLevelDraft({
+    required this.levelMin,
+    required this.levelMax,
+  });
+
+  final String levelMin;
+  final String levelMax;
+}
+
 class EventCreateWidget extends StatefulWidget {
   const EventCreateWidget({
     super.key,
     this.languageCatalogOverride,
     this.initialLanguageCode,
+    this.initialLevelMin,
+    this.initialLevelMax,
     this.onLanguageCodeChanged,
     this.onLanguageDraftChanged,
+    this.onLevelDraftChanged,
   });
 
   static String routeName = 'eventCreate';
@@ -51,8 +81,11 @@ class EventCreateWidget extends StatefulWidget {
 
   final EventLanguageCatalog? languageCatalogOverride;
   final String? initialLanguageCode;
+  final String? initialLevelMin;
+  final String? initialLevelMax;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
+  final ValueChanged<EventCreateLevelDraft>? onLevelDraftChanged;
 
   @override
   State<EventCreateWidget> createState() => _EventCreateWidgetState();
@@ -67,14 +100,21 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   Future<EventLanguageCatalog>? _languageCatalogFuture;
   AssetBundle? _languageCatalogBundle;
   String? _selectedLanguageCode;
+  String? _selectedLevelMin;
+  String? _selectedLevelMax;
   String? _lastEmittedLanguageDraftCode;
   String? _pendingLanguageDraftCode;
   bool _languageDraftCallbackScheduled = false;
+  String? _lastEmittedLevelDraftKey;
+  EventLevelRange? _pendingLevelDraftRange;
+  bool _levelDraftCallbackScheduled = false;
 
   @override
   void initState() {
     super.initState();
     _selectedLanguageCode = widget.initialLanguageCode;
+    _selectedLevelMin = widget.initialLevelMin;
+    _selectedLevelMax = widget.initialLevelMax;
   }
 
   @override
@@ -99,6 +139,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     }
     if (oldWidget.initialLanguageCode != widget.initialLanguageCode) {
       _selectedLanguageCode = widget.initialLanguageCode;
+    }
+    if (oldWidget.initialLevelMin != widget.initialLevelMin ||
+        oldWidget.initialLevelMax != widget.initialLevelMax) {
+      _selectedLevelMin = widget.initialLevelMin;
+      _selectedLevelMax = widget.initialLevelMax;
     }
   }
 
@@ -133,6 +178,42 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       return popular.first.code;
     }
     return catalog.languages.first.code;
+  }
+
+  EventLevelRange _resolvedSelectedLevelRange() {
+    final selectedLevelMin = _selectedLevelMin;
+    final selectedLevelMax = _selectedLevelMax;
+    if (selectedLevelMin != null &&
+        selectedLevelMin.trim().isNotEmpty &&
+        selectedLevelMax != null &&
+        selectedLevelMax.trim().isNotEmpty) {
+      final range = tryEventLevelRange(
+        levelMin: selectedLevelMin,
+        levelMax: selectedLevelMax,
+      );
+      if (range != null) {
+        return range;
+      }
+    }
+    if (selectedLevelMin != null && selectedLevelMin.trim().isNotEmpty) {
+      final range = tryEventLevelRange(
+        levelMin: selectedLevelMin,
+        levelMax: selectedLevelMin,
+      );
+      if (range != null) {
+        return range;
+      }
+    }
+    if (selectedLevelMax != null && selectedLevelMax.trim().isNotEmpty) {
+      final range = tryEventLevelRange(
+        levelMin: selectedLevelMax,
+        levelMax: selectedLevelMax,
+      );
+      if (range != null) {
+        return range;
+      }
+    }
+    return eventLevelRange(levelMin: 'B1', levelMax: 'C1');
   }
 
   void _emitLanguageDraftNow(String languageCode) {
@@ -171,6 +252,51 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     });
   }
 
+  void _emitLevelDraftNow(EventLevelRange range) {
+    _pendingLevelDraftRange = null;
+    final draftKey = _eventCreateLevelDraftKey(range);
+    if (_lastEmittedLevelDraftKey == draftKey) {
+      return;
+    }
+    final onLevelDraftChanged = widget.onLevelDraftChanged;
+    if (onLevelDraftChanged == null) {
+      return;
+    }
+    _lastEmittedLevelDraftKey = draftKey;
+    onLevelDraftChanged(
+      EventCreateLevelDraft(
+        levelMin: range.levelMin,
+        levelMax: range.levelMax,
+      ),
+    );
+  }
+
+  void _queueLevelDraft(EventLevelRange range) {
+    final draftKey = _eventCreateLevelDraftKey(range);
+    if (_lastEmittedLevelDraftKey == draftKey &&
+        _pendingLevelDraftRange == null) {
+      return;
+    }
+    _pendingLevelDraftRange = range;
+    if (_levelDraftCallbackScheduled) {
+      return;
+    }
+    _levelDraftCallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _levelDraftCallbackScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      final pendingRange = _pendingLevelDraftRange;
+      if (pendingRange == null ||
+          _lastEmittedLevelDraftKey ==
+              _eventCreateLevelDraftKey(pendingRange)) {
+        return;
+      }
+      _emitLevelDraftNow(pendingRange);
+    });
+  }
+
   Future<void> _showLanguageSelector(
     EventLanguageCatalog catalog,
     String selectedLanguageCode,
@@ -195,8 +321,30 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _emitLanguageDraftNow(selectedCode);
   }
 
+  Future<void> _showLevelSelector(EventLevelRange selectedRange) async {
+    final selectedLevelRange = await showModalBottomSheet<EventLevelRange>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _EventCreateLevelSheet(
+        selectedRange: selectedRange,
+      ),
+    );
+    if (selectedLevelRange == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _selectedLevelMin = selectedLevelRange.levelMin;
+      _selectedLevelMax = selectedLevelRange.levelMax;
+    });
+    _emitLevelDraftNow(selectedLevelRange);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selectedLevelRange = _resolvedSelectedLevelRange();
+    _queueLevelDraft(selectedLevelRange);
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
       body: SafeArea(
@@ -299,6 +447,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                   ),
                                 );
                               },
+                            ),
+                            const SizedBox(height: ExpatlioDesign.space20),
+                            _EventCreateLevelSelector(
+                              selectedRange: selectedLevelRange,
+                              onPressed: () =>
+                                  _showLevelSelector(selectedLevelRange),
                             ),
                           ],
                         ),
@@ -519,6 +673,293 @@ class _EventCreateLanguageSelector extends StatelessWidget {
   }
 }
 
+class _EventCreateLevelSelector extends StatelessWidget {
+  const _EventCreateLevelSelector({
+    required this.selectedRange,
+    required this.onPressed,
+  });
+
+  final EventLevelRange selectedRange;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final fieldLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Уровень',
+      enText: 'Level',
+    );
+    final selectorLabel = _eventCreateLevelRangeLabel(selectedRange);
+    final semanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Уровень события',
+      enText: 'Event level',
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          key: eventCreateLevelLabelKey,
+          fieldLabel,
+          style: ExpatlioDesign.formLabelStyle(context),
+        ),
+        const SizedBox(height: ExpatlioDesign.space8),
+        Semantics(
+          key: eventCreateLevelSelectorSemanticsKey,
+          button: true,
+          enabled: true,
+          label: semanticsLabel,
+          value: selectorLabel,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: eventCreateLevelSelectorKey,
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 48),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space12,
+                ),
+                decoration: ExpatlioDesign.cardDecoration(
+                  borderColor: ExpatlioDesign.separator,
+                  radius: ExpatlioDesign.controlRadius,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.school_outlined,
+                      color: ExpatlioDesign.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: ExpatlioDesign.space8),
+                    Expanded(
+                      child: Text(
+                        selectorLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: ExpatlioDesign.text,
+                          size: 16,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: ExpatlioDesign.space8),
+                    Icon(
+                      FFIcons.kchevronDown,
+                      color: ExpatlioDesign.muted,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventCreateLevelSheet extends StatefulWidget {
+  const _EventCreateLevelSheet({
+    required this.selectedRange,
+  });
+
+  final EventLevelRange selectedRange;
+
+  @override
+  State<_EventCreateLevelSheet> createState() => _EventCreateLevelSheetState();
+}
+
+class _EventCreateLevelSheetState extends State<_EventCreateLevelSheet> {
+  late EventLevelRange _selectedRange;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedRange = widget.selectedRange;
+  }
+
+  void _selectLevelMin(String level) {
+    final selectedRank = eventLevelRanks[level]!;
+    final maxLevel =
+        selectedRank > _selectedRange.maxRank ? level : _selectedRange.levelMax;
+    setState(() {
+      _selectedRange = eventLevelRange(
+        levelMin: level,
+        levelMax: maxLevel,
+      );
+    });
+  }
+
+  void _selectLevelMax(String level) {
+    final selectedRank = eventLevelRanks[level]!;
+    final minLevel =
+        selectedRank < _selectedRange.minRank ? level : _selectedRange.levelMin;
+    setState(() {
+      _selectedRange = eventLevelRange(
+        levelMin: minLevel,
+        levelMax: level,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
+    return SafeArea(
+      top: false,
+      child: Container(
+        key: eventCreateLevelSheetKey,
+        decoration: ExpatlioDesign.sheetDecoration(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: SingleChildScrollView(
+            padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space20,
+              ExpatlioDesign.space20,
+              ExpatlioDesign.space20,
+              ExpatlioDesign.space24,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Выберите уровень',
+                    enText: 'Choose level',
+                  ),
+                  style: ExpatlioDesign.bottomSheetTitleStyle(context),
+                ),
+                const SizedBox(height: ExpatlioDesign.space20),
+                _EventCreateLevelChipGroup(
+                  label: FFLocalizations.of(context).getVariableText(
+                    ruText: 'От',
+                    enText: 'From',
+                  ),
+                  selectedLevel: _selectedRange.levelMin,
+                  optionKeyBuilder: eventCreateLevelMinOptionKey,
+                  onChanged: _selectLevelMin,
+                ),
+                const SizedBox(height: ExpatlioDesign.space16),
+                _EventCreateLevelChipGroup(
+                  label: FFLocalizations.of(context).getVariableText(
+                    ruText: 'До',
+                    enText: 'To',
+                  ),
+                  selectedLevel: _selectedRange.levelMax,
+                  optionKeyBuilder: eventCreateLevelMaxOptionKey,
+                  onChanged: _selectLevelMax,
+                ),
+                const SizedBox(height: ExpatlioDesign.space24),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    key: eventCreateLevelDoneButtonKey,
+                    onTap: () => Navigator.of(context).pop(_selectedRange),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.controlRadius),
+                    child: Container(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: ExpatlioDesign.primary,
+                        borderRadius:
+                            BorderRadius.circular(ExpatlioDesign.controlRadius),
+                      ),
+                      child: Text(
+                        FFLocalizations.of(context).getVariableText(
+                          ruText: 'Готово',
+                          enText: 'Done',
+                        ),
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: Colors.white,
+                          size: 16,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventCreateLevelChipGroup extends StatelessWidget {
+  const _EventCreateLevelChipGroup({
+    required this.label,
+    required this.selectedLevel,
+    required this.optionKeyBuilder,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String selectedLevel;
+  final ValueKey<String> Function(String level) optionKeyBuilder;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: ExpatlioDesign.textStyle(
+            context,
+            color: ExpatlioDesign.muted,
+            size: 14,
+            weight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: ExpatlioDesign.space8),
+        Wrap(
+          spacing: ExpatlioDesign.space8,
+          runSpacing: ExpatlioDesign.space8,
+          children: [
+            for (final level in eventLevelRanks.keys)
+              ChoiceChip(
+                key: optionKeyBuilder(level),
+                label: Text(level),
+                selected: selectedLevel == level,
+                onSelected: (_) => onChanged(level),
+                showCheckmark: false,
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                backgroundColor: ExpatlioDesign.secondarySystemBackground,
+                selectedColor: ExpatlioDesign.primary.withValues(alpha: 0.12),
+                side: BorderSide(
+                  color: selectedLevel == level
+                      ? ExpatlioDesign.primary
+                      : ExpatlioDesign.separator,
+                ),
+                labelStyle: ExpatlioDesign.textStyle(
+                  context,
+                  color: selectedLevel == level
+                      ? ExpatlioDesign.primary
+                      : ExpatlioDesign.text,
+                  size: 14,
+                  weight: FontWeight.w600,
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _EventCreateLanguageSheet extends StatelessWidget {
   const _EventCreateLanguageSheet({
     required this.catalog,
@@ -707,3 +1148,11 @@ String _eventCreateLanguageDisplayName({
     localeCode: FFLocalizations.of(context).languageCode,
   );
 }
+
+String _eventCreateLevelRangeLabel(EventLevelRange range) =>
+    range.levelMin == range.levelMax
+        ? range.levelMin
+        : '${range.levelMin}-${range.levelMax}';
+
+String _eventCreateLevelDraftKey(EventLevelRange range) =>
+    '${range.levelMin}:${range.levelMax}';

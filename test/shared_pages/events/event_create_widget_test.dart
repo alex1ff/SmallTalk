@@ -73,6 +73,10 @@ void main() {
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
     expect(find.text('Описание'), findsOneWidget);
     expect(find.text('Расскажите, что будет на встрече'), findsOneWidget);
+    expect(find.byKey(eventCreateLevelLabelKey), findsOneWidget);
+    expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
+    expect(find.text('Уровень'), findsOneWidget);
+    expect(_levelSelectorText('B1-C1'), findsOneWidget);
 
     final titleField = tester.widget<TextField>(
       find.descendant(
@@ -118,6 +122,8 @@ void main() {
       find.text('Tell people what will happen at the meetup'),
       findsOneWidget,
     );
+    expect(find.text('Level'), findsOneWidget);
+    expect(_levelSelectorText('B1-C1'), findsOneWidget);
   });
 
   testWidgets('renders language selector from catalog in Russian',
@@ -225,8 +231,7 @@ void main() {
             setHostState = setState;
             return EventCreateWidget(
               languageCatalogOverride: _languageCatalog,
-              onLanguageDraftChanged:
-                  callbackEnabled ? drafts.add : null,
+              onLanguageDraftChanged: callbackEnabled ? drafts.add : null,
             );
           },
         ),
@@ -275,6 +280,214 @@ void main() {
     expect(_languageSelectorText('Испанский'), findsOneWidget);
     expect(selectedCodes, ['es']);
     expect(drafts.map((draft) => draft.languageCode), ['en', 'es']);
+  });
+
+  testWidgets('emits default level draft for submit handoff', (tester) async {
+    final drafts = <EventCreateLevelDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onLevelDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts.map(_levelDraftValue), ['B1:C1']);
+  });
+
+  testWidgets('emits level draft when handoff callback is added later',
+      (tester) async {
+    final drafts = <EventCreateLevelDraft>[];
+    var callbackEnabled = false;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              onLevelDraftChanged: callbackEnabled ? drafts.add : null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts, isEmpty);
+
+    setHostState(() {
+      callbackEnabled = true;
+    });
+    await tester.pumpAndSettle();
+
+    expect(drafts.map(_levelDraftValue), ['B1:C1']);
+  });
+
+  testWidgets('normalizes initial level range for submit handoff',
+      (tester) async {
+    final drafts = <EventCreateLevelDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialLevelMin: ' a2 ',
+          initialLevelMax: ' c1 ',
+          onLevelDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_levelSelectorText('A2-C1'), findsOneWidget);
+    expect(drafts.map(_levelDraftValue), ['A2:C1']);
+  });
+
+  testWidgets('shows same-level range as one level', (tester) async {
+    final drafts = <EventCreateLevelDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialLevelMin: ' b2 ',
+          initialLevelMax: ' b2 ',
+          onLevelDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_levelSelectorText('B2'), findsOneWidget);
+    expect(_levelSelectorText('B2-B2'), findsNothing);
+    expect(drafts.map(_levelDraftValue), ['B2:B2']);
+  });
+
+  testWidgets('opens level sheet and selects range', (tester) async {
+    final drafts = <EventCreateLevelDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onLevelDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateLevelSelectorKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateLevelSheetKey), findsOneWidget);
+    expect(find.text('Выберите уровень'), findsOneWidget);
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(eventCreateLevelMinOptionKey('B1')))
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(eventCreateLevelMaxOptionKey('C1')))
+          .selected,
+      isTrue,
+    );
+
+    await tester.tap(find.byKey(eventCreateLevelMinOptionKey('A2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateLevelMaxOptionKey('B2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateLevelDoneButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateLevelSheetKey), findsNothing);
+    expect(_levelSelectorText('A2-B2'), findsOneWidget);
+    expect(drafts.map(_levelDraftValue), ['B1:C1', 'A2:B2']);
+  });
+
+  testWidgets('keeps level range ordered when selecting reversed bounds',
+      (tester) async {
+    final drafts = <EventCreateLevelDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onLevelDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateLevelSelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateLevelMaxOptionKey('A2')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(eventCreateLevelMinOptionKey('A2')))
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(eventCreateLevelMaxOptionKey('A2')))
+          .selected,
+      isTrue,
+    );
+
+    await tester.tap(find.byKey(eventCreateLevelDoneButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(_levelSelectorText('A2'), findsOneWidget);
+    expect(drafts.map(_levelDraftValue), ['B1:C1', 'A2:A2']);
+  });
+
+  testWidgets('keeps level range ordered when min is above max',
+      (tester) async {
+    final drafts = <EventCreateLevelDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onLevelDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateLevelSelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateLevelMinOptionKey('C2')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(eventCreateLevelMinOptionKey('C2')))
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(eventCreateLevelMaxOptionKey('C2')))
+          .selected,
+      isTrue,
+    );
+
+    await tester.tap(find.byKey(eventCreateLevelDoneButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(_levelSelectorText('C2'), findsOneWidget);
+    expect(drafts.map(_levelDraftValue), ['B1:C1', 'C2:C2']);
   });
 
   testWidgets('shows language loading state before catalog resolves',
@@ -437,6 +650,12 @@ void main() {
         descriptionSemantics.hint,
         contains('Расскажите, что будет на встрече'),
       );
+      final levelSemantics =
+          tester.getSemantics(find.byKey(eventCreateLevelSelectorSemanticsKey));
+      expect(levelSemantics.flagsCollection.isButton, isTrue);
+      expect(levelSemantics.flagsCollection.isEnabled, isTrue);
+      expect(levelSemantics.label, contains('Уровень события'));
+      expect(levelSemantics.value, contains('B1-C1'));
     } finally {
       semanticsHandle.dispose();
     }
@@ -476,6 +695,12 @@ void main() {
         descriptionSemantics.hint,
         contains('Tell people what will happen at the meetup'),
       );
+      final levelSemantics =
+          tester.getSemantics(find.byKey(eventCreateLevelSelectorSemanticsKey));
+      expect(levelSemantics.flagsCollection.isButton, isTrue);
+      expect(levelSemantics.flagsCollection.isEnabled, isTrue);
+      expect(levelSemantics.label, contains('Event level'));
+      expect(levelSemantics.value, contains('B1-C1'));
     } finally {
       semanticsHandle.dispose();
     }
@@ -563,6 +788,7 @@ void main() {
     expect(find.byType(EventCreateWidget), findsOneWidget);
     expect(find.byKey(eventCreateTitleFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
+    expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
   });
 
   testWidgets('form fields fit narrow large-text layouts', (tester) async {
@@ -587,6 +813,7 @@ void main() {
 
     expect(find.byKey(eventCreateTitleFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
+    expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -605,6 +832,14 @@ void main() {
     expect(source, isNot(contains('languageNameRu')));
   });
 }
+
+Finder _levelSelectorText(String text) => find.descendant(
+      of: find.byKey(eventCreateLevelSelectorKey),
+      matching: find.text(text),
+    );
+
+String _levelDraftValue(EventCreateLevelDraft draft) =>
+    '${draft.levelMin}:${draft.levelMax}';
 
 final _languageCatalog = EventLanguageCatalog(
   languages: [
