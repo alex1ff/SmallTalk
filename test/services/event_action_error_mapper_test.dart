@@ -262,8 +262,14 @@ Future<String> _localizedMessage(
   await tester.pumpWidget(
     MaterialApp(
       locale: locale,
+      supportedLocales: const <Locale>[
+        Locale('ru'),
+        Locale('en'),
+      ],
       localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
         FFLocalizationsDelegate(),
+        FallbackMaterialLocalizationDelegate(),
+        FallbackCupertinoLocalizationDelegate(),
       ],
       home: Builder(
         builder: (context) {
@@ -273,5 +279,6 @@ Future<String> _localizedMessage(
       ),
     ),
   );
+  await tester.pumpAndSettle();
   return message;
 }

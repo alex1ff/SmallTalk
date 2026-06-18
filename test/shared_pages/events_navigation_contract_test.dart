@@ -1,10 +1,16 @@
 import 'dart:io';
 
+import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/base_auth_user_provider.dart';
 import 'package:small_talk/components/nav_bar_widget.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
+import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/shared_pages/events/event_edit_widget.dart';
@@ -13,6 +19,16 @@ import 'package:small_talk/shared_pages/events/event_list_widget.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await initializeDateFormatting('ru');
+    await initializeDateFormatting('en');
+    setupFirebaseCoreMocks();
+    await FFLocalizations.initialize();
+    await Firebase.initializeApp();
+    FirebaseAuthPlatform.instance = _TestFirebaseAuthPlatform();
+  });
 
   setUp(() {
     currentUser = null;
@@ -308,17 +324,19 @@ void main() {
     expect(detail, isNot(contains('EventsRecord')));
   });
 
-  test('event create screen stays a route placeholder for Phase 5', () {
+  test('event create screen submits through event actions only', () {
     final create = File('lib/shared_pages/events/event_create_widget.dart')
         .readAsStringSync();
 
     expect(create, contains('Создать событие'));
     expect(create, contains('Create event'));
-    expect(create, isNot(contains('EventActionsRepository')));
-    expect(create, isNot(contains('EventEditableFields')));
-    expect(create, isNot(contains('createRequestId')));
-    expect(create, isNot(contains('newEventCreateRequestId')));
-    expect(create, isNot(contains('.createEvent(')));
+    expect(create, contains('eventCreateSubmitErrorKey'));
+    expect(create, contains('EventActionsRepository.createEvent'));
+    expect(create, contains('EventEditableFields'));
+    expect(create, contains('newEventCreateRequestId'));
+    expect(create, isNot(contains('EventsRecord')));
+    expect(create, isNot(contains('FirebaseFirestore')));
+    expect(create, isNot(contains('ProfileCitySaveService')));
   });
 
   test('event edit screen stays a route placeholder before Phase 9', () {
@@ -438,7 +456,7 @@ Future<GoRouter> _pumpEventsRouter(
   final router = createRouter(notifier);
   router.go(location);
 
-  await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+  await tester.pumpWidget(_routerTestApp(router));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
 
@@ -462,11 +480,65 @@ Future<_RouterHarness> _pumpSignedOutEventsRouter(
   final router = createRouter(notifier);
   router.go(location);
 
-  await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+  await tester.pumpWidget(_routerTestApp(router));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
 
   return _RouterHarness(router: router, notifier: notifier);
+}
+
+Widget _routerTestApp(GoRouter router) => MaterialApp.router(
+      supportedLocales: const <Locale>[
+        Locale('ru'),
+        Locale('en'),
+      ],
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        FFLocalizationsDelegate(),
+        FallbackMaterialLocalizationDelegate(),
+        FallbackCupertinoLocalizationDelegate(),
+      ],
+      routerConfig: router,
+    );
+
+class _TestFirebaseAuthPlatform extends FirebaseAuthPlatform {
+  _TestFirebaseAuthPlatform({FirebaseApp? app}) : super(appInstance: app);
+
+  UserPlatform? _currentUser;
+
+  @override
+  FirebaseAuthPlatform delegateFor({required FirebaseApp app}) {
+    return _TestFirebaseAuthPlatform(app: app).._currentUser = _currentUser;
+  }
+
+  @override
+  FirebaseAuthPlatform setInitialValues({
+    PigeonUserDetails? currentUser,
+    String? languageCode,
+  }) {
+    this.languageCode = languageCode;
+    return this;
+  }
+
+  @override
+  UserPlatform? get currentUser => _currentUser;
+
+  @override
+  set currentUser(UserPlatform? userPlatform) {
+    _currentUser = userPlatform;
+  }
+
+  @override
+  String? languageCode;
+
+  @override
+  Stream<UserPlatform?> authStateChanges() =>
+      const Stream<UserPlatform?>.empty();
+
+  @override
+  Stream<UserPlatform?> idTokenChanges() => const Stream<UserPlatform?>.empty();
+
+  @override
+  Stream<UserPlatform?> userChanges() => const Stream<UserPlatform?>.empty();
 }
 
 class _RouterHarness {

@@ -8,6 +8,8 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/event_action_error_mapper.dart';
+import '/services/event_actions_repository.dart';
 import '/services/event_city_catalog.dart';
 import '/services/event_city_chip_source.dart';
 import '/services/event_city_resolution.dart';
@@ -86,6 +88,8 @@ const ValueKey<String> eventCreateCapacityFieldKey =
     ValueKey<String>('event_create_capacity_field');
 const ValueKey<String> eventCreateSubmitButtonKey =
     ValueKey<String>('event_create_submit_button');
+const ValueKey<String> eventCreateSubmitErrorKey =
+    ValueKey<String>('event_create_submit_error');
 const TimeOfDay _eventCreateDefaultTime = TimeOfDay(hour: 18, minute: 0);
 const int _eventCreateDefaultCapacity = 10;
 const int _eventCreateMinCapacity = 2;
@@ -188,6 +192,7 @@ class EventCreateWidget extends StatefulWidget {
     this.initialTime,
     this.initialCapacity,
     this.currentUtcProvider,
+    this.createEventInvoker,
     this.onLanguageCodeChanged,
     this.onLanguageDraftChanged,
     this.onLevelDraftChanged,
@@ -212,6 +217,7 @@ class EventCreateWidget extends StatefulWidget {
   final TimeOfDay? initialTime;
   final int? initialCapacity;
   final DateTime Function()? currentUtcProvider;
+  final EventCallableInvoker? createEventInvoker;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
   final ValueChanged<EventCreateLevelDraft>? onLevelDraftChanged;
@@ -272,7 +278,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   int? _pendingCapacityDraft;
   bool _capacityDraftCallbackScheduled = false;
   bool _hasAttemptedSubmit = false;
+  bool _isSubmitting = false;
   String? _startTimeErrorText;
+  String? _submitErrorText;
 
   @override
   void initState() {
@@ -924,13 +932,13 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     return currentUtc;
   }
 
-  bool _validateSelectedStartTime() {
+  EventStartTimeValidationResult? _validateSelectedStartTime() {
     final selectedCity = _lastVisibleSelectedCity;
     if (selectedCity == null) {
       setState(() {
         _startTimeErrorText = null;
       });
-      return false;
+      return null;
     }
     final validation = validateEventStartTime(
       localDate: _selectedDate,
@@ -942,7 +950,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       setState(() {
         _startTimeErrorText = null;
       });
-      return true;
+      return validation;
     }
     setState(() {
       _startTimeErrorText = FFLocalizations.of(context).getVariableText(
@@ -950,7 +958,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         enText: 'Choose a future date and time.',
       );
     });
-    return false;
+    return null;
   }
 
   void _clearCityChipsCache() {
@@ -1032,16 +1040,72 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _emitTimeDraftNow(pickedTime);
   }
 
-  void _handleSubmitPressed() {
+  Future<void> _handleSubmitPressed() async {
+    if (_isSubmitting) {
+      return;
+    }
     setState(() {
       _hasAttemptedSubmit = true;
+      _submitErrorText = null;
     });
     final formIsValid = _formKey.currentState?.validate() ?? false;
-    final hasSelectedCity = _lastVisibleSelectedCity != null;
-    final startTimeIsValid =
-        formIsValid && hasSelectedCity ? _validateSelectedStartTime() : true;
-    if (!formIsValid || !hasSelectedCity || !startTimeIsValid) {
+    final selectedCity = _lastVisibleSelectedCity;
+    final startTimeValidation = formIsValid && selectedCity != null
+        ? _validateSelectedStartTime()
+        : null;
+    if (!formIsValid || selectedCity == null || startTimeValidation == null) {
       return;
+    }
+    final levelRange = _resolvedSelectedLevelRange();
+    final capacity = _eventCreateCapacityFromText(_capacityTextController.text);
+
+    setState(() {
+      _isSubmitting = true;
+    });
+    try {
+      final languageCatalog = await _languageCatalogFuture;
+      if (!mounted) {
+        return;
+      }
+      final languageCode = languageCatalog == null
+          ? _selectedLanguageCode
+          : _resolvedSelectedLanguageCode(languageCatalog);
+      if (languageCode == null || languageCode.trim().isEmpty) {
+        throw StateError('Event language catalog is not ready.');
+      }
+
+      await EventActionsRepository.createEvent(
+        createRequestId: newEventCreateRequestId(),
+        fields: EventEditableFields(
+          title: _titleTextController.text,
+          description: _descriptionTextController.text,
+          languageCode: languageCode,
+          levelMin: levelRange.levelMin,
+          levelMax: levelRange.levelMax,
+          countryCode: selectedCity.city.countryCode,
+          cityKey: selectedCity.city.cityKey,
+          locationName: _normalizeEventCreateLocationName(
+            _locationTextController.text,
+          ),
+          locationGeoPoint: null,
+          startsAt: startTimeValidation.startsAtUtc,
+          capacity: capacity,
+        ),
+        invoker: widget.createEventInvoker,
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _submitErrorText = eventActionFailureMessage(context, error);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
 
@@ -1342,7 +1406,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                 ),
               ),
               _EventCreateSubmitBar(
-                onPressed: _handleSubmitPressed,
+                errorText: _submitErrorText,
+                isSubmitting: _isSubmitting,
+                onPressed: () {
+                  unawaited(_handleSubmitPressed());
+                },
               ),
             ],
           ),
@@ -1433,13 +1501,18 @@ class _EventCreateTextField extends StatelessWidget {
 
 class _EventCreateSubmitBar extends StatelessWidget {
   const _EventCreateSubmitBar({
+    required this.errorText,
+    required this.isSubmitting,
     required this.onPressed,
   });
 
+  final String? errorText;
+  final bool isSubmitting;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
+    final isEnabled = !isSubmitting;
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: ExpatlioDesign.card,
@@ -1459,39 +1532,75 @@ class _EventCreateSubmitBar extends StatelessWidget {
           heightFactor: 1,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
-            child: SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                key: eventCreateSubmitButtonKey,
-                onPressed: onPressed,
-                style: TextButton.styleFrom(
-                  minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
-                  padding: const EdgeInsetsDirectional.symmetric(
-                    horizontal: ExpatlioDesign.space16,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (errorText != null) ...[
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      errorText!,
+                      key: eventCreateSubmitErrorKey,
+                      textAlign: TextAlign.center,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.danger,
+                        size: 14,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(ExpatlioDesign.buttonRadius),
+                  const SizedBox(height: ExpatlioDesign.space12),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    key: eventCreateSubmitButtonKey,
+                    onPressed: isEnabled ? onPressed : null,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
+                      padding: const EdgeInsetsDirectional.symmetric(
+                        horizontal: ExpatlioDesign.space16,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(ExpatlioDesign.buttonRadius),
+                      ),
+                      backgroundColor: isEnabled
+                          ? ExpatlioDesign.primary
+                          : ExpatlioDesign.separator,
+                      foregroundColor: Colors.white,
+                      disabledForegroundColor: Colors.white,
+                    ),
+                    child: isSubmitting
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            FFLocalizations.of(context).getVariableText(
+                              ruText: 'Создать',
+                              enText: 'Create',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: ExpatlioDesign.textStyle(
+                              context,
+                              color: Colors.white,
+                              size: 16,
+                              weight: FontWeight.w700,
+                            ),
+                          ),
                   ),
-                  backgroundColor: ExpatlioDesign.primary,
-                  foregroundColor: Colors.white,
                 ),
-                child: Text(
-                  FFLocalizations.of(context).getVariableText(
-                    ruText: 'Создать',
-                    enText: 'Create',
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    color: Colors.white,
-                    size: 16,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
+              ],
             ),
           ),
         ),

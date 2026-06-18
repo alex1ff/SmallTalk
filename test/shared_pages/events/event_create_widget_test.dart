@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
@@ -1238,6 +1238,7 @@ void main() {
           initialDate: DateTime(2026, 6, 20),
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createEventInvoker: _successfulCreateEventInvoker,
         ),
       ),
     );
@@ -1271,6 +1272,7 @@ void main() {
           initialDate: DateTime(2026, 6, 20),
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createEventInvoker: _successfulCreateEventInvoker,
         ),
       ),
     );
@@ -1361,6 +1363,7 @@ void main() {
           initialDate: DateTime(2026, 6, 20),
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createEventInvoker: _successfulCreateEventInvoker,
         ),
       ),
     );
@@ -1382,9 +1385,10 @@ void main() {
     expect(find.text('Укажите максимум 50 участников'), findsNothing);
   });
 
-  testWidgets('valid required fields submit without backend side effects',
+  testWidgets('valid required fields submit through create callable',
       (tester) async {
     EventSelectedCity? selectedCity;
+    var submitCount = 0;
     late StateSetter setHostState;
 
     await tester.pumpWidget(
@@ -1399,6 +1403,10 @@ void main() {
               initialTime: const TimeOfDay(hour: 18, minute: 0),
               initialSelectedCity: selectedCity,
               currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+              createEventInvoker: (functionName, payload) async {
+                submitCount += 1;
+                return _createEventResponse();
+              },
             );
           },
         ),
@@ -1413,6 +1421,7 @@ void main() {
     expect(find.text('Введите описание'), findsOneWidget);
     expect(find.text('Выберите город события'), findsOneWidget);
     expect(find.text('Введите место'), findsOneWidget);
+    expect(submitCount, 0);
 
     await tester.enterText(find.byKey(eventCreateTitleFieldKey), 'Клуб');
     await tester.enterText(
@@ -1439,6 +1448,73 @@ void main() {
     expect(find.text('Введите место'), findsNothing);
     expect(find.text('Введите лимит участников'), findsNothing);
     expect(find.byType(EventCreateWidget), findsOneWidget);
+    expect(submitCount, 1);
+  });
+
+  testWidgets('daily creation limit error is shown on submit in Russian',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createEventInvoker: (_, __) async => throw _dailyLimitError(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateSubmitErrorKey), findsOneWidget);
+    expect(
+      find.text(
+          'Сегодня можно создать не больше 5 событий. Попробуйте завтра.'),
+      findsOneWidget,
+    );
+    expect(find.text('Raw backend message'), findsNothing);
+  });
+
+  testWidgets('daily creation limit error is shown on submit in English',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('en'),
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createEventInvoker: (_, __) async => throw _dailyLimitError(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateSubmitErrorKey), findsOneWidget);
+    expect(
+      find.text('You can create up to 5 events per day. Try again tomorrow.'),
+      findsOneWidget,
+    );
+    expect(find.text('Raw backend message'), findsNothing);
   });
 
   testWidgets('submit blocks past start time in selected city timezone',
@@ -1455,6 +1531,7 @@ void main() {
           initialDate: DateTime(2026, 6, 18),
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T15:00:00Z'),
+          createEventInvoker: _successfulCreateEventInvoker,
         ),
       ),
     );
@@ -1482,6 +1559,7 @@ void main() {
           initialDate: DateTime(2026, 6, 18),
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T15:00:00Z'),
+          createEventInvoker: _successfulCreateEventInvoker,
         ),
       ),
     );
@@ -1516,6 +1594,7 @@ void main() {
               initialDate: DateTime(2026, 6, 18),
               initialTime: initialTime,
               currentUtcProvider: () => DateTime.parse('2026-06-18T15:00:00Z'),
+              createEventInvoker: _successfulCreateEventInvoker,
             );
           },
         ),
@@ -2222,22 +2301,24 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('create form avoids backend submit before submit phase', () {
-    final source = File('lib/shared_pages/events/event_create_widget.dart')
-        .readAsStringSync();
+  testWidgets('create form avoids backend submit before user submits',
+      (tester) async {
+    var submitCount = 0;
 
-    expect(source, contains('AuthUserStreamWidget'));
-    expect(source, isNot(contains('EventActionsRepository')));
-    expect(source, isNot(contains('EventEditableFields')));
-    expect(source, isNot(contains('createRequestId')));
-    expect(source, isNot(contains('newEventCreateRequestId')));
-    expect(source, isNot(contains('.createEvent(')));
-    expect(source, isNot(contains('EventsRecord')));
-    expect(source, isNot(contains('FirebaseFirestore')));
-    expect(source, isNot(contains('ProfileCitySaveService')));
-    expect(source, isNot(contains('languageNameEn')));
-    expect(source, isNot(contains('languageNameRu')));
-    expect(source, isNot(contains('startsAt')));
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          createEventInvoker: (_, __) async {
+            submitCount += 1;
+            return _createEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(submitCount, 0);
   });
 }
 
@@ -2262,6 +2343,44 @@ String _locationDraftValue(EventCreateLocationDraft draft) =>
     draft.locationName;
 
 int _capacityDraftValue(EventCreateCapacityDraft draft) => draft.capacity;
+
+Future<Object?> _successfulCreateEventInvoker(
+  String functionName,
+  Map<String, dynamic> payload,
+) async =>
+    _createEventResponse();
+
+Map<String, dynamic> _createEventResponse() => <String, dynamic>{
+      'eventId': 'event-1',
+      'createdAt': '2026-06-14T10:00:00.000Z',
+      'dailyCreation': <String, dynamic>{
+        'dayKeyUtc': '2026-06-14',
+        'count': 2,
+        'remaining': 3,
+        'resetAtUtc': '2026-06-15T00:00:00.000Z',
+      },
+    };
+
+FirebaseFunctionsException _dailyLimitError() =>
+    _TestFirebaseFunctionsException(
+      code: 'resource-exhausted',
+      message: 'Raw backend message',
+      details: <String, dynamic>{
+        'domainCode': 'daily_limit_reached',
+        'limit': 5,
+        'count': 5,
+        'dayKeyUtc': '2026-06-14',
+        'resetAtUtc': '2026-06-15T00:00:00.000Z',
+      },
+    );
+
+class _TestFirebaseFunctionsException extends FirebaseFunctionsException {
+  _TestFirebaseFunctionsException({
+    required super.code,
+    required super.message,
+    super.details,
+  });
+}
 
 Future<void> _fillRequiredCreateFields(WidgetTester tester) async {
   await tester.enterText(find.byKey(eventCreateTitleFieldKey), 'Клуб');

@@ -229,7 +229,7 @@ Date: 2026-06-14
 - [x] Interpret date/time in the selected event city's `timeZoneId` and block past values using trusted-time validation feedback.
 - [x] Block capacity below 2.
 - [x] Block capacity above 50.
-- [ ] Handle daily creation limit error.
+- [x] Handle daily creation limit error.
 - [ ] Generate one `createRequestId` per create-form submit attempt and reuse it for retries of the same in-flight logical submit.
 - [ ] Map `details.domainCode = daily_limit_reached` errors to user-facing copy and keep `resetAtUtc`, `dayKeyUtc`, `count`, and `limit` available for retry timing/support context.
 - [ ] Map `details.domainCode = create_request_conflict` with `eventId`, `createRequestId`, and `dayKeyUtc` to a recoverable submit error that does not create another event.
