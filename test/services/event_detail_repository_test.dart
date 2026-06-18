@@ -92,6 +92,52 @@ void main() {
         emitsError(same(error)),
       );
     });
+
+    test('watches the current user participant document', () async {
+      DocumentReference? capturedParticipantRef;
+
+      final participants =
+          await EventDetailRepository.watchCurrentUserParticipant(
+        eventId: ' event-1 ',
+        userId: ' uid-1 ',
+        snapshotStream: (participantRef) {
+          capturedParticipantRef = participantRef;
+          return Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantObjectRef('event-1', 'uid-1'),
+              data: participantData(
+                userId: 'uid-1',
+                status: 'active',
+              ),
+            ),
+          );
+        },
+      ).toList();
+
+      expect(capturedParticipantRef?.path, 'events/event-1/participants/uid-1');
+      expect(participants, hasLength(1));
+      expect(participants.single?.reference.path,
+          'events/event-1/participants/uid-1');
+      expect(participants.single?.userId, 'uid-1');
+      expect(participants.single?.status, 'active');
+    });
+
+    test('emits null when the current user participant document is missing',
+        () async {
+      final participants =
+          await EventDetailRepository.watchCurrentUserParticipant(
+        eventId: 'event-1',
+        userId: 'uid-1',
+        snapshotStream: (_) => Stream<DocumentSnapshot>.value(
+          _FakeEventDocumentSnapshot(
+            reference: participantObjectRef('event-1', 'uid-1'),
+            exists: false,
+          ),
+        ),
+      ).toList();
+
+      expect(participants, <EventParticipantsRecord?>[null]);
+    });
   });
 }
 
@@ -118,6 +164,31 @@ DocumentReference<Object?> eventObjectRef(String eventId) =>
             return const <String, Object?>{};
           },
         );
+
+DocumentReference<Object?> participantObjectRef(
+        String eventId, String userId) =>
+    FirebaseFirestore.instance
+        .doc('events/$eventId/participants/$userId')
+        .withConverter<Object?>(
+          fromFirestore: (snapshot, _) => snapshot.data(),
+          toFirestore: (value, _) {
+            if (value is Map<String, Object?>) {
+              return value;
+            }
+            return const <String, Object?>{};
+          },
+        );
+
+Map<String, dynamic> participantData({
+  required String userId,
+  required String status,
+}) =>
+    <String, dynamic>{
+      'userId': userId,
+      'displayName': 'Participant',
+      'role': 'participant',
+      'status': status,
+    };
 
 // ignore: subtype_of_sealed_class
 class _FakeEventDocumentSnapshot implements DocumentSnapshot<Object?> {

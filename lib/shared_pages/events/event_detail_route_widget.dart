@@ -8,6 +8,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/events/event_detail_widget.dart';
 import '/shared_pages/events/event_edit_widget.dart';
+import '/shared_pages/events/event_group_chat_widget.dart';
 import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
 import '/services/event_detail_repository.dart';
@@ -33,6 +34,7 @@ class EventDetailRouteWidget extends StatefulWidget {
     this.cancelEventInvoker,
     this.joinEventInvoker,
     this.leaveEventInvoker,
+    this.participantSnapshotStream,
   });
 
   final String eventId;
@@ -40,6 +42,7 @@ class EventDetailRouteWidget extends StatefulWidget {
   final EventCallableInvoker? cancelEventInvoker;
   final EventCallableInvoker? joinEventInvoker;
   final EventCallableInvoker? leaveEventInvoker;
+  final EventParticipantSnapshotStream? participantSnapshotStream;
 
   @override
   State<EventDetailRouteWidget> createState() => _EventDetailRouteWidgetState();
@@ -320,44 +323,69 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           snapshotParticipantsCount: snapshotParticipantsCount,
         );
 
-        return EventDetailWidget(
-          eventId: eventId,
-          levelMin: event.levelMin,
-          levelMax: event.levelMax,
-          languageCode: event.languageCode,
-          languageNameEn: event.languageNameEn,
-          languageNameRu: event.languageNameRu,
-          title: event.title,
-          description: event.description,
-          organizerDisplayName: event.organizerDisplayName,
-          organizerPhotoUrl: event.organizerPhotoUrl,
-          showOrganizerControls: canManage && isActive && !isCanceled,
-          onOrganizerEditPressed: _isCanceling
-              ? null
-              : () {
-                  context.pushNamed(
-                    EventEditWidget.routeName,
-                    pathParameters: <String, String>{'eventId': eventId},
-                  );
-                },
-          onOrganizerCancelPressed:
-              _isCanceling || isCanceled ? null : _handleOrganizerCancel,
-          startsAt: event.startsAt,
-          timeZoneId: event.timeZoneId,
-          locationName: event.locationName,
-          participantsCount: participantsCount,
-          capacity: event.hasCapacity() ? event.capacity : null,
-          joinCtaState: joinCtaState,
-          onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
-              ? canJoin
-                  ? _handleJoin
-                  : canLeave
-                      ? () => _handleLeave(
-                            eventId: eventId,
-                            startsAt: event.startsAt,
-                          )
-                      : null
-              : null,
+        final participantStream = currentUserUid.trim().isEmpty
+            ? null
+            : EventDetailRepository.watchCurrentUserParticipant(
+                eventId: eventId,
+                userId: currentUserUid,
+                snapshotStream: widget.participantSnapshotStream,
+              );
+
+        return StreamBuilder<EventParticipantsRecord?>(
+          stream: participantStream,
+          builder: (context, participantSnapshot) {
+            final isActiveParticipant =
+                _eventDetailIsActiveParticipant(participantSnapshot.data);
+            final canOpenChat = eventId.trim().isNotEmpty &&
+                !isLocallyLeft &&
+                (isLocallyJoined || isActiveParticipant || canManage);
+
+            return EventDetailWidget(
+              eventId: eventId,
+              levelMin: event.levelMin,
+              levelMax: event.levelMax,
+              languageCode: event.languageCode,
+              languageNameEn: event.languageNameEn,
+              languageNameRu: event.languageNameRu,
+              title: event.title,
+              description: event.description,
+              organizerDisplayName: event.organizerDisplayName,
+              organizerPhotoUrl: event.organizerPhotoUrl,
+              showOrganizerControls: canManage && isActive && !isCanceled,
+              onOrganizerEditPressed: _isCanceling
+                  ? null
+                  : () {
+                      context.pushNamed(
+                        EventEditWidget.routeName,
+                        pathParameters: <String, String>{'eventId': eventId},
+                      );
+                    },
+              onOrganizerCancelPressed:
+                  _isCanceling || isCanceled ? null : _handleOrganizerCancel,
+              startsAt: event.startsAt,
+              timeZoneId: event.timeZoneId,
+              locationName: event.locationName,
+              participantsCount: participantsCount,
+              capacity: event.hasCapacity() ? event.capacity : null,
+              joinCtaState: joinCtaState,
+              onChatPressed: canOpenChat
+                  ? () => context.pushNamed(
+                        EventGroupChatWidget.routeName,
+                        pathParameters: <String, String>{'eventId': eventId},
+                      )
+                  : null,
+              onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
+                  ? canJoin
+                      ? _handleJoin
+                      : canLeave
+                          ? () => _handleLeave(
+                                eventId: eventId,
+                                startsAt: event.startsAt,
+                              )
+                          : null
+                  : null,
+            );
+          },
         );
       },
     );
@@ -592,4 +620,12 @@ bool _eventDetailCanCurrentUserManage(EventsRecord event) {
   final organizerId = event.organizerId.trim();
   final userId = currentUserUid.trim();
   return organizerId.isNotEmpty && userId.isNotEmpty && organizerId == userId;
+}
+
+bool _eventDetailIsActiveParticipant(EventParticipantsRecord? participant) {
+  if (participant == null) {
+    return false;
+  }
+  return participant.userId.trim() == currentUserUid.trim() &&
+      participant.status.trim() == 'active';
 }

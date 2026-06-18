@@ -5,6 +5,9 @@ import '/backend/backend.dart';
 typedef EventDetailSnapshotStream = Stream<DocumentSnapshot> Function(
   DocumentReference eventRef,
 );
+typedef EventParticipantSnapshotStream = Stream<DocumentSnapshot> Function(
+  DocumentReference participantRef,
+);
 
 class EventDetailRepository {
   const EventDetailRepository._();
@@ -24,6 +27,36 @@ class EventDetailRepository {
         return null;
       }
       return EventsRecord.fromSnapshot(snapshot);
+    });
+  }
+
+  static DocumentReference currentUserParticipantReference({
+    required String eventId,
+    required String userId,
+  }) {
+    final eventRef = eventReferenceForId(eventId);
+    return EventParticipantsRecord.createDoc(
+      eventRef,
+      id: normalizeEventDetailId(userId),
+    );
+  }
+
+  static Stream<EventParticipantsRecord?> watchCurrentUserParticipant({
+    required String eventId,
+    required String userId,
+    EventParticipantSnapshotStream? snapshotStream,
+  }) {
+    final participantRef = currentUserParticipantReference(
+      eventId: eventId,
+      userId: userId,
+    );
+    final loader = snapshotStream ?? _watchParticipantSnapshot;
+
+    return loader(participantRef).map((snapshot) {
+      if (!snapshot.exists) {
+        return null;
+      }
+      return EventParticipantsRecord.fromSnapshot(snapshot);
     });
   }
 }
@@ -71,3 +104,8 @@ String normalizeEventDetailId(String eventId) {
 
 Stream<DocumentSnapshot> _watchEventSnapshot(DocumentReference eventRef) =>
     eventRef.snapshots();
+
+Stream<DocumentSnapshot> _watchParticipantSnapshot(
+  DocumentReference participantRef,
+) =>
+    participantRef.snapshots();

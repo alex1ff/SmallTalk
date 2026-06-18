@@ -13,6 +13,7 @@ import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
+import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
 import 'package:small_talk/services/event_actions_repository.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
 
@@ -386,10 +387,158 @@ void main() {
       final chatSemantics =
           tester.getSemantics(find.byKey(eventDetailChatCtaKey));
       expect(primarySemantics.flagsCollection.isEnabled, isTrue);
-      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+      expect(chatSemantics.flagsCollection.isEnabled, isTrue);
     } finally {
       semanticsHandle.dispose();
     }
+  });
+
+  testWidgets('joined participant can open chat from detail CTA',
+      (tester) async {
+    currentUser = _TestAuthUser('guest-1');
+    final router = GoRouter(
+      initialLocation: '/events/event-1',
+      routes: [
+        GoRoute(
+          name: EventDetailWidget.routeName,
+          path: EventDetailWidget.routePath,
+          builder: (context, state) => EventDetailRouteWidget(
+            eventId: state.pathParameters['eventId']!,
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(),
+              ),
+            ),
+            joinEventInvoker: (_, __) async => _joinEventResponse(),
+          ),
+        ),
+        GoRoute(
+          name: EventGroupChatWidget.routeName,
+          path: EventGroupChatWidget.routePath,
+          builder: (context, state) => EventGroupChatWidget(
+            eventId: state.pathParameters['eventId']!,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailChatCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/events/event-1');
+    expect(find.byType(EventGroupChatWidget), findsNothing);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailChatCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/events/event-1/chat');
+    expect(find.byType(EventGroupChatWidget), findsOneWidget);
+    expect(find.text('event-1'), findsOneWidget);
+  });
+
+  testWidgets('active participant can open chat from direct detail',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final router = GoRouter(
+      initialLocation: '/events/event-1',
+      routes: [
+        GoRoute(
+          name: EventDetailWidget.routeName,
+          path: EventDetailWidget.routePath,
+          builder: (context, state) => EventDetailRouteWidget(
+            eventId: state.pathParameters['eventId']!,
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(organizerId: 'organizer-1'),
+              ),
+            ),
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                data: _participantData(
+                  userId: 'uid-1',
+                  status: 'active',
+                ),
+              ),
+            ),
+          ),
+        ),
+        GoRoute(
+          name: EventGroupChatWidget.routeName,
+          path: EventGroupChatWidget.routePath,
+          builder: (context, state) => EventGroupChatWidget(
+            eventId: state.pathParameters['eventId']!,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailChatCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/events/event-1/chat');
+    expect(find.byType(EventGroupChatWidget), findsOneWidget);
+  });
+
+  testWidgets('left participant cannot open chat from direct detail',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final router = GoRouter(
+      initialLocation: '/events/event-1',
+      routes: [
+        GoRoute(
+          name: EventDetailWidget.routeName,
+          path: EventDetailWidget.routePath,
+          builder: (context, state) => EventDetailRouteWidget(
+            eventId: state.pathParameters['eventId']!,
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(organizerId: 'organizer-1'),
+              ),
+            ),
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                data: _participantData(
+                  userId: 'uid-1',
+                  status: 'left',
+                ),
+              ),
+            ),
+          ),
+        ),
+        GoRoute(
+          name: EventGroupChatWidget.routeName,
+          path: EventGroupChatWidget.routePath,
+          builder: (context, state) => EventGroupChatWidget(
+            eventId: state.pathParameters['eventId']!,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailChatCtaKey), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/events/event-1');
+    expect(find.byType(EventGroupChatWidget), findsNothing);
   });
 
   testWidgets('joined participant can leave through primary CTA',
@@ -1374,6 +1523,17 @@ Map<String, dynamic> _leaveEventResponse({
       'participantStatus': 'left',
       'participantsCount': participantsCount,
       'leftAt': '2026-06-14T12:02:00.000Z',
+    };
+
+Map<String, dynamic> _participantData({
+  required String userId,
+  required String status,
+}) =>
+    <String, dynamic>{
+      'userId': userId,
+      'displayName': 'Participant',
+      'role': 'participant',
+      'status': status,
     };
 
 FirebaseFunctionsException _joinDomainError(
