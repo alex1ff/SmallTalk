@@ -20,6 +20,8 @@ const ValueKey<String> eventDetailRouteErrorKey =
     ValueKey<String>('event_detail_route_error');
 const ValueKey<String> eventDetailCancelErrorSnackBarKey =
     ValueKey<String>('event_detail_cancel_error_snack_bar');
+const ValueKey<String> eventDetailJoinErrorSnackBarKey =
+    ValueKey<String>('event_detail_join_error_snack_bar');
 
 class EventDetailRouteWidget extends StatefulWidget {
   const EventDetailRouteWidget({
@@ -158,8 +160,16 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         _locallyLeftEventId = null;
         _locallyLeftParticipantsCount = null;
       });
-    } catch (_) {
-      // Clear loading only. User-facing join errors are handled in a later task.
+    } catch (error) {
+      if (!mounted || requestGeneration != _participantActionGeneration) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: eventDetailJoinErrorSnackBarKey,
+          content: Text(eventActionFailureMessage(context, error)),
+        ),
+      );
     } finally {
       if (mounted && requestGeneration == _participantActionGeneration) {
         setState(() {

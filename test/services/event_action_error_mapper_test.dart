@@ -307,6 +307,54 @@ void main() {
       );
       expect(regionalRuMessage, contains('5 событий'));
     });
+
+    testWidgets('resolves clear join failure messages without raw backend',
+        (tester) async {
+      for (final scenario in [
+        (
+          error: _domainError('event_full'),
+          ruMessage: 'В этом событии уже нет свободных мест.',
+          enMessage: 'There are no free spots left in this event.',
+        ),
+        (
+          error: _domainError(
+            'event_not_joinable',
+            details: <String, dynamic>{'reason': 'not_active'},
+          ),
+          ruMessage: 'Событие отменено, присоединиться нельзя.',
+          enMessage: 'This event was canceled, so you cannot join it.',
+        ),
+        (
+          error: _domainError(
+            'event_not_joinable',
+            details: <String, dynamic>{'reason': 'past_event'},
+          ),
+          ruMessage: 'Событие уже началось, присоединиться нельзя.',
+          enMessage: 'This event has already started, so you cannot join it.',
+        ),
+        (
+          error: _domainError('already_joined'),
+          ruMessage: 'Вы уже присоединились к этому событию.',
+          enMessage: 'You have already joined this event.',
+        ),
+      ]) {
+        final ruMessage = await _localizedMessage(
+          tester,
+          locale: const Locale('ru'),
+          error: scenario.error,
+        );
+        final enMessage = await _localizedMessage(
+          tester,
+          locale: const Locale('en'),
+          error: scenario.error,
+        );
+
+        expect(ruMessage, scenario.ruMessage);
+        expect(enMessage, scenario.enMessage);
+        expect(ruMessage, isNot(contains('Raw backend message')));
+        expect(enMessage, isNot(contains('Raw backend message')));
+      }
+    });
   });
 }
 

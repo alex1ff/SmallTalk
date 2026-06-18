@@ -177,6 +177,13 @@ String eventActionFailureMessageForLocalizations(
           enText: 'This event has already started, so you cannot join it.',
         );
       }
+      if (failure.reason == 'event_canceled' ||
+          failure.reason == 'not_active') {
+        return localizations.getVariableText(
+          ruText: 'Событие отменено, присоединиться нельзя.',
+          enText: 'This event was canceled, so you cannot join it.',
+        );
+      }
       return localizations.getVariableText(
         ruText: 'К этому событию больше нельзя присоединиться.',
         enText: 'You can no longer join this event.',

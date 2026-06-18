@@ -748,6 +748,68 @@ void main() {
     expect(find.text('Присоединяемся...'), findsNothing);
   });
 
+  for (final scenario in [
+    (
+      name: 'full event',
+      error: _joinDomainError('event_full'),
+      message: 'В этом событии уже нет свободных мест.',
+    ),
+    (
+      name: 'canceled event',
+      error: _joinDomainError(
+        'event_not_joinable',
+        reason: 'not_active',
+      ),
+      message: 'Событие отменено, присоединиться нельзя.',
+    ),
+    (
+      name: 'past event',
+      error: _joinDomainError(
+        'event_not_joinable',
+        reason: 'past_event',
+      ),
+      message: 'Событие уже началось, присоединиться нельзя.',
+    ),
+    (
+      name: 'duplicate join',
+      error: _joinDomainError('already_joined'),
+      message: 'Вы уже присоединились к этому событию.',
+    ),
+  ]) {
+    testWidgets('join failure shows clear ${scenario.name} error',
+        (tester) async {
+      var joinCalls = 0;
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(),
+              ),
+            ),
+            joinEventInvoker: (_, __) async {
+              joinCalls += 1;
+              throw scenario.error;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(joinCalls, 1);
+      expect(find.byKey(eventDetailJoinErrorSnackBarKey), findsOneWidget);
+      expect(find.text(scenario.message), findsOneWidget);
+      expect(find.text('Присоединиться'), findsOneWidget);
+      expect(find.text('Присоединяемся...'), findsNothing);
+    });
+  }
+
   testWidgets('event change clears in-flight join loading state',
       (tester) async {
     final firstJoinCompleter = Completer<Object?>();
@@ -1267,6 +1329,19 @@ Map<String, dynamic> _leaveEventResponse({
       'participantsCount': participantsCount,
       'leftAt': '2026-06-14T12:02:00.000Z',
     };
+
+FirebaseFunctionsException _joinDomainError(
+  String domainCode, {
+  String? reason,
+}) =>
+    _TestFirebaseFunctionsException(
+      code: 'failed-precondition',
+      message: 'Raw backend message',
+      details: <String, dynamic>{
+        'domainCode': domainCode,
+        if (reason != null) 'reason': reason,
+      },
+    );
 
 // ignore: subtype_of_sealed_class
 class _FakeEventDocumentSnapshot implements DocumentSnapshot<Object?> {
