@@ -366,6 +366,9 @@ void main() {
     expect(edit, contains('EventDetailRepository'));
     expect(edit, contains('watchEventDetail'));
     expect(edit, contains('EventsRecord'));
+    expect(edit, contains('organizerId'));
+    expect(edit, contains('currentUserUid'));
+    expect(edit, contains('eventEditForbiddenKey'));
     expect(edit, isNot(contains('EventActionsRepository')));
     expect(edit, isNot(contains('EventEditableFields')));
     expect(edit, isNot(contains('.editEvent(')));

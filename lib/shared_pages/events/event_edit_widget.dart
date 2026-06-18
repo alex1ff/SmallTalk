@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:timezone/timezone.dart' as timezone;
 
+import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -18,6 +19,8 @@ const ValueKey<String> eventEditLoadingKey =
 const ValueKey<String> eventEditMissingKey =
     ValueKey<String>('event_edit_missing');
 const ValueKey<String> eventEditErrorKey = ValueKey<String>('event_edit_error');
+const ValueKey<String> eventEditForbiddenKey =
+    ValueKey<String>('event_edit_forbidden');
 
 class EventEditWidget extends StatefulWidget {
   const EventEditWidget({
@@ -66,6 +69,9 @@ class _EventEditWidgetState extends State<EventEditWidget> {
     ).first;
     if (event == null) {
       return _EventEditLoadResult.missing();
+    }
+    if (!_eventEditCanCurrentUserEdit(event)) {
+      return _EventEditLoadResult.forbidden();
     }
 
     final cityCatalog = await _loadCityCatalog();
@@ -124,6 +130,15 @@ class _EventEditWidgetState extends State<EventEditWidget> {
         }
 
         final initialData = result.initialData;
+        if (result.isForbidden) {
+          return _EventEditStateScaffold(
+            stateKey: eventEditForbiddenKey,
+            titleRu: 'Редактирование недоступно',
+            titleEn: 'Editing unavailable',
+            messageRu: 'Редактировать событие может только организатор.',
+            messageEn: 'Only the organizer can edit this event.',
+          );
+        }
         if (initialData == null) {
           return _EventEditStateScaffold(
             stateKey: eventEditMissingKey,
@@ -155,14 +170,21 @@ class _EventEditWidgetState extends State<EventEditWidget> {
 }
 
 class _EventEditLoadResult {
-  const _EventEditLoadResult._({this.initialData});
+  const _EventEditLoadResult._({
+    this.initialData,
+    this.isForbidden = false,
+  });
 
   factory _EventEditLoadResult.found(_EventEditInitialData initialData) =>
       _EventEditLoadResult._(initialData: initialData);
 
   factory _EventEditLoadResult.missing() => const _EventEditLoadResult._();
 
+  factory _EventEditLoadResult.forbidden() =>
+      const _EventEditLoadResult._(isForbidden: true);
+
   final _EventEditInitialData? initialData;
+  final bool isForbidden;
 }
 
 class _EventEditInitialData {
@@ -401,4 +423,10 @@ String? _eventEditTimeZoneId({
     return cityTimeZoneId;
   }
   return null;
+}
+
+bool _eventEditCanCurrentUserEdit(EventsRecord event) {
+  final organizerId = event.organizerId.trim();
+  final userId = currentUserUid.trim();
+  return organizerId.isNotEmpty && userId.isNotEmpty && organizerId == userId;
 }

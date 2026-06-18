@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -49,6 +50,11 @@ void main() {
     setupFirebaseCoreMocks();
     await FFLocalizations.initialize();
     await Firebase.initializeApp();
+    FirebaseAuthPlatform.instance = _TestFirebaseAuthPlatform();
+  });
+
+  setUp(() {
+    currentUser = _TestAuthUser('organizer-1');
   });
 
   tearDown(() {
@@ -208,6 +214,69 @@ void main() {
     expect(find.text('Second club'), findsOneWidget);
   });
 
+  testWidgets('switching to unauthorized event clears stale edit form',
+      (tester) async {
+    var eventId = 'event-1';
+    late StateSetter setHostState;
+    final snapshots = <String, Completer<DocumentSnapshot>>{
+      'event-1': Completer<DocumentSnapshot>(),
+      'event-2': Completer<DocumentSnapshot>(),
+    };
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventEditWidget(
+              eventId: eventId,
+              languageCatalogOverride: _languageCatalog,
+              cityCatalogOverride: _cityCatalog,
+              snapshotStream: (eventRef) =>
+                  snapshots[eventRef.id]!.future.asStream(),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    snapshots['event-1']!.complete(
+      _FakeEventDocumentSnapshot(
+        reference: eventObjectRef('event-1'),
+        data: _eventData(title: 'Organizer club'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Organizer club'), findsOneWidget);
+    expect(find.byType(EventCreateWidget), findsOneWidget);
+
+    setHostState(() {
+      eventId = 'event-2';
+    });
+    await tester.pump();
+
+    expect(find.byKey(eventEditLoadingKey), findsOneWidget);
+    expect(find.byType(EventCreateWidget), findsNothing);
+
+    snapshots['event-2']!.complete(
+      _FakeEventDocumentSnapshot(
+        reference: eventObjectRef('event-2'),
+        data: _eventData(
+          title: 'Guest club',
+          organizerId: 'other-organizer',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventEditForbiddenKey), findsOneWidget);
+    expect(find.byType(EventCreateWidget), findsNothing);
+    expect(find.text('Organizer club'), findsNothing);
+    expect(find.text('Guest club'), findsNothing);
+  });
+
   testWidgets(
       'falls back to the selected city timezone when event timezone is empty',
       (tester) async {
@@ -305,6 +374,82 @@ void main() {
     expect(_citySelectorText('Москва · Россия'), findsNothing);
   });
 
+  testWidgets('hides edit form from non-organizers', (tester) async {
+    currentUser = _TestAuthUser('guest-1');
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventEditWidget(
+          eventId: 'event-1',
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(organizerId: 'organizer-1'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventEditForbiddenKey), findsOneWidget);
+    expect(find.text('Редактирование недоступно'), findsOneWidget);
+    expect(
+      find.text('Редактировать событие может только организатор.'),
+      findsOneWidget,
+    );
+    expect(find.byType(EventCreateWidget), findsNothing);
+    expect(find.byKey(eventCreateSubmitButtonKey), findsNothing);
+  });
+
+  testWidgets('fails closed when current user or organizer id is missing',
+      (tester) async {
+    currentUser = null;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventEditWidget(
+          eventId: 'event-1',
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(organizerId: 'organizer-1'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventEditForbiddenKey), findsOneWidget);
+    expect(find.byType(EventCreateWidget), findsNothing);
+
+    currentUser = _TestAuthUser('organizer-1');
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventEditWidget(
+          eventId: 'event-2',
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(organizerId: ' '),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventEditForbiddenKey), findsOneWidget);
+    expect(find.byType(EventCreateWidget), findsNothing);
+  });
+
   testWidgets('shows a missing state when the event document does not exist',
       (tester) async {
     await tester.pumpWidget(
@@ -397,6 +542,74 @@ dynamic _mutableFirestoreValue(dynamic value) {
   return value;
 }
 
+class _TestFirebaseAuthPlatform extends FirebaseAuthPlatform {
+  _TestFirebaseAuthPlatform({FirebaseApp? app}) : super(appInstance: app);
+
+  UserPlatform? _currentUser;
+
+  @override
+  FirebaseAuthPlatform delegateFor({required FirebaseApp app}) {
+    return _TestFirebaseAuthPlatform(app: app).._currentUser = _currentUser;
+  }
+
+  @override
+  FirebaseAuthPlatform setInitialValues({
+    PigeonUserDetails? currentUser,
+    String? languageCode,
+  }) {
+    this.languageCode = languageCode;
+    return this;
+  }
+
+  @override
+  UserPlatform? get currentUser => _currentUser;
+
+  @override
+  set currentUser(UserPlatform? userPlatform) {
+    _currentUser = userPlatform;
+  }
+
+  @override
+  String? languageCode;
+
+  @override
+  Stream<UserPlatform?> authStateChanges() =>
+      const Stream<UserPlatform?>.empty();
+
+  @override
+  Stream<UserPlatform?> idTokenChanges() => const Stream<UserPlatform?>.empty();
+
+  @override
+  Stream<UserPlatform?> userChanges() => const Stream<UserPlatform?>.empty();
+}
+
+class _TestAuthUser extends BaseAuthUser {
+  _TestAuthUser(this._uid);
+
+  final String _uid;
+
+  @override
+  bool get loggedIn => true;
+
+  @override
+  bool get emailVerified => true;
+
+  @override
+  AuthUserInfo get authUserInfo => AuthUserInfo(uid: _uid);
+
+  @override
+  Future<void> delete() async {}
+
+  @override
+  Future<void> updateEmail(String email) async {}
+
+  @override
+  Future<void> updatePassword(String newPassword) async {}
+
+  @override
+  Future<void> sendEmailVerification() async {}
+}
+
 Map<String, dynamic> _eventData({
   String title = 'Conversation club',
   String description = 'Casual practice',
@@ -409,6 +622,7 @@ Map<String, dynamic> _eventData({
   DateTime? startsAt,
   String timeZoneId = 'Europe/Moscow',
   int capacity = 10,
+  String organizerId = 'organizer-1',
 }) =>
     <String, dynamic>{
       'title': title,
@@ -422,6 +636,7 @@ Map<String, dynamic> _eventData({
       'startsAt': startsAt ?? DateTime.parse('2026-06-18T15:00:00Z'),
       'timeZoneId': timeZoneId,
       'capacity': capacity,
+      'organizerId': organizerId,
       'status': 'active',
     };
 
