@@ -239,7 +239,7 @@ Date: 2026-06-14
 - [x] Do not promise local draft restore after app restart, logout, or reinstall in MVP.
 - [x] Ensure closing create form before submit creates no event, participant, or chat documents.
 - [x] Disable repeated submit taps while create request is in flight.
-- [ ] Submit event creation.
+- [x] Submit event creation.
 - [ ] Open created event detail after success.
 
 ## Phase 9: Edit And Cancel Event
