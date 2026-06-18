@@ -4,6 +4,12 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 
+/// Event chat intentionally uses an event-specific surface.
+///
+/// The existing one-to-one chat UI is backed by conversation documents and
+/// direct message writes, while event chat is backed by event chat documents,
+/// participant access rules, read-only canceled state, and a trusted send
+/// callable.
 class EventGroupChatWidget extends StatelessWidget {
   const EventGroupChatWidget({
     super.key,

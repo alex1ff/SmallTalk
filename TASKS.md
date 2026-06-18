@@ -272,7 +272,7 @@ Date: 2026-06-14
 
 ## Phase 11: Event Group Chat
 
-- [ ] Decide whether to reuse existing chat UI or create event-specific chat wrapper.
+- [x] Decide whether to reuse existing chat UI or create event-specific chat wrapper. Decision: use an event-specific wrapper; reuse visual patterns only.
 - [ ] Open chat from event card only for participants.
 - [ ] Open chat from event detail only for participants.
 - [ ] Show `Сначала присоединитесь к событию` for non-participants.
