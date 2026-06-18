@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
+import 'package:small_talk/services/event_language_catalog.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -207,6 +208,124 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('shows localized language badge from catalog', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          languageCode: ' EN-us ',
+          languageCatalog: _languageCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLanguageBadgeKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailLanguageBadgeKey),
+        matching: find.text('Английский'),
+      ),
+      findsOneWidget,
+    );
+
+    final badgeSemantics = tester.widget<Semantics>(
+      find.byKey(eventDetailLanguageBadgeKey),
+    );
+    expect(badgeSemantics.properties.label, 'Язык Английский');
+  });
+
+  testWidgets('language badge falls back to denormalized name and raw code',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          languageCode: 'unknown',
+          languageNameEn: 'Fallback English',
+          languageNameRu: 'Фолбэк русский',
+          languageCatalog: _languageCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailLanguageBadgeKey),
+        matching: find.text('Фолбэк русский'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          languageCode: ' custom-code ',
+          languageNameEn: ' ',
+          languageCatalog: _languageCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailLanguageBadgeKey),
+        matching: find.text('custom-code'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('hides language badge for blank language data', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          languageCode: ' ',
+          languageNameEn: '',
+          languageNameRu: null,
+          languageCatalog: _languageCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLanguageBadgeKey), findsNothing);
+  });
+
+  testWidgets('language and level badges fit narrow large-text layouts',
+      (tester) async {
+    tester.view.physicalSize = const Size(640, 1200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+        child: _buildTestApp(
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            levelMin: 'B1',
+            levelMax: 'C1',
+            languageCode: 'en',
+            languageCatalog: _languageCatalog,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLevelRangeBadgeKey), findsOneWidget);
+    expect(find.byKey(eventDetailLanguageBadgeKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('back action pops the detail route when possible',
       (tester) async {
     await tester.pumpWidget(
@@ -254,6 +373,29 @@ void main() {
     expect(source, isNot(contains('EventsRecord')));
   });
 }
+
+final _languageCatalog = EventLanguageCatalog(
+  languages: [
+    EventLanguage(
+      code: 'en',
+      alternateCodes: const ['en', 'en-US'],
+      nameEn: 'English',
+      nameRu: 'Английский',
+      model: 'nova-3',
+      isPopular: true,
+      iconUrl: 'https://example.com/english.png',
+    ),
+    EventLanguage(
+      code: 'es',
+      alternateCodes: const ['es', 'es-419'],
+      nameEn: 'Spanish',
+      nameRu: 'Испанский',
+      model: 'nova-3',
+      isPopular: true,
+      iconUrl: 'https://example.com/spanish.png',
+    ),
+  ],
+);
 
 class _StackRoot extends StatelessWidget {
   const _StackRoot();

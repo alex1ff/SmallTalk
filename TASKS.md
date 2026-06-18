@@ -200,7 +200,7 @@ Date: 2026-06-14
 
 - [x] Build top bar with back and share actions.
 - [x] Show level/range badge.
-- [ ] Show language badge.
+- [x] Show language badge.
 - [ ] Show title and full description.
 - [ ] Show organizer card.
 - [ ] Add `Написать` action for organizer.
