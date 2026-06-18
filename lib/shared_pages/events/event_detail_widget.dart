@@ -39,6 +39,23 @@ const ValueKey<String> eventDetailTimeRowKey =
     ValueKey<String>('event_detail_time_row');
 const ValueKey<String> eventDetailPlaceRowKey =
     ValueKey<String>('event_detail_place_row');
+const ValueKey<String> eventDetailParticipantsSectionKey =
+    ValueKey<String>('event_detail_participants_section');
+const ValueKey<String> eventDetailParticipantsTitleKey =
+    ValueKey<String>('event_detail_participants_title');
+
+ValueKey<String> eventDetailParticipantTileKey(int index) =>
+    ValueKey<String>('event_detail_participant_tile_$index');
+
+class EventDetailParticipantViewModel {
+  const EventDetailParticipantViewModel({
+    required this.displayName,
+    this.photoUrl,
+  });
+
+  final String displayName;
+  final String? photoUrl;
+}
 
 class EventDetailWidget extends StatelessWidget {
   const EventDetailWidget({
@@ -59,6 +76,7 @@ class EventDetailWidget extends StatelessWidget {
     this.startsAt,
     this.timeZoneId,
     this.locationName,
+    this.participants = const <EventDetailParticipantViewModel>[],
   });
 
   final String eventId;
@@ -77,6 +95,7 @@ class EventDetailWidget extends StatelessWidget {
   final DateTime? startsAt;
   final String? timeZoneId;
   final String? locationName;
+  final List<EventDetailParticipantViewModel> participants;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
@@ -196,6 +215,12 @@ class EventDetailWidget extends StatelessWidget {
                               displayName: organizerName,
                               photoUrl: organizerPhotoUrl,
                               onMessagePressed: onOrganizerMessagePressed,
+                            ),
+                          ],
+                          if (participants.isNotEmpty) ...[
+                            const SizedBox(height: ExpatlioDesign.space24),
+                            _EventDetailParticipantsSection(
+                              participants: participants,
                             ),
                           ],
                         ],
@@ -661,6 +686,203 @@ class _EventDetailOrganizerMessageButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _EventDetailParticipantsSection extends StatelessWidget {
+  const _EventDetailParticipantsSection({
+    required this.participants,
+  });
+
+  final List<EventDetailParticipantViewModel> participants;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = FFLocalizations.of(context).getVariableText(
+      ruText: 'Участники',
+      enText: 'Participants',
+    );
+
+    return Container(
+      key: eventDetailParticipantsSectionKey,
+      padding: ExpatlioDesign.cardPaddingDirectional,
+      decoration: ExpatlioDesign.cardDecoration(
+        borderColor: ExpatlioDesign.separator,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            header: true,
+            child: Text(
+              key: eventDetailParticipantsTitleKey,
+              title,
+              style: ExpatlioDesign.textStyle(
+                context,
+                size: 20,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: ExpatlioDesign.space20),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final tileWidth = constraints.maxWidth < 360 ? 88.0 : 104.0;
+              return Wrap(
+                spacing: ExpatlioDesign.space16,
+                runSpacing: ExpatlioDesign.space20,
+                children: [
+                  for (var index = 0; index < participants.length; index += 1)
+                    _EventDetailParticipantTile(
+                      key: eventDetailParticipantTileKey(index),
+                      participant: participants[index],
+                      width: tileWidth,
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventDetailParticipantTile extends StatelessWidget {
+  const _EventDetailParticipantTile({
+    super.key,
+    required this.participant,
+    required this.width,
+  });
+
+  final EventDetailParticipantViewModel participant;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallbackName = FFLocalizations.of(context).getVariableText(
+      ruText: 'Участник',
+      enText: 'Participant',
+    );
+    final displayName = participant.displayName.trim().isEmpty
+        ? fallbackName
+        : participant.displayName.trim();
+    final semanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Участник: $displayName',
+      enText: 'Participant: $displayName',
+    );
+
+    return Semantics(
+      label: semanticsLabel,
+      child: ExcludeSemantics(
+        child: SizedBox(
+          width: width,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _EventDetailParticipantAvatar(
+                participant: participant,
+                displayName: displayName,
+              ),
+              const SizedBox(height: ExpatlioDesign.space8),
+              Text(
+                displayName,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 15,
+                  weight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventDetailParticipantAvatar extends StatelessWidget {
+  const _EventDetailParticipantAvatar({
+    required this.participant,
+    required this.displayName,
+  });
+
+  static const double _dimension = 64;
+
+  final EventDetailParticipantViewModel participant;
+  final String displayName;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedPhotoUrl = participant.photoUrl?.trim() ?? '';
+
+    return Container(
+      width: _dimension,
+      height: _dimension,
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(shape: BoxShape.circle),
+      child: normalizedPhotoUrl.isEmpty
+          ? _fallback(context)
+          : CachedNetworkImage(
+              imageUrl: normalizedPhotoUrl,
+              fit: BoxFit.cover,
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
+              memCacheWidth: (_dimension *
+                      MediaQuery.devicePixelRatioOf(
+                        context,
+                      ))
+                  .round(),
+              memCacheHeight: (_dimension *
+                      MediaQuery.devicePixelRatioOf(
+                        context,
+                      ))
+                  .round(),
+              placeholder: (context, _) => _fallback(context),
+              errorWidget: (context, _, __) => _fallback(context),
+            ),
+    );
+  }
+
+  Widget _fallback(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(ExpatlioDesign.space12),
+      color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+      alignment: Alignment.center,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          _initials(),
+          maxLines: 1,
+          style: ExpatlioDesign.textStyle(
+            context,
+            color: ExpatlioDesign.primary,
+            size: 18,
+            weight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _initials() {
+    final normalizedName = displayName.trim();
+    if (normalizedName.isEmpty) {
+      return '?';
+    }
+    final words = normalizedName
+        .split(RegExp(r'\s+'))
+        .where((word) => word.trim().isNotEmpty)
+        .toList(growable: false);
+    if (words.length >= 2) {
+      return '${words[0].characters.first}${words[1].characters.first}'
+          .toUpperCase();
+    }
+    return normalizedName.characters.take(2).toString().toUpperCase();
   }
 }
 

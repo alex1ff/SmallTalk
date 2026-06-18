@@ -205,7 +205,7 @@ Date: 2026-06-14
 - [x] Show organizer card.
 - [x] Add `Написать` action for organizer.
 - [x] Show date, time, and place block.
-- [ ] Show participant list.
+- [x] Show participant list.
 - [ ] Show occupancy.
 - [ ] Add sticky bottom action bar.
 - [ ] Show `Присоединиться` for non-participants.

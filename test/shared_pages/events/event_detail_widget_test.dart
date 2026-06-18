@@ -691,6 +691,133 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('shows participant list with names and fallback initials',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          participants: [
+            EventDetailParticipantViewModel(displayName: 'Marco Rossi'),
+            EventDetailParticipantViewModel(displayName: 'Лиза'),
+            EventDetailParticipantViewModel(displayName: '  '),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailParticipantsSectionKey), findsOneWidget);
+    expect(find.byKey(eventDetailParticipantsTitleKey), findsOneWidget);
+    expect(find.text('Участники'), findsOneWidget);
+    expect(find.byKey(eventDetailParticipantTileKey(0)), findsOneWidget);
+    expect(find.byKey(eventDetailParticipantTileKey(1)), findsOneWidget);
+    expect(find.byKey(eventDetailParticipantTileKey(2)), findsOneWidget);
+    expect(find.text('Marco Rossi'), findsOneWidget);
+    expect(find.text('Лиза'), findsOneWidget);
+    expect(find.text('Участник'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(0)),
+        matching: find.text('MR'),
+      ),
+      findsOneWidget,
+    );
+    final titleSemantics =
+        tester.getSemantics(find.byKey(eventDetailParticipantsTitleKey));
+    expect(titleSemantics.flagsCollection.isHeader, isTrue);
+    expect(find.bySemanticsLabel(RegExp('Участники')), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(RegExp('Участник: Marco Rossi')),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel(RegExp('Участник: Участник')),
+      findsOneWidget,
+    );
+    semanticsHandle.dispose();
+  });
+
+  testWidgets('hides participant section for an empty participant list',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          participants: [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailParticipantsSectionKey), findsNothing);
+    expect(find.byKey(eventDetailParticipantsTitleKey), findsNothing);
+    expect(find.text('Участники'), findsNothing);
+  });
+
+  testWidgets('participant avatar falls back when photo url is broken',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          participants: [
+            EventDetailParticipantViewModel(
+              displayName: 'Alex',
+              photoUrl: 'https://invalid.example/avatar.png',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailParticipantsSectionKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(0)),
+        matching: find.text('AL'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('participant list fits narrow large-text layouts',
+      (tester) async {
+    tester.view.physicalSize = const Size(640, 1200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(3)),
+        child: _buildTestApp(
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            participants: [
+              EventDetailParticipantViewModel(
+                displayName: 'Очень длинное имя участника события',
+              ),
+              EventDetailParticipantViewModel(displayName: 'Лиза'),
+              EventDetailParticipantViewModel(displayName: 'Kenzhi'),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailParticipantsSectionKey), findsOneWidget);
+    expect(find.byKey(eventDetailParticipantTileKey(0)), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('language and level badges fit narrow large-text layouts',
       (tester) async {
     tester.view.physicalSize = const Size(640, 1200);
@@ -770,6 +897,7 @@ void main() {
     expect(source, isNot(contains('ChatThreadWidget')));
     expect(source, isNot(contains('ConversationsRecord')));
     expect(source, isNot(contains('MessagesRecord')));
+    expect(source, isNot(contains('EventParticipantsRecord')));
     expect(source, isNot(contains('FirebaseFirestore')));
   });
 }
