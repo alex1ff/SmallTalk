@@ -5,7 +5,7 @@
 Цель этапа: зафиксировать точки изменения в текущем коде и не сломать существующие звонки.
 
 - [x] Найти все места, где студентский интерфейс использует `availabilityToday`.
-- [ ] Найти все backend-проверки, где студенты участвуют в подборе через `availabilityToday` или `isAvailable`.
+- [x] Найти все backend-проверки, где студенты участвуют в подборе через `availabilityToday` или `isAvailable`.
 - [ ] Проверить текущий сценарий создания звонка: `createVideoSession`, `acceptCall`, `declineCall`, `processExpiredNotifications`.
 - [ ] Проверить текущую VoIP-логику: входящий звонок, accept, decline, timeout, навигация.
 - [ ] Зафиксировать текущие статусы `videoSessions` и поля, которые уже используются в приложении.
@@ -26,6 +26,25 @@
 - Teacher-only тесты и контракты с текстом "Доступен сегодня", включая `test/teachers_pages/dashboard_ns_pending_widgets_test.dart`, не относятся к student UI, но защищают shared teacher flow и должны остаться актуальными после удаления student availability.
 - `lib/shared_pages/profile/profile_widget.dart`: shared/student-accessible профиль, но найденные записи `availabilityToday` относятся к переходу/восстановлению teacher/native-speaker track, а не к обычному student availability UI.
 - `lib/authorization/shared/social_auth_entry_logic.dart`: `hasAvailabilityToday()` используется как teacher-role signal. Это не student UI, но важно не сломать auth/teacher inference при будущей чистке данных.
+
+Результат аудита backend availability checks:
+
+- Базовая availability-логика: `firebase/custom_cloud_functions/availability.js`: `evaluateTutorAvailabilityWindow()` является общей role-agnostic проверкой доступности. Она сначала читает `availabilityToday.enabled`, затем fallback на `isAvailable`, а если оба поля отсутствуют, считает пользователя доступным. Если `availabilityToday.enabled = false` или fallback `isAvailable = false`, пользователь сразу считается недоступным. Пустые интервалы или интервалы без timezone дают доступность только если пользователь не выключен через `availabilityToday.enabled` / `isAvailable`.
+- `firebase/custom_cloud_functions/video_sessions_shared.js`: `isSupportedSessionRole()` разрешает роли `student` и `native_speaker`. Поэтому переменные `tutorId`, `tutorData`, `availableTutors` в backend не означают только учителя.
+- Первичный filtered-подбор: `firebase/custom_cloud_functions/create_video_session.js` собирает кандидатов из `learningLanguage.code` и `language_instruction_NS.code`, затем для каждого supported-role кандидата проверяет `availableAfter`, `evaluateTutorAvailabilityWindow()` и `isInCall`. Из-за этого студент-кандидат сейчас может попасть или не попасть в подбор через `availabilityToday` / `isAvailable`.
+- Первичный filtered-подбор: `firebase/custom_cloud_functions/create_video_session.js` сохраняет итоговый список `availableTutors`, `tutorDetails` и `matchContext.candidateRoleCounts`; эти структуры уже учитывают student-candidates. При внедрении очереди студентов эти места нужно перевести на новый источник активного поиска, а teacher-candidates оставить на расписании доступности.
+- Direct creation path: `firebase/custom_cloud_functions/create_video_session.js` в ветке `directTutorId` / `directUserId` использует те же проверки `availableAfter`, `evaluateTutorAvailabilityWindow()` и `isInCall` после `isSupportedSessionRole()`. Сейчас direct target технически может быть студентом, если передан его id.
+- Teacher direct-call status: `firebase/custom_cloud_functions/direct_call_status.js` проверяет `availableAfter`, `evaluateTutorAvailabilityWindow()` и `isInCall`, но перед этим жестко требует requester `student` и target `native_speaker`. Это статус прямого звонка student -> teacher, не общий student-student подбор.
+- Lifecycle accept: `firebase/custom_cloud_functions/accept_call.js` повторно проверяет `evaluateTutorAvailabilityWindow()` и `isInCall` для responder перед подтверждением звонка. Это проверка уже выбранного responder; при student-student сценарии ее нельзя оставлять завязанной на legacy student availability.
+- Lifecycle decline/expiration: `firebase/custom_cloud_functions/decline_call.js` и `firebase/custom_cloud_functions/process_expired_notifications.js` не вызывают availability-check и не пересобирают пул по `availabilityToday` / `isAvailable`; они выбирают следующего responder из уже сохраненного `availableTutors`.
+- Lifecycle cleanup: `firebase/custom_cloud_functions/end_session.js` и `firebase/custom_cloud_functions/cleanup_expired_sessions.js` могут сбрасывать `isAvailable` / `availableAfter`, но это очистка состояния после звонка, не backend-подбор и не availability-check кандидатов.
+- `audit/scripts/backend_checks_runner.js`: проверки all-to-all matrix и teacher boost явно создают student-candidate с `availabilityToday.enabled = true`. All-to-all matrix ожидает student-candidate в `availableTutors` и `candidateRoleCounts.student`; teacher boost ожидает student peer в `availableTutors`.
+- `firebase/custom_cloud_functions/create_video_session_matrix.test.js`: закрепляет, что роль `student` поддерживается в all-to-all matrix, а teacher-priority сортировка смешивает teachers и students.
+- `firebase/custom_cloud_functions/availability.test.js`: закрепляет приоритет `availabilityToday.enabled` над `isAvailable` и fallback на `isAvailable` для legacy profiles.
+- `firebase/custom_cloud_functions/direct_call_status.test.js`: закрепляет teacher direct-call status, включая случай, где `availabilityToday.enabled = false` делает target unavailable.
+- `firebase/custom_cloud_functions/callable_entitlements.test.js`: закрепляет доступ к callable-функциям и отсутствие live availability fields в response; это contract-тест вокруг прямого звонка, а не проверка student matching.
+- `firebase/custom_cloud_functions/user_document_rules.test.js`: защищает live lifecycle fields `isAvailable` / `availableAfter`; `availabilityToday` сейчас не входит в `privateUserLifecycleFields`.
+- `firebase/custom_cloud_functions/public_user_profiles.test.js` и `test/regression/voip_call_surface_contracts_test.dart`: закрепляют, что `availabilityToday` и live availability fields не уходят в публичные профили и лишние клиентские поверхности. Менять эти контракты нужно только с учетом teacher flow.
 
 Критерий завершения: понятно, какие файлы и функции будут изменяться на backend и frontend.
 
