@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
+import 'package:small_talk/services/event_language_catalog.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -53,7 +56,11 @@ void main() {
   testWidgets('renders title and description fields in Russian',
       (tester) async {
     await tester.pumpWidget(
-      _buildTestApp(home: const EventCreateWidget()),
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -93,7 +100,9 @@ void main() {
     await tester.pumpWidget(
       _buildTestApp(
         locale: const Locale('en'),
-        home: const EventCreateWidget(),
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -111,13 +120,248 @@ void main() {
     );
   });
 
+  testWidgets('renders language selector from catalog in Russian',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventCreateWidget(
+            languageCatalogOverride: _languageCatalog,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventCreateLanguageLabelKey), findsOneWidget);
+      expect(find.text('Язык'), findsOneWidget);
+      expect(find.byKey(eventCreateLanguageSelectorKey), findsOneWidget);
+      expect(_languageSelectorText('Английский'), findsOneWidget);
+
+      final semantics = tester
+          .getSemantics(find.byKey(eventCreateLanguageSelectorSemanticsKey));
+      expect(semantics.flagsCollection.isButton, isTrue);
+      expect(semantics.flagsCollection.isEnabled, isTrue);
+      expect(semantics.label, contains('Язык события'));
+      expect(semantics.value, contains('Английский'));
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('renders language selector from catalog in English',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('en'),
+          home: EventCreateWidget(
+            languageCatalogOverride: _languageCatalog,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Language'), findsOneWidget);
+      expect(_languageSelectorText('English'), findsOneWidget);
+
+      final semantics = tester
+          .getSemantics(find.byKey(eventCreateLanguageSelectorSemanticsKey));
+      expect(semantics.flagsCollection.isButton, isTrue);
+      expect(semantics.flagsCollection.isEnabled, isTrue);
+      expect(semantics.label, contains('Event language'));
+      expect(semantics.value, contains('English'));
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('normalizes initial alternate language code', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialLanguageCode: ' ES-419 ',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_languageSelectorText('Испанский'), findsOneWidget);
+    expect(_languageSelectorText('Английский'), findsNothing);
+  });
+
+  testWidgets('opens language sheet and selects primary language code',
+      (tester) async {
+    final selectedCodes = <String>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onLanguageCodeChanged: selectedCodes.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateLanguageSelectorKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateLanguageSheetKey), findsOneWidget);
+    expect(find.text('Выберите язык'), findsOneWidget);
+    expect(find.byKey(eventCreateLanguageOptionKey('en')), findsOneWidget);
+    expect(find.byKey(eventCreateLanguageOptionKey('es')), findsOneWidget);
+
+    await tester.tap(find.byKey(eventCreateLanguageOptionKey('es')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateLanguageSheetKey), findsNothing);
+    expect(_languageSelectorText('Испанский'), findsOneWidget);
+    expect(selectedCodes, ['es']);
+  });
+
+  testWidgets('shows language loading state before catalog resolves',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    final catalogCompleter = Completer<String>();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: DefaultAssetBundle(
+            bundle: _PendingLanguageCatalogBundle(catalogCompleter.future),
+            child: const EventCreateWidget(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Загрузка языков...'), findsOneWidget);
+      final semantics = tester
+          .getSemantics(find.byKey(eventCreateLanguageSelectorSemanticsKey));
+      expect(semantics.flagsCollection.isButton, isTrue);
+      expect(semantics.flagsCollection.isEnabled, isFalse);
+
+      catalogCompleter.complete(_languageCatalogJson);
+      await tester.pumpAndSettle();
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('shows language loading error without crashing', (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: DefaultAssetBundle(
+            bundle: _ThrowingLanguageCatalogBundle(),
+            child: const EventCreateWidget(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Не удалось загрузить языки'), findsOneWidget);
+      final semantics = tester
+          .getSemantics(find.byKey(eventCreateLanguageSelectorSemanticsKey));
+      expect(semantics.flagsCollection.isButton, isTrue);
+      expect(semantics.flagsCollection.isEnabled, isFalse);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('reloads language catalog when DefaultAssetBundle changes',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: DefaultAssetBundle(
+          bundle: _StaticLanguageCatalogBundle(_languageCatalogJson),
+          child: const EventCreateWidget(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_languageSelectorText('Английский'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: DefaultAssetBundle(
+          bundle: _StaticLanguageCatalogBundle(_alternateLanguageCatalogJson),
+          child: const EventCreateWidget(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_languageSelectorText('Немецкий'), findsOneWidget);
+    expect(_languageSelectorText('Английский'), findsNothing);
+  });
+
+  testWidgets('uses latest bundle after language override is removed',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: DefaultAssetBundle(
+          bundle: _StaticLanguageCatalogBundle(_languageCatalogJson),
+          child: EventCreateWidget(
+            languageCatalogOverride: _languageCatalog,
+            initialLanguageCode: 'es',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_languageSelectorText('Испанский'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: DefaultAssetBundle(
+          bundle: _StaticLanguageCatalogBundle(_alternateLanguageCatalogJson),
+          child: EventCreateWidget(
+            languageCatalogOverride: _languageCatalog,
+            initialLanguageCode: 'es',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_languageSelectorText('Испанский'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: DefaultAssetBundle(
+          bundle: _StaticLanguageCatalogBundle(_alternateLanguageCatalogJson),
+          child: const EventCreateWidget(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_languageSelectorText('Немецкий'), findsOneWidget);
+    expect(_languageSelectorText('Испанский'), findsNothing);
+  });
+
   testWidgets('fields expose localized semantics labels and hints',
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
 
     try {
       await tester.pumpWidget(
-        _buildTestApp(home: const EventCreateWidget()),
+        _buildTestApp(
+          home: EventCreateWidget(
+            languageCatalogOverride: _languageCatalog,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -153,7 +397,9 @@ void main() {
       await tester.pumpWidget(
         _buildTestApp(
           locale: const Locale('en'),
-          home: const EventCreateWidget(),
+          home: EventCreateWidget(
+            languageCatalogOverride: _languageCatalog,
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -184,7 +430,11 @@ void main() {
 
   testWidgets('title submit moves focus to description field', (tester) async {
     await tester.pumpWidget(
-      _buildTestApp(home: const EventCreateWidget()),
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -205,7 +455,11 @@ void main() {
   testWidgets('keeps entered title and description across rebuilds',
       (tester) async {
     await tester.pumpWidget(
-      _buildTestApp(home: const EventCreateWidget()),
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -220,7 +474,11 @@ void main() {
     await tester.pump();
 
     await tester.pumpWidget(
-      _buildTestApp(home: const EventCreateWidget()),
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -238,7 +496,9 @@ void main() {
         GoRoute(
           name: EventCreateWidget.routeName,
           path: EventCreateWidget.routePath,
-          builder: (context, state) => const EventCreateWidget(),
+          builder: (context, state) => EventCreateWidget(
+            languageCatalogOverride: _languageCatalog,
+          ),
         ),
       ],
     );
@@ -263,7 +523,11 @@ void main() {
     await tester.pumpWidget(
       MediaQuery(
         data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
-        child: _buildTestApp(home: const EventCreateWidget()),
+        child: _buildTestApp(
+          home: EventCreateWidget(
+            languageCatalogOverride: _languageCatalog,
+          ),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -285,4 +549,115 @@ void main() {
     expect(source, isNot(contains('EventsRecord')));
     expect(source, isNot(contains('FirebaseFirestore')));
   });
+}
+
+final _languageCatalog = EventLanguageCatalog(
+  languages: [
+    EventLanguage(
+      code: 'en',
+      alternateCodes: const ['en', 'en-US'],
+      nameEn: 'English',
+      nameRu: 'Английский',
+      model: 'nova-3',
+      isPopular: true,
+      iconUrl: 'https://example.com/english.png',
+    ),
+    EventLanguage(
+      code: 'es',
+      alternateCodes: const ['es', 'es-419'],
+      nameEn: 'Spanish',
+      nameRu: 'Испанский',
+      model: 'nova-3',
+      isPopular: true,
+      iconUrl: 'https://example.com/spanish.png',
+    ),
+  ],
+);
+
+const _languageCatalogJson = '''
+[
+  {
+    "code": "en",
+    "alternateCodes": ["en", "en-US"],
+    "nameEn": "English",
+    "nameRu": "Английский",
+    "model": "nova-3",
+    "isPopular": true,
+    "ss": "https://example.com/english.png"
+  },
+  {
+    "code": "es",
+    "alternateCodes": ["es", "es-419"],
+    "nameEn": "Spanish",
+    "nameRu": "Испанский",
+    "model": "nova-3",
+    "isPopular": true,
+    "ss": "https://example.com/spanish.png"
+  }
+]
+''';
+
+const _alternateLanguageCatalogJson = '''
+[
+  {
+    "code": "de",
+    "alternateCodes": ["de", "de-DE"],
+    "nameEn": "German",
+    "nameRu": "Немецкий",
+    "model": "nova-3",
+    "isPopular": true,
+    "ss": "https://example.com/german.png"
+  }
+]
+''';
+
+Finder _languageSelectorText(String text) {
+  return find.descendant(
+    of: find.byKey(eventCreateLanguageSelectorKey),
+    matching: find.text(text),
+  );
+}
+
+class _StaticLanguageCatalogBundle extends CachingAssetBundle {
+  _StaticLanguageCatalogBundle(this.rawCatalog);
+
+  final String rawCatalog;
+
+  @override
+  Future<ByteData> load(String key) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<String> loadString(String key, {bool cache = true}) async {
+    return rawCatalog;
+  }
+}
+
+class _PendingLanguageCatalogBundle extends CachingAssetBundle {
+  _PendingLanguageCatalogBundle(this.rawCatalog);
+
+  final Future<String> rawCatalog;
+
+  @override
+  Future<ByteData> load(String key) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<String> loadString(String key, {bool cache = true}) {
+    return rawCatalog;
+  }
+}
+
+class _ThrowingLanguageCatalogBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<String> loadString(String key, {bool cache = true}) async {
+    throw FlutterError('Language catalog failed');
+  }
 }

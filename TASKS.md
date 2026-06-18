@@ -217,7 +217,7 @@ Date: 2026-06-14
 ## Phase 8: Create Event Screen
 
 - [x] Build form fields for title and description.
-- [ ] Add language selector backed by the existing app language catalog.
+- [x] Add language selector backed by the existing app language catalog.
 - [ ] Submit selected language as primary `languageCode`; backend persists denormalized `languageNameEn` and `languageNameRu` from the synchronized allowlist.
 - [ ] Add level/range selector.
 - [ ] Add date picker.
