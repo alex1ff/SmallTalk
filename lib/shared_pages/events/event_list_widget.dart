@@ -137,6 +137,10 @@ class _EventListWidgetState extends State<EventListWidget> {
                         selectedCity: selectedState?.selected,
                         hasOutdatedProfileCity:
                             selectedState?.hasOutdatedProfileCity ?? false,
+                        hasCountryHintOnly: selectedState != null &&
+                            selectedState.selected == null &&
+                            !selectedState.hasOutdatedProfileCity &&
+                            selectedState.countryCodeHint != null,
                         onPressed: widget.onCitySelectorPressed,
                       ),
                     ],
@@ -174,11 +178,13 @@ class _EventCitySelector extends StatelessWidget {
   const _EventCitySelector({
     required this.selectedCity,
     required this.hasOutdatedProfileCity,
+    required this.hasCountryHintOnly,
     required this.onPressed,
   });
 
   final EventSelectedCity? selectedCity;
   final bool hasOutdatedProfileCity;
+  final bool hasCountryHintOnly;
   final VoidCallback? onPressed;
 
   @override
@@ -245,15 +251,10 @@ class _EventCitySelector extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (hasOutdatedProfileCity) ...[
+                if (hasOutdatedProfileCity || hasCountryHintOnly) ...[
                   const SizedBox(height: ExpatlioDesign.space8),
                   Text(
-                    FFLocalizations.of(context).getVariableText(
-                      ruText:
-                          'Сохранённый город больше недоступен. Выберите актуальный город, чтобы увидеть события.',
-                      enText:
-                          'Your saved city is no longer available. Choose a current city to see events.',
-                    ),
+                    _helperText(context),
                     style: ExpatlioDesign.textStyle(
                       context,
                       color: ExpatlioDesign.muted,
@@ -287,5 +288,20 @@ class _EventCitySelector extends StatelessWidget {
     final isRu = FFLocalizations.of(context).languageCode == 'ru';
     final cityName = isRu ? city.cityNameRu : city.cityNameEn;
     return '$cityName · ${city.cityDisplayContext}';
+  }
+
+  String _helperText(BuildContext context) {
+    if (hasOutdatedProfileCity) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText:
+            'Сохранённый город больше недоступен. Выберите актуальный город, чтобы увидеть события.',
+        enText:
+            'Your saved city is no longer available. Choose a current city to see events.',
+      );
+    }
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Выберите город, чтобы увидеть события.',
+      enText: 'Choose a city to see events.',
+    );
   }
 }

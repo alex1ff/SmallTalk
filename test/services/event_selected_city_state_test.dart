@@ -80,6 +80,7 @@ void main() {
       expect(state.canLoadEvents, isFalse);
       expect(state.needsCitySelection, isTrue);
       expect(state.hasOutdatedProfileCity, isFalse);
+      expect(state.selectedFromProfile, isFalse);
     });
 
     test('does not unlock stale invalid or unknown profile cities', () {

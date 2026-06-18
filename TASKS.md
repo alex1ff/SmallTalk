@@ -177,7 +177,7 @@ Date: 2026-06-14
 - [x] Show profile city by default when available.
 - [x] Validate saved profile `countryCode + cityKey` against the canonical city catalog before using it as the default Events city.
 - [x] Route stale/unknown saved profile city to the missing/outdated city flow instead of unlocking the list.
-- [ ] If profile has only existing `Country_NS`, show missing-city flow and use country only to prioritize city suggestions.
+- [x] If profile has only existing `Country_NS`, show missing-city flow and use country only to prioritize city suggestions.
 - [ ] Show location prompt when profile city is missing.
 - [ ] Add city chips in missing-location flow: recent selections first, static popular cities second.
 - [ ] Add manual city selection action because chips are shortcuts, not the full city set.

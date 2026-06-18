@@ -159,6 +159,7 @@ void main() {
     currentUserDocument = _userFixture(
       uid: 'profile-city-user',
       data: {
+        'Country_NS': {'code': 'US'},
         'profileCity': _profileCityFixture(
           countryCode: 'RU',
           cityKey: 'moscow',
@@ -178,6 +179,7 @@ void main() {
     expect(find.textContaining('Stored city'), findsNothing);
     expect(find.textContaining('Stored context'), findsNothing);
     expect(find.text('Выберите город'), findsNothing);
+    expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
   });
 
   testWidgets('does not select a city from country-only profile data',
@@ -197,6 +199,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Выберите город'), findsOneWidget);
+    expect(find.text('Выберите город, чтобы увидеть события.'), findsOneWidget);
     expect(find.text('Выберите город заново'), findsNothing);
     expect(find.textContaining('Сохранённый город больше недоступен'),
         findsNothing);
@@ -212,6 +215,7 @@ void main() {
           cityKey: 'moscow',
           catalogVersion: 'old-version',
         ).toMap(),
+        'Country_NS': {'code': 'RU'},
       },
       {
         'profileCity': _profileCityFixture(
