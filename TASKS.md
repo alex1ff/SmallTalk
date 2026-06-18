@@ -202,7 +202,7 @@ Date: 2026-06-14
 - [x] Show level/range badge.
 - [x] Show language badge.
 - [x] Show title and full description.
-- [ ] Show organizer card.
+- [x] Show organizer card.
 - [ ] Add `Написать` action for organizer.
 - [ ] Show date, time, and place block.
 - [ ] Show participant list.

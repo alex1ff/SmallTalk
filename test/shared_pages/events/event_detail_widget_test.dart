@@ -378,6 +378,108 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('shows organizer card with label, avatar fallback, and subtitle',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          organizerDisplayName: '  Анастасия Иванова  ',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailOrganizerCardKey), findsOneWidget);
+    expect(find.byKey(eventDetailOrganizerAvatarKey), findsOneWidget);
+    expect(find.byKey(eventDetailOrganizerNameKey), findsOneWidget);
+    expect(find.text('Организатор'), findsOneWidget);
+    expect(find.text('Анастасия Иванова'), findsOneWidget);
+    expect(find.text('Ведущий встречи'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailOrganizerAvatarKey),
+        matching: find.text('АИ'),
+      ),
+      findsOneWidget,
+    );
+
+    final cardSemantics =
+        tester.widget<Semantics>(find.byKey(eventDetailOrganizerCardKey));
+    expect(
+      cardSemantics.properties.label,
+      'Организатор: Анастасия Иванова. Ведущий встречи',
+    );
+  });
+
+  testWidgets('hides organizer card when organizer name is blank',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          organizerDisplayName: '   ',
+          organizerPhotoUrl: 'https://example.com/avatar.png',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailOrganizerCardKey), findsNothing);
+    expect(find.byKey(eventDetailOrganizerAvatarKey), findsNothing);
+  });
+
+  testWidgets('organizer avatar falls back when image url is broken',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          organizerDisplayName: 'Marco',
+          organizerPhotoUrl: 'https://invalid.example/avatar.png',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailOrganizerCardKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailOrganizerAvatarKey),
+        matching: find.text('MA'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('organizer card fits narrow large-text layouts', (tester) async {
+    tester.view.physicalSize = const Size(640, 1200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+        child: _buildTestApp(
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            organizerDisplayName:
+                'Очень длинное имя организатора встречи для переноса',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailOrganizerCardKey), findsOneWidget);
+    expect(find.byKey(eventDetailOrganizerNameKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('language and level badges fit narrow large-text layouts',
       (tester) async {
     tester.view.physicalSize = const Size(640, 1200);

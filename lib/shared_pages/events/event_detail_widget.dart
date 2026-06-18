@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '/flutter_flow/flutter_flow_icon_button.dart';
@@ -20,6 +21,12 @@ const ValueKey<String> eventDetailTitleKey =
     ValueKey<String>('event_detail_title');
 const ValueKey<String> eventDetailDescriptionKey =
     ValueKey<String>('event_detail_description');
+const ValueKey<String> eventDetailOrganizerCardKey =
+    ValueKey<String>('event_detail_organizer_card');
+const ValueKey<String> eventDetailOrganizerAvatarKey =
+    ValueKey<String>('event_detail_organizer_avatar');
+const ValueKey<String> eventDetailOrganizerNameKey =
+    ValueKey<String>('event_detail_organizer_name');
 
 class EventDetailWidget extends StatelessWidget {
   const EventDetailWidget({
@@ -34,6 +41,8 @@ class EventDetailWidget extends StatelessWidget {
     this.languageCatalog,
     this.title,
     this.description,
+    this.organizerDisplayName,
+    this.organizerPhotoUrl,
   });
 
   final String eventId;
@@ -46,6 +55,8 @@ class EventDetailWidget extends StatelessWidget {
   final EventLanguageCatalog? languageCatalog;
   final String? title;
   final String? description;
+  final String? organizerDisplayName;
+  final String? organizerPhotoUrl;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
@@ -67,6 +78,7 @@ class EventDetailWidget extends StatelessWidget {
     final descriptionText = description?.trim() ?? '';
     final showEventIdFallback =
         (title?.trim().isEmpty ?? true) && descriptionText.isEmpty;
+    final organizerName = organizerDisplayName?.trim() ?? '';
 
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
@@ -146,6 +158,13 @@ class EventDetailWidget extends StatelessWidget {
                                 size: 14,
                                 weight: FontWeight.w500,
                               ),
+                            ),
+                          ],
+                          if (organizerName.isNotEmpty) ...[
+                            const SizedBox(height: ExpatlioDesign.space24),
+                            _EventDetailOrganizerCard(
+                              displayName: organizerName,
+                              photoUrl: organizerPhotoUrl,
                             ),
                           ],
                         ],
@@ -259,6 +278,172 @@ class _EventDetailInfoBadge extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _EventDetailOrganizerCard extends StatelessWidget {
+  const _EventDetailOrganizerCard({
+    required this.displayName,
+    required this.photoUrl,
+  });
+
+  final String displayName;
+  final String? photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: 'Организатор',
+      enText: 'Organizer',
+    );
+    final subtitle = FFLocalizations.of(context).getVariableText(
+      ruText: 'Ведущий встречи',
+      enText: 'Meeting host',
+    );
+    final semanticsLabel = '$label: $displayName. $subtitle';
+
+    return Semantics(
+      key: eventDetailOrganizerCardKey,
+      container: true,
+      label: semanticsLabel,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: ExpatlioDesign.cardPaddingDirectional,
+          decoration: ExpatlioDesign.cardDecoration(
+            borderColor: ExpatlioDesign.separator,
+          ),
+          child: Row(
+            children: [
+              _EventDetailOrganizerAvatar(
+                displayName: displayName,
+                photoUrl: photoUrl,
+              ),
+              const SizedBox(width: ExpatlioDesign.space12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.muted,
+                        size: 15,
+                        weight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: ExpatlioDesign.space8),
+                    Text(
+                      key: eventDetailOrganizerNameKey,
+                      displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        size: 19,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: ExpatlioDesign.space4),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.muted,
+                        size: 15,
+                        weight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventDetailOrganizerAvatar extends StatelessWidget {
+  const _EventDetailOrganizerAvatar({
+    required this.displayName,
+    required this.photoUrl,
+  });
+
+  static const double _dimension = 56;
+
+  final String displayName;
+  final String? photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedPhotoUrl = photoUrl?.trim() ?? '';
+
+    return Container(
+      key: eventDetailOrganizerAvatarKey,
+      width: _dimension,
+      height: _dimension,
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(shape: BoxShape.circle),
+      child: normalizedPhotoUrl.isEmpty
+          ? _fallback(context)
+          : CachedNetworkImage(
+              imageUrl: normalizedPhotoUrl,
+              fit: BoxFit.cover,
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
+              memCacheWidth: (_dimension *
+                      MediaQuery.devicePixelRatioOf(
+                        context,
+                      ))
+                  .round(),
+              memCacheHeight: (_dimension *
+                      MediaQuery.devicePixelRatioOf(
+                        context,
+                      ))
+                  .round(),
+              placeholder: (context, _) => _fallback(context),
+              errorWidget: (context, _, __) => _fallback(context),
+            ),
+    );
+  }
+
+  Widget _fallback(BuildContext context) {
+    return Container(
+      color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+      alignment: Alignment.center,
+      child: Text(
+        _initials(),
+        maxLines: 1,
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: ExpatlioDesign.primary,
+          size: 17,
+          weight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  String _initials() {
+    final normalizedName = displayName.trim();
+    if (normalizedName.isEmpty) {
+      return '?';
+    }
+    final words = normalizedName
+        .split(RegExp(r'\s+'))
+        .where((word) => word.trim().isNotEmpty)
+        .toList(growable: false);
+    if (words.length >= 2) {
+      return '${words[0].characters.first}${words[1].characters.first}'
+          .toUpperCase();
+    }
+    return normalizedName.characters.take(2).toString().toUpperCase();
   }
 }
 
