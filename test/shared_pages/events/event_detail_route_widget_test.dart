@@ -661,6 +661,52 @@ void main() {
     expect(find.text('Присоединиться'), findsNothing);
   });
 
+  testWidgets('leave race with event start shows clear error', (tester) async {
+    var leaveCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(
+                startsAt: DateTime.now().toUtc().add(
+                      const Duration(minutes: 5),
+                    ),
+              ),
+            ),
+          ),
+          joinEventInvoker: (_, __) async => _joinEventResponse(),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            throw _leaveDomainError(
+              'event_not_leaveable',
+              reason: 'event_started',
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(leaveCalls, 1);
+    expect(find.byKey(eventDetailLeaveErrorSnackBarKey), findsOneWidget);
+    expect(find.text('Событие уже началось, выйти из него нельзя.'),
+        findsOneWidget);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('Присоединиться'), findsNothing);
+  });
+
   testWidgets('snapshot occupancy replaces local join count after catch-up',
       (tester) async {
     final streamController = StreamController<DocumentSnapshot>();
@@ -1331,6 +1377,19 @@ Map<String, dynamic> _leaveEventResponse({
     };
 
 FirebaseFunctionsException _joinDomainError(
+  String domainCode, {
+  String? reason,
+}) =>
+    _TestFirebaseFunctionsException(
+      code: 'failed-precondition',
+      message: 'Raw backend message',
+      details: <String, dynamic>{
+        'domainCode': domainCode,
+        if (reason != null) 'reason': reason,
+      },
+    );
+
+FirebaseFunctionsException _leaveDomainError(
   String domainCode, {
   String? reason,
 }) =>

@@ -268,7 +268,7 @@ Date: 2026-06-14
 - [x] Update occupancy after leave.
 - [x] Remove chat access after leave.
 - [x] Show clear errors for full event, canceled event, past event, and duplicate join.
-- [ ] Show clear error if leave races with event start and backend blocks it.
+- [x] Show clear error if leave races with event start and backend blocks it.
 
 ## Phase 11: Event Group Chat
 

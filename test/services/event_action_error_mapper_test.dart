@@ -355,6 +355,33 @@ void main() {
         expect(enMessage, isNot(contains('Raw backend message')));
       }
     });
+
+    testWidgets('resolves clear leave race message without raw backend',
+        (tester) async {
+      final error = _domainError(
+        'event_not_leaveable',
+        details: <String, dynamic>{'reason': 'event_started'},
+      );
+
+      final ruMessage = await _localizedMessage(
+        tester,
+        locale: const Locale('ru'),
+        error: error,
+      );
+      final enMessage = await _localizedMessage(
+        tester,
+        locale: const Locale('en'),
+        error: error,
+      );
+
+      expect(ruMessage, 'Событие уже началось, выйти из него нельзя.');
+      expect(
+        enMessage,
+        'This event has already started, so you cannot leave it.',
+      );
+      expect(ruMessage, isNot(contains('Raw backend message')));
+      expect(enMessage, isNot(contains('Raw backend message')));
+    });
   });
 }
 
