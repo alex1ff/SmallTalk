@@ -60,6 +60,8 @@ const ValueKey<String> eventListParticipantAvatarStackKey =
     ValueKey<String>('event_list_participant_avatar_stack');
 const ValueKey<String> eventListParticipantOverflowKey =
     ValueKey<String>('event_list_participant_overflow');
+const ValueKey<String> eventListCardOccupancyKey =
+    ValueKey<String>('event_list_card_occupancy');
 
 class EventListParticipantViewModel {
   const EventListParticipantViewModel({
@@ -87,12 +89,14 @@ class EventListCardViewModel {
     this.languageNameRu,
     this.participants = const <EventListParticipantViewModel>[],
     this.participantsCount,
+    this.capacity,
   });
 
   final String organizerDisplayName;
   final String? organizerPhotoUrl;
   final List<EventListParticipantViewModel> participants;
   final int? participantsCount;
+  final int? capacity;
   final String languageCode;
   final String? languageNameEn;
   final String? languageNameRu;
@@ -106,6 +110,18 @@ class EventListCardViewModel {
 
   bool get hasParticipantPreview =>
       participants.isNotEmpty || (participantsCount ?? 0) > 0;
+
+  bool get hasOccupancy => capacity != null && capacity! > 0;
+
+  bool get hasFooterContent => hasParticipantPreview || hasOccupancy;
+
+  int get resolvedParticipantsCount {
+    final count = participantsCount;
+    if (count == null) {
+      return participants.length;
+    }
+    return count < participants.length ? participants.length : count;
+  }
 }
 
 class EventListWidget extends StatefulWidget {
@@ -512,7 +528,7 @@ class _EventCardShell extends StatelessWidget {
             card: card,
             languageCatalog: languageCatalog,
           ),
-          if (card == null || card!.hasParticipantPreview) ...[
+          if (card == null || card!.hasFooterContent) ...[
             const SizedBox(height: ExpatlioDesign.space16),
             _EventCardFooterShell(card: card),
           ],
@@ -1141,13 +1157,49 @@ class _EventCardFooterShell extends StatelessWidget {
     return Row(
       key: eventListCardFooterKey,
       children: [
-        _EventParticipantAvatarStack(
-          participants: event.participants,
-          participantsCount: event.participantsCount,
-        ),
+        if (event.hasParticipantPreview)
+          _EventParticipantAvatarStack(
+            participants: event.participants,
+            participantsCount: event.participantsCount,
+          ),
+        if (event.hasParticipantPreview && event.hasOccupancy)
+          const SizedBox(width: ExpatlioDesign.space12),
+        if (event.hasOccupancy)
+          Flexible(
+            child: Text(
+              key: eventListCardOccupancyKey,
+              _eventOccupancyLabel(
+                context,
+                participantsCount: event.resolvedParticipantsCount,
+                capacity: event.capacity!,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.muted,
+                size: 16,
+                weight: FontWeight.w500,
+              ),
+            ),
+          ),
       ],
     );
   }
+}
+
+String _eventOccupancyLabel(
+  BuildContext context, {
+  required int participantsCount,
+  required int capacity,
+}) {
+  final normalizedParticipantsCount =
+      participantsCount < 0 ? 0 : participantsCount;
+  final suffix = FFLocalizations.of(context).getVariableText(
+    ruText: 'мест',
+    enText: capacity == 1 ? 'spot' : 'spots',
+  );
+  return '$normalizedParticipantsCount/$capacity $suffix';
 }
 
 class _EventParticipantAvatarStack extends StatelessWidget {

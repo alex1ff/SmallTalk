@@ -756,6 +756,152 @@ void main() {
     expect(find.text('+2'), findsOneWidget);
   });
 
+  testWidgets('shows event occupancy beside participant avatars',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participantsCount: 5,
+              capacity: 10,
+              participants: const [
+                EventListParticipantViewModel(displayName: 'Marco Rossi'),
+                EventListParticipantViewModel(displayName: 'Лиза'),
+                EventListParticipantViewModel(displayName: 'Kenzhi'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardFooterKey), findsOneWidget);
+    expect(find.byKey(eventListParticipantAvatarStackKey), findsOneWidget);
+    expect(find.byKey(eventListCardOccupancyKey), findsOneWidget);
+    expect(find.text('5/10 мест'), findsOneWidget);
+  });
+
+  testWidgets('shows zero occupancy without empty avatar stack',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participantsCount: 0,
+              capacity: 10,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardFooterKey), findsOneWidget);
+    expect(find.byKey(eventListParticipantAvatarStackKey), findsNothing);
+    expect(find.byKey(eventListCardOccupancyKey), findsOneWidget);
+    expect(find.text('0/10 мест'), findsOneWidget);
+  });
+
+  testWidgets('occupancy uses max known participants and does not clamp',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participantsCount: 1,
+              capacity: 2,
+              participants: const [
+                EventListParticipantViewModel(displayName: 'Marco Rossi'),
+                EventListParticipantViewModel(displayName: 'Лиза'),
+                EventListParticipantViewModel(displayName: 'Kenzhi'),
+              ],
+            ),
+            _eventCardFixture(
+              participantsCount: 12,
+              capacity: 10,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('3/2 мест'), findsOneWidget);
+    expect(find.text('12/10 мест'), findsOneWidget);
+  });
+
+  testWidgets('hides occupancy when capacity is absent', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participants: const [
+                EventListParticipantViewModel(displayName: 'Marco Rossi'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListParticipantAvatarStackKey), findsOneWidget);
+    expect(find.byKey(eventListCardOccupancyKey), findsNothing);
+  });
+
   testWidgets('hides participant avatar stack for empty participants',
       (tester) async {
     await tester.pumpWidget(
@@ -1335,12 +1481,14 @@ EventListCardViewModel _eventCardFixture({
   List<EventListParticipantViewModel> participants =
       const <EventListParticipantViewModel>[],
   int? participantsCount,
+  int? capacity,
 }) {
   return EventListCardViewModel(
     organizerDisplayName: organizerDisplayName,
     organizerPhotoUrl: organizerPhotoUrl,
     participants: participants,
     participantsCount: participantsCount,
+    capacity: capacity,
     languageCode: languageCode,
     languageNameEn: languageNameEn,
     languageNameRu: languageNameRu,
