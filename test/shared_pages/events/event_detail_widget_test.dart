@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
+import 'package:small_talk/services/event_list_date_bounds.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
 
 const _supportedLocales = [
@@ -33,6 +35,8 @@ void main() {
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
+    initializeEventListTimeZones();
+    await initializeDateFormatting('ru');
     await FFLocalizations.initialize();
   });
 
@@ -378,6 +382,157 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('shows date, time, and place block in event timezone',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          startsAt: DateTime.utc(2035, 6, 15, 2, 30),
+          timeZoneId: 'America/New_York',
+          locationName: '  Starbucks, ул. Арбат, 5  ',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailDetailsBlockKey), findsOneWidget);
+    expect(find.byKey(eventDetailDateRowKey), findsOneWidget);
+    expect(find.byKey(eventDetailTimeRowKey), findsOneWidget);
+    expect(find.byKey(eventDetailPlaceRowKey), findsOneWidget);
+    expect(find.text('Дата'), findsOneWidget);
+    expect(find.text('Время'), findsOneWidget);
+    expect(find.text('Место'), findsOneWidget);
+    expect(find.text('14 июн.'), findsOneWidget);
+    expect(find.text('22:30'), findsOneWidget);
+    expect(find.text('Starbucks, ул. Арбат, 5'), findsOneWidget);
+    expect(
+      _semanticsLabelsInsideKey(tester, eventDetailDateRowKey),
+      contains('Дата: 14 июн.'),
+    );
+    expect(
+      _semanticsLabelsInsideKey(tester, eventDetailTimeRowKey),
+      contains('Время: 22:30'),
+    );
+    expect(
+      _semanticsLabelsInsideKey(tester, eventDetailPlaceRowKey),
+      contains('Место: Starbucks, ул. Арбат, 5'),
+    );
+  });
+
+  testWidgets('details block shows place fallback when date is present',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          startsAt: DateTime.utc(2035, 6, 15, 2, 30),
+          timeZoneId: 'America/New_York',
+          locationName: '   ',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailDetailsBlockKey), findsOneWidget);
+    expect(find.byKey(eventDetailPlaceRowKey), findsOneWidget);
+    expect(find.text('Место не указано'), findsOneWidget);
+    expect(
+      _semanticsLabelsInsideKey(tester, eventDetailPlaceRowKey),
+      contains('Место: Место не указано'),
+    );
+  });
+
+  testWidgets(
+      'details block preserves event timezone wall time across DST gaps',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          startsAt: DateTime.utc(2026, 3, 28, 21, 30),
+          timeZoneId: 'Asia/Yekaterinburg',
+          locationName: 'Лофт на Ленина',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailDetailsBlockKey), findsOneWidget);
+    expect(find.text('29 мар.'), findsOneWidget);
+    expect(find.text('02:30'), findsOneWidget);
+    expect(
+      _semanticsLabelsInsideKey(tester, eventDetailTimeRowKey),
+      contains('Время: 02:30'),
+    );
+  });
+
+  testWidgets('details block handles invalid time zone without crashing',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          startsAt: DateTime.utc(2035, 6, 15, 2, 30),
+          timeZoneId: 'Unknown/City',
+          locationName: 'Starbucks',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailDetailsBlockKey), findsOneWidget);
+    expect(find.byKey(eventDetailDateRowKey), findsOneWidget);
+    expect(find.byKey(eventDetailTimeRowKey), findsOneWidget);
+    expect(find.byKey(eventDetailPlaceRowKey), findsOneWidget);
+    expect(find.text('Starbucks'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('hides details block when date and place are absent',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(eventId: 'event-123'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailDetailsBlockKey), findsNothing);
+    expect(find.byKey(eventDetailDateRowKey), findsNothing);
+    expect(find.byKey(eventDetailTimeRowKey), findsNothing);
+    expect(find.byKey(eventDetailPlaceRowKey), findsNothing);
+  });
+
+  testWidgets('details block fits narrow large-text layouts', (tester) async {
+    tester.view.physicalSize = const Size(640, 1200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+        child: _buildTestApp(
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            startsAt: DateTime.utc(2035, 6, 15, 2, 30),
+            timeZoneId: 'America/New_York',
+            locationName:
+                'Очень длинное название места встречи с адресом и ориентиром',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailDetailsBlockKey), findsOneWidget);
+    expect(find.byKey(eventDetailPlaceRowKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows organizer card with label, avatar fallback, and subtitle',
       (tester) async {
     await tester.pumpWidget(
@@ -664,3 +819,20 @@ Finder _detailBodyTitle() => find.descendant(
       of: find.byType(ListView),
       matching: find.byKey(eventDetailTitleKey),
     );
+
+List<String> _semanticsLabelsInsideKey(
+  WidgetTester tester,
+  Key key,
+) {
+  return tester
+      .widgetList<Semantics>(
+        find.descendant(
+          of: find.byKey(key),
+          matching: find.byType(Semantics),
+        ),
+      )
+      .map((semantics) => semantics.properties.label)
+      .whereType<String>()
+      .where((label) => label.isNotEmpty)
+      .toList(growable: false);
+}

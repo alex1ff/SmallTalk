@@ -1,9 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:timezone/timezone.dart' as timezone;
 
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/event_list_date_bounds.dart';
 import '/services/event_level_helper.dart';
 import '/services/event_language_catalog.dart';
 
@@ -29,6 +31,14 @@ const ValueKey<String> eventDetailOrganizerNameKey =
     ValueKey<String>('event_detail_organizer_name');
 const ValueKey<String> eventDetailOrganizerMessageButtonKey =
     ValueKey<String>('event_detail_organizer_message_button');
+const ValueKey<String> eventDetailDetailsBlockKey =
+    ValueKey<String>('event_detail_details_block');
+const ValueKey<String> eventDetailDateRowKey =
+    ValueKey<String>('event_detail_date_row');
+const ValueKey<String> eventDetailTimeRowKey =
+    ValueKey<String>('event_detail_time_row');
+const ValueKey<String> eventDetailPlaceRowKey =
+    ValueKey<String>('event_detail_place_row');
 
 class EventDetailWidget extends StatelessWidget {
   const EventDetailWidget({
@@ -46,6 +56,9 @@ class EventDetailWidget extends StatelessWidget {
     this.organizerDisplayName,
     this.organizerPhotoUrl,
     this.onOrganizerMessagePressed,
+    this.startsAt,
+    this.timeZoneId,
+    this.locationName,
   });
 
   final String eventId;
@@ -61,6 +74,9 @@ class EventDetailWidget extends StatelessWidget {
   final String? organizerDisplayName;
   final String? organizerPhotoUrl;
   final VoidCallback? onOrganizerMessagePressed;
+  final DateTime? startsAt;
+  final String? timeZoneId;
+  final String? locationName;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
@@ -83,6 +99,8 @@ class EventDetailWidget extends StatelessWidget {
     final showEventIdFallback =
         (title?.trim().isEmpty ?? true) && descriptionText.isEmpty;
     final organizerName = organizerDisplayName?.trim() ?? '';
+    final locationLabel = locationName?.trim() ?? '';
+    final shouldShowDetails = startsAt != null || locationLabel.isNotEmpty;
 
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
@@ -162,6 +180,14 @@ class EventDetailWidget extends StatelessWidget {
                                 size: 14,
                                 weight: FontWeight.w500,
                               ),
+                            ),
+                          ],
+                          if (shouldShowDetails) ...[
+                            const SizedBox(height: ExpatlioDesign.space24),
+                            _EventDetailDetailsBlock(
+                              startsAt: startsAt,
+                              timeZoneId: timeZoneId,
+                              locationName: locationLabel,
                             ),
                           ],
                           if (organizerName.isNotEmpty) ...[
@@ -281,6 +307,157 @@ class _EventDetailInfoBadge extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _EventDetailDetailsBlock extends StatelessWidget {
+  const _EventDetailDetailsBlock({
+    required this.startsAt,
+    required this.timeZoneId,
+    required this.locationName,
+  });
+
+  final DateTime? startsAt;
+  final String? timeZoneId;
+  final String locationName;
+
+  @override
+  Widget build(BuildContext context) {
+    final localStartsAt = startsAt == null
+        ? null
+        : _eventDetailLocalDateTime(
+            startsAt: startsAt!,
+            timeZoneId: timeZoneId,
+          );
+    final locale = FFLocalizations.of(context).languageCode;
+    final placeValue = locationName.isEmpty
+        ? FFLocalizations.of(context).getVariableText(
+            ruText: 'Место не указано',
+            enText: 'Place not specified',
+          )
+        : locationName;
+    final shouldShowPlace = localStartsAt != null || locationName.isNotEmpty;
+    final rows = <Widget>[
+      if (localStartsAt != null) ...[
+        _EventDetailDetailsRow(
+          key: eventDetailDateRowKey,
+          icon: Icons.calendar_month_outlined,
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Дата',
+            enText: 'Date',
+          ),
+          value: _eventDetailDateLabel(
+            context,
+            eventLocalDateTime: localStartsAt,
+            timeZoneId: timeZoneId,
+          ),
+        ),
+        const SizedBox(height: ExpatlioDesign.space20),
+        _EventDetailDetailsRow(
+          key: eventDetailTimeRowKey,
+          icon: Icons.schedule,
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Время',
+            enText: 'Time',
+          ),
+          value: dateTimeFormat('Hm', localStartsAt, locale: locale),
+        ),
+      ],
+      if (shouldShowPlace) ...[
+        if (localStartsAt != null)
+          const SizedBox(height: ExpatlioDesign.space20),
+        _EventDetailDetailsRow(
+          key: eventDetailPlaceRowKey,
+          icon: Icons.location_on_outlined,
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Место',
+            enText: 'Place',
+          ),
+          value: placeValue,
+        ),
+      ],
+    ];
+
+    return Container(
+      key: eventDetailDetailsBlockKey,
+      padding: ExpatlioDesign.cardPaddingDirectional,
+      decoration: ExpatlioDesign.cardDecoration(
+        borderColor: ExpatlioDesign.separator,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: rows,
+      ),
+    );
+  }
+}
+
+class _EventDetailDetailsRow extends StatelessWidget {
+  const _EventDetailDetailsRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '$label: $value',
+      child: ExcludeSemantics(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              alignment: Alignment.center,
+              decoration: ExpatlioDesign.softPrimaryDecoration(
+                radius: ExpatlioDesign.radiusMedium,
+              ),
+              child: Icon(
+                icon,
+                color: ExpatlioDesign.primary,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: ExpatlioDesign.space16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ExpatlioDesign.textStyle(
+                      context,
+                      color: ExpatlioDesign.muted,
+                      size: 16,
+                      weight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: ExpatlioDesign.space4),
+                  Text(
+                    value,
+                    softWrap: true,
+                    style: ExpatlioDesign.textStyle(
+                      context,
+                      size: 18,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -652,6 +829,85 @@ class _EventDetailTopBar extends StatelessWidget {
     );
   }
 }
+
+DateTime _eventDetailLocalDateTime({
+  required DateTime startsAt,
+  required String? timeZoneId,
+}) {
+  final utcStartsAt = startsAt.isUtc ? startsAt : startsAt.toUtc();
+  try {
+    final local = timezone.TZDateTime.from(
+      utcStartsAt,
+      eventListTimeZoneLocation(timeZoneId ?? ''),
+    );
+    return DateTime.utc(
+      local.year,
+      local.month,
+      local.day,
+      local.hour,
+      local.minute,
+      local.second,
+      local.millisecond,
+      local.microsecond,
+    );
+  } on ArgumentError {
+    return startsAt.toLocal();
+  }
+}
+
+String _eventDetailDateLabel(
+  BuildContext context, {
+  required DateTime eventLocalDateTime,
+  required String? timeZoneId,
+}) {
+  final locale = FFLocalizations.of(context).languageCode;
+  final eventLocalDate = DateTime(
+    eventLocalDateTime.year,
+    eventLocalDateTime.month,
+    eventLocalDateTime.day,
+  );
+  final nowUtc = DateTime.now().toUtc();
+  final today = _safeEventDetailCityLocalDate(
+    timeZoneId: timeZoneId,
+    utcInstant: nowUtc,
+  );
+  if (today != null && _sameCalendarDate(eventLocalDate, today)) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Сегодня',
+      enText: 'Today',
+    );
+  }
+
+  final tomorrow =
+      today == null ? null : DateTime(today.year, today.month, today.day + 1);
+  if (tomorrow != null && _sameCalendarDate(eventLocalDate, tomorrow)) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Завтра',
+      enText: 'Tomorrow',
+    );
+  }
+
+  return dateTimeFormat('d MMM', eventLocalDateTime, locale: locale);
+}
+
+DateTime? _safeEventDetailCityLocalDate({
+  required String? timeZoneId,
+  required DateTime utcInstant,
+}) {
+  try {
+    return eventListCityLocalDate(
+      timeZoneId: timeZoneId ?? '',
+      utcInstant: utcInstant,
+    );
+  } on ArgumentError {
+    return null;
+  }
+}
+
+bool _sameCalendarDate(DateTime left, DateTime right) =>
+    left.year == right.year &&
+    left.month == right.month &&
+    left.day == right.day;
 
 String _eventDetailTitleLabel(BuildContext context, String? title) {
   final normalizedTitle = title?.trim() ?? '';
