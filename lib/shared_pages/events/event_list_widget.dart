@@ -40,6 +40,8 @@ const ValueKey<String> eventListCardActionsKey =
     ValueKey<String>('event_list_card_actions');
 const ValueKey<String> eventListCardPrimaryCtaKey =
     ValueKey<String>('event_list_card_primary_cta');
+const ValueKey<String> eventListCardChatCtaKey =
+    ValueKey<String>('event_list_card_chat_cta');
 const ValueKey<String> eventListCardOrganizerAvatarKey =
     ValueKey<String>('event_list_card_organizer_avatar');
 const ValueKey<String> eventListCardOrganizerNameKey =
@@ -83,6 +85,11 @@ enum EventListJoinCtaState {
   past,
 }
 
+enum EventListChatCtaState {
+  enabled,
+  participantOnly,
+}
+
 class EventListCardViewModel {
   const EventListCardViewModel({
     required this.organizerDisplayName,
@@ -101,6 +108,7 @@ class EventListCardViewModel {
     this.participantsCount,
     this.capacity,
     this.joinCtaState = EventListJoinCtaState.join,
+    this.chatCtaState = EventListChatCtaState.participantOnly,
   });
 
   final String organizerDisplayName;
@@ -109,6 +117,7 @@ class EventListCardViewModel {
   final int? participantsCount;
   final int? capacity;
   final EventListJoinCtaState joinCtaState;
+  final EventListChatCtaState chatCtaState;
   final String languageCode;
   final String? languageNameEn;
   final String? languageNameRu;
@@ -1428,7 +1437,7 @@ class _EventCardActionsShell extends StatelessWidget {
           child: _EventCardPrimaryCta(state: event.joinCtaState),
         ),
         const SizedBox(width: ExpatlioDesign.space12),
-        const _EventCardPillPlaceholder(width: 96, height: 48),
+        _EventCardChatCta(state: event.chatCtaState),
       ],
     );
   }
@@ -1478,6 +1487,70 @@ class _EventCardPrimaryCta extends StatelessWidget {
             size: 16,
             weight: FontWeight.w700,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventCardChatCta extends StatelessWidget {
+  const _EventCardChatCta({
+    required this.state,
+  });
+
+  final EventListChatCtaState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = state == EventListChatCtaState.enabled;
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: 'Чат',
+      enText: 'Chat',
+    );
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: enabled
+          ? label
+          : FFLocalizations.of(context).getVariableText(
+              ruText: 'Чат доступен только участникам',
+              enText: 'Chat is available to participants only',
+            ),
+      child: Container(
+        key: eventListCardChatCtaKey,
+        height: 48,
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: ExpatlioDesign.space12,
+        ),
+        decoration: BoxDecoration(
+          color: enabled
+              ? ExpatlioDesign.secondarySystemBackground
+              : ExpatlioDesign.secondarySystemBackground.withValues(
+                  alpha: 0.62,
+                ),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              enabled ? Icons.chat_bubble_outline : Icons.lock_outline,
+              color: enabled ? ExpatlioDesign.text : ExpatlioDesign.disabled,
+              size: 20,
+            ),
+            const SizedBox(width: ExpatlioDesign.space8),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: enabled ? ExpatlioDesign.text : ExpatlioDesign.disabled,
+                size: 16,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
     );

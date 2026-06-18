@@ -333,6 +333,8 @@ void main() {
     expect(find.byKey(eventListCardMetaKey), findsOneWidget);
     expect(find.byKey(eventListCardFooterKey), findsOneWidget);
     expect(find.byKey(eventListCardActionsKey), findsOneWidget);
+    expect(find.byKey(eventListCardChatCtaKey), findsNothing);
+    expect(find.text('Чат'), findsNothing);
     expect(
       _widgetIndex(tester, card),
       greaterThan(_widgetIndex(tester, find.byKey(eventListCitySelectorKey))),
@@ -974,6 +976,72 @@ void main() {
     }
   });
 
+  testWidgets('shows enabled chat CTA for participants', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(chatCtaState: EventListChatCtaState.enabled),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardChatCtaKey), findsOneWidget);
+    expect(find.text('Чат'), findsOneWidget);
+    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+    final semantics = tester.getSemantics(find.byKey(eventListCardChatCtaKey));
+    expect(semantics.flagsCollection.isButton, isTrue);
+    expect(semantics.flagsCollection.isEnabled, isTrue);
+  });
+
+  testWidgets('shows disabled chat CTA for non-participants by default',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardChatCtaKey), findsOneWidget);
+    expect(find.text('Чат'), findsOneWidget);
+    expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+    final semantics = tester.getSemantics(find.byKey(eventListCardChatCtaKey));
+    expect(semantics.flagsCollection.isButton, isTrue);
+    expect(semantics.flagsCollection.isEnabled, isFalse);
+    expect(semantics.label, contains('Чат доступен только участникам'));
+  });
+
   testWidgets('hides participant avatar stack for empty participants',
       (tester) async {
     await tester.pumpWidget(
@@ -1555,6 +1623,7 @@ EventListCardViewModel _eventCardFixture({
   int? participantsCount,
   int? capacity,
   EventListJoinCtaState joinCtaState = EventListJoinCtaState.join,
+  EventListChatCtaState chatCtaState = EventListChatCtaState.participantOnly,
 }) {
   return EventListCardViewModel(
     organizerDisplayName: organizerDisplayName,
@@ -1563,6 +1632,7 @@ EventListCardViewModel _eventCardFixture({
     participantsCount: participantsCount,
     capacity: capacity,
     joinCtaState: joinCtaState,
+    chatCtaState: chatCtaState,
     languageCode: languageCode,
     languageNameEn: languageNameEn,
     languageNameRu: languageNameRu,
