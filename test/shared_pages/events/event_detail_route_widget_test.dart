@@ -308,6 +308,44 @@ void main() {
     expect(find.text('Присоединяемся...'), findsNothing);
   });
 
+  testWidgets('in-flight join blocks repeated primary taps', (tester) async {
+    final completer = Completer<Object?>();
+    var joinCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(),
+            ),
+          ),
+          joinEventInvoker: (_, __) {
+            joinCalls += 1;
+            return completer.future;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pump();
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pump();
+
+    expect(joinCalls, 1);
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+
+    completer.complete(_joinEventResponse());
+    await tester.pumpAndSettle();
+
+    expect(joinCalls, 1);
+    expect(find.text('Присоединиться'), findsOneWidget);
+  });
+
   testWidgets('join failure clears loading state without changing CTA',
       (tester) async {
     var joinCalls = 0;

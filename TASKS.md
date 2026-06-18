@@ -259,7 +259,7 @@ Date: 2026-06-14
 ## Phase 10: Join And Leave UX
 
 - [x] Add optimistic or loading state for join button.
-- [ ] Disable repeated taps during join.
+- [x] Disable repeated taps during join.
 - [ ] Show success state after join.
 - [ ] Update occupancy after join.
 - [ ] Add leave action for active participants.
