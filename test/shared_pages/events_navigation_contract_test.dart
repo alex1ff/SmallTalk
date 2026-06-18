@@ -354,7 +354,8 @@ void main() {
     expect(create, isNot(contains('ProfileCitySaveService')));
   });
 
-  test('event edit screen reuses create form in edit mode before Phase 9 save',
+  test(
+      'event edit screen loads detail data but keeps save disabled before Phase 9',
       () {
     final edit = File('lib/shared_pages/events/event_edit_widget.dart')
         .readAsStringSync();
@@ -362,10 +363,11 @@ void main() {
     expect(edit, contains('final String eventId;'));
     expect(edit, contains('EventCreateWidget('));
     expect(edit, contains('formMode: EventFormMode.edit'));
+    expect(edit, contains('EventDetailRepository'));
+    expect(edit, contains('watchEventDetail'));
+    expect(edit, contains('EventsRecord'));
     expect(edit, isNot(contains('EventActionsRepository')));
     expect(edit, isNot(contains('EventEditableFields')));
-    expect(edit, isNot(contains('EventDetailRepository')));
-    expect(edit, isNot(contains('watchEventDetail')));
     expect(edit, isNot(contains('.editEvent(')));
   });
 
@@ -430,24 +432,9 @@ void main() {
     expect(find.byType(EventEditWidget), findsOneWidget);
     expect(tester.widget<EventEditWidget>(find.byType(EventEditWidget)).eventId,
         'event-123');
-    expect(find.byType(EventCreateWidget), findsOneWidget);
+    expect(find.byType(EventCreateWidget), findsNothing);
     expect(find.byType(EventDetailWidget), findsNothing);
     expect(find.text('Edit event'), findsOneWidget);
-    expect(find.text('Save'), findsOneWidget);
-    expect(find.byKey(eventCreateTitleFieldKey), findsOneWidget);
-    expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
-    expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
-    expect(find.byKey(eventCreateCitySelectorKey), findsOneWidget);
-    expect(find.byKey(eventCreateLocationFieldKey), findsOneWidget);
-    expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
-    expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
-    expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
-    expect(
-      tester
-          .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
-          .onPressed,
-      isNull,
-    );
     expect(find.byType(NavBarWidget), findsNothing);
   });
 

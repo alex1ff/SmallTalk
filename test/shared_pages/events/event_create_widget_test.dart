@@ -59,9 +59,17 @@ Widget _buildRouterTestApp(
 }
 
 GoRouter _buildEventCreateRouter({
+  EventFormMode formMode = EventFormMode.create,
+  String? initialTitle,
+  String? initialDescription,
+  String? initialLanguageCode,
+  String? initialLevelMin,
+  String? initialLevelMax,
   EventSelectedCity? initialSelectedCity,
+  String? initialLocationName,
   DateTime? initialDate,
   TimeOfDay? initialTime,
+  int? initialCapacity,
   DateTime Function()? currentUtcProvider,
   EventCallableInvoker? createEventInvoker,
   String Function()? createRequestIdGenerator,
@@ -79,11 +87,19 @@ GoRouter _buildEventCreateRouter({
         name: EventCreateWidget.routeName,
         path: EventCreateWidget.routePath,
         builder: (context, state) => EventCreateWidget(
+          formMode: formMode,
           languageCatalogOverride: _languageCatalog,
           cityCatalogOverride: _cityCatalog,
+          initialTitle: initialTitle,
+          initialDescription: initialDescription,
+          initialLanguageCode: initialLanguageCode,
+          initialLevelMin: initialLevelMin,
+          initialLevelMax: initialLevelMax,
           initialSelectedCity: initialSelectedCity,
+          initialLocationName: initialLocationName,
           initialDate: initialDate,
           initialTime: initialTime,
+          initialCapacity: initialCapacity,
           currentUtcProvider: currentUtcProvider,
           createEventInvoker: createEventInvoker,
           createRequestIdGenerator: createRequestIdGenerator,
@@ -3215,6 +3231,73 @@ void main() {
           .onPressed,
       isNull,
     );
+  });
+
+  testWidgets('clean prefilled edit mode leaves without discard confirmation',
+      (tester) async {
+    final router = _buildEventCreateRouter(
+      formMode: EventFormMode.edit,
+      initialTitle: 'Conversation club',
+      initialDescription: 'Casual practice in a cafe.',
+      initialLanguageCode: 'en',
+      initialLevelMin: 'A2',
+      initialLevelMax: 'B2',
+      initialSelectedCity: const EventSelectedCity(
+        city: _moscowCity,
+        source: EventCitySelectionSource.static,
+      ),
+      initialLocationName: 'Starbucks, ул. Арбат, 5',
+      initialDate: DateTime(2026, 6, 18),
+      initialTime: const TimeOfDay(hour: 18, minute: 30),
+      initialCapacity: 8,
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/');
+    expect(find.byKey(eventCreateDiscardDialogKey), findsNothing);
+    expect(find.text('Events home'), findsOneWidget);
+  });
+
+  testWidgets('dirty prefilled edit mode shows edit discard copy',
+      (tester) async {
+    final router = _buildEventCreateRouter(
+      formMode: EventFormMode.edit,
+      initialTitle: 'Conversation club',
+      initialDescription: 'Casual practice in a cafe.',
+      initialLanguageCode: 'en',
+      initialLevelMin: 'A2',
+      initialLevelMax: 'B2',
+      initialSelectedCity: const EventSelectedCity(
+        city: _moscowCity,
+        source: EventCitySelectionSource.static,
+      ),
+      initialLocationName: 'Starbucks, ул. Арбат, 5',
+      initialDate: DateTime(2026, 6, 18),
+      initialTime: const TimeOfDay(hour: 18, minute: 30),
+      initialCapacity: 8,
+    );
+
+    await tester.pumpWidget(
+      _buildRouterTestApp(
+        router,
+        locale: const Locale('en'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventCreateTitleFieldKey), 'Edited club');
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), EventCreateWidget.routePath);
+    expect(find.byKey(eventCreateDiscardDialogKey), findsOneWidget);
+    expect(find.text('Leave edit form?'), findsOneWidget);
+    expect(find.text('Entered changes will be lost.'), findsOneWidget);
   });
 
   testWidgets('dirty edit mode shows edit discard copy', (tester) async {

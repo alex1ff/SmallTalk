@@ -338,6 +338,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   EventActionFailure? _submitFailure;
   String? _activeCreateRequestId;
   String? _activeCreatePayloadSignature;
+  _EventFormDirtySnapshot? _editDirtyBaseline;
 
   @override
   void initState() {
@@ -359,6 +360,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _capacityTextController.text =
         _eventCreateCapacityText(widget.initialCapacity);
     _capacityTextController.addListener(_handleCapacityTextChanged);
+    _resetEditDirtyBaseline();
   }
 
   @override
@@ -384,6 +386,18 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   @override
   void didUpdateWidget(covariant EventCreateWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final shouldResetEditDirtyBaseline =
+        oldWidget.formMode != widget.formMode ||
+            oldWidget.initialTitle != widget.initialTitle ||
+            oldWidget.initialDescription != widget.initialDescription ||
+            oldWidget.initialLanguageCode != widget.initialLanguageCode ||
+            oldWidget.initialLevelMin != widget.initialLevelMin ||
+            oldWidget.initialLevelMax != widget.initialLevelMax ||
+            oldWidget.initialSelectedCity != widget.initialSelectedCity ||
+            oldWidget.initialLocationName != widget.initialLocationName ||
+            oldWidget.initialDate != widget.initialDate ||
+            oldWidget.initialTime != widget.initialTime ||
+            oldWidget.initialCapacity != widget.initialCapacity;
     if (oldWidget.languageCatalogOverride != widget.languageCatalogOverride) {
       _languageCatalogFuture = _loadLanguageCatalog(
         bundle: _languageCatalogBundle ?? DefaultAssetBundle.of(context),
@@ -432,6 +446,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     if (oldWidget.initialCapacity != widget.initialCapacity) {
       _capacityTextController.text =
           _eventCreateCapacityText(widget.initialCapacity);
+    }
+    if (shouldResetEditDirtyBaseline) {
+      _resetEditDirtyBaseline();
     }
   }
 
@@ -489,6 +506,13 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   }
 
   bool get _isEventFormDirty {
+    if (widget.formMode == EventFormMode.edit) {
+      final baseline = _editDirtyBaseline;
+      if (baseline == null) {
+        return false;
+      }
+      return baseline != _EventFormDirtySnapshot.fromState(this);
+    }
     if (_titleTextController.text.trim().isNotEmpty ||
         _descriptionTextController.text.trim().isNotEmpty ||
         _normalizeEventCreateLocationName(_locationTextController.text)
@@ -524,6 +548,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       return true;
     }
     return false;
+  }
+
+  void _resetEditDirtyBaseline() {
+    _editDirtyBaseline = widget.formMode == EventFormMode.edit
+        ? _EventFormDirtySnapshot.fromState(this)
+        : null;
   }
 
   Future<void> _handleLeavePressed() async {
@@ -1186,6 +1216,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     if (catalog == null) {
       return null;
     }
+    if (widget.formMode == EventFormMode.edit) {
+      return const EventSelectedCityState(
+        profileStatus: EventCityResolutionStatus.missingProfileCity,
+        countryCodeHint: null,
+      );
+    }
     return resolveEventSelectedCityState(
       user: currentUserDocument,
       catalog: catalog,
@@ -1193,6 +1229,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   }
 
   bool get _isWaitingForCurrentUserDocument =>
+      widget.formMode == EventFormMode.create &&
       _selectedCity == null &&
       currentUserUid.isNotEmpty &&
       currentUserDocument == null;
@@ -1763,6 +1800,73 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       ),
     );
   }
+}
+
+class _EventFormDirtySnapshot {
+  const _EventFormDirtySnapshot({
+    required this.title,
+    required this.description,
+    required this.languageCode,
+    required this.levelKey,
+    required this.cityIdentity,
+    required this.locationName,
+    required this.dateKey,
+    required this.timeKey,
+    required this.capacityText,
+  });
+
+  factory _EventFormDirtySnapshot.fromState(_EventCreateWidgetState state) {
+    final city = state._selectedCity?.city;
+    return _EventFormDirtySnapshot(
+      title: state._titleTextController.text,
+      description: state._descriptionTextController.text,
+      languageCode: state._selectedLanguageCode?.trim().toLowerCase() ?? '',
+      levelKey: _eventCreateLevelDraftKey(state._resolvedSelectedLevelRange()),
+      cityIdentity: city == null ? '' : city.identity,
+      locationName:
+          _normalizeEventCreateLocationName(state._locationTextController.text),
+      dateKey: _eventCreateDateDraftKey(state._selectedDate),
+      timeKey: _eventCreateTimeDraftKey(state._selectedTime),
+      capacityText: state._capacityTextController.text.trim(),
+    );
+  }
+
+  final String title;
+  final String description;
+  final String languageCode;
+  final String levelKey;
+  final String cityIdentity;
+  final String locationName;
+  final String dateKey;
+  final String timeKey;
+  final String capacityText;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _EventFormDirtySnapshot &&
+        other.title == title &&
+        other.description == description &&
+        other.languageCode == languageCode &&
+        other.levelKey == levelKey &&
+        other.cityIdentity == cityIdentity &&
+        other.locationName == locationName &&
+        other.dateKey == dateKey &&
+        other.timeKey == timeKey &&
+        other.capacityText == capacityText;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        title,
+        description,
+        languageCode,
+        levelKey,
+        cityIdentity,
+        locationName,
+        dateKey,
+        timeKey,
+        capacityText,
+      );
 }
 
 class _EventCreateTextField extends StatelessWidget {
