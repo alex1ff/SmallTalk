@@ -7,7 +7,7 @@
 - [x] Найти все места, где студентский интерфейс использует `availabilityToday`.
 - [x] Найти все backend-проверки, где студенты участвуют в подборе через `availabilityToday` или `isAvailable`.
 - [x] Проверить текущий сценарий создания звонка: `createVideoSession`, `acceptCall`, `declineCall`, `processExpiredNotifications`.
-- [ ] Проверить текущую VoIP-логику: входящий звонок, accept, decline, timeout, навигация.
+- [x] Проверить текущую VoIP-логику: входящий звонок, accept, decline, timeout, навигация.
 - [ ] Зафиксировать текущие статусы `videoSessions` и поля, которые уже используются в приложении.
 - [ ] Определить, какие существующие поля можно переиспользовать, а какие нужно добавить для новой очереди поиска.
 
@@ -66,6 +66,32 @@
 - Основные race-защиты: notification создается в той же транзакции, где назначается `currentTutorId`; `createVideoSession` и `processExpiredNotifications` отправляют push только после fresh validation; `acceptCall` повторно проверяет session перед финальным update; `processExpiredNotifications` отклоняет stale notification при конфликте `currentTutorId` и `recipientId`.
 - Основные слабые места для новой очереди: следующий responder берется из старого `availableTutors` без повторной availability/queue re-check; `declineCall` отправляет push следующему responder без отдельного fresh reread перед push; requester не получает server-side `isInCall/currentSessionId` в `acceptCall`; `processExpiredNotifications` не учитывает `acceptingTutorId/acceptingAt` во время accept-lock окна; direct `createVideoSession` технически может принять student target, тогда как `getDirectCallStatus` рассчитан на student -> teacher.
 - Контрактные и source-contract тесты, которые закрепляют части текущего flow: `firebase/custom_cloud_functions/call_notification_recovery.test.js`, `firebase/custom_cloud_functions/daily_room_lifecycle_contracts.test.js`, `firebase/custom_cloud_functions/session_policy_live_surfaces.test.js`, `firebase/custom_cloud_functions/credential_issuance_contracts.test.js`, `firebase/custom_cloud_functions/create_video_session_matrix.test.js`, `firebase/custom_cloud_functions/direct_call_status.test.js`, `firebase/custom_cloud_functions/callable_entitlements.test.js`, `test/regression/voip_call_surface_contracts_test.dart`, `audit/scripts/backend_checks_runner.js`. Они не полностью покрывают accept lock, decline handoff validation, все `triedTutors` transitions и expiration races.
+
+Результат аудита текущей VoIP-логики:
+
+- `lib/services/voip_service.dart`: `VoIPService` инициализируется после авторизации, регистрирует FCM/PushKit токены через callable `registerVoipToken`, слушает foreground FCM, CallKit events и Firestore `notifications` текущего пользователя.
+- `lib/main.dart`: background FCM handler обрабатывает payload `type = incoming_call` и вызывает `showIncomingCall`; инициализация и остановка VoIP привязаны к auth state. При `resumed` приложение обновляет auth/presence, но не делает отдельный VoIP recovery.
+- `ios/Runner/AppDelegate.swift`: closed-state iOS обрабатывается через PushKit. Payload приводит `sessionId` к детерминированному `callKitId`, показывает native CallKit UI и завершает PushKit completion с fallback-таймером. Дальнейшие accept/decline события обрабатываются Dart-слоем через `FlutterCallkitIncoming.onEvent` после старта приложения и auth-init.
+- `android/app/src/main/AndroidManifest.xml` и `android/app/src/main/kotlin/com/example/my_project/MainActivity.kt`: на Android нет отдельной native `ConnectionService` или кастомной обработки accept/recovery из `MainActivity`; background/closed-state сценарий опирается на FCM background handler, `flutter_callkit_incoming` и последующую Dart-обработку.
+- `showIncomingCall`: показывает системный входящий звонок на 45 секунд, сохраняет соответствие `sessionId -> callKitId`, передает в `extra` `sessionId`, `callKitId`, `callerId`, room data и token data, если они есть в payload.
+- Stale/duplicate защита CallKit: accept допускает deterministic cold-start event без заранее известного in-memory session state, затем применяет dedupe/stale-check по `callKitId`; decline, timeout и end строже отсекают устаревшие, protected и неизвестные session events.
+- Firestore fallback входящего звонка: query читает `notifications` только по `recipientId = currentUser`; `type = incoming_call`, `status = sent`, неистекший `expiresAt` и наличие `sessionId` проверяются локально. Затем listener валидирует, что `videoSessions/{sessionId}` находится в `searching` и `currentTutorId = currentUser`.
+- Backend payload для responder стороны из `create_video_session.js`, `decline_call.js` и `process_expired_notifications.js` содержит `type`, `sessionId`, `callerName`, `callerId`, `callerPhoto`, `language` без room data. Backend payload для requester стороны из `accept_call.js` содержит `roomUrl`, `roomName` и поле `meetingToken`, но сейчас отправляет `meetingToken = ""`; fresh token добирается через `getSessionTokens`. Background FCM handler в `lib/main.dart` прокидывает в `extraData` `roomUrl` и `meetingToken`, но не `roomName`.
+- `accept` на клиенте определяет роль по payload: если есть `roomUrl` или `meetingToken`, пользователь считается requester side, клиент не вызывает `acceptCall`, сохраняет room data, открывает `/videoCallPage` и fire-and-forget пишет `studentNavigationTriggered = true`.
+- `accept` responder side выполняет stale/duplicate guards, проверяет camera/mic permissions, вызывает callable `acceptCall`, ждет ответ `status = connected`, сохраняет room data, открывает `/videoCallPage` и fire-and-forget пишет `tutorNavigationTriggered = true`.
+- Если camera/mic permission отклонен на CallKit accept, клиент завершает текущий системный звонок и чистит локальное состояние, но не вызывает `declineCall` или `endSession`; backend завершает попытку через notification timeout и scheduled cleanup.
+- `decline` выполняет stale/protected/unknown guards, очищает локальное состояние CallKit и вызывает callable `declineCall({ sessionId })`.
+- `timeout` выполняет stale/protected/unknown guards и очищает только локальное состояние CallKit. Backend timeout обрабатывается отдельно scheduled-функцией `processExpiredNotifications`.
+- `actionCallEnded` вызывает `endSession` только если есть локально известный room url или fallback-проверка подтверждает, что текущий пользователь совпадает с `studentId` или `tutorId` активной/connecting/connected session. `participantIds` в этой fallback-проверке не используется.
+- Навигация из VoIP идет прямым переходом на `/videoCallPage` с `videoDocRef`, `roomUrl`, `roomName`, `meetingToken`. Если navigator context еще не готов, session кладется в `_pendingSessionId` и повторяется до 10 раз с задержкой 100 мс.
+- Дополнительное восстановление навигации есть в `lib/custom_code/actions/check_active_session_and_navigate.dart`: action ищет session по `studentNavigationTriggered` или `tutorNavigationTriggered`, сбрасывает флаг и открывает `VideoCallPage`.
+- `lib/custom_code/actions/start_student_session_listener.dart` содержит legacy action для прослушивания конкретной session и навигации студента при `active`/`connected`, `studentNavigationTriggered` или наличии room data; прямых call-site в `lib/` для него не найдено.
+- Экран ожидания `lib/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart` слушает session и открывает звонок только когда есть `dailyRoomUrl` и session уже `active`/`connected` или выставлен `studentNavigationTriggered`; перед навигацией получает fresh token через `getSessionTokens`.
+- `lib/shared_pages/video_call_page/video_call_page_widget.dart` использует переданные room/token без немедленного повторного получения, если они есть; иначе получает credentials через `getSessionTokens`. Это важно для token strategy: requester push сейчас приходит с `meetingToken = ""`, а рабочий token получается через `getSessionTokens`. При terminal session status страница завершает системный CallKit UI и ведет пользователя на summary.
+- VoIP tokens хранятся в приватной коллекции через `firebase/custom_cloud_functions/voip_tokens.js`; если push/VoIP token отсутствует, backend не доставит системный входящий звонок, а Firestore listener сработает только при открытом приложении.
+- Legacy naming в VoIP flow: `studentId` означает requester, `currentTutorId` / `tutorId` означает responder. Для новой очереди эти названия нужно заменить или закрыть нейтральными полями `requesterId`, `responderId`, `currentResponderId`, не ломая существующие rules и клиентские fallback-и.
+- Проблемные места для новой очереди: роль accept-ветки сейчас выводится из наличия room data, а не из явного сценария; payload не содержит `scenario`, `requesterId`, `responderId`, `requesterRole`, `responderRole`, `navRole`, `acceptMode`, `callKitId`, `notificationId` / `searchRequestId`, `expiresAt`, `tokenStrategy`; client timeout и backend expiration живут отдельно; requester не лочится server-side через `isInCall/currentSessionId` при accept; `studentNavigationTriggered` и `tutorNavigationTriggered` завязаны на старые роли.
+- Контрактные тесты, которые закрепляют VoIP-поведение: `test/regression/voip_call_surface_contracts_test.dart`, `firebase/custom_cloud_functions/call_notification_recovery.test.js`, `firebase/custom_cloud_functions/voip_token_privacy_contracts.test.js`, `firebase/custom_cloud_functions/callable_entitlements.test.js`, `firebase/custom_cloud_functions/credential_issuance_contracts.test.js`, `firebase/custom_cloud_functions/mark_session_connected.test.js`, `firebase/custom_cloud_functions/session_policy_live_surfaces.test.js`, `firebase/custom_cloud_functions/daily_room_lifecycle_contracts.test.js`, `firebase/custom_cloud_functions/create_video_session_matrix.test.js`, `firebase/custom_cloud_functions/direct_call_status.test.js`.
 
 Критерий завершения: понятно, какие файлы и функции будут изменяться на backend и frontend.
 
@@ -199,14 +225,17 @@
 
 - [ ] Проверить отправку VoIP/CallKit/ConnectionService для учителей.
 - [ ] Добавить отправку VoIP/CallKit/ConnectionService для фонового студента.
-- [ ] Передавать в payload `sessionId`, имя собеседника, роль сценария и данные для навигации.
+- [ ] Передавать в payload `sessionId`, имя собеседника, `scenario`, `requesterId`, `responderId`, `requesterRole`, `responderRole`, `navRole`, `acceptMode`, `callKitId`, `notificationId` или `searchRequestId`, `expiresAt`, `roomUrl`, `roomName` и `tokenStrategy`.
+- [ ] Синхронизировать payload parity между foreground FCM, background FCM, iOS PushKit и Android: backend `roomName` не должен теряться в background handler.
 - [ ] Обработать accept из foreground.
 - [ ] Обработать accept из background.
 - [ ] Обработать accept из закрытого приложения.
+- [ ] Обработать accept/decline, если CallKit event пришел до готовности auth, router или `VoIPService.initialize()`.
 - [ ] Обработать decline.
 - [ ] Обработать timeout 45 секунд.
 - [ ] Проверить, что после accept приложение открывает страницу звонка.
 - [ ] Проверить, что после decline/timeout backend отменяет пару или продолжает подбор.
+- [ ] Добавить тесты на closed-state/auth/router recovery для accept и decline.
 
 Критерий завершения: входящий звонок работает в foreground, background, locked screen и closed-state сценариях.
 
@@ -231,6 +260,7 @@
 - [ ] При активном поиске открывать состояние поиска.
 - [ ] При `pending_confirmation` или `connecting` открывать экран соединения.
 - [ ] При `active` открывать страницу звонка.
+- [ ] Восстанавливать звонок по `participantIds` и нейтральным полям `requesterId` / `responderId` / `currentResponderId`, а не только по legacy `studentId` / `tutorId` и `studentNavigationTriggered` / `tutorNavigationTriggered`.
 - [ ] При истекшем поиске показывать обычное состояние без активного поиска.
 - [ ] При завершенном или отмененном звонке не возвращать пользователя в очередь автоматически.
 
