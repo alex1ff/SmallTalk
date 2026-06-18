@@ -1576,6 +1576,77 @@ void main() {
     expect(submitCount, 1);
   });
 
+  testWidgets('submit is disabled while create request is in flight',
+      (tester) async {
+    final createCompleter = Completer<Object?>();
+    final requestIds = <String>[];
+    final generatedRequestIds = <String>[];
+    var nextId = 0;
+    var submitCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createRequestIdGenerator: () {
+            final id = _requestId(nextId);
+            nextId += 1;
+            generatedRequestIds.add(id);
+            return id;
+          },
+          createEventInvoker: (_, payload) {
+            submitCount += 1;
+            requestIds.add(payload['createRequestId']! as String);
+            return createCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pump();
+
+    expect(submitCount, 1);
+    expect(requestIds, <String>[_requestId(0)]);
+    expect(generatedRequestIds, <String>[_requestId(0)]);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
+          .onPressed,
+      isNull,
+    );
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pump();
+
+    expect(submitCount, 1);
+    expect(requestIds, <String>[_requestId(0)]);
+    expect(generatedRequestIds, <String>[_requestId(0)]);
+
+    createCompleter.complete(_createEventResponse());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
+          .onPressed,
+      isNotNull,
+    );
+  });
+
   testWidgets('daily creation limit error is shown on submit in Russian',
       (tester) async {
     final failures = <EventActionFailure?>[];
