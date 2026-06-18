@@ -70,6 +70,9 @@ class EventDetailParticipantViewModel {
 enum EventDetailJoinCtaState {
   join,
   joined,
+  full,
+  canceled,
+  past,
 }
 
 class EventDetailWidget extends StatelessWidget {
@@ -1080,18 +1083,30 @@ class _EventDetailPrimaryCta extends StatelessWidget {
       EventDetailJoinCtaState.join ||
       EventDetailJoinCtaState.joined =>
         onPressed != null,
+      EventDetailJoinCtaState.full ||
+      EventDetailJoinCtaState.canceled ||
+      EventDetailJoinCtaState.past =>
+        false,
     };
     final backgroundColor = enabled
         ? switch (state) {
             EventDetailJoinCtaState.join => ExpatlioDesign.primary,
             EventDetailJoinCtaState.joined =>
               _eventDetailDestructiveCtaBackground,
+            EventDetailJoinCtaState.full ||
+            EventDetailJoinCtaState.canceled ||
+            EventDetailJoinCtaState.past =>
+              ExpatlioDesign.secondarySystemBackground,
           }
         : ExpatlioDesign.secondarySystemBackground;
     final textColor = enabled
         ? switch (state) {
             EventDetailJoinCtaState.join => Colors.white,
             EventDetailJoinCtaState.joined => Colors.white,
+            EventDetailJoinCtaState.full ||
+            EventDetailJoinCtaState.canceled ||
+            EventDetailJoinCtaState.past =>
+              ExpatlioDesign.muted,
           }
         : ExpatlioDesign.muted;
 
@@ -1437,6 +1452,12 @@ String _eventDetailJoinCtaLabel(
         ruText: 'Покинуть',
         enText: 'Leave',
       ),
+    EventDetailJoinCtaState.full => FFLocalizations.of(context)
+        .getVariableText(ruText: 'Мест нет', enText: 'Full'),
+    EventDetailJoinCtaState.canceled => FFLocalizations.of(context)
+        .getVariableText(ruText: 'Отменено', enText: 'Canceled'),
+    EventDetailJoinCtaState.past => FFLocalizations.of(context)
+        .getVariableText(ruText: 'Уже началось', enText: 'Already started'),
   };
 }
 
@@ -1450,6 +1471,14 @@ String _eventDetailJoinCtaSemanticsLabel(
       FFLocalizations.of(context).getVariableText(
         ruText: 'Вы участвуете. Покинуть событие',
         enText: 'Joined. Leave event',
+      ),
+    EventDetailJoinCtaState.full => FFLocalizations.of(context)
+        .getVariableText(ruText: 'Мест нет', enText: 'Event is full'),
+    EventDetailJoinCtaState.canceled => FFLocalizations.of(context)
+        .getVariableText(ruText: 'Событие отменено', enText: 'Event canceled'),
+    EventDetailJoinCtaState.past => FFLocalizations.of(context).getVariableText(
+        ruText: 'Событие уже началось',
+        enText: 'Event already started',
       ),
   };
 }

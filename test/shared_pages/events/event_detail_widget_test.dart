@@ -368,6 +368,134 @@ void main() {
     }
   });
 
+  testWidgets('full canceled and past CTA states stay disabled',
+      (tester) async {
+    final cases =
+        <({EventDetailJoinCtaState state, String label, String reason})>[
+      (
+        state: EventDetailJoinCtaState.full,
+        label: 'Мест нет',
+        reason: 'Мест нет',
+      ),
+      (
+        state: EventDetailJoinCtaState.canceled,
+        label: 'Отменено',
+        reason: 'Событие отменено',
+      ),
+      (
+        state: EventDetailJoinCtaState.past,
+        label: 'Уже началось',
+        reason: 'Событие уже началось',
+      ),
+    ];
+
+    for (final testCase in cases) {
+      final semanticsHandle = tester.ensureSemantics();
+      var primaryTapCount = 0;
+
+      try {
+        await tester.pumpWidget(
+          _buildTestApp(
+            home: EventDetailWidget(
+              eventId: 'event-123',
+              joinCtaState: testCase.state,
+              onPrimaryCtaPressed: () => primaryTapCount += 1,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text(testCase.label), findsOneWidget);
+        expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+
+        final primarySemantics =
+            tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+        expect(primarySemantics.flagsCollection.isButton, isTrue);
+        expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+        expect(primarySemantics.label, contains(testCase.reason));
+
+        await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+        await tester.pumpAndSettle();
+
+        expect(primaryTapCount, 0);
+      } finally {
+        semanticsHandle.dispose();
+      }
+    }
+  });
+
+  testWidgets('full canceled and past CTA states show English labels',
+      (tester) async {
+    final cases =
+        <({EventDetailJoinCtaState state, String label, String reason})>[
+      (
+        state: EventDetailJoinCtaState.full,
+        label: 'Full',
+        reason: 'Event is full',
+      ),
+      (
+        state: EventDetailJoinCtaState.canceled,
+        label: 'Canceled',
+        reason: 'Event canceled',
+      ),
+      (
+        state: EventDetailJoinCtaState.past,
+        label: 'Already started',
+        reason: 'Event already started',
+      ),
+    ];
+
+    for (final testCase in cases) {
+      final semanticsHandle = tester.ensureSemantics();
+
+      try {
+        await tester.pumpWidget(
+          _buildTestApp(
+            locale: const Locale('en'),
+            home: EventDetailWidget(
+              eventId: 'event-123',
+              joinCtaState: testCase.state,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text(testCase.label), findsOneWidget);
+        final primarySemantics =
+            tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+        expect(primarySemantics.flagsCollection.isButton, isTrue);
+        expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+        expect(primarySemantics.label, contains(testCase.reason));
+      } finally {
+        semanticsHandle.dispose();
+      }
+    }
+  });
+
+  testWidgets('disabled primary states keep chat callback independent',
+      (tester) async {
+    var chatTapCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          joinCtaState: EventDetailJoinCtaState.full,
+          onChatPressed: () => chatTapCount += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Мест нет'), findsOneWidget);
+    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailChatCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(chatTapCount, 1);
+  });
+
   testWidgets('bottom action bar stays outside scrollable content',
       (tester) async {
     var joinTapCount = 0;
@@ -426,7 +554,7 @@ void main() {
         child: _buildTestApp(
           home: const EventDetailWidget(
             eventId: 'event-123',
-            joinCtaState: EventDetailJoinCtaState.joined,
+            joinCtaState: EventDetailJoinCtaState.past,
           ),
         ),
       ),
@@ -436,7 +564,7 @@ void main() {
     expect(find.byKey(eventDetailBottomActionBarKey), findsOneWidget);
     expect(find.byKey(eventDetailPrimaryCtaKey), findsOneWidget);
     expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
-    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('Уже началось'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
