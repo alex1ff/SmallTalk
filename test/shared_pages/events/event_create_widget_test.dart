@@ -1581,6 +1581,54 @@ void main() {
     expect(failure.createRequestConflict?.dayKeyUtc, '2026-06-14');
   });
 
+  testWidgets('create request conflict discards id until next manual submit',
+      (tester) async {
+    final requestIds = <String>[];
+    final generatedRequestIds = <String>[];
+    var nextId = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createRequestIdGenerator: () {
+            final id = _requestId(nextId);
+            nextId += 1;
+            generatedRequestIds.add(id);
+            return id;
+          },
+          createEventInvoker: (_, payload) async {
+            requestIds.add(payload['createRequestId']! as String);
+            throw _createRequestConflictError();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateSubmitErrorKey), findsOneWidget);
+    expect(requestIds, <String>[_requestId(0)]);
+    expect(generatedRequestIds, <String>[_requestId(0)]);
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(requestIds, <String>[_requestId(0), _requestId(1)]);
+    expect(generatedRequestIds, <String>[_requestId(0), _requestId(1)]);
+  });
+
   testWidgets('retries the same create payload with one createRequestId',
       (tester) async {
     final requestIds = <String>[];

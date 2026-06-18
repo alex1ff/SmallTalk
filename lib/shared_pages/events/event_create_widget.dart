@@ -1117,6 +1117,10 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       }
       final failure = mapEventActionFailure(error);
       setState(() {
+        if (failure.kind == EventActionFailureKind.createRequestConflict) {
+          _activeCreateRequestId = null;
+          _activeCreatePayloadSignature = null;
+        }
         _submitFailure = failure;
       });
       widget.onSubmitFailureChanged?.call(failure);
