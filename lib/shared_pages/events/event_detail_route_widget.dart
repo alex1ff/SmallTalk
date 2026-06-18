@@ -28,12 +28,14 @@ class EventDetailRouteWidget extends StatefulWidget {
     this.snapshotStream,
     this.cancelEventInvoker,
     this.joinEventInvoker,
+    this.leaveEventInvoker,
   });
 
   final String eventId;
   final EventDetailSnapshotStream? snapshotStream;
   final EventCallableInvoker? cancelEventInvoker;
   final EventCallableInvoker? joinEventInvoker;
+  final EventCallableInvoker? leaveEventInvoker;
 
   @override
   State<EventDetailRouteWidget> createState() => _EventDetailRouteWidgetState();
@@ -43,10 +45,11 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   late Stream<EventsRecord?> _eventStream;
   bool _isCanceling = false;
   bool _isJoining = false;
+  bool _isLeaving = false;
   String? _locallyCanceledEventId;
   String? _locallyJoinedEventId;
   int? _locallyJoinedParticipantsCount;
-  int _joinRequestGeneration = 0;
+  int _participantActionGeneration = 0;
 
   @override
   void initState() {
@@ -63,7 +66,8 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _locallyCanceledEventId = null;
       _locallyJoinedEventId = null;
       _locallyJoinedParticipantsCount = null;
-      _joinRequestGeneration += 1;
+      _participantActionGeneration += 1;
+      _isLeaving = false;
       _isJoining = false;
     }
   }
@@ -112,12 +116,12 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   }
 
   Future<void> _handleJoin() async {
-    if (_isJoining) {
+    if (_isJoining || _isLeaving) {
       return;
     }
 
-    final requestGeneration = _joinRequestGeneration + 1;
-    _joinRequestGeneration = requestGeneration;
+    final requestGeneration = _participantActionGeneration + 1;
+    _participantActionGeneration = requestGeneration;
 
     setState(() {
       _isJoining = true;
@@ -127,7 +131,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         eventId: widget.eventId,
         invoker: widget.joinEventInvoker,
       );
-      if (!mounted || requestGeneration != _joinRequestGeneration) {
+      if (!mounted || requestGeneration != _participantActionGeneration) {
         return;
       }
       setState(() {
@@ -137,9 +141,45 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     } catch (_) {
       // Clear loading only. User-facing join errors are handled in a later task.
     } finally {
-      if (mounted && requestGeneration == _joinRequestGeneration) {
+      if (mounted && requestGeneration == _participantActionGeneration) {
         setState(() {
           _isJoining = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleLeave() async {
+    if (_isJoining || _isLeaving) {
+      return;
+    }
+
+    final requestGeneration = _participantActionGeneration + 1;
+    _participantActionGeneration = requestGeneration;
+
+    setState(() {
+      _isLeaving = true;
+    });
+    try {
+      final result = await EventActionsRepository.leaveEvent(
+        eventId: widget.eventId,
+        invoker: widget.leaveEventInvoker,
+      );
+      if (!mounted || requestGeneration != _participantActionGeneration) {
+        return;
+      }
+      setState(() {
+        if (_locallyJoinedEventId == result.eventId) {
+          _locallyJoinedEventId = null;
+          _locallyJoinedParticipantsCount = null;
+        }
+      });
+    } catch (_) {
+      // Clear loading only. User-facing leave errors are handled in a later task.
+    } finally {
+      if (mounted && requestGeneration == _participantActionGeneration) {
+        setState(() {
+          _isLeaving = false;
         });
       }
     }
@@ -203,6 +243,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           isJoining: _isJoining,
         );
         final canJoin = joinCtaState == EventDetailJoinCtaState.join;
+        final canLeave = joinCtaState == EventDetailJoinCtaState.joined;
         _clearLocalParticipantsCountIfSnapshotCaughtUp(
           eventId: eventId,
           snapshotParticipantsCount: snapshotParticipantsCount,
@@ -236,8 +277,13 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           participantsCount: participantsCount,
           capacity: event.hasCapacity() ? event.capacity : null,
           joinCtaState: joinCtaState,
-          onPrimaryCtaPressed:
-              isActive && canJoin && !_isJoining ? _handleJoin : null,
+          onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
+              ? canJoin
+                  ? _handleJoin
+                  : canLeave
+                      ? _handleLeave
+                      : null
+              : null,
         );
       },
     );

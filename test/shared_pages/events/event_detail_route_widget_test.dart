@@ -385,11 +385,145 @@ void main() {
           tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
       final chatSemantics =
           tester.getSemantics(find.byKey(eventDetailChatCtaKey));
-      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.flagsCollection.isEnabled, isTrue);
       expect(chatSemantics.flagsCollection.isEnabled, isFalse);
     } finally {
       semanticsHandle.dispose();
     }
+  });
+
+  testWidgets('joined participant can leave through primary CTA',
+      (tester) async {
+    var joinCalls = 0;
+    var leaveCalls = 0;
+    String? functionName;
+    Map<String, dynamic>? payload;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: ' event-1 ',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(),
+            ),
+          ),
+          joinEventInvoker: (_, __) async {
+            joinCalls += 1;
+            return _joinEventResponse();
+          },
+          leaveEventInvoker: (calledFunctionName, calledPayload) async {
+            leaveCalls += 1;
+            functionName = calledFunctionName;
+            payload = calledPayload;
+            return _leaveEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(joinCalls, 1);
+    expect(find.text('Покинуть'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(leaveCalls, 1);
+    expect(functionName, leaveEventFunctionName);
+    expect(payload, <String, dynamic>{'eventId': 'event-1'});
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Покинуть'), findsNothing);
+  });
+
+  testWidgets('in-flight leave blocks repeated primary taps', (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    final leaveCompleter = Completer<Object?>();
+    var leaveCalls = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(),
+              ),
+            ),
+            joinEventInvoker: (_, __) async => _joinEventResponse(),
+            leaveEventInvoker: (_, __) {
+              leaveCalls += 1;
+              return leaveCompleter.future;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pump();
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pump();
+
+      expect(leaveCalls, 1);
+      expect(find.text('Покинуть'), findsOneWidget);
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+
+      leaveCompleter.complete(_leaveEventResponse());
+      await tester.pumpAndSettle();
+
+      expect(leaveCalls, 1);
+      expect(find.text('Присоединиться'), findsOneWidget);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('leave failure clears loading state without changing CTA',
+      (tester) async {
+    var leaveCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(),
+            ),
+          ),
+          joinEventInvoker: (_, __) async => _joinEventResponse(),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            throw StateError('leave failed');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(leaveCalls, 1);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('Присоединиться'), findsNothing);
   });
 
   testWidgets('snapshot occupancy replaces local join count after catch-up',
@@ -557,6 +691,79 @@ void main() {
     expect(find.text('6/10 мест'), findsOneWidget);
   });
 
+  testWidgets('event change ignores stale in-flight leave completion',
+      (tester) async {
+    final leaveCompleter = Completer<Object?>();
+    var leaveCalls = 0;
+    var secondJoinCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(title: 'First event'),
+            ),
+          ),
+          joinEventInvoker: (_, __) async =>
+              _joinEventResponse(eventId: 'event-1'),
+          leaveEventInvoker: (_, __) {
+            leaveCalls += 1;
+            return leaveCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Покинуть'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pump();
+
+    expect(leaveCalls, 1);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-2',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(title: 'Second event'),
+            ),
+          ),
+          joinEventInvoker: (_, __) async {
+            secondJoinCalls += 1;
+            return _joinEventResponse(eventId: 'event-2');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Second event'), findsOneWidget);
+    expect(find.text('Присоединиться'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(secondJoinCalls, 1);
+    expect(find.text('Покинуть'), findsOneWidget);
+
+    leaveCompleter.complete(_leaveEventResponse(eventId: 'event-1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Second event'), findsOneWidget);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('Присоединиться'), findsNothing);
+  });
+
   testWidgets('successful cancellation keeps organizer on detail route',
       (tester) async {
     var cancelCalls = 0;
@@ -647,6 +854,17 @@ Map<String, dynamic> _joinEventResponse({
       'participantStatus': 'active',
       'participantsCount': participantsCount,
       'joinedAt': '2026-06-14T12:01:00.000Z',
+    };
+
+Map<String, dynamic> _leaveEventResponse({
+  String eventId = 'event-1',
+  int participantsCount = 5,
+}) =>
+    <String, dynamic>{
+      'eventId': eventId,
+      'participantStatus': 'left',
+      'participantsCount': participantsCount,
+      'leftAt': '2026-06-14T12:02:00.000Z',
     };
 
 // ignore: subtype_of_sealed_class

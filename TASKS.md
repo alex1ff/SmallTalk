@@ -262,7 +262,7 @@ Date: 2026-06-14
 - [x] Disable repeated taps during join.
 - [x] Show success state after join.
 - [x] Update occupancy after join.
-- [ ] Add leave action for active participants.
+- [x] Add leave action for active participants.
 - [ ] Add leave confirmation.
 - [ ] Hide or disable leave action at or after `startsAt`.
 - [ ] Update occupancy after leave.
