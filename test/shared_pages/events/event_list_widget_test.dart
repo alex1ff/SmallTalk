@@ -13,6 +13,7 @@ import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/shared_pages/events/event_list_widget.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
+import 'package:small_talk/services/event_city_chip_source.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
 
@@ -100,6 +101,7 @@ void main() {
   tearDown(() {
     currentUser = null;
     currentUserDocument = null;
+    SharedPreferences.setMockInitialValues({});
   });
 
   testWidgets('shows the events screen header title', (tester) async {
@@ -185,6 +187,8 @@ void main() {
     expect(find.textContaining('Stored context'), findsNothing);
     expect(find.text('Выберите город'), findsNothing);
     expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
+    expect(find.byKey(const ValueKey<String>('event_city_chip_RU_moscow')),
+        findsNothing);
   });
 
   testWidgets('does not select a city from country-only profile data',
@@ -208,7 +212,7 @@ void main() {
     expect(find.text('Выберите город заново'), findsNothing);
     expect(find.textContaining('Сохранённый город больше недоступен'),
         findsNothing);
-    expect(find.text('Москва · Россия'), findsNothing);
+    expect(_citySelectorText('Москва · Россия'), findsNothing);
   });
 
   testWidgets(
@@ -232,7 +236,49 @@ void main() {
     expect(find.text('Выберите город заново'), findsNothing);
     expect(find.textContaining('Сохранённый город больше недоступен'),
         findsNothing);
-    expect(find.text('Москва · Россия'), findsNothing);
+    expect(_citySelectorText('Москва · Россия'), findsNothing);
+  });
+
+  testWidgets(
+      'shows missing-location city chips with recent before country-hinted static cities',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      eventRecentCitySelectionsPrefsKey: const <String>[
+        '{"countryCode":"IT","cityKey":"rome"}',
+      ],
+    });
+    currentUserDocument = _userFixture(
+      uid: 'missing-city-chips-user',
+      data: {
+        'Country_NS': {'code': 'US'},
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(cityCatalogOverride: _catalog),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final rome = find.byKey(const ValueKey<String>('event_city_chip_IT_rome'));
+    final newYork =
+        find.byKey(const ValueKey<String>('event_city_chip_US_new_york'));
+    final moscow =
+        find.byKey(const ValueKey<String>('event_city_chip_RU_moscow'));
+
+    expect(find.text('Выберите город'), findsOneWidget);
+    expect(find.text('Выберите город, чтобы увидеть события.'), findsOneWidget);
+    expect(rome, findsOneWidget);
+    expect(newYork, findsOneWidget);
+    expect(moscow, findsOneWidget);
+    expect(_widgetIndex(tester, rome), lessThan(_widgetIndex(tester, newYork)));
+    expect(
+      _widgetIndex(tester, newYork),
+      lessThan(_widgetIndex(tester, moscow)),
+    );
+    expect(find.text('recent'), findsNothing);
+    expect(find.text('static'), findsNothing);
   });
 
   testWidgets('leaves stale malformed and unknown profile cities unselected',
@@ -281,7 +327,9 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Выберите город'), findsNothing);
-      expect(find.text('Москва · Россия'), findsNothing);
+      expect(_citySelectorText('Москва · Россия'), findsNothing);
+      expect(find.byKey(const ValueKey<String>('event_city_chip_RU_moscow')),
+          findsNothing);
     }
   });
 
@@ -320,6 +368,8 @@ void main() {
     expect(find.text('Нью-Йорк · United States'), findsOneWidget);
     expect(find.text('Москва · Россия'), findsNothing);
     expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
+    expect(find.byKey(const ValueKey<String>('event_city_chip_RU_moscow')),
+        findsNothing);
   });
 
   testWidgets('city selector delegates taps when a callback is provided',
@@ -416,8 +466,32 @@ const _catalog = EventCityCatalog(
       transliterations: [],
       priority: 90,
     ),
+    EventCity(
+      countryCode: 'IT',
+      cityKey: 'rome',
+      cityNameRu: 'Рим',
+      cityNameEn: 'Rome',
+      regionCode: null,
+      regionNameRu: null,
+      regionNameEn: null,
+      timeZoneId: 'Europe/Rome',
+      cityDisplayContext: 'Italy',
+      aliases: [],
+      transliterations: [],
+      priority: 95,
+    ),
   ],
 );
+
+int _widgetIndex(WidgetTester tester, Finder finder) {
+  final element = tester.element(finder);
+  return tester.allElements.toList(growable: false).indexOf(element);
+}
+
+Finder _citySelectorText(String text) => find.descendant(
+      of: find.byKey(eventListCitySelectorKey),
+      matching: find.text(text),
+    );
 
 EventCity _cityFixture({
   required String countryCode,

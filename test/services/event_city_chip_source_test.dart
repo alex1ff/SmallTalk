@@ -36,7 +36,7 @@ void main() {
         'rome',
         'new_york',
         'moscow',
-        'saint_petersburg',
+        'london',
       ]);
       expect(chips.map((chip) => chip.source), [
         EventCitySelectionSource.recent,
@@ -119,8 +119,8 @@ void main() {
       expect(chips.map((chip) => chip.city.identity), [
         'RU:moscow',
         'US:new_york',
-        'RU:saint_petersburg',
         'GB:london',
+        'RU:saint_petersburg',
       ]);
       expect(chips.first.source, EventCitySelectionSource.recent);
       expect(

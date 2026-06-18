@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
@@ -6,6 +7,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/events/event_create_widget.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_city_catalog.dart';
+import '/services/event_city_chip_source.dart';
 import '/services/event_city_resolution.dart';
 import '/services/event_selected_city_state.dart';
 
@@ -36,6 +38,10 @@ class EventListWidget extends StatefulWidget {
 class _EventListWidgetState extends State<EventListWidget> {
   late EventSelectedCity? _selectedCity;
   Future<EventCityCatalog>? _cityCatalogFuture;
+  Future<List<EventCityChip>>? _cityChipsFuture;
+  EventCityCatalog? _cityChipsCatalog;
+  String? _cityChipsCountryCodeHint;
+  String? _cityChipsSelectedIdentity;
 
   @override
   void initState() {
@@ -57,6 +63,8 @@ class _EventListWidgetState extends State<EventListWidget> {
     }
     if (oldWidget.cityCatalogOverride != widget.cityCatalogOverride) {
       _cityCatalogFuture = _loadCityCatalog();
+      _cityChipsFuture = null;
+      _cityChipsCatalog = null;
     }
   }
 
@@ -77,9 +85,20 @@ class _EventListWidgetState extends State<EventListWidget> {
         return FutureBuilder<EventCityCatalog>(
           future: _cityCatalogFuture,
           builder: (context, snapshot) {
+            final catalog = snapshot.data;
             final selectedState = _resolveVisibleSelectedCityState(
-              snapshot.data,
+              catalog,
             );
+            final needsCityChips = catalog != null &&
+                selectedState != null &&
+                selectedState.needsCitySelection &&
+                !selectedState.hasOutdatedProfileCity;
+            final cityChipsFuture = needsCityChips
+                ? _loadCityChips(
+                    catalog: catalog,
+                    selectedState: selectedState,
+                  )
+                : null;
 
             return Scaffold(
               backgroundColor: ExpatlioDesign.background,
@@ -142,6 +161,10 @@ class _EventListWidgetState extends State<EventListWidget> {
                             !selectedState.hasOutdatedProfileCity,
                         onPressed: widget.onCitySelectorPressed,
                       ),
+                      if (cityChipsFuture != null) ...[
+                        const SizedBox(height: ExpatlioDesign.space12),
+                        _EventCityChips(chipsFuture: cityChipsFuture),
+                      ],
                     ],
                   ),
                 ),
@@ -150,6 +173,46 @@ class _EventListWidgetState extends State<EventListWidget> {
           },
         );
       },
+    );
+  }
+
+  Future<List<EventCityChip>> _loadCityChips({
+    required EventCityCatalog catalog,
+    required EventSelectedCityState selectedState,
+  }) {
+    final countryCodeHint = selectedState.countryCodeHint;
+    final selectedIdentity = selectedState.selected?.city.identity;
+    if (_cityChipsFuture == null ||
+        _cityChipsCatalog != catalog ||
+        _cityChipsCountryCodeHint != countryCodeHint ||
+        _cityChipsSelectedIdentity != selectedIdentity) {
+      _cityChipsCatalog = catalog;
+      _cityChipsCountryCodeHint = countryCodeHint;
+      _cityChipsSelectedIdentity = selectedIdentity;
+      _cityChipsFuture = _loadCityChipsFromStore(
+        catalog: catalog,
+        selectedCityToExclude: selectedState.selected?.city,
+        countryCodeHint: countryCodeHint,
+      );
+    }
+    return _cityChipsFuture!;
+  }
+
+  Future<List<EventCityChip>> _loadCityChipsFromStore({
+    required EventCityCatalog catalog,
+    required EventCity? selectedCityToExclude,
+    required String? countryCodeHint,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    final chipSource = EventCityChipSource(
+      recentStore: SharedPreferencesEventRecentCityStore(
+        preferences: preferences,
+      ),
+    );
+    return chipSource.loadChips(
+      catalog: catalog,
+      selectedCityToExclude: selectedCityToExclude,
+      countryCodeHint: countryCodeHint,
     );
   }
 
@@ -171,6 +234,56 @@ class _EventListWidgetState extends State<EventListWidget> {
       catalog: catalog,
     );
   }
+}
+
+class _EventCityChips extends StatelessWidget {
+  const _EventCityChips({
+    required this.chipsFuture,
+  });
+
+  final Future<List<EventCityChip>> chipsFuture;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<EventCityChip>>(
+      future: chipsFuture,
+      builder: (context, snapshot) {
+        final chips = snapshot.data;
+        if (chips == null || chips.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Wrap(
+          spacing: ExpatlioDesign.space8,
+          runSpacing: ExpatlioDesign.space8,
+          children: [
+            for (final chip in chips)
+              Chip(
+                key: _eventCityChipKey(chip.city),
+                label: Text(_cityChipLabel(context, chip.city)),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                backgroundColor: ExpatlioDesign.secondarySystemBackground,
+                side: BorderSide(color: ExpatlioDesign.separator),
+                labelStyle: ExpatlioDesign.textStyle(
+                  context,
+                  size: 14,
+                  weight: FontWeight.w600,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+ValueKey<String> _eventCityChipKey(EventCity city) =>
+    ValueKey<String>('event_city_chip_${city.countryCode}_${city.cityKey}');
+
+String _cityChipLabel(BuildContext context, EventCity city) {
+  final isRu = FFLocalizations.of(context).languageCode == 'ru';
+  final cityName = isRu ? city.cityNameRu : city.cityNameEn;
+  return '$cityName · ${city.cityDisplayContext}';
 }
 
 class _EventCitySelector extends StatelessWidget {

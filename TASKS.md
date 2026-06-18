@@ -179,7 +179,7 @@ Date: 2026-06-14
 - [x] Route stale/unknown saved profile city to the missing/outdated city flow instead of unlocking the list.
 - [x] If profile has only existing `Country_NS`, show missing-city flow and use country only to prioritize city suggestions.
 - [x] Show location prompt when profile city is missing.
-- [ ] Add city chips in missing-location flow: recent selections first, static popular cities second.
+- [x] Add city chips in missing-location flow: recent selections first, static popular cities second.
 - [ ] Add manual city selection action because chips are shortcuts, not the full city set.
 - [ ] Allow chip/manual city selection to unlock the event list without saving profile location.
 - [ ] Add date filter chips: `Сегодня`, `Завтра`, `На этой неделе`, `В этом месяце`.
