@@ -5,6 +5,8 @@ import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/event_action_error_mapper.dart';
+import '/services/event_actions_repository.dart';
 import '/services/event_group_chat_repository.dart';
 
 const ValueKey<String> eventGroupChatMessagesLoadingKey =
@@ -15,6 +17,12 @@ const ValueKey<String> eventGroupChatMessagesEmptyKey =
     ValueKey<String>('event_group_chat_messages_empty');
 const ValueKey<String> eventGroupChatMessagesListKey =
     ValueKey<String>('event_group_chat_messages_list');
+const ValueKey<String> eventGroupChatMessageInputKey =
+    ValueKey<String>('event_group_chat_message_input');
+const ValueKey<String> eventGroupChatSendButtonKey =
+    ValueKey<String>('event_group_chat_send_button');
+const ValueKey<String> eventGroupChatSendErrorSnackBarKey =
+    ValueKey<String>('event_group_chat_send_error_snack_bar');
 
 ValueKey<String> eventGroupChatMessageBubbleKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_bubble_$messageId');
@@ -30,11 +38,13 @@ class EventGroupChatWidget extends StatefulWidget {
     super.key,
     required this.eventId,
     this.messagesStream,
+    this.sendMessageInvoker,
     this.messageLimit = EventGroupChatRepository.defaultMessageLimit,
   });
 
   final String eventId;
   final EventChatMessagesStream? messagesStream;
+  final EventCallableInvoker? sendMessageInvoker;
   final int messageLimit;
 
   static String routeName = 'eventGroupChat';
@@ -45,7 +55,10 @@ class EventGroupChatWidget extends StatefulWidget {
 }
 
 class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
+  final TextEditingController _messageTextController = TextEditingController();
+  final FocusNode _messageFocusNode = FocusNode();
   late Stream<List<EventChatMessagesRecord>> _messagesStream;
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -63,12 +76,66 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     }
   }
 
+  @override
+  void dispose() {
+    _messageFocusNode.dispose();
+    _messageTextController.dispose();
+    super.dispose();
+  }
+
   Stream<List<EventChatMessagesRecord>> _watchMessages() =>
       EventGroupChatRepository.watchMessages(
         eventId: widget.eventId,
         messagesStream: widget.messagesStream,
         limit: widget.messageLimit,
       );
+
+  Future<void> _sendMessage() async {
+    if (_isSending) {
+      return;
+    }
+    final text = _messageTextController.text.trim();
+    if (text.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _isSending = true;
+    });
+
+    try {
+      await EventActionsRepository.sendEventChatMessage(
+        eventId: widget.eventId,
+        text: text,
+        invoker: widget.sendMessageInvoker,
+      );
+      if (!mounted) {
+        return;
+      }
+      _messageTextController.clear();
+      _messageFocusNode.unfocus();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: eventGroupChatSendErrorSnackBarKey,
+          content: Text(eventActionFailureMessage(context, error)),
+        ),
+      );
+      debugPrint(
+        'EventGroupChatWidget: failed to send message for '
+        '${widget.eventId}: $error',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +206,99 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                 },
               ),
             ),
+            _EventGroupChatComposer(
+              controller: _messageTextController,
+              focusNode: _messageFocusNode,
+              isSending: _isSending,
+              onSendPressed: _sendMessage,
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EventGroupChatComposer extends StatelessWidget {
+  const _EventGroupChatComposer({
+    required this.controller,
+    required this.focusNode,
+    required this.isSending,
+    required this.onSendPressed,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool isSending;
+  final VoidCallback onSendPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: ExpatlioDesign.card,
+        border: Border(
+          top: BorderSide(color: ExpatlioDesign.separator),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space12,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  key: eventGroupChatMessageInputKey,
+                  controller: controller,
+                  focusNode: focusNode,
+                  enabled: !isSending,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.send,
+                  textAlignVertical: TextAlignVertical.center,
+                  minLines: 1,
+                  maxLines: 4,
+                  decoration: ExpatlioDesign.formFieldDecoration(
+                    context,
+                    hintText: FFLocalizations.of(context).getVariableText(
+                      ruText: 'Написать сообщение',
+                      enText: 'Write a message',
+                    ),
+                  ),
+                  style: ExpatlioDesign.formTextStyle(context),
+                  onFieldSubmitted: (_) => onSendPressed(),
+                ),
+              ),
+              const SizedBox(width: ExpatlioDesign.space8),
+              SizedBox.square(
+                dimension: ExpatlioDesign.formFieldHeight,
+                child: Material(
+                  color: ExpatlioDesign.primary,
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusMedium),
+                  child: InkWell(
+                    key: eventGroupChatSendButtonKey,
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusMedium),
+                    onTap: isSending ? null : onSendPressed,
+                    child: Icon(
+                      isSending
+                          ? Icons.hourglass_top_rounded
+                          : Icons.send_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

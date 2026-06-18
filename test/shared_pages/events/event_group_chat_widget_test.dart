@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
+import 'package:small_talk/services/event_actions_repository.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -109,6 +110,102 @@ void main() {
     expect(find.byKey(eventGroupChatMessageBubbleKey('message-1')),
         findsOneWidget);
     expect(find.text('Всем привет!'), findsOneWidget);
+  });
+
+  testWidgets('sends event chat message through callable and clears input',
+      (tester) async {
+    String? functionName;
+    Map<String, dynamic>? payload;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: ' event-123 ',
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          sendMessageInvoker: (calledFunctionName, calledPayload) async {
+            functionName = calledFunctionName;
+            payload = calledPayload;
+            return <String, dynamic>{
+              'messageId': 'message-1',
+              'createdAt': '2026-06-14T12:00:00.000Z',
+            };
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventGroupChatMessageInputKey),
+      '  Всем привет!  ',
+    );
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(functionName, sendEventChatMessageFunctionName);
+    expect(payload, <String, dynamic>{
+      'eventId': 'event-123',
+      'text': 'Всем привет!',
+    });
+    final input = tester.widget<TextFormField>(
+      find.byKey(eventGroupChatMessageInputKey),
+    );
+    expect(input.controller?.text, isEmpty);
+  });
+
+  testWidgets('does not call send callable for blank event chat messages',
+      (tester) async {
+    var sendCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          sendMessageInvoker: (_, __) async {
+            sendCalls += 1;
+            return <String, dynamic>{
+              'messageId': 'message-1',
+              'createdAt': '2026-06-14T12:00:00.000Z',
+            };
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), '   ');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(sendCalls, 0);
+  });
+
+  testWidgets('shows mapped error when event chat message send fails',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          sendMessageInvoker: (_, __) async {
+            throw StateError('send failed');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatSendErrorSnackBarKey), findsOneWidget);
+    expect(find.text('Не удалось выполнить действие. Попробуйте снова.'),
+        findsOneWidget);
   });
 
   testWidgets('shows error state when event chat messages fail to load',

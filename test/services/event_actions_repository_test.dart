@@ -141,6 +141,32 @@ void main() {
       expect(leaveResult.occurredAt, DateTime.parse('2026-06-14T12:02:00Z'));
     });
 
+    test('sends an event chat message through the trusted callable', () async {
+      String? functionName;
+      Map<String, dynamic>? payload;
+
+      final result = await EventActionsRepository.sendEventChatMessage(
+        eventId: ' event-1 ',
+        text: '  Всем привет!  ',
+        invoker: (calledFunctionName, calledPayload) async {
+          functionName = calledFunctionName;
+          payload = calledPayload;
+          return <String, dynamic>{
+            'messageId': 'message-1',
+            'createdAt': '2026-06-14T12:03:00.000Z',
+          };
+        },
+      );
+
+      expect(functionName, sendEventChatMessageFunctionName);
+      expect(payload, <String, dynamic>{
+        'eventId': 'event-1',
+        'text': '  Всем привет!  ',
+      });
+      expect(result.messageId, 'message-1');
+      expect(result.createdAt, DateTime.parse('2026-06-14T12:03:00Z'));
+    });
+
     test('rejects invalid ids and create request ids before calling functions',
         () async {
       var calls = 0;

@@ -386,22 +386,31 @@ void main() {
     expect(edit, isNot(contains('.editEvent(')));
   });
 
-  test('event group chat screen loads messages without direct sends', () {
+  test('event group chat screen sends only through trusted callable', () {
     final chat = File('lib/shared_pages/events/event_group_chat_widget.dart')
         .readAsStringSync();
     final repository = File('lib/services/event_group_chat_repository.dart')
         .readAsStringSync();
+    final actionsRepository =
+        File('lib/services/event_actions_repository.dart').readAsStringSync();
 
     expect(chat, contains('final String eventId;'));
     expect(chat, contains('Чат события'));
     expect(chat, contains('Event chat'));
     expect(chat, contains('EventGroupChatRepository'));
+    expect(chat, contains('EventActionsRepository.sendEventChatMessage'));
     expect(chat, contains('EventChatMessagesRecord'));
     expect(repository, contains('EventChatsRecord.collection.doc'));
     expect(repository, contains('queryEventChatMessagesRecord'));
     expect(repository, contains("orderBy('createdAt', descending: true)"));
+    expect(actionsRepository, contains('sendEventChatMessageFunctionName'));
+    expect(actionsRepository, contains("'eventId': normalizeEventActionId"));
+    expect(actionsRepository, contains("'text': text"));
     expect(chat, isNot(contains('ChatThreadWidget')));
-    expect(chat, isNot(contains('sendEventChatMessage')));
+    expect(chat, isNot(contains('FirebaseFirestore')));
+    expect(chat, isNot(contains('.set(')));
+    expect(chat, isNot(contains('.update(')));
+    expect(chat, isNot(contains('.delete(')));
     expect(repository, isNot(contains('sendEventChatMessage')));
   });
 

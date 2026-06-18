@@ -17,6 +17,7 @@ const editEventFunctionName = 'editEvent';
 const cancelEventFunctionName = 'cancelEvent';
 const joinEventFunctionName = 'joinEvent';
 const leaveEventFunctionName = 'leaveEvent';
+const sendEventChatMessageFunctionName = 'sendEventChatMessage';
 
 final RegExp _uuidV4Pattern = RegExp(
   r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
@@ -152,6 +153,16 @@ class EventParticipantActionResult {
   final DateTime occurredAt;
 }
 
+class SendEventChatMessageResult {
+  const SendEventChatMessageResult({
+    required this.messageId,
+    required this.createdAt,
+  });
+
+  final String messageId;
+  final DateTime createdAt;
+}
+
 class EventActionsRepository {
   const EventActionsRepository._();
 
@@ -230,6 +241,26 @@ class EventActionsRepository {
         timestampField: 'leftAt',
         invoker: invoker,
       );
+
+  static Future<SendEventChatMessageResult> sendEventChatMessage({
+    required String eventId,
+    required String text,
+    EventCallableInvoker? invoker,
+  }) async {
+    final responseData = await _callEventFunction(
+      sendEventChatMessageFunctionName,
+      <String, dynamic>{
+        'eventId': normalizeEventActionId(eventId),
+        'text': text,
+      },
+      invoker: invoker,
+    );
+    final data = _responseMap(responseData);
+    return SendEventChatMessageResult(
+      messageId: _requiredString(data, 'messageId'),
+      createdAt: _requiredIsoDateTime(data, 'createdAt'),
+    );
+  }
 }
 
 String newEventCreateRequestId() => const Uuid().v4();
