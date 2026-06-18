@@ -65,6 +65,10 @@ class EventDetailParticipantViewModel {
   final String? photoUrl;
 }
 
+enum EventDetailJoinCtaState {
+  join,
+}
+
 class EventDetailWidget extends StatelessWidget {
   const EventDetailWidget({
     super.key,
@@ -87,6 +91,7 @@ class EventDetailWidget extends StatelessWidget {
     this.participants = const <EventDetailParticipantViewModel>[],
     this.participantsCount,
     this.capacity,
+    this.joinCtaState = EventDetailJoinCtaState.join,
     this.onPrimaryCtaPressed,
     this.onChatPressed,
   });
@@ -110,6 +115,7 @@ class EventDetailWidget extends StatelessWidget {
   final List<EventDetailParticipantViewModel> participants;
   final int? participantsCount;
   final int? capacity;
+  final EventDetailJoinCtaState joinCtaState;
   final VoidCallback? onPrimaryCtaPressed;
   final VoidCallback? onChatPressed;
 
@@ -145,6 +151,7 @@ class EventDetailWidget extends StatelessWidget {
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
       bottomNavigationBar: _EventDetailBottomActionBar(
+        joinCtaState: joinCtaState,
         onPrimaryPressed: onPrimaryCtaPressed,
         onChatPressed: onChatPressed,
       ),
@@ -978,10 +985,12 @@ class _EventDetailParticipantAvatar extends StatelessWidget {
 
 class _EventDetailBottomActionBar extends StatelessWidget {
   const _EventDetailBottomActionBar({
+    required this.joinCtaState,
     required this.onPrimaryPressed,
     required this.onChatPressed,
   });
 
+  final EventDetailJoinCtaState joinCtaState;
   final VoidCallback? onPrimaryPressed;
   final VoidCallback? onChatPressed;
 
@@ -1012,6 +1021,7 @@ class _EventDetailBottomActionBar extends StatelessWidget {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final primaryCta = _EventDetailPrimaryCta(
+                    state: joinCtaState,
                     onPressed: onPrimaryPressed,
                   );
                   final chatCta = _EventDetailChatCta(
@@ -1052,28 +1062,28 @@ class _EventDetailBottomActionBar extends StatelessWidget {
 
 class _EventDetailPrimaryCta extends StatelessWidget {
   const _EventDetailPrimaryCta({
+    required this.state,
     required this.onPressed,
   });
 
+  final EventDetailJoinCtaState state;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final label = FFLocalizations.of(context).getVariableText(
-      ruText: 'Присоединиться',
-      enText: 'Join',
-    );
+    final label = _eventDetailJoinCtaLabel(context, state);
+    final enabled = state == EventDetailJoinCtaState.join && onPressed != null;
 
     return Semantics(
       key: eventDetailPrimaryCtaKey,
       container: true,
       button: true,
-      enabled: onPressed != null,
+      enabled: enabled,
       label: label,
-      onTap: onPressed,
+      onTap: enabled ? onPressed : null,
       child: ExcludeSemantics(
         child: TextButton(
-          onPressed: onPressed,
+          onPressed: enabled ? onPressed : null,
           style: TextButton.styleFrom(
             minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
             padding: const EdgeInsetsDirectional.symmetric(
@@ -1094,7 +1104,7 @@ class _EventDetailPrimaryCta extends StatelessWidget {
             textAlign: TextAlign.center,
             style: ExpatlioDesign.textStyle(
               context,
-              color: onPressed == null ? ExpatlioDesign.muted : Colors.white,
+              color: enabled ? Colors.white : ExpatlioDesign.muted,
               size: 16,
               weight: FontWeight.w700,
             ),
@@ -1390,6 +1400,18 @@ String _eventDetailOccupancyLabel(
     enText: capacity == 1 ? 'spot' : 'spots',
   );
   return '$normalizedParticipantsCount/$capacity $suffix';
+}
+
+String _eventDetailJoinCtaLabel(
+  BuildContext context,
+  EventDetailJoinCtaState state,
+) {
+  return switch (state) {
+    EventDetailJoinCtaState.join => FFLocalizations.of(context).getVariableText(
+        ruText: 'Присоединиться',
+        enText: 'Join',
+      ),
+  };
 }
 
 String _eventDetailDateLabel(

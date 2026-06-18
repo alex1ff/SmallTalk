@@ -151,6 +151,7 @@ void main() {
       _buildTestApp(
         home: EventDetailWidget(
           eventId: 'event-123',
+          joinCtaState: EventDetailJoinCtaState.join,
           onPrimaryCtaPressed: () => joinTapCount += 1,
           onChatPressed: () => chatTapCount += 1,
         ),
@@ -189,6 +190,47 @@ void main() {
         chatSemantics.label,
         contains('Chat is available to participants only'),
       );
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('join CTA state keeps chat disabled for non-participants',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    var joinTapCount = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            joinCtaState: EventDetailJoinCtaState.join,
+            onPrimaryCtaPressed: () => joinTapCount += 1,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Присоединиться'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isButton, isTrue);
+      expect(primarySemantics.flagsCollection.isEnabled, isTrue);
+      expect(primarySemantics.label, 'Присоединиться');
+
+      final chatSemantics =
+          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
+      expect(chatSemantics.flagsCollection.isButton, isTrue);
+      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+      expect(chatSemantics.label, contains('Чат доступен только участникам'));
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(joinTapCount, 1);
     } finally {
       semanticsHandle.dispose();
     }

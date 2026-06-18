@@ -208,7 +208,7 @@ Date: 2026-06-14
 - [x] Show participant list.
 - [x] Show occupancy.
 - [x] Add sticky bottom action bar.
-- [ ] Show `Присоединиться` for non-participants.
+- [x] Show `Присоединиться` for non-participants.
 - [ ] Show joined/leave state for participants.
 - [ ] Show disabled state for full, canceled, and past events.
 - [ ] Show organizer edit/cancel controls.
