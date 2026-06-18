@@ -194,7 +194,7 @@ Date: 2026-06-14
 - [x] Add `Чат` CTA with participant-only behavior.
 - [x] Add loading state.
 - [x] Add empty state.
-- [ ] Add error state with retry.
+- [x] Add error state with retry.
 
 ## Phase 7: Event Detail Screen
 

@@ -30,6 +30,10 @@ const ValueKey<String> eventListLoadingStateKey =
     ValueKey<String>('event_list_loading_state');
 const ValueKey<String> eventListEmptyStateKey =
     ValueKey<String>('event_list_empty_state');
+const ValueKey<String> eventListErrorStateKey =
+    ValueKey<String>('event_list_error_state');
+const ValueKey<String> eventListErrorRetryButtonKey =
+    ValueKey<String>('event_list_error_retry_button');
 const ValueKey<String> eventListCardShellKey =
     ValueKey<String>('event_list_card_shell');
 const ValueKey<String> eventListCardHeaderKey =
@@ -158,6 +162,8 @@ class EventListWidget extends StatefulWidget {
     this.languageCatalogOverride,
     this.eventCardsOverride,
     this.isLoadingEvents = false,
+    this.eventListErrorMessage,
+    this.onRetryEventsPressed,
   });
 
   static String routeName = 'events';
@@ -169,6 +175,8 @@ class EventListWidget extends StatefulWidget {
   final EventLanguageCatalog? languageCatalogOverride;
   final List<EventListCardViewModel>? eventCardsOverride;
   final bool isLoadingEvents;
+  final String? eventListErrorMessage;
+  final VoidCallback? onRetryEventsPressed;
 
   @override
   State<EventListWidget> createState() => _EventListWidgetState();
@@ -256,8 +264,9 @@ class _EventListWidgetState extends State<EventListWidget> {
                   )
                 : null;
             final canShowEventCards = selectedState?.canLoadEvents ?? false;
-            final isLoadingEvents =
-                widget.isLoadingEvents || widget.eventCardsOverride == null;
+            final hasEventListError = widget.eventListErrorMessage != null;
+            final isLoadingEvents = widget.isLoadingEvents ||
+                (widget.eventCardsOverride == null && !hasEventListError);
             final eventCards =
                 widget.eventCardsOverride ?? const <EventListCardViewModel>[];
             final onCitySelectorPressed = widget.onCitySelectorPressed ??
@@ -370,6 +379,11 @@ class _EventListWidgetState extends State<EventListWidget> {
                                 const SizedBox(height: ExpatlioDesign.space16),
                                 if (isLoadingEvents)
                                   const _EventListLoadingState()
+                                else if (hasEventListError)
+                                  _EventListErrorState(
+                                    message: widget.eventListErrorMessage,
+                                    onRetryPressed: widget.onRetryEventsPressed,
+                                  )
                                 else if (eventCards.isEmpty)
                                   const _EventListEmptyState()
                                 else
@@ -601,6 +615,156 @@ class _EventListEmptyState extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventListErrorState extends StatelessWidget {
+  const _EventListErrorState({
+    required this.message,
+    required this.onRetryPressed,
+  });
+
+  final String? message;
+  final VoidCallback? onRetryPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = FFLocalizations.of(context).getVariableText(
+      ruText: 'Не удалось загрузить события',
+      enText: 'Could not load events',
+    );
+    final fallbackMessage = FFLocalizations.of(context).getVariableText(
+      ruText: 'Проверьте подключение и попробуйте снова.',
+      enText: 'Check your connection and try again.',
+    );
+    final retryLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Повторить',
+      enText: 'Retry',
+    );
+    final retrySemanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Повторить загрузку событий',
+      enText: 'Retry loading events',
+    );
+    final normalizedMessage = message?.trim() ?? '';
+    final description =
+        normalizedMessage.isEmpty ? fallbackMessage : normalizedMessage;
+
+    return Semantics(
+      key: eventListErrorStateKey,
+      container: true,
+      explicitChildNodes: true,
+      liveRegion: true,
+      label: '$title. $description',
+      child: Container(
+        padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space24,
+          ExpatlioDesign.space32,
+          ExpatlioDesign.space24,
+          ExpatlioDesign.space32,
+        ),
+        decoration: ExpatlioDesign.cardDecoration(
+          borderColor: ExpatlioDesign.separator,
+        ),
+        child: Column(
+          children: [
+            ExcludeSemantics(
+              child: Column(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: ExpatlioDesign.danger.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(
+                        ExpatlioDesign.radiusCapsule,
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.refresh,
+                      color: ExpatlioDesign.danger,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(height: ExpatlioDesign.space16),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: ExpatlioDesign.textStyle(
+                      context,
+                      size: 20,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: ExpatlioDesign.space8),
+                  Text(
+                    description,
+                    textAlign: TextAlign.center,
+                    style: ExpatlioDesign.textStyle(
+                      context,
+                      color: ExpatlioDesign.muted,
+                      size: 15,
+                      height: 1.36,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: ExpatlioDesign.space20),
+            ConstrainedBox(
+              constraints: const BoxConstraints(
+                minWidth: 160,
+                minHeight: 48,
+              ),
+              child: Semantics(
+                key: eventListErrorRetryButtonKey,
+                container: true,
+                button: true,
+                enabled: onRetryPressed != null,
+                label: retrySemanticsLabel,
+                onTap: onRetryPressed,
+                child: ExcludeSemantics(
+                  child: TextButton.icon(
+                    onPressed: onRetryPressed,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(160, 48),
+                      padding: const EdgeInsetsDirectional.symmetric(
+                        horizontal: ExpatlioDesign.space16,
+                        vertical: ExpatlioDesign.space12,
+                      ),
+                      foregroundColor: Colors.white,
+                      disabledForegroundColor: ExpatlioDesign.muted,
+                      backgroundColor: ExpatlioDesign.primary,
+                      disabledBackgroundColor:
+                          ExpatlioDesign.secondarySystemBackground,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          ExpatlioDesign.buttonRadius,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.refresh, size: 20),
+                    label: Text(
+                      retryLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: onRetryPressed == null
+                            ? ExpatlioDesign.muted
+                            : Colors.white,
+                        size: 16,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

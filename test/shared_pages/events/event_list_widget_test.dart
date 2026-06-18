@@ -407,6 +407,140 @@ void main() {
     expect(find.text('Реальное событие'), findsNothing);
   });
 
+  testWidgets('shows error state with retry after city is selected',
+      (tester) async {
+    var retryCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventListErrorMessage: 'События временно недоступны.',
+          onRetryEventsPressed: () => retryCount += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListErrorStateKey), findsOneWidget);
+    expect(find.byKey(eventListErrorRetryButtonKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+    expect(find.text('Не удалось загрузить события'), findsOneWidget);
+    expect(find.text('События временно недоступны.'), findsOneWidget);
+    expect(find.text('Повторить'), findsOneWidget);
+
+    final errorSemantics = tester.widget<Semantics>(
+      find.byKey(eventListErrorStateKey),
+    );
+    expect(
+      errorSemantics.properties.label,
+      'Не удалось загрузить события. События временно недоступны.',
+    );
+    expect(errorSemantics.properties.liveRegion, isTrue);
+    expect(errorSemantics.container, isTrue);
+    expect(errorSemantics.explicitChildNodes, isTrue);
+
+    final retrySemantics = tester.widget<Semantics>(
+      find.byKey(eventListErrorRetryButtonKey),
+    );
+    expect(
+      retrySemantics.properties.label,
+      'Повторить загрузку событий',
+    );
+    expect(retrySemantics.container, isTrue);
+    expect(retrySemantics.properties.button, isTrue);
+    expect(retrySemantics.properties.enabled, isTrue);
+
+    await tester.tap(find.byKey(eventListErrorRetryButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(retryCount, 1);
+  });
+
+  testWidgets('does not show error state before city is selected',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          eventCardsOverride: const [],
+          eventListErrorMessage: 'События временно недоступны.',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListErrorStateKey), findsNothing);
+    expect(find.byKey(eventListErrorRetryButtonKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+  });
+
+  testWidgets('loading state takes priority over error state', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: const [],
+          isLoadingEvents: true,
+          eventListErrorMessage: 'События временно недоступны.',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListErrorStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+  });
+
+  testWidgets('error state takes priority over empty event cards',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: const [],
+          eventListErrorMessage: 'События временно недоступны.',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListErrorStateKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+  });
+
+  testWidgets('error state takes priority over provided event cards',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: [_eventCardFixture(title: 'Реальное событие')],
+          eventListErrorMessage: 'События временно недоступны.',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListErrorStateKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+    expect(find.text('Реальное событие'), findsNothing);
+  });
+
   testWidgets('shows empty state when selected city has no event cards',
       (tester) async {
     await tester.pumpWidget(
@@ -492,6 +626,7 @@ void main() {
 
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListErrorStateKey), findsNothing);
     expect(find.text('Реальное событие'), findsOneWidget);
     expect(find.byKey(eventListCardPrimaryCtaKey), findsOneWidget);
     expect(find.byKey(eventListCardChatCtaKey), findsOneWidget);
