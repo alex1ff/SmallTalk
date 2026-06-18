@@ -45,6 +45,12 @@ const ValueKey<String> eventDetailParticipantsTitleKey =
     ValueKey<String>('event_detail_participants_title');
 const ValueKey<String> eventDetailOccupancyKey =
     ValueKey<String>('event_detail_occupancy');
+const ValueKey<String> eventDetailBottomActionBarKey =
+    ValueKey<String>('event_detail_bottom_action_bar');
+const ValueKey<String> eventDetailPrimaryCtaKey =
+    ValueKey<String>('event_detail_primary_cta');
+const ValueKey<String> eventDetailChatCtaKey =
+    ValueKey<String>('event_detail_chat_cta');
 
 ValueKey<String> eventDetailParticipantTileKey(int index) =>
     ValueKey<String>('event_detail_participant_tile_$index');
@@ -81,6 +87,8 @@ class EventDetailWidget extends StatelessWidget {
     this.participants = const <EventDetailParticipantViewModel>[],
     this.participantsCount,
     this.capacity,
+    this.onPrimaryCtaPressed,
+    this.onChatPressed,
   });
 
   final String eventId;
@@ -102,6 +110,8 @@ class EventDetailWidget extends StatelessWidget {
   final List<EventDetailParticipantViewModel> participants;
   final int? participantsCount;
   final int? capacity;
+  final VoidCallback? onPrimaryCtaPressed;
+  final VoidCallback? onChatPressed;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
@@ -134,6 +144,10 @@ class EventDetailWidget extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
+      bottomNavigationBar: _EventDetailBottomActionBar(
+        onPrimaryPressed: onPrimaryCtaPressed,
+        onChatPressed: onChatPressed,
+      ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -959,6 +973,202 @@ class _EventDetailParticipantAvatar extends StatelessWidget {
           .toUpperCase();
     }
     return normalizedName.characters.take(2).toString().toUpperCase();
+  }
+}
+
+class _EventDetailBottomActionBar extends StatelessWidget {
+  const _EventDetailBottomActionBar({
+    required this.onPrimaryPressed,
+    required this.onChatPressed,
+  });
+
+  final VoidCallback? onPrimaryPressed;
+  final VoidCallback? onChatPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: eventDetailBottomActionBarKey,
+      decoration: const BoxDecoration(
+        color: ExpatlioDesign.card,
+        border: Border(
+          top: BorderSide(color: ExpatlioDesign.separator),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space16,
+          ),
+          child: Align(
+            alignment: AlignmentDirectional.center,
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final primaryCta = _EventDetailPrimaryCta(
+                    onPressed: onPrimaryPressed,
+                  );
+                  final chatCta = _EventDetailChatCta(
+                    onPressed: onChatPressed,
+                  );
+
+                  if (constraints.maxWidth < 360) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        primaryCta,
+                        const SizedBox(height: ExpatlioDesign.space12),
+                        chatCta,
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(child: primaryCta),
+                      const SizedBox(width: ExpatlioDesign.space12),
+                      SizedBox(
+                        width: 120,
+                        child: chatCta,
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventDetailPrimaryCta extends StatelessWidget {
+  const _EventDetailPrimaryCta({
+    required this.onPressed,
+  });
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: 'Присоединиться',
+      enText: 'Join',
+    );
+
+    return Semantics(
+      key: eventDetailPrimaryCtaKey,
+      container: true,
+      button: true,
+      enabled: onPressed != null,
+      label: label,
+      onTap: onPressed,
+      child: ExcludeSemantics(
+        child: TextButton(
+          onPressed: onPressed,
+          style: TextButton.styleFrom(
+            minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: ExpatlioDesign.space16,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+            ),
+            backgroundColor: ExpatlioDesign.primary,
+            disabledBackgroundColor: ExpatlioDesign.secondarySystemBackground,
+            foregroundColor: Colors.white,
+            disabledForegroundColor: ExpatlioDesign.muted,
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: onPressed == null ? ExpatlioDesign.muted : Colors.white,
+              size: 16,
+              weight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventDetailChatCta extends StatelessWidget {
+  const _EventDetailChatCta({
+    required this.onPressed,
+  });
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: 'Чат',
+      enText: 'Chat',
+    );
+    final semanticsLabel = enabled
+        ? label
+        : FFLocalizations.of(context).getVariableText(
+            ruText: 'Чат доступен только участникам',
+            enText: 'Chat is available to participants only',
+          );
+
+    return Semantics(
+      key: eventDetailChatCtaKey,
+      container: true,
+      button: true,
+      enabled: enabled,
+      label: semanticsLabel,
+      onTap: onPressed,
+      child: ExcludeSemantics(
+        child: TextButton.icon(
+          onPressed: onPressed,
+          icon: Icon(
+            enabled ? Icons.chat_bubble_outline : Icons.lock_outline,
+            size: 20,
+          ),
+          label: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: ExpatlioDesign.space12,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+            ),
+            backgroundColor: ExpatlioDesign.secondarySystemBackground,
+            disabledBackgroundColor:
+                ExpatlioDesign.secondarySystemBackground.withValues(
+              alpha: 0.62,
+            ),
+            foregroundColor: ExpatlioDesign.text,
+            disabledForegroundColor: ExpatlioDesign.disabled,
+            textStyle: ExpatlioDesign.textStyle(
+              context,
+              size: 16,
+              weight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -108,6 +108,160 @@ void main() {
     expect(shareTapCount, 1);
   });
 
+  testWidgets('renders sticky bottom action bar with disabled defaults',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: const EventDetailWidget(eventId: 'event-123'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailBottomActionBarKey), findsOneWidget);
+      expect(find.byKey(eventDetailPrimaryCtaKey), findsOneWidget);
+      expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
+      expect(find.text('Присоединиться'), findsOneWidget);
+      expect(find.text('Чат'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isButton, isTrue);
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, 'Присоединиться');
+
+      final chatSemantics =
+          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
+      expect(chatSemantics.flagsCollection.isButton, isTrue);
+      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+      expect(chatSemantics.label, contains('Чат доступен только участникам'));
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('bottom action bar callbacks fire once', (tester) async {
+    var joinTapCount = 0;
+    var chatTapCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          onPrimaryCtaPressed: () => joinTapCount += 1,
+          onChatPressed: () => chatTapCount += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailChatCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(joinTapCount, 1);
+    expect(chatTapCount, 1);
+  });
+
+  testWidgets('bottom action bar shows English labels', (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('en'),
+          home: const EventDetailWidget(eventId: 'event-123'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Join'), findsOneWidget);
+      expect(find.text('Chat'), findsOneWidget);
+      final chatSemantics =
+          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
+      expect(
+        chatSemantics.label,
+        contains('Chat is available to participants only'),
+      );
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('bottom action bar stays outside scrollable content',
+      (tester) async {
+    var joinTapCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          title: 'Разговорный клуб',
+          description: List.filled(20, 'Длинное описание события.').join(' '),
+          participantsCount: 8,
+          capacity: 10,
+          participants: const [
+            EventDetailParticipantViewModel(displayName: 'Marco Rossi'),
+            EventDetailParticipantViewModel(displayName: 'Лиза'),
+            EventDetailParticipantViewModel(displayName: 'Kenzhi'),
+            EventDetailParticipantViewModel(displayName: 'Alex'),
+            EventDetailParticipantViewModel(displayName: 'Olga'),
+          ],
+          onPrimaryCtaPressed: () => joinTapCount += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(ListView),
+        matching: find.byKey(eventDetailBottomActionBarKey),
+      ),
+      findsNothing,
+    );
+
+    await tester.drag(find.byType(ListView), const Offset(0, -700));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailBottomActionBarKey), findsOneWidget);
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(joinTapCount, 1);
+  });
+
+  testWidgets('bottom action bar fits narrow large-text layouts',
+      (tester) async {
+    tester.view.physicalSize = const Size(640, 1200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(3)),
+        child: _buildTestApp(
+          home: const EventDetailWidget(eventId: 'event-123'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailBottomActionBarKey), findsOneWidget);
+    expect(find.byKey(eventDetailPrimaryCtaKey), findsOneWidget);
+    expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows normalized level range badge', (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -1072,10 +1226,12 @@ void main() {
         .readAsStringSync();
 
     expect(source, isNot(contains('EventDetailRepository')));
+    expect(source, isNot(contains('EventActionsRepository')));
     expect(source, isNot(contains('watchEventDetail')));
     expect(source, isNot(contains('EventsRecord')));
     expect(source, isNot(contains('openChatThread')));
     expect(source, isNot(contains('ChatThreadWidget')));
+    expect(source, isNot(contains('EventGroupChatWidget')));
     expect(source, isNot(contains('ConversationsRecord')));
     expect(source, isNot(contains('MessagesRecord')));
     expect(source, isNot(contains('EventParticipantsRecord')));

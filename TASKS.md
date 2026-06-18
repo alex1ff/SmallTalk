@@ -207,7 +207,7 @@ Date: 2026-06-14
 - [x] Show date, time, and place block.
 - [x] Show participant list.
 - [x] Show occupancy.
-- [ ] Add sticky bottom action bar.
+- [x] Add sticky bottom action bar.
 - [ ] Show `Присоединиться` for non-participants.
 - [ ] Show joined/leave state for participants.
 - [ ] Show disabled state for full, canceled, and past events.
