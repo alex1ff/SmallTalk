@@ -110,6 +110,20 @@ void main() {
       expect(query.parameters['startAfter'], isNull);
     });
 
+    test('hides canceled events by querying only active status', () {
+      final query = EventListRepository.buildActiveEventListQuery(
+        EventsRecord.collection,
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+      );
+      final where = query.parameters['where'] as List<dynamic>;
+
+      expectWhereCondition(where, 'status', '==', activeEventStatus);
+      expectNoWhereCondition(where, 'status', isNotEqualTo: 'canceled');
+    });
+
     test('delegates raw page loading through the shared page helper', () async {
       Query? capturedCollection;
       RecordBuilder<EventsRecord>? capturedRecordBuilder;
@@ -617,19 +631,34 @@ void expectWhereCondition(
   );
 }
 
-void expectNoWhereCondition(List<dynamic> conditions, String field) {
+void expectNoWhereCondition(
+  List<dynamic> conditions,
+  String field, {
+  String? isNotEqualTo,
+}) {
   final expectedField = FieldPath.fromString(field);
   final hasCondition = conditions.any(
-    (condition) =>
-        condition is List<dynamic> &&
-        condition.isNotEmpty &&
-        condition[0] == expectedField,
+    (condition) {
+      if (condition is! List<dynamic> ||
+          condition.isEmpty ||
+          condition[0] != expectedField) {
+        return false;
+      }
+      if (isNotEqualTo == null) {
+        return true;
+      }
+      return condition.length == 3 &&
+          condition[1] == '!=' &&
+          condition[2] == isNotEqualTo;
+    },
   );
 
   expect(
     hasCondition,
     isFalse,
-    reason: 'Expected no where($field ...).',
+    reason: isNotEqualTo == null
+        ? 'Expected no where($field ...).'
+        : 'Expected no where($field != $isNotEqualTo).',
   );
 }
 

@@ -254,7 +254,7 @@ Date: 2026-06-14
 - [x] Add cancel confirmation dialog.
 - [x] Set event status to `canceled`.
 - [x] Return user to detail or list after cancellation.
-- [ ] Ensure canceled event disappears from active list.
+- [x] Ensure canceled event disappears from active list.
 
 ## Phase 10: Join And Leave UX
 
