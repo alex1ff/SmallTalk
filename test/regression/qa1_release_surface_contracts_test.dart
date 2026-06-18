@@ -408,7 +408,7 @@ void main() {
       final waitingPage = _source(
           'lib/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart');
 
-      expect(studentDashboard, contains('AddInterWidget()'));
+      expect(studentDashboard, isNot(contains('AddInterWidget()')));
       expect(
           studentDashboard,
           isNot(contains(
@@ -418,9 +418,13 @@ void main() {
       expect(studentDashboard, isNot(contains('_buildAvailabilitySwitch')));
       expect(studentDashboard,
           isNot(contains('_handleAvailabilitySwitchChanged')));
-      expect(studentDashboard, contains('availabilityToday:'));
+      expect(studentDashboard, isNot(contains('AvailabilityScheduleCard(')));
+      expect(studentDashboard, isNot(contains('_buildAvailabilitySection')));
+      expect(studentDashboard,
+          isNot(contains('_buildAnimatedAvailabilitySection')));
+      expect(studentDashboard, isNot(contains('availabilityToday:')));
       expect(studentDashboard, isNot(contains('isInCall: false')));
-      expect(studentDashboard, contains('FieldValue.arrayRemove'));
+      expect(studentDashboard, isNot(contains('FieldValue.arrayRemove')));
       expect(studentDashboard,
           isNot(contains('hasPendingTeacherVerification(latestUser)')));
       expect(waitingPage, contains('свободных собеседников'));

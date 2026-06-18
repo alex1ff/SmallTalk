@@ -3,7 +3,6 @@ import '/components/celebration_s_t_widget.dart';
 import '/components/celebration_top_up_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
-import '/components/availability_schedule_card.dart';
 import '/components/dashboard_inline_filter_button.dart';
 import '/components/orbiting_avatars_cta.dart';
 import '/components/profile_dropdown_menu_item.dart';
@@ -19,7 +18,6 @@ import '/components/fav_widget.dart';
 // ─── SUBSCRIPTION REWORK ─ subscription state helpers. Replaces gating by
 // balanceST; call start uses canStartCall so promo gift minutes unlock access.
 import '/utils/subscription_utils.dart';
-import '/components/add_inter_widget.dart';
 import '/index.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -162,9 +160,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     ),
   ];
 
-  bool get _effectiveAvailabilityEnabled =>
-      currentUserDocument?.availabilityToday.enabled ?? false;
-
   Widget _buildLoadingState(BuildContext context) {
     return Center(
       child: SizedBox(
@@ -202,32 +197,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     } catch (error) {
       debugPrint('StudentsDashboard: failed to sync timezone metadata: $error');
     }
-  }
-
-  Future<bool> _openAddInterBottomSheet() async {
-    final intervalAdded = await showModalBottomSheet<bool>(
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      context: context,
-      builder: (context) {
-        return GestureDetector(
-          onTap: () {
-            FocusScope.of(context).unfocus();
-            FocusManager.instance.primaryFocus?.unfocus();
-          },
-          child: Padding(
-            padding: MediaQuery.viewInsetsOf(context),
-            child: AddInterWidget(),
-          ),
-        );
-      },
-    );
-
-    if (mounted) {
-      safeSetState(() {});
-    }
-    return intervalAdded ?? false;
   }
 
   String _localizedText({
@@ -753,90 +722,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     }
   }
 
-  Widget _buildAvailabilitySection(BuildContext context) {
-    return AuthUserStreamWidget(
-      builder: (context) {
-        final intervals =
-            currentUserDocument?.availabilityToday.intervals.toList() ?? [];
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _effectiveAvailabilityEnabled
-                  ? FFLocalizations.of(context).getVariableText(
-                      ruText: 'Вы доступны для звонков',
-                      enText: 'Are you available for calls',
-                    )
-                  : FFLocalizations.of(context).getVariableText(
-                      ruText: 'Вы не доступны для звонков',
-                      enText: 'You are not available for calls',
-                    ),
-              style: ExpatlioDesign.sectionTitleStyle(context),
-            ),
-            const SizedBox(height: ExpatlioDesign.space4),
-            AvailabilityScheduleCard(
-              availabilityEnabled: _effectiveAvailabilityEnabled,
-              intervals: intervals,
-              onAddInterval: () async {
-                await _openAddInterBottomSheet();
-              },
-              onRemoveInterval: (intervalsItem) async {
-                final userRef = currentUserReference;
-                if (userRef == null) {
-                  return;
-                }
-
-                await userRef.update(createUsersRecordData(
-                  availabilityToday: createAvailabilityTodayStruct(
-                    fieldValues: {
-                      'intervals': FieldValue.arrayRemove([
-                        getIntervalsFirestoreData(
-                          updateIntervalsStruct(
-                            intervalsItem,
-                            clearUnsetFields: false,
-                          ),
-                          true,
-                        )
-                      ]),
-                    },
-                    clearUnsetFields: false,
-                  ),
-                ));
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildAnimatedAvailabilitySection(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 380),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) {
-        final progress = MediaQuery.disableAnimationsOf(context) ? 1.0 : value;
-
-        return Opacity(
-          opacity: progress,
-          child: Transform.translate(
-            offset: Offset(0.0, (1.0 - progress) * 18.0),
-            child: child,
-          ),
-        );
-      },
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.topCenter,
-        child: _buildAvailabilitySection(context),
-      ),
-    );
-  }
-
   Future<void> _handleStartConversation() async {
     if (!canStartCall(currentUserDocument)) {
       await showModalBottomSheet(
@@ -1072,8 +957,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
               fit: BoxFit.contain,
             ),
             const SizedBox(height: ExpatlioDesign.space24),
-            _buildAnimatedAvailabilitySection(context),
-            const SizedBox(height: ExpatlioDesign.space16),
             Row(
               children: [
                 Expanded(
@@ -1835,14 +1718,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                               );
                             },
                           ),
-                        ),
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.space8,
-                              ExpatlioDesign.space8,
-                              ExpatlioDesign.space8,
-                              ExpatlioDesign.space0),
-                          child: _buildAvailabilitySection(context),
                         ),
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(

@@ -20,7 +20,10 @@ void main() {
     expect(source, isNot(contains('_handleAvailabilitySwitchChanged')));
     expect(source, contains('DashboardInlineFilterButton('));
     expect(source, contains('OrbitingAvatarsCta('));
-    expect(source, contains('_buildAnimatedAvailabilitySection(context)'));
+    expect(source, isNot(contains('AvailabilityScheduleCard(')));
+    expect(source, isNot(contains('AddInterWidget()')));
+    expect(source, isNot(contains('_buildAvailabilitySection')));
+    expect(source, isNot(contains('_buildAnimatedAvailabilitySection')));
     expect(source, isNot(contains('class _StudentAvailabilitySwitchControl')));
     expect(source, isNot(contains('class _DashboardInlineFilterButton')));
     expect(source, isNot(contains('class _OrbitingAvatarsCta')));
