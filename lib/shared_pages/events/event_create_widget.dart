@@ -202,6 +202,7 @@ class EventCreateWidget extends StatefulWidget {
     this.onDateDraftChanged,
     this.onTimeDraftChanged,
     this.onCapacityDraftChanged,
+    this.onSubmitFailureChanged,
   });
 
   static String routeName = 'eventCreate';
@@ -228,6 +229,7 @@ class EventCreateWidget extends StatefulWidget {
   final ValueChanged<EventCreateDateDraft>? onDateDraftChanged;
   final ValueChanged<EventCreateTimeDraft>? onTimeDraftChanged;
   final ValueChanged<EventCreateCapacityDraft>? onCapacityDraftChanged;
+  final ValueChanged<EventActionFailure?>? onSubmitFailureChanged;
 
   @override
   State<EventCreateWidget> createState() => _EventCreateWidgetState();
@@ -282,7 +284,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   bool _hasAttemptedSubmit = false;
   bool _isSubmitting = false;
   String? _startTimeErrorText;
-  String? _submitErrorText;
+  EventActionFailure? _submitFailure;
   String? _activeCreateRequestId;
   String? _activeCreatePayloadSignature;
 
@@ -1050,8 +1052,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     }
     setState(() {
       _hasAttemptedSubmit = true;
-      _submitErrorText = null;
+      _submitFailure = null;
     });
+    widget.onSubmitFailureChanged?.call(null);
     final formIsValid = _formKey.currentState?.validate() ?? false;
     final selectedCity = _lastVisibleSelectedCity;
     final startTimeValidation = formIsValid && selectedCity != null
@@ -1112,9 +1115,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       if (!mounted) {
         return;
       }
+      final failure = mapEventActionFailure(error);
       setState(() {
-        _submitErrorText = eventActionFailureMessage(context, error);
+        _submitFailure = failure;
       });
+      widget.onSubmitFailureChanged?.call(failure);
     } finally {
       if (mounted) {
         setState(() {
@@ -1127,6 +1132,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   @override
   Widget build(BuildContext context) {
     final selectedLevelRange = _resolvedSelectedLevelRange();
+    final submitFailure = _submitFailure;
     _queueLevelDraft(selectedLevelRange);
     _queueLocationDraft(
       _normalizeEventCreateLocationName(_locationTextController.text),
@@ -1421,7 +1427,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                 ),
               ),
               _EventCreateSubmitBar(
-                errorText: _submitErrorText,
+                errorText: submitFailure == null
+                    ? null
+                    : eventActionFailureMessageForLocalizations(
+                        FFLocalizations.of(context),
+                        submitFailure,
+                      ),
                 isSubmitting: _isSubmitting,
                 onPressed: () {
                   unawaited(_handleSubmitPressed());

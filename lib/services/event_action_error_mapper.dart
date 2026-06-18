@@ -34,6 +34,7 @@ class EventActionFailure {
     this.firebaseCode,
     this.domainCode,
     this.reason,
+    this.dailyLimit,
     this.retryable = false,
   });
 
@@ -41,7 +42,22 @@ class EventActionFailure {
   final String? firebaseCode;
   final String? domainCode;
   final String? reason;
+  final EventDailyLimitContext? dailyLimit;
   final bool retryable;
+}
+
+class EventDailyLimitContext {
+  const EventDailyLimitContext({
+    required this.resetAtUtc,
+    required this.dayKeyUtc,
+    required this.count,
+    required this.limit,
+  });
+
+  final DateTime? resetAtUtc;
+  final String? dayKeyUtc;
+  final int? count;
+  final int? limit;
 }
 
 EventActionFailure mapEventActionFailure(Object error) {
@@ -53,6 +69,7 @@ EventActionFailure mapEventActionFailure(Object error) {
       domainCode: domainCode,
       reason: reason,
       firebaseCode: error.code,
+      details: details,
     );
     if (failure != null) {
       return failure;
@@ -219,6 +236,7 @@ EventActionFailure? _failureFromDomainCode({
   required String? domainCode,
   required String? reason,
   required String firebaseCode,
+  required Map<String, dynamic> details,
 }) {
   switch (domainCode) {
     case 'auth_required':
@@ -247,6 +265,7 @@ EventActionFailure? _failureFromDomainCode({
         firebaseCode: firebaseCode,
         domainCode: domainCode,
         reason: reason,
+        dailyLimit: _dailyLimitContext(details),
       );
     case 'create_request_conflict':
       return _failure(
@@ -424,6 +443,7 @@ EventActionFailure _failure({
   required String? firebaseCode,
   required String? domainCode,
   required String? reason,
+  EventDailyLimitContext? dailyLimit,
   bool retryable = false,
 }) =>
     EventActionFailure(
@@ -431,6 +451,7 @@ EventActionFailure _failure({
       firebaseCode: firebaseCode,
       domainCode: domainCode,
       reason: reason,
+      dailyLimit: dailyLimit,
       retryable: retryable,
     );
 
@@ -464,4 +485,31 @@ String? _stringValue(Object? value) {
     return null;
   }
   return trimmed;
+}
+
+EventDailyLimitContext _dailyLimitContext(Map<String, dynamic> details) =>
+    EventDailyLimitContext(
+      resetAtUtc: _dateTimeValue(details['resetAtUtc']),
+      dayKeyUtc: _stringValue(details['dayKeyUtc']),
+      count: _intValue(details['count']),
+      limit: _intValue(details['limit']),
+    );
+
+DateTime? _dateTimeValue(Object? value) {
+  final stringValue = _stringValue(value);
+  if (stringValue == null) {
+    return null;
+  }
+  final parsed = DateTime.tryParse(stringValue);
+  if (parsed == null) {
+    return null;
+  }
+  return parsed.toUtc();
+}
+
+int? _intValue(Object? value) {
+  if (value is int) {
+    return value;
+  }
+  return null;
 }

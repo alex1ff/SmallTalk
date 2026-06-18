@@ -13,6 +13,7 @@ import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/flutter_flow_util.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
+import 'package:small_talk/services/event_action_error_mapper.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
@@ -1453,6 +1454,8 @@ void main() {
 
   testWidgets('daily creation limit error is shown on submit in Russian',
       (tester) async {
+    final failures = <EventActionFailure?>[];
+
     await tester.pumpWidget(
       _buildTestApp(
         home: EventCreateWidget(
@@ -1466,6 +1469,7 @@ void main() {
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
           createEventInvoker: (_, __) async => throw _dailyLimitError(),
+          onSubmitFailureChanged: failures.add,
         ),
       ),
     );
@@ -1482,6 +1486,15 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Raw backend message'), findsNothing);
+    expect(failures, hasLength(2));
+    expect(failures.first, isNull);
+    final failure = failures.last!;
+    expect(failure.kind, EventActionFailureKind.dailyLimitReached);
+    expect(failure.dailyLimit?.resetAtUtc,
+        DateTime.parse('2026-06-15T00:00:00.000Z'));
+    expect(failure.dailyLimit?.dayKeyUtc, '2026-06-14');
+    expect(failure.dailyLimit?.count, 5);
+    expect(failure.dailyLimit?.limit, 5);
   });
 
   testWidgets('daily creation limit error is shown on submit in English',

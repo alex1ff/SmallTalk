@@ -71,6 +71,7 @@ void main() {
             'domainCode': 'daily_limit_reached',
             'limit': 5,
             'count': 5,
+            'dayKeyUtc': '2026-06-14',
             'resetAtUtc': '2026-06-15T00:00:00.000Z',
           },
         ),
@@ -80,6 +81,35 @@ void main() {
       expect(failure.firebaseCode, 'resource-exhausted');
       expect(failure.domainCode, 'daily_limit_reached');
       expect(failure.retryable, isFalse);
+      expect(failure.dailyLimit?.limit, 5);
+      expect(failure.dailyLimit?.count, 5);
+      expect(failure.dailyLimit?.dayKeyUtc, '2026-06-14');
+      expect(
+        failure.dailyLimit?.resetAtUtc,
+        DateTime.parse('2026-06-15T00:00:00.000Z'),
+      );
+    });
+
+    test('ignores malformed daily limit support context safely', () {
+      final failure = mapEventActionFailure(
+        _TestFirebaseFunctionsException(
+          code: 'resource-exhausted',
+          message: 'Raw backend message',
+          details: <String, dynamic>{
+            'domainCode': 'daily_limit_reached',
+            'limit': '5',
+            'count': 5.5,
+            'dayKeyUtc': '',
+            'resetAtUtc': 'tomorrow',
+          },
+        ),
+      );
+
+      expect(failure.kind, EventActionFailureKind.dailyLimitReached);
+      expect(failure.dailyLimit?.limit, isNull);
+      expect(failure.dailyLimit?.count, isNull);
+      expect(failure.dailyLimit?.dayKeyUtc, isNull);
+      expect(failure.dailyLimit?.resetAtUtc, isNull);
     });
 
     test('preserves reason for temporal join and leave failures', () {
@@ -98,8 +128,10 @@ void main() {
 
       expect(joinFailure.kind, EventActionFailureKind.eventNotJoinable);
       expect(joinFailure.reason, 'past_event');
+      expect(joinFailure.dailyLimit, isNull);
       expect(leaveFailure.kind, EventActionFailureKind.eventNotLeaveable);
       expect(leaveFailure.reason, 'event_started');
+      expect(leaveFailure.dailyLimit, isNull);
     });
 
     test('keeps invariant backend state failures non-retryable', () {
