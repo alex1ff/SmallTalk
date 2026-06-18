@@ -9,6 +9,7 @@ import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
 import 'package:small_talk/services/event_actions_repository.dart';
+import 'package:small_talk/services/event_group_chat_repository.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -29,6 +30,11 @@ Widget _buildTestApp({required Widget home}) {
     home: home,
   );
 }
+
+EventChatMetadataStream _allowedChatStream({String eventId = 'event-123'}) =>
+    (chatRef) => Stream<EventChatsRecord?>.value(
+          _chatFixture(chatRef: chatRef, eventId: eventId),
+        );
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -53,10 +59,15 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: 'event-123',
+          chatStream: _allowedChatStream(),
           messagesStream: (_) => completer.future.asStream(),
         ),
       ),
     );
+    await tester.pump();
+
+    expect(find.byKey(eventGroupChatAccessLoadingKey), findsOneWidget);
+
     await tester.pump();
 
     expect(find.byKey(eventGroupChatMessagesLoadingKey), findsOneWidget);
@@ -72,6 +83,7 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: 'event-123',
+          chatStream: _allowedChatStream(),
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
         ),
@@ -81,6 +93,96 @@ void main() {
 
     expect(find.byKey(eventGroupChatMessagesEmptyKey), findsOneWidget);
     expect(find.text('Сообщений пока нет'), findsOneWidget);
+  });
+
+  testWidgets('blocks chat content when access metadata is denied',
+      (tester) async {
+    var messageStreamCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: (_) => Stream<EventChatsRecord?>.error(
+            StateError('permission-denied'),
+          ),
+          messagesStream: (_) {
+            messageStreamCalls += 1;
+            return Stream.value(const <EventChatMessagesRecord>[]);
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(eventGroupChatAccessDeniedKey), findsOneWidget);
+    expect(find.text('Сначала присоединитесь к событию'), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsNothing);
+    expect(find.byKey(eventGroupChatMessagesListKey), findsNothing);
+    expect(messageStreamCalls, 0);
+  });
+
+  testWidgets('blocks chat content when access metadata is missing',
+      (tester) async {
+    var messageStreamCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: (_) => Stream<EventChatsRecord?>.value(null),
+          messagesStream: (_) {
+            messageStreamCalls += 1;
+            return Stream.value(const <EventChatMessagesRecord>[]);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatAccessDeniedKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
+    expect(messageStreamCalls, 0);
+  });
+
+  testWidgets('does not reuse allowed access after event changes',
+      (tester) async {
+    var deniedEventMessageStreamCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-1',
+          chatStream: _allowedChatStream(eventId: 'event-1'),
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-2',
+          chatStream: (_) => Stream<EventChatsRecord?>.value(null),
+          messagesStream: (_) {
+            deniedEventMessageStreamCalls += 1;
+            return Stream.value(const <EventChatMessagesRecord>[]);
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(eventGroupChatAccessDeniedKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
+    expect(deniedEventMessageStreamCalls, 0);
   });
 
   testWidgets('loads event chat messages from event chat document',
@@ -97,6 +199,7 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: ' event-123 ',
+          chatStream: _allowedChatStream(),
           messagesStream: (requestedChatRef) {
             requestedChatPath = requestedChatRef.path;
             return Stream.value(<EventChatMessagesRecord>[message]);
@@ -127,6 +230,7 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: 'event-123',
+          chatStream: _allowedChatStream(),
           messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
             message,
           ]),
@@ -166,6 +270,7 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: 'event-123',
+          chatStream: _allowedChatStream(),
           messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
             message,
           ]),
@@ -201,6 +306,7 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: 'event-123',
+          chatStream: _allowedChatStream(),
           messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
             message,
           ]),
@@ -233,6 +339,7 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: 'event-123',
+          chatStream: _allowedChatStream(),
           messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
             message,
           ]),
@@ -259,6 +366,7 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: ' event-123 ',
+          chatStream: _allowedChatStream(),
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
           sendMessageInvoker: (calledFunctionName, calledPayload) async {
@@ -300,6 +408,7 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: 'event-123',
+          chatStream: _allowedChatStream(),
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
           sendMessageInvoker: (_, __) async {
@@ -327,6 +436,7 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: 'event-123',
+          chatStream: _allowedChatStream(),
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
           sendMessageInvoker: (_, __) async {
@@ -352,6 +462,7 @@ void main() {
       _buildTestApp(
         home: EventGroupChatWidget(
           eventId: 'event-123',
+          chatStream: _allowedChatStream(),
           messagesStream: (_) => Stream<List<EventChatMessagesRecord>>.error(
             StateError('permission-denied'),
           ),
@@ -384,5 +495,20 @@ EventChatMessagesRecord _messageFixture({
       'deletedAt': deletedAt,
     },
     EventChatMessagesRecord.createDoc(chatRef, id: messageId),
+  );
+}
+
+EventChatsRecord _chatFixture({
+  required DocumentReference chatRef,
+  required String eventId,
+}) {
+  return EventChatsRecord.getDocumentFromData(
+    {
+      'eventId': eventId,
+      'readAccessUserIds': <String>['uid-1'],
+      'createdAt': DateTime.parse('2026-06-14T10:00:00Z'),
+      'updatedAt': DateTime.parse('2026-06-14T10:00:00Z'),
+    },
+    chatRef,
   );
 }

@@ -18,6 +18,10 @@ const ValueKey<String> eventGroupChatMessagesEmptyKey =
     ValueKey<String>('event_group_chat_messages_empty');
 const ValueKey<String> eventGroupChatMessagesListKey =
     ValueKey<String>('event_group_chat_messages_list');
+const ValueKey<String> eventGroupChatAccessLoadingKey =
+    ValueKey<String>('event_group_chat_access_loading');
+const ValueKey<String> eventGroupChatAccessDeniedKey =
+    ValueKey<String>('event_group_chat_access_denied');
 const ValueKey<String> eventGroupChatMessageInputKey =
     ValueKey<String>('event_group_chat_message_input');
 const ValueKey<String> eventGroupChatSendButtonKey =
@@ -47,12 +51,14 @@ class EventGroupChatWidget extends StatefulWidget {
   const EventGroupChatWidget({
     super.key,
     required this.eventId,
+    this.chatStream,
     this.messagesStream,
     this.sendMessageInvoker,
     this.messageLimit = EventGroupChatRepository.defaultMessageLimit,
   });
 
   final String eventId;
+  final EventChatMetadataStream? chatStream;
   final EventChatMessagesStream? messagesStream;
   final EventCallableInvoker? sendMessageInvoker;
   final int messageLimit;
@@ -67,22 +73,31 @@ class EventGroupChatWidget extends StatefulWidget {
 class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   final TextEditingController _messageTextController = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
-  late Stream<List<EventChatMessagesRecord>> _messagesStream;
+  late Stream<EventChatsRecord?> _chatAccessStream;
+  Stream<List<EventChatMessagesRecord>>? _messagesStream;
+  int _chatAccessRevision = 0;
   bool _isSending = false;
 
   @override
   void initState() {
     super.initState();
-    _messagesStream = _watchMessages();
+    _chatAccessStream = _watchChatAccess();
   }
 
   @override
   void didUpdateWidget(covariant EventGroupChatWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.eventId != widget.eventId ||
-        oldWidget.messagesStream != widget.messagesStream ||
-        oldWidget.messageLimit != widget.messageLimit) {
-      _messagesStream = _watchMessages();
+    final accessChanged = oldWidget.eventId != widget.eventId ||
+        oldWidget.chatStream != widget.chatStream;
+    final messagesChanged = oldWidget.messagesStream != widget.messagesStream ||
+        oldWidget.messageLimit != widget.messageLimit;
+
+    if (accessChanged) {
+      _chatAccessRevision += 1;
+      _chatAccessStream = _watchChatAccess();
+      _messagesStream = null;
+    } else if (messagesChanged) {
+      _messagesStream = null;
     }
   }
 
@@ -98,6 +113,12 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         eventId: widget.eventId,
         messagesStream: widget.messagesStream,
         limit: widget.messageLimit,
+      );
+
+  Stream<EventChatsRecord?> _watchChatAccess() =>
+      EventGroupChatRepository.watchChatAccess(
+        eventId: widget.eventId,
+        chatStream: widget.chatStream,
       );
 
   Future<void> _sendMessage() async {
@@ -156,75 +177,130 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const _EventGroupChatTopBar(),
-            Expanded(
-              child: StreamBuilder<List<EventChatMessagesRecord>>(
-                stream: _messagesStream,
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    debugPrint(
-                      'EventGroupChatWidget: messages stream error for '
-                      '${widget.eventId}: ${snapshot.error}',
-                    );
-                    return _EventGroupChatStateMessage(
-                      key: eventGroupChatMessagesErrorKey,
-                      titleRu: 'Не удалось загрузить чат',
-                      titleEn: 'Could not load chat',
-                      messageRu: 'Проверьте подключение и попробуйте снова.',
-                      messageEn: 'Check your connection and try again.',
-                    );
-                  }
-
-                  if (!snapshot.hasData) {
-                    return const Center(
-                      child: SizedBox.square(
-                        key: eventGroupChatMessagesLoadingKey,
-                        dimension: 28,
-                        child: CircularProgressIndicator(strokeWidth: 2.8),
-                      ),
-                    );
-                  }
-
-                  final messages = snapshot.data!;
-                  if (messages.isEmpty) {
-                    return _EventGroupChatStateMessage(
-                      key: eventGroupChatMessagesEmptyKey,
-                      titleRu: 'Сообщений пока нет',
-                      titleEn: 'No messages yet',
-                      messageRu:
-                          'Когда участники напишут, сообщения появятся здесь.',
-                      messageEn:
-                          'Messages will appear here when participants write.',
-                    );
-                  }
-
-                  return ListView.builder(
-                    key: eventGroupChatMessagesListKey,
-                    reverse: true,
-                    padding: const EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.space24,
-                      ExpatlioDesign.space12,
-                      ExpatlioDesign.space24,
-                      ExpatlioDesign.space24,
-                    ),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      return _EventGroupChatMessageBubble(
-                        message: messages[index],
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-            _EventGroupChatComposer(
-              controller: _messageTextController,
-              focusNode: _messageFocusNode,
-              isSending: _isSending,
-              onSendPressed: _sendMessage,
-            ),
+            Expanded(child: _buildChatContent()),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildChatContent() {
+    return StreamBuilder<EventChatsRecord?>(
+      key: ValueKey<int>(_chatAccessRevision),
+      stream: _chatAccessStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          debugPrint(
+            'EventGroupChatWidget: access stream error for '
+            '${widget.eventId}: ${snapshot.error}',
+          );
+          return _accessDeniedState();
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            snapshot.data == null) {
+          return const Center(
+            child: SizedBox.square(
+              key: eventGroupChatAccessLoadingKey,
+              dimension: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.8),
+            ),
+          );
+        }
+
+        final chat = snapshot.data;
+        if (chat == null) {
+          return _accessDeniedState();
+        }
+
+        return _buildMessagesContent();
+      },
+    );
+  }
+
+  Widget _buildMessagesContent() {
+    final messagesStream = _messagesStream ??= _watchMessages();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: StreamBuilder<List<EventChatMessagesRecord>>(
+            stream: messagesStream,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                debugPrint(
+                  'EventGroupChatWidget: messages stream error for '
+                  '${widget.eventId}: ${snapshot.error}',
+                );
+                return _EventGroupChatStateMessage(
+                  key: eventGroupChatMessagesErrorKey,
+                  titleRu: 'Не удалось загрузить чат',
+                  titleEn: 'Could not load chat',
+                  messageRu: 'Проверьте подключение и попробуйте снова.',
+                  messageEn: 'Check your connection and try again.',
+                );
+              }
+
+              if (!snapshot.hasData) {
+                return const Center(
+                  child: SizedBox.square(
+                    key: eventGroupChatMessagesLoadingKey,
+                    dimension: 28,
+                    child: CircularProgressIndicator(strokeWidth: 2.8),
+                  ),
+                );
+              }
+
+              final messages = snapshot.data!;
+              if (messages.isEmpty) {
+                return _EventGroupChatStateMessage(
+                  key: eventGroupChatMessagesEmptyKey,
+                  titleRu: 'Сообщений пока нет',
+                  titleEn: 'No messages yet',
+                  messageRu:
+                      'Когда участники напишут, сообщения появятся здесь.',
+                  messageEn:
+                      'Messages will appear here when participants write.',
+                );
+              }
+
+              return ListView.builder(
+                key: eventGroupChatMessagesListKey,
+                reverse: true,
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space24,
+                ),
+                itemCount: messages.length,
+                itemBuilder: (context, index) {
+                  return _EventGroupChatMessageBubble(
+                    message: messages[index],
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        _EventGroupChatComposer(
+          controller: _messageTextController,
+          focusNode: _messageFocusNode,
+          isSending: _isSending,
+          onSendPressed: _sendMessage,
+        ),
+      ],
+    );
+  }
+
+  Widget _accessDeniedState() {
+    return _EventGroupChatStateMessage(
+      key: eventGroupChatAccessDeniedKey,
+      titleRu: 'Сначала присоединитесь к событию',
+      titleEn: 'Join the event first',
+      messageRu: 'Чат доступен только участникам события.',
+      messageEn: 'Only event participants can access this chat.',
     );
   }
 }

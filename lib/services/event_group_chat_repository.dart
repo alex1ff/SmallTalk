@@ -3,6 +3,9 @@ import '/services/event_detail_repository.dart';
 
 typedef EventChatMessagesStream = Stream<List<EventChatMessagesRecord>>
     Function(DocumentReference chatRef);
+typedef EventChatMetadataStream = Stream<EventChatsRecord?> Function(
+  DocumentReference chatRef,
+);
 
 class EventGroupChatRepository {
   const EventGroupChatRepository._();
@@ -12,6 +15,24 @@ class EventGroupChatRepository {
 
   static DocumentReference chatReferenceForEventId(String eventId) =>
       EventChatsRecord.collection.doc(normalizeEventDetailId(eventId));
+
+  static Stream<EventChatsRecord?> watchChatAccess({
+    required String eventId,
+    EventChatMetadataStream? chatStream,
+  }) {
+    final chatRef = chatReferenceForEventId(eventId);
+    final injectedStream = chatStream;
+    if (injectedStream != null) {
+      return injectedStream(chatRef);
+    }
+
+    return chatRef.snapshots().map((snapshot) {
+      if (!snapshot.exists) {
+        return null;
+      }
+      return EventChatsRecord.fromSnapshot(snapshot);
+    });
+  }
 
   static Stream<List<EventChatMessagesRecord>> watchMessages({
     required String eventId,
