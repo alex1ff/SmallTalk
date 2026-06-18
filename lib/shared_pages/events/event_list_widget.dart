@@ -6,6 +6,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/events/event_create_widget.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_city_catalog.dart';
+import '/services/event_city_resolution.dart';
 import '/services/event_selected_city_state.dart';
 
 const ValueKey<String> eventListCreateButtonKey =
@@ -76,7 +77,9 @@ class _EventListWidgetState extends State<EventListWidget> {
         return FutureBuilder<EventCityCatalog>(
           future: _cityCatalogFuture,
           builder: (context, snapshot) {
-            final selectedCity = _resolveVisibleSelectedCity(snapshot.data);
+            final selectedState = _resolveVisibleSelectedCityState(
+              snapshot.data,
+            );
 
             return Scaffold(
               backgroundColor: ExpatlioDesign.background,
@@ -131,7 +134,9 @@ class _EventListWidgetState extends State<EventListWidget> {
                       ),
                       const SizedBox(height: ExpatlioDesign.space16),
                       _EventCitySelector(
-                        selectedCity: selectedCity,
+                        selectedCity: selectedState?.selected,
+                        hasOutdatedProfileCity:
+                            selectedState?.hasOutdatedProfileCity ?? false,
                         onPressed: widget.onCitySelectorPressed,
                       ),
                     ],
@@ -145,24 +150,35 @@ class _EventListWidgetState extends State<EventListWidget> {
     );
   }
 
-  EventSelectedCity? _resolveVisibleSelectedCity(EventCityCatalog? catalog) {
-    if (_selectedCity != null || catalog == null) {
-      return _selectedCity;
+  EventSelectedCityState? _resolveVisibleSelectedCityState(
+    EventCityCatalog? catalog,
+  ) {
+    if (_selectedCity != null) {
+      return EventSelectedCityState(
+        profileStatus: EventCityResolutionStatus.missingProfileCity,
+        countryCodeHint: null,
+        selected: _selectedCity,
+      );
+    }
+    if (catalog == null) {
+      return null;
     }
     return resolveEventSelectedCityState(
       user: currentUserDocument,
       catalog: catalog,
-    ).selected;
+    );
   }
 }
 
 class _EventCitySelector extends StatelessWidget {
   const _EventCitySelector({
     required this.selectedCity,
+    required this.hasOutdatedProfileCity,
     required this.onPressed,
   });
 
   final EventSelectedCity? selectedCity;
+  final bool hasOutdatedProfileCity;
   final VoidCallback? onPressed;
 
   @override
@@ -195,35 +211,57 @@ class _EventCitySelector extends StatelessWidget {
               borderColor: ExpatlioDesign.separator,
               radius: ExpatlioDesign.controlRadius,
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(
-                  Icons.location_on_outlined,
-                  color: ExpatlioDesign.primary,
-                  size: 20,
+                Row(
+                  children: [
+                    Icon(
+                      Icons.location_on_outlined,
+                      color: ExpatlioDesign.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: ExpatlioDesign.space8),
+                    Expanded(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: selectedCity == null
+                              ? ExpatlioDesign.muted
+                              : ExpatlioDesign.text,
+                          size: 16,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: ExpatlioDesign.space8),
+                    Icon(
+                      FFIcons.kchevronDown,
+                      color: ExpatlioDesign.muted,
+                      size: 20,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: ExpatlioDesign.space8),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                if (hasOutdatedProfileCity) ...[
+                  const SizedBox(height: ExpatlioDesign.space8),
+                  Text(
+                    FFLocalizations.of(context).getVariableText(
+                      ruText:
+                          'Сохранённый город больше недоступен. Выберите актуальный город, чтобы увидеть события.',
+                      enText:
+                          'Your saved city is no longer available. Choose a current city to see events.',
+                    ),
                     style: ExpatlioDesign.textStyle(
                       context,
-                      color: selectedCity == null
-                          ? ExpatlioDesign.muted
-                          : ExpatlioDesign.text,
-                      size: 16,
-                      weight: FontWeight.w600,
+                      color: ExpatlioDesign.muted,
+                      size: 13,
+                      weight: FontWeight.w500,
                     ),
                   ),
-                ),
-                const SizedBox(width: ExpatlioDesign.space8),
-                Icon(
-                  FFIcons.kchevronDown,
-                  color: ExpatlioDesign.muted,
-                  size: 20,
-                ),
+                ],
               ],
             ),
           ),
@@ -235,6 +273,12 @@ class _EventCitySelector extends StatelessWidget {
   String _citySelectorLabel(BuildContext context) {
     final city = selectedCity?.city;
     if (city == null) {
+      if (hasOutdatedProfileCity) {
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Выберите город заново',
+          enText: 'Choose city again',
+        );
+      }
       return FFLocalizations.of(context).getVariableText(
         ruText: 'Выберите город',
         enText: 'Choose city',

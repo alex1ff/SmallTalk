@@ -44,6 +44,7 @@ void main() {
       expect(state.countryCodeHint, 'RU');
       expect(state.canLoadEvents, isTrue);
       expect(state.needsCitySelection, isFalse);
+      expect(state.hasOutdatedProfileCity, isFalse);
       expect(state.selectedFromProfile, isTrue);
       expect(state.selectedTemporarily, isFalse);
       expect(state.selected?.city.identity, 'US:new_york');
@@ -78,6 +79,7 @@ void main() {
       expect(state.selected, isNull);
       expect(state.canLoadEvents, isFalse);
       expect(state.needsCitySelection, isTrue);
+      expect(state.hasOutdatedProfileCity, isFalse);
     });
 
     test('does not unlock stale invalid or unknown profile cities', () {
@@ -114,6 +116,7 @@ void main() {
         expect(state.profileStatus, fixture.status);
         expect(state.selected, isNull);
         expect(state.canLoadEvents, isFalse);
+        expect(state.hasOutdatedProfileCity, isTrue);
       }
     });
 

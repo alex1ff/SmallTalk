@@ -69,6 +69,10 @@ class EventSelectedCityState {
   bool get selectedFromProfile =>
       selected?.source == EventCitySelectionSource.profile;
   bool get selectedTemporarily => selected != null && !selectedFromProfile;
+  bool get hasOutdatedProfileCity =>
+      profileStatus == EventCityResolutionStatus.staleCatalogVersion ||
+      profileStatus == EventCityResolutionStatus.invalidIdentity ||
+      profileStatus == EventCityResolutionStatus.unknownCatalogCity;
 }
 
 EventSelectedCityState resolveEventSelectedCityState({

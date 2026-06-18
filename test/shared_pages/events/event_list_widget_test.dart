@@ -197,6 +197,9 @@ void main() {
     await tester.pump();
 
     expect(find.text('Выберите город'), findsOneWidget);
+    expect(find.text('Выберите город заново'), findsNothing);
+    expect(find.textContaining('Сохранённый город больше недоступен'),
+        findsNothing);
     expect(find.text('Москва · Россия'), findsNothing);
   });
 
@@ -237,7 +240,14 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Выберите город'), findsOneWidget);
+      expect(find.text('Выберите город заново'), findsOneWidget);
+      expect(
+        find.text(
+          'Сохранённый город больше недоступен. Выберите актуальный город, чтобы увидеть события.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Выберите город'), findsNothing);
       expect(find.text('Москва · Россия'), findsNothing);
     }
   });
