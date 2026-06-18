@@ -346,7 +346,7 @@ void main() {
     expect(find.text('Покинуть'), findsOneWidget);
   });
 
-  testWidgets('successful join shows joined state without occupancy update',
+  testWidgets('successful join shows joined state with occupancy update',
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
     var joinCalls = 0;
@@ -378,8 +378,8 @@ void main() {
 
       expect(joinCalls, 1);
       expect(find.text('Покинуть'), findsOneWidget);
-      expect(find.text('5/10 мест'), findsOneWidget);
-      expect(find.text('6/10 мест'), findsNothing);
+      expect(find.text('6/10 мест'), findsOneWidget);
+      expect(find.text('5/10 мест'), findsNothing);
 
       final primarySemantics =
           tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
@@ -390,6 +390,62 @@ void main() {
     } finally {
       semanticsHandle.dispose();
     }
+  });
+
+  testWidgets('snapshot occupancy replaces local join count after catch-up',
+      (tester) async {
+    final streamController = StreamController<DocumentSnapshot>();
+    addTearDown(streamController.close);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => streamController.stream,
+          joinEventInvoker: (_, __) async =>
+              _joinEventResponse(participantsCount: 6),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(participantsCount: 5),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('5/10 мест'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('6/10 мест'), findsOneWidget);
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(participantsCount: 7),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('7/10 мест'), findsOneWidget);
+    expect(find.text('6/10 мест'), findsNothing);
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(participantsCount: 4),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('4/10 мест'), findsOneWidget);
+    expect(find.text('6/10 мест'), findsNothing);
   });
 
   testWidgets('join failure clears loading state without changing CTA',
@@ -482,16 +538,23 @@ void main() {
     expect(joinedEventIds, <String>['event-1', 'event-2']);
     expect(find.text('Присоединяемся...'), findsOneWidget);
 
-    firstJoinCompleter.complete(_joinEventResponse(eventId: 'event-1'));
+    firstJoinCompleter.complete(
+      _joinEventResponse(
+        eventId: 'event-1',
+        participantsCount: 9,
+      ),
+    );
     await tester.pump();
 
     expect(find.text('Присоединяемся...'), findsOneWidget);
     expect(find.text('Покинуть'), findsNothing);
+    expect(find.text('9/10 мест'), findsNothing);
 
     secondJoinCompleter.complete(_joinEventResponse(eventId: 'event-2'));
     await tester.pumpAndSettle();
 
     expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('6/10 мест'), findsOneWidget);
   });
 
   testWidgets('successful cancellation keeps organizer on detail route',

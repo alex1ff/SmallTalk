@@ -261,7 +261,7 @@ Date: 2026-06-14
 - [x] Add optimistic or loading state for join button.
 - [x] Disable repeated taps during join.
 - [x] Show success state after join.
-- [ ] Update occupancy after join.
+- [x] Update occupancy after join.
 - [ ] Add leave action for active participants.
 - [ ] Add leave confirmation.
 - [ ] Hide or disable leave action at or after `startsAt`.

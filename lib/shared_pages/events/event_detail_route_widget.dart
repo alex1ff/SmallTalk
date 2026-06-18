@@ -45,6 +45,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   bool _isJoining = false;
   String? _locallyCanceledEventId;
   String? _locallyJoinedEventId;
+  int? _locallyJoinedParticipantsCount;
   int _joinRequestGeneration = 0;
 
   @override
@@ -61,6 +62,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _eventStream = _watchEvent();
       _locallyCanceledEventId = null;
       _locallyJoinedEventId = null;
+      _locallyJoinedParticipantsCount = null;
       _joinRequestGeneration += 1;
       _isJoining = false;
     }
@@ -130,6 +132,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       }
       setState(() {
         _locallyJoinedEventId = result.eventId;
+        _locallyJoinedParticipantsCount = result.participantsCount;
       });
     } catch (_) {
       // Clear loading only. User-facing join errors are handled in a later task.
@@ -182,6 +185,13 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         final eventId = event.reference.id;
         final isLocallyCanceled = _locallyCanceledEventId == eventId;
         final isLocallyJoined = _locallyJoinedEventId == eventId;
+        final snapshotParticipantsCount =
+            event.hasParticipantsCount() ? event.participantsCount : null;
+        final participantsCount = _eventDetailParticipantsCountForEvent(
+          snapshotParticipantsCount: snapshotParticipantsCount,
+          localJoinedParticipantsCount:
+              isLocallyJoined ? _locallyJoinedParticipantsCount : null,
+        );
         final status = event.status.trim();
         final isActive = status == 'active';
         final isCanceled = isLocallyCanceled || status == 'canceled';
@@ -193,6 +203,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           isJoining: _isJoining,
         );
         final canJoin = joinCtaState == EventDetailJoinCtaState.join;
+        _clearLocalParticipantsCountIfSnapshotCaughtUp(
+          eventId: eventId,
+          snapshotParticipantsCount: snapshotParticipantsCount,
+        );
 
         return EventDetailWidget(
           eventId: eventId,
@@ -219,8 +233,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           startsAt: event.startsAt,
           timeZoneId: event.timeZoneId,
           locationName: event.locationName,
-          participantsCount:
-              event.hasParticipantsCount() ? event.participantsCount : null,
+          participantsCount: participantsCount,
           capacity: event.hasCapacity() ? event.capacity : null,
           joinCtaState: joinCtaState,
           onPrimaryCtaPressed:
@@ -228,6 +241,30 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         );
       },
     );
+  }
+
+  void _clearLocalParticipantsCountIfSnapshotCaughtUp({
+    required String eventId,
+    required int? snapshotParticipantsCount,
+  }) {
+    final localParticipantsCount = _locallyJoinedParticipantsCount;
+    if (_locallyJoinedEventId != eventId ||
+        localParticipantsCount == null ||
+        snapshotParticipantsCount == null ||
+        snapshotParticipantsCount < localParticipantsCount) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          _locallyJoinedEventId != eventId ||
+          _locallyJoinedParticipantsCount != localParticipantsCount) {
+        return;
+      }
+      setState(() {
+        _locallyJoinedParticipantsCount = null;
+      });
+    });
   }
 }
 
@@ -329,6 +366,22 @@ EventDetailJoinCtaState _eventDetailJoinStateForEvent(
   }
 
   return EventDetailJoinCtaState.join;
+}
+
+int? _eventDetailParticipantsCountForEvent({
+  required int? snapshotParticipantsCount,
+  required int? localJoinedParticipantsCount,
+}) {
+  final localCount = localJoinedParticipantsCount;
+  if (localCount == null) {
+    return snapshotParticipantsCount;
+  }
+
+  final snapshotCount = snapshotParticipantsCount;
+  if (snapshotCount == null || snapshotCount < localCount) {
+    return localCount;
+  }
+  return snapshotCount;
 }
 
 bool _eventDetailCanCurrentUserManage(EventsRecord event) {
