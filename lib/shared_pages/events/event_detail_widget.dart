@@ -43,6 +43,8 @@ const ValueKey<String> eventDetailParticipantsSectionKey =
     ValueKey<String>('event_detail_participants_section');
 const ValueKey<String> eventDetailParticipantsTitleKey =
     ValueKey<String>('event_detail_participants_title');
+const ValueKey<String> eventDetailOccupancyKey =
+    ValueKey<String>('event_detail_occupancy');
 
 ValueKey<String> eventDetailParticipantTileKey(int index) =>
     ValueKey<String>('event_detail_participant_tile_$index');
@@ -77,6 +79,8 @@ class EventDetailWidget extends StatelessWidget {
     this.timeZoneId,
     this.locationName,
     this.participants = const <EventDetailParticipantViewModel>[],
+    this.participantsCount,
+    this.capacity,
   });
 
   final String eventId;
@@ -96,6 +100,8 @@ class EventDetailWidget extends StatelessWidget {
   final String? timeZoneId;
   final String? locationName;
   final List<EventDetailParticipantViewModel> participants;
+  final int? participantsCount;
+  final int? capacity;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
@@ -120,6 +126,11 @@ class EventDetailWidget extends StatelessWidget {
     final organizerName = organizerDisplayName?.trim() ?? '';
     final locationLabel = locationName?.trim() ?? '';
     final shouldShowDetails = startsAt != null || locationLabel.isNotEmpty;
+    final hasOccupancy = _eventDetailHasOccupancy(capacity);
+    final resolvedParticipantsCount = _eventDetailResolvedParticipantsCount(
+      participants: participants,
+      participantsCount: participantsCount,
+    );
 
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
@@ -217,10 +228,12 @@ class EventDetailWidget extends StatelessWidget {
                               onMessagePressed: onOrganizerMessagePressed,
                             ),
                           ],
-                          if (participants.isNotEmpty) ...[
+                          if (participants.isNotEmpty || hasOccupancy) ...[
                             const SizedBox(height: ExpatlioDesign.space24),
                             _EventDetailParticipantsSection(
                               participants: participants,
+                              participantsCount: resolvedParticipantsCount,
+                              capacity: hasOccupancy ? capacity : null,
                             ),
                           ],
                         ],
@@ -692,9 +705,13 @@ class _EventDetailOrganizerMessageButton extends StatelessWidget {
 class _EventDetailParticipantsSection extends StatelessWidget {
   const _EventDetailParticipantsSection({
     required this.participants,
+    required this.participantsCount,
+    required this.capacity,
   });
 
   final List<EventDetailParticipantViewModel> participants;
+  final int participantsCount;
+  final int? capacity;
 
   @override
   Widget build(BuildContext context) {
@@ -702,6 +719,13 @@ class _EventDetailParticipantsSection extends StatelessWidget {
       ruText: 'Участники',
       enText: 'Participants',
     );
+    final occupancyLabel = capacity == null
+        ? null
+        : _eventDetailOccupancyLabel(
+            context,
+            participantsCount: participantsCount,
+            capacity: capacity!,
+          );
 
     return Container(
       key: eventDetailParticipantsSectionKey,
@@ -712,37 +736,89 @@ class _EventDetailParticipantsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Semantics(
-            header: true,
-            child: Text(
-              key: eventDetailParticipantsTitleKey,
-              title,
-              style: ExpatlioDesign.textStyle(
-                context,
-                size: 20,
-                weight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(height: ExpatlioDesign.space20),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final tileWidth = constraints.maxWidth < 360 ? 88.0 : 104.0;
-              return Wrap(
-                spacing: ExpatlioDesign.space16,
-                runSpacing: ExpatlioDesign.space20,
-                children: [
-                  for (var index = 0; index < participants.length; index += 1)
-                    _EventDetailParticipantTile(
-                      key: eventDetailParticipantTileKey(index),
-                      participant: participants[index],
-                      width: tileWidth,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: Text(
+                    key: eventDetailParticipantsTitleKey,
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ExpatlioDesign.textStyle(
+                      context,
+                      size: 20,
+                      weight: FontWeight.w700,
                     ),
-                ],
-              );
-            },
+                  ),
+                ),
+              ),
+              if (occupancyLabel != null) ...[
+                const SizedBox(width: ExpatlioDesign.space12),
+                Flexible(
+                  child: _EventDetailOccupancyLabel(label: occupancyLabel),
+                ),
+              ],
+            ],
           ),
+          if (participants.isNotEmpty) ...[
+            const SizedBox(height: ExpatlioDesign.space20),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final tileWidth = constraints.maxWidth < 360 ? 88.0 : 104.0;
+                return Wrap(
+                  spacing: ExpatlioDesign.space16,
+                  runSpacing: ExpatlioDesign.space20,
+                  children: [
+                    for (var index = 0; index < participants.length; index += 1)
+                      _EventDetailParticipantTile(
+                        key: eventDetailParticipantTileKey(index),
+                        participant: participants[index],
+                        width: tileWidth,
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _EventDetailOccupancyLabel extends StatelessWidget {
+  const _EventDetailOccupancyLabel({
+    required this.label,
+  });
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final semanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Заполненность: $label',
+      enText: 'Occupancy: $label',
+    );
+
+    return Semantics(
+      key: eventDetailOccupancyKey,
+      label: semanticsLabel,
+      child: ExcludeSemantics(
+        child: Text(
+          label,
+          textAlign: TextAlign.end,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: ExpatlioDesign.textStyle(
+            context,
+            color: ExpatlioDesign.muted,
+            size: 16,
+            weight: FontWeight.w500,
+          ),
+        ),
       ),
     );
   }
@@ -1075,6 +1151,35 @@ DateTime _eventDetailLocalDateTime({
   } on ArgumentError {
     return startsAt.toLocal();
   }
+}
+
+bool _eventDetailHasOccupancy(int? capacity) {
+  return capacity != null && capacity > 0;
+}
+
+int _eventDetailResolvedParticipantsCount({
+  required List<EventDetailParticipantViewModel> participants,
+  required int? participantsCount,
+}) {
+  final count = participantsCount;
+  if (count == null) {
+    return participants.length;
+  }
+  return count < participants.length ? participants.length : count;
+}
+
+String _eventDetailOccupancyLabel(
+  BuildContext context, {
+  required int participantsCount,
+  required int capacity,
+}) {
+  final normalizedParticipantsCount =
+      participantsCount < 0 ? 0 : participantsCount;
+  final suffix = FFLocalizations.of(context).getVariableText(
+    ruText: 'мест',
+    enText: capacity == 1 ? 'spot' : 'spots',
+  );
+  return '$normalizedParticipantsCount/$capacity $suffix';
 }
 
 String _eventDetailDateLabel(

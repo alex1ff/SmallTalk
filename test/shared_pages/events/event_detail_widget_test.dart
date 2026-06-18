@@ -21,9 +21,12 @@ const List<LocalizationsDelegate<dynamic>> _localizationsDelegates = [
   FallbackCupertinoLocalizationDelegate(),
 ];
 
-Widget _buildTestApp({required Widget home}) {
+Widget _buildTestApp({
+  required Widget home,
+  Locale locale = const Locale('ru'),
+}) {
   return MaterialApp(
-    locale: const Locale('ru'),
+    locale: locale,
     supportedLocales: _supportedLocales,
     localizationsDelegates: _localizationsDelegates,
     home: home,
@@ -800,6 +803,8 @@ void main() {
         child: _buildTestApp(
           home: const EventDetailWidget(
             eventId: 'event-123',
+            participantsCount: 3,
+            capacity: 10,
             participants: [
               EventDetailParticipantViewModel(
                 displayName: 'Очень длинное имя участника события',
@@ -814,8 +819,184 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventDetailParticipantsSectionKey), findsOneWidget);
+    expect(find.byKey(eventDetailOccupancyKey), findsOneWidget);
     expect(find.byKey(eventDetailParticipantTileKey(0)), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('shows occupancy in participants section header', (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            participantsCount: 5,
+            capacity: 10,
+            participants: [
+              EventDetailParticipantViewModel(displayName: 'Marco Rossi'),
+              EventDetailParticipantViewModel(displayName: 'Лиза'),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailParticipantsSectionKey), findsOneWidget);
+      expect(find.byKey(eventDetailOccupancyKey), findsOneWidget);
+      expect(find.text('5/10 мест'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(RegExp('Заполненность: 5/10 мест')),
+        findsOneWidget,
+      );
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('shows English occupancy suffix', (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('en'),
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            participantsCount: 5,
+            capacity: 10,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Participants'), findsOneWidget);
+      expect(find.byKey(eventDetailOccupancyKey), findsOneWidget);
+      expect(find.text('5/10 spots'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(RegExp('Occupancy: 5/10 spots')),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('en'),
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            participantsCount: 1,
+            capacity: 1,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('5/10 spots'), findsNothing);
+      expect(find.text('1/1 spot'), findsOneWidget);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('shows zero occupancy without participant tiles', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          participantsCount: 0,
+          capacity: 10,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailParticipantsSectionKey), findsOneWidget);
+    expect(find.byKey(eventDetailOccupancyKey), findsOneWidget);
+    expect(find.byKey(eventDetailParticipantTileKey(0)), findsNothing);
+    expect(find.text('0/10 мест'), findsOneWidget);
+  });
+
+  testWidgets('occupancy uses max known participants and does not clamp',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          participantsCount: 1,
+          capacity: 2,
+          participants: [
+            EventDetailParticipantViewModel(displayName: 'Marco Rossi'),
+            EventDetailParticipantViewModel(displayName: 'Лиза'),
+            EventDetailParticipantViewModel(displayName: 'Kenzhi'),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('3/2 мест'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          participantsCount: 12,
+          capacity: 10,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('3/2 мест'), findsNothing);
+    expect(find.text('12/10 мест'), findsOneWidget);
+  });
+
+  testWidgets('occupancy normalizes negative counts', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          participantsCount: -4,
+          capacity: 10,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('-4/10 мест'), findsNothing);
+    expect(find.text('0/10 мест'), findsOneWidget);
+  });
+
+  testWidgets('hides occupancy when capacity is absent or invalid',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          participants: [
+            EventDetailParticipantViewModel(displayName: 'Marco Rossi'),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailParticipantsSectionKey), findsOneWidget);
+    expect(find.byKey(eventDetailOccupancyKey), findsNothing);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          participantsCount: 1,
+          capacity: 0,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailParticipantsSectionKey), findsNothing);
+    expect(find.byKey(eventDetailOccupancyKey), findsNothing);
   });
 
   testWidgets('language and level badges fit narrow large-text layouts',
