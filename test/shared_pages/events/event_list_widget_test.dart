@@ -600,6 +600,192 @@ void main() {
     expect(find.byKey(eventListCardTimeKey), findsOneWidget);
   });
 
+  testWidgets('shows participant avatar stack with overflow count',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participants: const [
+                EventListParticipantViewModel(displayName: 'Marco Rossi'),
+                EventListParticipantViewModel(displayName: 'Лиза'),
+                EventListParticipantViewModel(displayName: 'Kenzhi'),
+                EventListParticipantViewModel(displayName: 'Alex'),
+                EventListParticipantViewModel(displayName: 'Olga'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardFooterKey), findsOneWidget);
+    expect(find.byKey(eventListParticipantAvatarStackKey), findsOneWidget);
+    expect(_participantAvatarFinder(0), findsOneWidget);
+    expect(_participantAvatarFinder(1), findsOneWidget);
+    expect(_participantAvatarFinder(2), findsOneWidget);
+    expect(_participantAvatarFinder(3), findsNothing);
+    expect(find.byKey(eventListParticipantOverflowKey), findsOneWidget);
+    expect(find.text('MR'), findsOneWidget);
+    expect(find.text('ЛИ'), findsOneWidget);
+    expect(find.text('KE'), findsOneWidget);
+    expect(find.text('+2'), findsOneWidget);
+  });
+
+  testWidgets('participant avatar handles broken photo url with fallback',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participants: const [
+                EventListParticipantViewModel(
+                  displayName: 'Broken Photo',
+                  photoUrl: 'not-a-valid-url',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(eventListParticipantAvatarStackKey), findsOneWidget);
+    expect(_participantAvatarFinder(0), findsOneWidget);
+    expect(find.text('BP'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('participant stack uses participants count beyond preview',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participantsCount: 4,
+              participants: const [
+                EventListParticipantViewModel(displayName: 'Marco Rossi'),
+                EventListParticipantViewModel(displayName: 'Лиза'),
+                EventListParticipantViewModel(displayName: 'Kenzhi'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_participantAvatarFinder(0), findsOneWidget);
+    expect(_participantAvatarFinder(1), findsOneWidget);
+    expect(_participantAvatarFinder(2), findsOneWidget);
+    expect(_participantAvatarFinder(3), findsNothing);
+    expect(find.byKey(eventListParticipantOverflowKey), findsOneWidget);
+    expect(find.text('+1'), findsOneWidget);
+  });
+
+  testWidgets('participant stack shows count-only overflow badge',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(participantsCount: 2),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardFooterKey), findsOneWidget);
+    expect(find.byKey(eventListParticipantAvatarStackKey), findsOneWidget);
+    expect(_participantAvatarFinder(0), findsNothing);
+    expect(find.byKey(eventListParticipantOverflowKey), findsOneWidget);
+    expect(find.text('+2'), findsOneWidget);
+  });
+
+  testWidgets('hides participant avatar stack for empty participants',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListParticipantAvatarStackKey), findsNothing);
+    expect(find.byKey(eventListParticipantOverflowKey), findsNothing);
+    expect(find.byKey(eventListCardActionsKey), findsOneWidget);
+  });
+
   testWidgets('shows resolved profile city as the default selector value',
       (tester) async {
     currentUserDocument = _userFixture(
@@ -1129,6 +1315,9 @@ ChoiceChip _levelFilterChip(
 ) =>
     tester.widget<ChoiceChip>(_levelFilterFinder(level));
 
+Finder _participantAvatarFinder(int index) =>
+    find.byKey(ValueKey<String>('event_list_participant_avatar_$index'));
+
 EventListCardViewModel _eventCardFixture({
   String organizerDisplayName = 'Анастасия Иванова',
   String? organizerPhotoUrl = '',
@@ -1143,10 +1332,15 @@ EventListCardViewModel _eventCardFixture({
   DateTime? startsAt,
   String timeZoneId = 'Europe/Moscow',
   String locationName = 'Starbucks, ул. Арбат, 5',
+  List<EventListParticipantViewModel> participants =
+      const <EventListParticipantViewModel>[],
+  int? participantsCount,
 }) {
   return EventListCardViewModel(
     organizerDisplayName: organizerDisplayName,
     organizerPhotoUrl: organizerPhotoUrl,
+    participants: participants,
+    participantsCount: participantsCount,
     languageCode: languageCode,
     languageNameEn: languageNameEn,
     languageNameRu: languageNameRu,

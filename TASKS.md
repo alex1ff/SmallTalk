@@ -188,7 +188,7 @@ Date: 2026-06-14
 - [x] Show organizer avatar/name.
 - [x] Show title, description, level/range, date, time, and place.
 - [x] Show language badge from `languageCode`.
-- [ ] Show participant avatar stack.
+- [x] Show participant avatar stack.
 - [ ] Show occupancy like `5/10 мест`.
 - [ ] Add card CTA states: join, joined, full, canceled/past unavailable.
 - [ ] Add `Чат` CTA with participant-only behavior.
