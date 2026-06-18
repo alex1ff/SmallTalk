@@ -90,7 +90,16 @@ const ValueKey<String> eventCreateSubmitButtonKey =
     ValueKey<String>('event_create_submit_button');
 const ValueKey<String> eventCreateSubmitErrorKey =
     ValueKey<String>('event_create_submit_error');
+const ValueKey<String> eventCreateBackButtonKey =
+    ValueKey<String>('event_create_back_button');
+const ValueKey<String> eventCreateDiscardDialogKey =
+    ValueKey<String>('event_create_discard_dialog');
+const ValueKey<String> eventCreateDiscardKeepEditingButtonKey =
+    ValueKey<String>('event_create_discard_keep_editing_button');
+const ValueKey<String> eventCreateDiscardConfirmButtonKey =
+    ValueKey<String>('event_create_discard_confirm_button');
 const TimeOfDay _eventCreateDefaultTime = TimeOfDay(hour: 18, minute: 0);
+const String _eventCreateDefaultLanguageCode = 'en';
 const int _eventCreateDefaultCapacity = 10;
 const int _eventCreateMinCapacity = 2;
 const int _eventCreateMaxCapacity = 50;
@@ -283,6 +292,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   EventSelectedCity? _selectedCity;
   EventSelectedCity? _lastVisibleSelectedCity;
   late DateTime _selectedDate;
+  late DateTime _pristineSelectedDate;
   late TimeOfDay _selectedTime;
   String? _lastEmittedTitleDraftText;
   String? _pendingTitleDraftText;
@@ -313,6 +323,8 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   bool _capacityDraftCallbackScheduled = false;
   bool _hasAttemptedSubmit = false;
   bool _isSubmitting = false;
+  bool _allowCreateFormExit = false;
+  bool _discardDialogOpen = false;
   String? _startTimeErrorText;
   EventActionFailure? _submitFailure;
   String? _activeCreateRequestId;
@@ -333,6 +345,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         _normalizeEventCreateLocationName(widget.initialLocationName ?? '');
     _locationTextController.addListener(_handleLocationTextChanged);
     _selectedDate = _eventCreateDateOnly(widget.initialDate ?? DateTime.now());
+    _pristineSelectedDate = _selectedDate;
     _selectedTime = widget.initialTime ?? _eventCreateDefaultTime;
     _capacityTextController.text =
         _eventCreateCapacityText(widget.initialCapacity);
@@ -400,6 +413,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       _selectedDate = _eventCreateDateOnly(
         widget.initialDate ?? DateTime.now(),
       );
+      _pristineSelectedDate = _selectedDate;
       _startTimeErrorText = null;
     }
     if (oldWidget.initialTime != widget.initialTime) {
@@ -463,6 +477,122 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       return popular.first.code;
     }
     return catalog.languages.first.code;
+  }
+
+  bool get _isCreateFormDirty {
+    if (_titleTextController.text.trim().isNotEmpty ||
+        _descriptionTextController.text.trim().isNotEmpty ||
+        _normalizeEventCreateLocationName(_locationTextController.text)
+            .isNotEmpty) {
+      return true;
+    }
+    final selectedLanguageCode = _selectedLanguageCode?.trim();
+    if (selectedLanguageCode != null &&
+        selectedLanguageCode.isNotEmpty &&
+        !_isEventCreateDefaultLanguageCode(selectedLanguageCode)) {
+      return true;
+    }
+    final selectedLevelRange = _resolvedSelectedLevelRange();
+    if (selectedLevelRange.levelMin != 'B1' ||
+        selectedLevelRange.levelMax != 'C1') {
+      return true;
+    }
+    final selectedCity = _selectedCity;
+    if (selectedCity != null &&
+        selectedCity.source != EventCitySelectionSource.profile) {
+      return true;
+    }
+    if (_eventCreateDateDraftKey(_selectedDate) !=
+        _eventCreateDateDraftKey(_pristineSelectedDate)) {
+      return true;
+    }
+    if (_eventCreateTimeDraftKey(_selectedTime) !=
+        _eventCreateTimeDraftKey(_eventCreateDefaultTime)) {
+      return true;
+    }
+    if (_capacityTextController.text.trim() !=
+        _eventCreateDefaultCapacity.toString()) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _handleLeavePressed() async {
+    if (_discardDialogOpen) {
+      return;
+    }
+    if (!_isCreateFormDirty) {
+      _leaveCreateForm();
+      return;
+    }
+    final shouldDiscard = await _showDiscardCreateFormDialog();
+    if (!mounted || !shouldDiscard) {
+      return;
+    }
+    _leaveCreateForm();
+  }
+
+  void _leaveCreateForm() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _allowCreateFormExit = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.safePop();
+      }
+    });
+  }
+
+  Future<bool> _showDiscardCreateFormDialog() async {
+    _discardDialogOpen = true;
+    try {
+      final shouldDiscard = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          key: eventCreateDiscardDialogKey,
+          title: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Закрыть форму?',
+              enText: 'Leave create form?',
+            ),
+          ),
+          content: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Заполненные данные будут потеряны.',
+              enText: 'Entered details will be lost.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              key: eventCreateDiscardKeepEditingButtonKey,
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                FFLocalizations.of(context).getVariableText(
+                  ruText: 'Остаться',
+                  enText: 'Keep editing',
+                ),
+              ),
+            ),
+            TextButton(
+              key: eventCreateDiscardConfirmButtonKey,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(
+                FFLocalizations.of(context).getVariableText(
+                  ruText: 'Закрыть',
+                  enText: 'Discard',
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      return shouldDiscard ?? false;
+    } finally {
+      _discardDialogOpen = false;
+    }
   }
 
   void _emitTitleDraftNow(String title) {
@@ -1274,303 +1404,324 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _queueCapacityDraft(
       _eventCreateCapacityFromText(_capacityTextController.text),
     );
-    return AuthUserStreamWidget(
-      builder: (context) => Scaffold(
-        backgroundColor: ExpatlioDesign.background,
-        body: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const _EventCreateTopBar(),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsetsDirectional.fromSTEB(
-                    ExpatlioDesign.space24,
-                    ExpatlioDesign.space24,
-                    ExpatlioDesign.space24,
-                    ExpatlioDesign.space32,
-                  ),
-                  children: [
-                    Align(
-                      alignment: AlignmentDirectional.topCenter,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 760),
-                        child: Form(
-                          key: _formKey,
-                          autovalidateMode: _hasAttemptedSubmit
-                              ? AutovalidateMode.onUserInteraction
-                              : AutovalidateMode.disabled,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _EventCreateTextField(
-                                labelKey: eventCreateTitleLabelKey,
-                                semanticsKey: eventCreateTitleFieldSemanticsKey,
-                                fieldKey: eventCreateTitleFieldKey,
-                                label:
-                                    FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Название',
-                                  enText: 'Title',
+    return PopScope<Object?>(
+      canPop: _allowCreateFormExit,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) {
+          return;
+        }
+        unawaited(_handleLeavePressed());
+      },
+      child: AuthUserStreamWidget(
+        builder: (context) => Scaffold(
+          backgroundColor: ExpatlioDesign.background,
+          body: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _EventCreateTopBar(
+                  onBackPressed: () {
+                    unawaited(_handleLeavePressed());
+                  },
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space24,
+                      ExpatlioDesign.space24,
+                      ExpatlioDesign.space24,
+                      ExpatlioDesign.space32,
+                    ),
+                    children: [
+                      Align(
+                        alignment: AlignmentDirectional.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 760),
+                          child: Form(
+                            key: _formKey,
+                            autovalidateMode: _hasAttemptedSubmit
+                                ? AutovalidateMode.onUserInteraction
+                                : AutovalidateMode.disabled,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _EventCreateTextField(
+                                  labelKey: eventCreateTitleLabelKey,
+                                  semanticsKey:
+                                      eventCreateTitleFieldSemanticsKey,
+                                  fieldKey: eventCreateTitleFieldKey,
+                                  label: FFLocalizations.of(context)
+                                      .getVariableText(
+                                    ruText: 'Название',
+                                    enText: 'Title',
+                                  ),
+                                  hintText: FFLocalizations.of(context)
+                                      .getVariableText(
+                                    ruText:
+                                        'Разговорный клуб: кофе и английский',
+                                    enText:
+                                        'Conversation club: coffee and English',
+                                  ),
+                                  controller: _titleTextController,
+                                  focusNode: _titleFocusNode,
+                                  textInputAction: TextInputAction.next,
+                                  validator: (value) =>
+                                      _eventCreateRequiredText(
+                                    context,
+                                    value,
+                                    ruText: 'Введите название',
+                                    enText: 'Enter title',
+                                  ),
+                                  onFieldSubmitted: () {
+                                    _descriptionFocusNode.requestFocus();
+                                  },
                                 ),
-                                hintText:
-                                    FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Разговорный клуб: кофе и английский',
-                                  enText:
-                                      'Conversation club: coffee and English',
+                                const SizedBox(height: ExpatlioDesign.space20),
+                                _EventCreateTextField(
+                                  labelKey: eventCreateDescriptionLabelKey,
+                                  semanticsKey:
+                                      eventCreateDescriptionFieldSemanticsKey,
+                                  fieldKey: eventCreateDescriptionFieldKey,
+                                  label: FFLocalizations.of(context)
+                                      .getVariableText(
+                                    ruText: 'Описание',
+                                    enText: 'Description',
+                                  ),
+                                  hintText: FFLocalizations.of(context)
+                                      .getVariableText(
+                                    ruText: 'Расскажите, что будет на встрече',
+                                    enText:
+                                        'Tell people what will happen at the meetup',
+                                  ),
+                                  controller: _descriptionTextController,
+                                  focusNode: _descriptionFocusNode,
+                                  textInputAction: TextInputAction.newline,
+                                  keyboardType: TextInputType.multiline,
+                                  minLines: 4,
+                                  maxLines: 8,
+                                  validator: (value) =>
+                                      _eventCreateRequiredText(
+                                    context,
+                                    value,
+                                    ruText: 'Введите описание',
+                                    enText: 'Enter description',
+                                  ),
                                 ),
-                                controller: _titleTextController,
-                                focusNode: _titleFocusNode,
-                                textInputAction: TextInputAction.next,
-                                validator: (value) => _eventCreateRequiredText(
-                                  context,
-                                  value,
-                                  ruText: 'Введите название',
-                                  enText: 'Enter title',
-                                ),
-                                onFieldSubmitted: () {
-                                  _descriptionFocusNode.requestFocus();
-                                },
-                              ),
-                              const SizedBox(height: ExpatlioDesign.space20),
-                              _EventCreateTextField(
-                                labelKey: eventCreateDescriptionLabelKey,
-                                semanticsKey:
-                                    eventCreateDescriptionFieldSemanticsKey,
-                                fieldKey: eventCreateDescriptionFieldKey,
-                                label:
-                                    FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Описание',
-                                  enText: 'Description',
-                                ),
-                                hintText:
-                                    FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Расскажите, что будет на встрече',
-                                  enText:
-                                      'Tell people what will happen at the meetup',
-                                ),
-                                controller: _descriptionTextController,
-                                focusNode: _descriptionFocusNode,
-                                textInputAction: TextInputAction.newline,
-                                keyboardType: TextInputType.multiline,
-                                minLines: 4,
-                                maxLines: 8,
-                                validator: (value) => _eventCreateRequiredText(
-                                  context,
-                                  value,
-                                  ruText: 'Введите описание',
-                                  enText: 'Enter description',
-                                ),
-                              ),
-                              const SizedBox(height: ExpatlioDesign.space20),
-                              FutureBuilder<EventLanguageCatalog>(
-                                future: _languageCatalogFuture,
-                                builder: (context, snapshot) {
-                                  final catalog = snapshot.data;
-                                  if (catalog == null) {
+                                const SizedBox(height: ExpatlioDesign.space20),
+                                FutureBuilder<EventLanguageCatalog>(
+                                  future: _languageCatalogFuture,
+                                  builder: (context, snapshot) {
+                                    final catalog = snapshot.data;
+                                    if (catalog == null) {
+                                      return _EventCreateLanguageSelector(
+                                        state: snapshot.hasError
+                                            ? _EventCreateLanguageSelectorState
+                                                .error
+                                            : _EventCreateLanguageSelectorState
+                                                .loading,
+                                      );
+                                    }
+                                    final selectedLanguageCode =
+                                        _resolvedSelectedLanguageCode(catalog);
+                                    _queueLanguageDraft(selectedLanguageCode);
                                     return _EventCreateLanguageSelector(
-                                      state: snapshot.hasError
-                                          ? _EventCreateLanguageSelectorState
-                                              .error
-                                          : _EventCreateLanguageSelectorState
-                                              .loading,
-                                    );
-                                  }
-                                  final selectedLanguageCode =
-                                      _resolvedSelectedLanguageCode(catalog);
-                                  _queueLanguageDraft(selectedLanguageCode);
-                                  return _EventCreateLanguageSelector(
-                                    state: _EventCreateLanguageSelectorState
-                                        .selected,
-                                    selectedLabel:
-                                        _eventCreateLanguageDisplayName(
-                                      context: context,
-                                      catalog: catalog,
-                                      languageCode: selectedLanguageCode,
-                                    ),
-                                    onPressed: () => _showLanguageSelector(
-                                      catalog,
-                                      selectedLanguageCode,
-                                    ),
-                                  );
-                                },
-                              ),
-                              const SizedBox(height: ExpatlioDesign.space20),
-                              _EventCreateLevelSelector(
-                                selectedRange: selectedLevelRange,
-                                onPressed: () =>
-                                    _showLevelSelector(selectedLevelRange),
-                              ),
-                              const SizedBox(height: ExpatlioDesign.space20),
-                              FutureBuilder<EventCityCatalog>(
-                                future: _cityCatalogFuture,
-                                builder: (context, snapshot) {
-                                  final catalog = snapshot.data;
-                                  if (catalog == null ||
-                                      _isWaitingForCurrentUserDocument) {
-                                    _lastVisibleSelectedCity = _selectedCity;
-                                    return _EventCreateCitySelector(
-                                      state: snapshot.hasError
-                                          ? _EventCreateCitySelectorState.error
-                                          : _EventCreateCitySelectorState
-                                              .loading,
-                                    );
-                                  }
-                                  final selectedState =
-                                      _resolveVisibleSelectedCityState(catalog);
-                                  final selectedCity = selectedState?.selected;
-                                  _lastVisibleSelectedCity = selectedCity;
-                                  if (selectedCity != null) {
-                                    _queueCityDraft(selectedCity);
-                                  }
-                                  final showsCityChips =
-                                      selectedState != null &&
-                                          selectedState.needsCitySelection &&
-                                          !selectedState.hasOutdatedProfileCity;
-                                  final cityChipsFuture = showsCityChips
-                                      ? _loadCityChips(
-                                          catalog: catalog,
-                                          selectedState: selectedState,
-                                        )
-                                      : null;
-
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      _EventCreateCitySelector(
-                                        state:
-                                            _EventCreateCitySelectorState.ready,
-                                        selectedCity: selectedCity,
-                                        hasOutdatedProfileCity: selectedState
-                                                ?.hasOutdatedProfileCity ??
-                                            false,
-                                        errorText: _eventCreateCityErrorText(
-                                          context,
-                                          selectedCity: selectedCity,
-                                          hasAttemptedSubmit:
-                                              _hasAttemptedSubmit,
-                                        ),
-                                        showsMissingLocationPrompt:
-                                            selectedState != null &&
-                                                selectedState
-                                                    .needsCitySelection &&
-                                                !selectedState
-                                                    .hasOutdatedProfileCity,
-                                        onPressed: () => _showCitySelector(
-                                          catalog: catalog,
-                                          countryCodeHint:
-                                              selectedState?.countryCodeHint,
-                                        ),
+                                      state: _EventCreateLanguageSelectorState
+                                          .selected,
+                                      selectedLabel:
+                                          _eventCreateLanguageDisplayName(
+                                        context: context,
+                                        catalog: catalog,
+                                        languageCode: selectedLanguageCode,
                                       ),
-                                      if (cityChipsFuture != null) ...[
-                                        const SizedBox(
-                                            height: ExpatlioDesign.space12),
-                                        _EventCreateCityChips(
-                                          chipsFuture: cityChipsFuture,
-                                          onChipPressed: (chip) {
-                                            unawaited(
-                                              _selectCity(
-                                                catalog: catalog,
-                                                city: chip.city,
-                                                source: chip.source,
-                                              ),
-                                            );
-                                          },
+                                      onPressed: () => _showLanguageSelector(
+                                        catalog,
+                                        selectedLanguageCode,
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: ExpatlioDesign.space20),
+                                _EventCreateLevelSelector(
+                                  selectedRange: selectedLevelRange,
+                                  onPressed: () =>
+                                      _showLevelSelector(selectedLevelRange),
+                                ),
+                                const SizedBox(height: ExpatlioDesign.space20),
+                                FutureBuilder<EventCityCatalog>(
+                                  future: _cityCatalogFuture,
+                                  builder: (context, snapshot) {
+                                    final catalog = snapshot.data;
+                                    if (catalog == null ||
+                                        _isWaitingForCurrentUserDocument) {
+                                      _lastVisibleSelectedCity = _selectedCity;
+                                      return _EventCreateCitySelector(
+                                        state: snapshot.hasError
+                                            ? _EventCreateCitySelectorState
+                                                .error
+                                            : _EventCreateCitySelectorState
+                                                .loading,
+                                      );
+                                    }
+                                    final selectedState =
+                                        _resolveVisibleSelectedCityState(
+                                            catalog);
+                                    final selectedCity =
+                                        selectedState?.selected;
+                                    _lastVisibleSelectedCity = selectedCity;
+                                    if (selectedCity != null) {
+                                      _queueCityDraft(selectedCity);
+                                    }
+                                    final showsCityChips = selectedState !=
+                                            null &&
+                                        selectedState.needsCitySelection &&
+                                        !selectedState.hasOutdatedProfileCity;
+                                    final cityChipsFuture = showsCityChips
+                                        ? _loadCityChips(
+                                            catalog: catalog,
+                                            selectedState: selectedState,
+                                          )
+                                        : null;
+
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        _EventCreateCitySelector(
+                                          state: _EventCreateCitySelectorState
+                                              .ready,
+                                          selectedCity: selectedCity,
+                                          hasOutdatedProfileCity: selectedState
+                                                  ?.hasOutdatedProfileCity ??
+                                              false,
+                                          errorText: _eventCreateCityErrorText(
+                                            context,
+                                            selectedCity: selectedCity,
+                                            hasAttemptedSubmit:
+                                                _hasAttemptedSubmit,
+                                          ),
+                                          showsMissingLocationPrompt:
+                                              selectedState != null &&
+                                                  selectedState
+                                                      .needsCitySelection &&
+                                                  !selectedState
+                                                      .hasOutdatedProfileCity,
+                                          onPressed: () => _showCitySelector(
+                                            catalog: catalog,
+                                            countryCodeHint:
+                                                selectedState?.countryCodeHint,
+                                          ),
                                         ),
+                                        if (cityChipsFuture != null) ...[
+                                          const SizedBox(
+                                              height: ExpatlioDesign.space12),
+                                          _EventCreateCityChips(
+                                            chipsFuture: cityChipsFuture,
+                                            onChipPressed: (chip) {
+                                              unawaited(
+                                                _selectCity(
+                                                  catalog: catalog,
+                                                  city: chip.city,
+                                                  source: chip.source,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ],
                                       ],
-                                    ],
-                                  );
-                                },
-                              ),
-                              const SizedBox(height: ExpatlioDesign.space20),
-                              _EventCreateTextField(
-                                labelKey: eventCreateLocationLabelKey,
-                                semanticsKey:
-                                    eventCreateLocationFieldSemanticsKey,
-                                fieldKey: eventCreateLocationFieldKey,
-                                label:
-                                    FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Место',
-                                  enText: 'Place',
+                                    );
+                                  },
                                 ),
-                                hintText:
-                                    FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Кафе, адрес или ориентир',
-                                  enText: 'Cafe, address, or landmark',
+                                const SizedBox(height: ExpatlioDesign.space20),
+                                _EventCreateTextField(
+                                  labelKey: eventCreateLocationLabelKey,
+                                  semanticsKey:
+                                      eventCreateLocationFieldSemanticsKey,
+                                  fieldKey: eventCreateLocationFieldKey,
+                                  label: FFLocalizations.of(context)
+                                      .getVariableText(
+                                    ruText: 'Место',
+                                    enText: 'Place',
+                                  ),
+                                  hintText: FFLocalizations.of(context)
+                                      .getVariableText(
+                                    ruText: 'Кафе, адрес или ориентир',
+                                    enText: 'Cafe, address, or landmark',
+                                  ),
+                                  controller: _locationTextController,
+                                  focusNode: _locationFocusNode,
+                                  textInputAction: TextInputAction.done,
+                                  keyboardType: TextInputType.streetAddress,
+                                  minLines: 1,
+                                  maxLines: 2,
+                                  validator: (value) =>
+                                      _eventCreateRequiredText(
+                                    context,
+                                    value,
+                                    ruText: 'Введите место',
+                                    enText: 'Enter place',
+                                  ),
                                 ),
-                                controller: _locationTextController,
-                                focusNode: _locationFocusNode,
-                                textInputAction: TextInputAction.done,
-                                keyboardType: TextInputType.streetAddress,
-                                minLines: 1,
-                                maxLines: 2,
-                                validator: (value) => _eventCreateRequiredText(
-                                  context,
-                                  value,
-                                  ruText: 'Введите место',
-                                  enText: 'Enter place',
+                                const SizedBox(height: ExpatlioDesign.space20),
+                                _EventCreateDateSelector(
+                                  selectedDate: _selectedDate,
+                                  hasError: _startTimeErrorText != null,
+                                  onPressed: () =>
+                                      _showDateSelector(_selectedDate),
                                 ),
-                              ),
-                              const SizedBox(height: ExpatlioDesign.space20),
-                              _EventCreateDateSelector(
-                                selectedDate: _selectedDate,
-                                hasError: _startTimeErrorText != null,
-                                onPressed: () =>
-                                    _showDateSelector(_selectedDate),
-                              ),
-                              const SizedBox(height: ExpatlioDesign.space20),
-                              _EventCreateTimeSelector(
-                                selectedTime: _selectedTime,
-                                errorText: _startTimeErrorText,
-                                onPressed: () =>
-                                    _showTimeSelector(_selectedTime),
-                              ),
-                              const SizedBox(height: ExpatlioDesign.space20),
-                              _EventCreateTextField(
-                                labelKey: eventCreateCapacityLabelKey,
-                                semanticsKey:
-                                    eventCreateCapacityFieldSemanticsKey,
-                                fieldKey: eventCreateCapacityFieldKey,
-                                label:
-                                    FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Лимит участников',
-                                  enText: 'Participant limit',
+                                const SizedBox(height: ExpatlioDesign.space20),
+                                _EventCreateTimeSelector(
+                                  selectedTime: _selectedTime,
+                                  errorText: _startTimeErrorText,
+                                  onPressed: () =>
+                                      _showTimeSelector(_selectedTime),
                                 ),
-                                hintText: '10',
-                                controller: _capacityTextController,
-                                focusNode: _capacityFocusNode,
-                                textInputAction: TextInputAction.done,
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                ],
-                                validator: (value) =>
-                                    _eventCreateCapacityValidationText(
-                                  context,
-                                  value,
+                                const SizedBox(height: ExpatlioDesign.space20),
+                                _EventCreateTextField(
+                                  labelKey: eventCreateCapacityLabelKey,
+                                  semanticsKey:
+                                      eventCreateCapacityFieldSemanticsKey,
+                                  fieldKey: eventCreateCapacityFieldKey,
+                                  label: FFLocalizations.of(context)
+                                      .getVariableText(
+                                    ruText: 'Лимит участников',
+                                    enText: 'Participant limit',
+                                  ),
+                                  hintText: '10',
+                                  controller: _capacityTextController,
+                                  focusNode: _capacityFocusNode,
+                                  textInputAction: TextInputAction.done,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  validator: (value) =>
+                                      _eventCreateCapacityValidationText(
+                                    context,
+                                    value,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              _EventCreateSubmitBar(
-                errorText: submitFailure == null
-                    ? null
-                    : eventActionFailureMessageForLocalizations(
-                        FFLocalizations.of(context),
-                        submitFailure,
-                      ),
-                isSubmitting: _isSubmitting,
-                onPressed: () {
-                  unawaited(_handleSubmitPressed());
-                },
-              ),
-            ],
+                _EventCreateSubmitBar(
+                  errorText: submitFailure == null
+                      ? null
+                      : eventActionFailureMessageForLocalizations(
+                          FFLocalizations.of(context),
+                          submitFailure,
+                        ),
+                  isSubmitting: _isSubmitting,
+                  onPressed: () {
+                    unawaited(_handleSubmitPressed());
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2949,7 +3100,11 @@ class _EventCreateLanguageOptionTile extends StatelessWidget {
 }
 
 class _EventCreateTopBar extends StatelessWidget {
-  const _EventCreateTopBar();
+  const _EventCreateTopBar({
+    required this.onBackPressed,
+  });
+
+  final VoidCallback onBackPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -2958,6 +3113,7 @@ class _EventCreateTopBar extends StatelessWidget {
       child: Row(
         children: [
           FlutterFlowIconButton(
+            key: eventCreateBackButtonKey,
             borderColor: Colors.transparent,
             borderRadius: 24,
             buttonSize: 48,
@@ -2966,7 +3122,7 @@ class _EventCreateTopBar extends StatelessWidget {
               color: ExpatlioDesign.text,
               size: 24,
             ),
-            onPressed: () => context.safePop(),
+            onPressed: onBackPressed,
           ),
           Expanded(
             child: Text(
@@ -3062,6 +3218,12 @@ String _eventCreatePayloadSignature(EventEditableFields fields) {
     createRequestId: '00000000-0000-4000-8000-000000000000',
   )..remove('createRequestId');
   return jsonEncode(payload);
+}
+
+bool _isEventCreateDefaultLanguageCode(String value) {
+  final languageCode = value.trim().toLowerCase();
+  return languageCode == _eventCreateDefaultLanguageCode ||
+      languageCode.startsWith('$_eventCreateDefaultLanguageCode-');
 }
 
 String? _eventCreateCapacityValidationText(

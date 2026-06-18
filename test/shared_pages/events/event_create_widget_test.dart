@@ -14,6 +14,7 @@ import 'package:small_talk/flutter_flow/flutter_flow_util.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/services/event_action_error_mapper.dart';
+import 'package:small_talk/services/event_actions_repository.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
@@ -52,6 +53,33 @@ Widget _buildRouterTestApp(
     supportedLocales: _supportedLocales,
     localizationsDelegates: _localizationsDelegates,
     routerConfig: router,
+  );
+}
+
+GoRouter _buildEventCreateRouter({
+  EventCallableInvoker? createEventInvoker,
+  String Function()? createRequestIdGenerator,
+}) {
+  return GoRouter(
+    initialLocation: EventCreateWidget.routePath,
+    routes: [
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const Scaffold(
+          body: Text('Events home'),
+        ),
+      ),
+      GoRoute(
+        name: EventCreateWidget.routeName,
+        path: EventCreateWidget.routePath,
+        builder: (context, state) => EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          createEventInvoker: createEventInvoker,
+          createRequestIdGenerator: createRequestIdGenerator,
+        ),
+      ),
+    ],
   );
 }
 
@@ -2590,6 +2618,125 @@ void main() {
     expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateSubmitButtonKey), findsOneWidget);
+  });
+
+  testWidgets('clean create form leaves without discard confirmation',
+      (tester) async {
+    final router = _buildEventCreateRouter();
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/');
+    expect(find.byKey(eventCreateDiscardDialogKey), findsNothing);
+    expect(find.text('Events home'), findsOneWidget);
+  });
+
+  testWidgets('dirty create form confirms discard before leaving',
+      (tester) async {
+    var submitCount = 0;
+    final generatedRequestIds = <String>[];
+    final router = _buildEventCreateRouter(
+      createRequestIdGenerator: () {
+        final id = _requestId(generatedRequestIds.length);
+        generatedRequestIds.add(id);
+        return id;
+      },
+      createEventInvoker: (_, __) async {
+        submitCount += 1;
+        return _createEventResponse();
+      },
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventCreateTitleFieldKey),
+      'Клуб перед выходными',
+    );
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), EventCreateWidget.routePath);
+    expect(find.byKey(eventCreateDiscardDialogKey), findsOneWidget);
+    expect(find.text('Закрыть форму?'), findsOneWidget);
+    expect(find.text('Заполненные данные будут потеряны.'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventCreateDiscardKeepEditingButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), EventCreateWidget.routePath);
+    expect(find.byKey(eventCreateDiscardDialogKey), findsNothing);
+    expect(find.text('Клуб перед выходными'), findsOneWidget);
+    expect(submitCount, 0);
+    expect(generatedRequestIds, isEmpty);
+
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateDiscardConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/');
+    expect(find.text('Events home'), findsOneWidget);
+    expect(submitCount, 0);
+    expect(generatedRequestIds, isEmpty);
+  });
+
+  testWidgets('cleared capacity confirms discard before leaving',
+      (tester) async {
+    final router = _buildEventCreateRouter();
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '');
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), EventCreateWidget.routePath);
+    expect(find.byKey(eventCreateDiscardDialogKey), findsOneWidget);
+  });
+
+  testWidgets('system back shows dirty create form discard confirmation',
+      (tester) async {
+    final router = _buildEventCreateRouter();
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventCreateTitleFieldKey),
+      'Системный back',
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), EventCreateWidget.routePath);
+    expect(find.byKey(eventCreateDiscardDialogKey), findsOneWidget);
+  });
+
+  testWidgets('submit validation errors do not make clean form dirty',
+      (tester) async {
+    final router = _buildEventCreateRouter();
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Введите название'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/');
+    expect(find.byKey(eventCreateDiscardDialogKey), findsNothing);
+    expect(find.text('Events home'), findsOneWidget);
   });
 
   testWidgets('form fields fit narrow large-text layouts', (tester) async {

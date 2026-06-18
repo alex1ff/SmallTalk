@@ -235,7 +235,7 @@ Date: 2026-06-14
 - [x] Map `details.domainCode = create_request_conflict` with `eventId`, `createRequestId`, and `dayKeyUtc` to a recoverable submit error that does not create another event.
 - [x] After `create_request_conflict`, discard the old `createRequestId` and generate a new one only when the user intentionally submits the changed payload again.
 - [x] Treat partially filled create form as local-only draft state before submit.
-- [ ] Add dirty-form discard confirmation before leaving create screen.
+- [x] Add dirty-form discard confirmation before leaving create screen.
 - [ ] Do not promise local draft restore after app restart, logout, or reinstall in MVP.
 - [ ] Ensure closing create form before submit creates no event, participant, or chat documents.
 - [ ] Disable repeated submit taps while create request is in flight.
