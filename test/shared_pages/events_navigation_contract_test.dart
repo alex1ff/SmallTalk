@@ -334,6 +334,10 @@ void main() {
     expect(create, contains('EventActionsRepository.createEvent'));
     expect(create, contains('EventEditableFields'));
     expect(create, contains('newEventCreateRequestId'));
+    expect(create, contains('context.goNamed('));
+    expect(create, contains('EventDetailWidget.routeName'));
+    expect(create, contains("'eventId': createResult.eventId"));
+    expect(create, isNot(contains('pushNamed(')));
     expect(create, isNot(contains('EventsRecord')));
     expect(create, isNot(contains('EventChatsRecord')));
     expect(create, isNot(contains('EventParticipantsRecord')));

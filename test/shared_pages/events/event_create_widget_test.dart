@@ -13,6 +13,7 @@ import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/flutter_flow_util.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
+import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/services/event_action_error_mapper.dart';
 import 'package:small_talk/services/event_actions_repository.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
@@ -85,6 +86,13 @@ GoRouter _buildEventCreateRouter({
           currentUtcProvider: currentUtcProvider,
           createEventInvoker: createEventInvoker,
           createRequestIdGenerator: createRequestIdGenerator,
+        ),
+      ),
+      GoRoute(
+        name: EventDetailWidget.routeName,
+        path: EventDetailWidget.routePath,
+        builder: (context, state) => EventDetailWidget(
+          eventId: state.pathParameters['eventId']!,
         ),
       ),
     ],
@@ -1363,7 +1371,7 @@ void main() {
           initialDate: DateTime(2026, 6, 20),
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
-          createEventInvoker: _successfulCreateEventInvoker,
+          createEventInvoker: (_, __) async => throw _dailyLimitError(),
         ),
       ),
     );
@@ -1397,7 +1405,7 @@ void main() {
           initialDate: DateTime(2026, 6, 20),
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
-          createEventInvoker: _successfulCreateEventInvoker,
+          createEventInvoker: (_, __) async => throw _dailyLimitError(),
         ),
       ),
     );
@@ -1488,7 +1496,7 @@ void main() {
           initialDate: DateTime(2026, 6, 20),
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
-          createEventInvoker: _successfulCreateEventInvoker,
+          createEventInvoker: (_, __) async => throw _dailyLimitError(),
         ),
       ),
     );
@@ -1530,7 +1538,7 @@ void main() {
               currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
               createEventInvoker: (functionName, payload) async {
                 submitCount += 1;
-                return _createEventResponse();
+                throw _dailyLimitError();
               },
             );
           },
@@ -1635,7 +1643,7 @@ void main() {
     expect(requestIds, <String>[_requestId(0)]);
     expect(generatedRequestIds, <String>[_requestId(0)]);
 
-    createCompleter.complete(_createEventResponse());
+    createCompleter.completeError(_dailyLimitError());
     await tester.pumpAndSettle();
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
@@ -1645,6 +1653,113 @@ void main() {
           .onPressed,
       isNotNull,
     );
+  });
+
+  testWidgets('successful create opens created event detail', (tester) async {
+    var submitCount = 0;
+    final router = _buildEventCreateRouter(
+      initialSelectedCity: const EventSelectedCity(
+        city: _romeCity,
+        source: EventCitySelectionSource.manual,
+      ),
+      initialDate: DateTime(2026, 6, 20),
+      initialTime: const TimeOfDay(hour: 18, minute: 0),
+      currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+      createEventInvoker: (_, __) async {
+        submitCount += 1;
+        return _createEventResponse();
+      },
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(submitCount, 1);
+    expect(router.getCurrentLocation(), '/events/event-1');
+    expect(find.byType(EventCreateWidget), findsNothing);
+    expect(find.byType(EventDetailWidget), findsOneWidget);
+    expect(find.text('event-1'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/');
+    expect(find.byType(EventCreateWidget), findsNothing);
+    expect(find.text('Events home'), findsOneWidget);
+  });
+
+  testWidgets('create completion after leaving form does not open detail',
+      (tester) async {
+    final createCompleter = Completer<Object?>();
+    final router = _buildEventCreateRouter(
+      initialSelectedCity: const EventSelectedCity(
+        city: _romeCity,
+        source: EventCitySelectionSource.manual,
+      ),
+      initialDate: DateTime(2026, 6, 20),
+      initialTime: const TimeOfDay(hour: 18, minute: 0),
+      currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+      createEventInvoker: (_, __) => createCompleter.future,
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    router.go('/');
+    await tester.pumpAndSettle();
+    createCompleter.complete(_createEventResponse());
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/');
+    expect(find.byType(EventDetailWidget), findsNothing);
+    expect(find.text('Events home'), findsOneWidget);
+  });
+
+  testWidgets('create completion after confirmed discard does not open detail',
+      (tester) async {
+    final createCompleter = Completer<Object?>();
+    final router = _buildEventCreateRouter(
+      initialSelectedCity: const EventSelectedCity(
+        city: _romeCity,
+        source: EventCitySelectionSource.manual,
+      ),
+      initialDate: DateTime(2026, 6, 20),
+      initialTime: const TimeOfDay(hour: 18, minute: 0),
+      currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+      createEventInvoker: (_, __) => createCompleter.future,
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pump();
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byKey(eventCreateDiscardDialogKey), findsOneWidget);
+
+    await tester.tap(find.byKey(eventCreateDiscardConfirmButtonKey));
+    createCompleter.complete(_createEventResponse());
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(router.getCurrentLocation(), '/');
+    expect(find.byType(EventDetailWidget), findsNothing);
+    expect(find.text('Events home'), findsOneWidget);
   });
 
   testWidgets('daily creation limit error is shown on submit in Russian',
@@ -1989,7 +2104,7 @@ void main() {
           initialDate: DateTime(2026, 6, 18),
           initialTime: const TimeOfDay(hour: 18, minute: 0),
           currentUtcProvider: () => DateTime.parse('2026-06-18T15:00:00Z'),
-          createEventInvoker: _successfulCreateEventInvoker,
+          createEventInvoker: (_, __) async => throw _dailyLimitError(),
         ),
       ),
     );
@@ -2024,7 +2139,7 @@ void main() {
               initialDate: DateTime(2026, 6, 18),
               initialTime: initialTime,
               currentUtcProvider: () => DateTime.parse('2026-06-18T15:00:00Z'),
-              createEventInvoker: _successfulCreateEventInvoker,
+              createEventInvoker: (_, __) async => throw _dailyLimitError(),
             );
           },
         ),

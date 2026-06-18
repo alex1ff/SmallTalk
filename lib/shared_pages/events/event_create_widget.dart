@@ -8,6 +8,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/shared_pages/events/event_detail_widget.dart';
 import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
 import '/services/event_city_catalog.dart';
@@ -324,6 +325,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   bool _hasAttemptedSubmit = false;
   bool _isSubmitting = false;
   bool _allowCreateFormExit = false;
+  bool _isLeavingCreateForm = false;
   bool _discardDialogOpen = false;
   String? _startTimeErrorText;
   EventActionFailure? _submitFailure;
@@ -536,6 +538,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     if (!mounted) {
       return;
     }
+    _isLeavingCreateForm = true;
     setState(() {
       _allowCreateFormExit = true;
     });
@@ -1325,6 +1328,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     setState(() {
       _isSubmitting = true;
     });
+    CreateEventResult? createResult;
     try {
       final languageCatalog = await _languageCatalogFuture;
       if (!mounted) {
@@ -1362,7 +1366,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         _activeCreatePayloadSignature = payloadSignature;
       }
 
-      await EventActionsRepository.createEvent(
+      createResult = await EventActionsRepository.createEvent(
         createRequestId: createRequestId,
         fields: fields,
         invoker: widget.createEventInvoker,
@@ -1381,12 +1385,24 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       });
       widget.onSubmitFailureChanged?.call(failure);
     } finally {
-      if (mounted) {
+      if (mounted && createResult == null) {
         setState(() {
           _isSubmitting = false;
         });
       }
     }
+    if (createResult == null || !mounted || _isLeavingCreateForm) {
+      return;
+    }
+    setState(() {
+      _allowCreateFormExit = true;
+    });
+    context.goNamed(
+      EventDetailWidget.routeName,
+      pathParameters: <String, String>{
+        'eventId': createResult.eventId,
+      },
+    );
   }
 
   @override

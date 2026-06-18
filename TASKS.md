@@ -240,7 +240,7 @@ Date: 2026-06-14
 - [x] Ensure closing create form before submit creates no event, participant, or chat documents.
 - [x] Disable repeated submit taps while create request is in flight.
 - [x] Submit event creation.
-- [ ] Open created event detail after success.
+- [x] Open created event detail after success.
 
 ## Phase 9: Edit And Cancel Event
 
