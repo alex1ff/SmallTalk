@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -35,6 +36,20 @@ const ValueKey<String> eventListCardFooterKey =
     ValueKey<String>('event_list_card_footer');
 const ValueKey<String> eventListCardActionsKey =
     ValueKey<String>('event_list_card_actions');
+const ValueKey<String> eventListCardOrganizerAvatarKey =
+    ValueKey<String>('event_list_card_organizer_avatar');
+const ValueKey<String> eventListCardOrganizerNameKey =
+    ValueKey<String>('event_list_card_organizer_name');
+
+class EventListCardViewModel {
+  const EventListCardViewModel({
+    required this.organizerDisplayName,
+    this.organizerPhotoUrl,
+  });
+
+  final String organizerDisplayName;
+  final String? organizerPhotoUrl;
+}
 
 class EventListWidget extends StatefulWidget {
   const EventListWidget({
@@ -42,6 +57,7 @@ class EventListWidget extends StatefulWidget {
     this.initialSelectedCity,
     this.onCitySelectorPressed,
     this.cityCatalogOverride,
+    this.eventCardsOverride,
   });
 
   static String routeName = 'events';
@@ -50,6 +66,7 @@ class EventListWidget extends StatefulWidget {
   final EventSelectedCity? initialSelectedCity;
   final VoidCallback? onCitySelectorPressed;
   final EventCityCatalog? cityCatalogOverride;
+  final List<EventListCardViewModel>? eventCardsOverride;
 
   @override
   State<EventListWidget> createState() => _EventListWidgetState();
@@ -122,6 +139,10 @@ class _EventListWidgetState extends State<EventListWidget> {
                   )
                 : null;
             final canShowEventCards = selectedState?.canLoadEvents ?? false;
+            final eventCards = widget.eventCardsOverride ??
+                const <EventListCardViewModel?>[
+                  null,
+                ];
             final onCitySelectorPressed = widget.onCitySelectorPressed ??
                 (catalog == null
                     ? null
@@ -230,7 +251,13 @@ class _EventListWidgetState extends State<EventListWidget> {
                               ],
                               if (canShowEventCards) ...[
                                 const SizedBox(height: ExpatlioDesign.space16),
-                                const _EventCardShell(),
+                                for (final eventCard in eventCards) ...[
+                                  _EventCardShell(card: eventCard),
+                                  if (eventCard != eventCards.last)
+                                    const SizedBox(
+                                      height: ExpatlioDesign.space12,
+                                    ),
+                                ],
                               ],
                             ],
                           ),
@@ -368,7 +395,11 @@ class _EventListWidgetState extends State<EventListWidget> {
 }
 
 class _EventCardShell extends StatelessWidget {
-  const _EventCardShell();
+  const _EventCardShell({
+    required this.card,
+  });
+
+  final EventListCardViewModel? card;
 
   @override
   Widget build(BuildContext context) {
@@ -378,18 +409,18 @@ class _EventCardShell extends StatelessWidget {
       decoration: ExpatlioDesign.cardDecoration(
         borderColor: ExpatlioDesign.separator,
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _EventCardHeaderShell(),
-          SizedBox(height: ExpatlioDesign.space16),
-          _EventCardBodyShell(),
-          SizedBox(height: ExpatlioDesign.space16),
-          _EventCardMetaShell(),
-          SizedBox(height: ExpatlioDesign.space16),
-          _EventCardFooterShell(),
-          SizedBox(height: ExpatlioDesign.space16),
-          _EventCardActionsShell(),
+          _EventCardHeaderShell(card: card),
+          const SizedBox(height: ExpatlioDesign.space16),
+          const _EventCardBodyShell(),
+          const SizedBox(height: ExpatlioDesign.space16),
+          const _EventCardMetaShell(),
+          const SizedBox(height: ExpatlioDesign.space16),
+          const _EventCardFooterShell(),
+          const SizedBox(height: ExpatlioDesign.space16),
+          const _EventCardActionsShell(),
         ],
       ),
     );
@@ -397,29 +428,160 @@ class _EventCardShell extends StatelessWidget {
 }
 
 class _EventCardHeaderShell extends StatelessWidget {
-  const _EventCardHeaderShell();
+  const _EventCardHeaderShell({
+    required this.card,
+  });
+
+  final EventListCardViewModel? card;
 
   @override
   Widget build(BuildContext context) {
+    final organizer = card;
     return Row(
       key: eventListCardHeaderKey,
-      children: const [
-        _EventCardCirclePlaceholder(dimension: 48),
-        SizedBox(width: ExpatlioDesign.space12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _EventCardLinePlaceholder(widthFactor: 0.38, height: 12),
-              SizedBox(height: ExpatlioDesign.space8),
-              _EventCardLinePlaceholder(widthFactor: 0.58, height: 18),
-            ],
+      children: [
+        if (organizer == null)
+          const _EventCardCirclePlaceholder(dimension: 48)
+        else
+          _EventOrganizerAvatar(
+            photoUrl: organizer.organizerPhotoUrl,
+            displayName: organizer.organizerDisplayName,
           ),
+        const SizedBox(width: ExpatlioDesign.space12),
+        Expanded(
+          child: organizer == null
+              ? const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _EventCardLinePlaceholder(widthFactor: 0.38, height: 12),
+                    SizedBox(height: ExpatlioDesign.space8),
+                    _EventCardLinePlaceholder(widthFactor: 0.58, height: 18),
+                  ],
+                )
+              : _EventOrganizerText(
+                  displayName: organizer.organizerDisplayName,
+                ),
         ),
-        SizedBox(width: ExpatlioDesign.space12),
-        _EventCardPillPlaceholder(width: 72, height: 32),
+        const SizedBox(width: ExpatlioDesign.space12),
+        const _EventCardPillPlaceholder(width: 72, height: 32),
       ],
     );
+  }
+}
+
+class _EventOrganizerText extends StatelessWidget {
+  const _EventOrganizerText({
+    required this.displayName,
+  });
+
+  final String displayName;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedName = displayName.trim();
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: 'Организатор',
+      enText: 'Organizer',
+    );
+    final name = normalizedName.isEmpty ? label : normalizedName;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: ExpatlioDesign.textStyle(
+            context,
+            color: ExpatlioDesign.muted,
+            size: 13,
+            weight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: ExpatlioDesign.space4),
+        Text(
+          key: eventListCardOrganizerNameKey,
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: ExpatlioDesign.textStyle(
+            context,
+            size: 18,
+            weight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventOrganizerAvatar extends StatelessWidget {
+  const _EventOrganizerAvatar({
+    required this.photoUrl,
+    required this.displayName,
+  });
+
+  final String? photoUrl;
+  final String displayName;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedPhotoUrl = photoUrl?.trim() ?? '';
+    return Container(
+      key: eventListCardOrganizerAvatarKey,
+      width: 48,
+      height: 48,
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(shape: BoxShape.circle),
+      child: normalizedPhotoUrl.isEmpty
+          ? _fallback(context)
+          : CachedNetworkImage(
+              imageUrl: normalizedPhotoUrl,
+              fit: BoxFit.cover,
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
+              memCacheWidth:
+                  (48 * MediaQuery.devicePixelRatioOf(context)).round(),
+              memCacheHeight:
+                  (48 * MediaQuery.devicePixelRatioOf(context)).round(),
+              placeholder: (context, _) => _fallback(context),
+              errorWidget: (context, _, __) => _fallback(context),
+            ),
+    );
+  }
+
+  Widget _fallback(BuildContext context) {
+    return Container(
+      color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+      alignment: Alignment.center,
+      child: Text(
+        _initials(),
+        maxLines: 1,
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: ExpatlioDesign.primary,
+          size: 16,
+          weight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  String _initials() {
+    final normalizedName = displayName.trim();
+    if (normalizedName.isEmpty) {
+      return '?';
+    }
+    final words = normalizedName
+        .split(RegExp(r'\s+'))
+        .where((word) => word.trim().isNotEmpty)
+        .toList(growable: false);
+    if (words.length >= 2) {
+      return '${words[0].characters.first}${words[1].characters.first}'
+          .toUpperCase();
+    }
+    return normalizedName.characters.take(2).toString().toUpperCase();
   }
 }
 

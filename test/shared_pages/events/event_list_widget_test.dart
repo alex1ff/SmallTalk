@@ -329,6 +329,73 @@ void main() {
     );
   });
 
+  testWidgets('shows organizer avatar fallback and name in event card header',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: const [
+            EventListCardViewModel(
+              organizerDisplayName: 'Анастасия Иванова',
+              organizerPhotoUrl: '',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardOrganizerAvatarKey), findsOneWidget);
+    expect(find.byKey(eventListCardOrganizerNameKey), findsOneWidget);
+    expect(find.text('Организатор'), findsOneWidget);
+    expect(find.text('Анастасия Иванова'), findsOneWidget);
+    expect(find.text('АИ'), findsOneWidget);
+  });
+
+  testWidgets('organizer avatar handles broken photo url with fallback',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: const [
+            EventListCardViewModel(
+              organizerDisplayName: 'Alex',
+              organizerPhotoUrl: 'not-a-valid-url',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(eventListCardOrganizerAvatarKey), findsOneWidget);
+    expect(find.text('Alex'), findsOneWidget);
+    expect(find.text('AL'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows resolved profile city as the default selector value',
       (tester) async {
     currentUserDocument = _userFixture(
@@ -571,12 +638,19 @@ void main() {
             ),
             source: EventCitySelectionSource.manual,
           ),
+          eventCardsOverride: const [
+            EventListCardViewModel(
+              organizerDisplayName: 'Анастасия Иванова',
+              organizerPhotoUrl: '',
+            ),
+          ],
         ),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    expect(find.text('Анастасия Иванова'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
