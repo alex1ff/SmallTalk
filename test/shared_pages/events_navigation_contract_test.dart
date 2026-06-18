@@ -12,6 +12,7 @@ import 'package:small_talk/components/nav_bar_widget.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
+import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/shared_pages/events/event_edit_widget.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
@@ -269,7 +270,7 @@ void main() {
       router,
       contains(
         RegExp(
-          r'FFRoute\([\s\S]*name: EventDetailWidget\.routeName,[\s\S]*path: EventDetailWidget\.routePath,[\s\S]*requireAuth: true,[\s\S]*eventId[\s\S]*ParamType\.String',
+          r'FFRoute\([\s\S]*name: EventDetailWidget\.routeName,[\s\S]*path: EventDetailWidget\.routePath,[\s\S]*requireAuth: true,[\s\S]*EventDetailRouteWidget[\s\S]*eventId[\s\S]*ParamType\.String',
         ),
       ),
     );
@@ -312,17 +313,27 @@ void main() {
     );
     expect(index,
         contains("export '/shared_pages/events/event_detail_widget.dart'"));
+    expect(
+      index,
+      contains("export '/shared_pages/events/event_detail_route_widget.dart'"),
+    );
   });
 
-  test('event detail screen stays a route placeholder for Phase 5', () {
+  test('event detail screen stays presentation-only behind route binding', () {
     final detail = File('lib/shared_pages/events/event_detail_widget.dart')
+        .readAsStringSync();
+    final route = File('lib/shared_pages/events/event_detail_route_widget.dart')
         .readAsStringSync();
 
     expect(detail, contains('final String eventId;'));
     expect(detail, contains('eventId'));
     expect(detail, isNot(contains('EventDetailRepository')));
+    expect(detail, isNot(contains('EventActionsRepository')));
     expect(detail, isNot(contains('watchEventDetail')));
     expect(detail, isNot(contains('EventsRecord')));
+    expect(route, contains('EventDetailRepository.watchEventDetail'));
+    expect(route, contains('EventActionsRepository.cancelEvent'));
+    expect(route, contains('EventDetailWidget('));
   });
 
   test('event form submits through event actions only', () {
@@ -458,8 +469,8 @@ void main() {
     final router = await _pumpEventsRouter(tester, '/events/event-123');
 
     expect(router.getCurrentLocation(), '/events/event-123');
-    expect(find.byType(EventDetailWidget), findsOneWidget);
-    expect(find.text('event-123'), findsOneWidget);
+    expect(find.byType(EventDetailRouteWidget), findsOneWidget);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
     expect(find.byType(NavBarWidget), findsNothing);
   });
 }

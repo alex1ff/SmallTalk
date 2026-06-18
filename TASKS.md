@@ -252,7 +252,7 @@ Date: 2026-06-14
 - [x] Block capacity below active participant count.
 - [x] Save organizer edits.
 - [x] Add cancel confirmation dialog.
-- [ ] Set event status to `canceled`.
+- [x] Set event status to `canceled`.
 - [ ] Return user to detail or list after cancellation.
 - [ ] Ensure canceled event disappears from active list.
 

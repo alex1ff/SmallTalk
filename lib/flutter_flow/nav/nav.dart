@@ -319,7 +319,7 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             name: EventDetailWidget.routeName,
             path: EventDetailWidget.routePath,
             requireAuth: true,
-            builder: (context, params) => EventDetailWidget(
+            builder: (context, params) => EventDetailRouteWidget(
               eventId: params.getParam(
                 'eventId',
                 ParamType.String,
