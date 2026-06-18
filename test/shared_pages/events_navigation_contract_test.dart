@@ -335,6 +335,16 @@ void main() {
     expect(create, contains('EventEditableFields'));
     expect(create, contains('newEventCreateRequestId'));
     expect(create, isNot(contains('EventsRecord')));
+    expect(create, isNot(contains('EventChatsRecord')));
+    expect(create, isNot(contains('EventParticipantsRecord')));
+    expect(create, isNot(contains('createEventsRecordData')));
+    expect(create, isNot(contains('createEventChatsRecordData')));
+    expect(create, isNot(contains('createEventParticipantsRecordData')));
+    expect(create, isNot(contains('EventsRecord.collection')));
+    expect(create, isNot(contains('EventChatsRecord.collection')));
+    expect(create, isNot(contains('EventParticipantsRecord.collection')));
+    expect(create,
+        isNot(contains("package:cloud_firestore/cloud_firestore.dart")));
     expect(create, isNot(contains('FirebaseFirestore')));
     expect(create, isNot(contains('ProfileCitySaveService')));
   });

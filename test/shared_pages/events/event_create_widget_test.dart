@@ -57,6 +57,10 @@ Widget _buildRouterTestApp(
 }
 
 GoRouter _buildEventCreateRouter({
+  EventSelectedCity? initialSelectedCity,
+  DateTime? initialDate,
+  TimeOfDay? initialTime,
+  DateTime Function()? currentUtcProvider,
   EventCallableInvoker? createEventInvoker,
   String Function()? createRequestIdGenerator,
 }) {
@@ -75,6 +79,10 @@ GoRouter _buildEventCreateRouter({
         builder: (context, state) => EventCreateWidget(
           languageCatalogOverride: _languageCatalog,
           cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: initialSelectedCity,
+          initialDate: initialDate,
+          initialTime: initialTime,
+          currentUtcProvider: currentUtcProvider,
           createEventInvoker: createEventInvoker,
           createRequestIdGenerator: createRequestIdGenerator,
         ),
@@ -2622,7 +2630,19 @@ void main() {
 
   testWidgets('clean create form leaves without discard confirmation',
       (tester) async {
-    final router = _buildEventCreateRouter();
+    var submitCount = 0;
+    final generatedRequestIds = <String>[];
+    final router = _buildEventCreateRouter(
+      createRequestIdGenerator: () {
+        final id = _requestId(generatedRequestIds.length);
+        generatedRequestIds.add(id);
+        return id;
+      },
+      createEventInvoker: (_, __) async {
+        submitCount += 1;
+        return _createEventResponse();
+      },
+    );
 
     await tester.pumpWidget(_buildRouterTestApp(router));
     await tester.pumpAndSettle();
@@ -2633,6 +2653,8 @@ void main() {
     expect(router.getCurrentLocation(), '/');
     expect(find.byKey(eventCreateDiscardDialogKey), findsNothing);
     expect(find.text('Events home'), findsOneWidget);
+    expect(submitCount, 0);
+    expect(generatedRequestIds, isEmpty);
   });
 
   testWidgets('dirty create form confirms discard before leaving',
@@ -2682,6 +2704,76 @@ void main() {
 
     expect(router.getCurrentLocation(), '/');
     expect(find.text('Events home'), findsOneWidget);
+    expect(submitCount, 0);
+    expect(generatedRequestIds, isEmpty);
+  });
+
+  testWidgets('discard before submit does not call event creation',
+      (tester) async {
+    var submitCount = 0;
+    final generatedRequestIds = <String>[];
+    final router = _buildEventCreateRouter(
+      createRequestIdGenerator: () {
+        final id = _requestId(generatedRequestIds.length);
+        generatedRequestIds.add(id);
+        return id;
+      },
+      createEventInvoker: (_, __) async {
+        submitCount += 1;
+        return _createEventResponse();
+      },
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventCreateTitleFieldKey),
+      'Local-only draft',
+    );
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateDiscardConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/');
+    expect(submitCount, 0);
+    expect(generatedRequestIds, isEmpty);
+  });
+
+  testWidgets('valid form discard before submit does not call event creation',
+      (tester) async {
+    var submitCount = 0;
+    final generatedRequestIds = <String>[];
+    final router = _buildEventCreateRouter(
+      initialSelectedCity: const EventSelectedCity(
+        city: _moscowCity,
+        source: EventCitySelectionSource.manual,
+      ),
+      initialDate: DateTime(2026, 6, 20),
+      initialTime: const TimeOfDay(hour: 18, minute: 0),
+      currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+      createRequestIdGenerator: () {
+        final id = _requestId(generatedRequestIds.length);
+        generatedRequestIds.add(id);
+        return id;
+      },
+      createEventInvoker: (_, __) async {
+        submitCount += 1;
+        return _createEventResponse();
+      },
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateDiscardConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/');
     expect(submitCount, 0);
     expect(generatedRequestIds, isEmpty);
   });
@@ -2738,7 +2830,19 @@ void main() {
 
   testWidgets('system back shows dirty create form discard confirmation',
       (tester) async {
-    final router = _buildEventCreateRouter();
+    var submitCount = 0;
+    final generatedRequestIds = <String>[];
+    final router = _buildEventCreateRouter(
+      createRequestIdGenerator: () {
+        final id = _requestId(generatedRequestIds.length);
+        generatedRequestIds.add(id);
+        return id;
+      },
+      createEventInvoker: (_, __) async {
+        submitCount += 1;
+        return _createEventResponse();
+      },
+    );
 
     await tester.pumpWidget(_buildRouterTestApp(router));
     await tester.pumpAndSettle();
@@ -2752,6 +2856,13 @@ void main() {
 
     expect(router.getCurrentLocation(), EventCreateWidget.routePath);
     expect(find.byKey(eventCreateDiscardDialogKey), findsOneWidget);
+
+    await tester.tap(find.byKey(eventCreateDiscardConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/');
+    expect(submitCount, 0);
+    expect(generatedRequestIds, isEmpty);
   });
 
   testWidgets('submit validation errors do not make clean form dirty',

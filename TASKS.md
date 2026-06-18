@@ -237,7 +237,7 @@ Date: 2026-06-14
 - [x] Treat partially filled create form as local-only draft state before submit.
 - [x] Add dirty-form discard confirmation before leaving create screen.
 - [x] Do not promise local draft restore after app restart, logout, or reinstall in MVP.
-- [ ] Ensure closing create form before submit creates no event, participant, or chat documents.
+- [x] Ensure closing create form before submit creates no event, participant, or chat documents.
 - [ ] Disable repeated submit taps while create request is in flight.
 - [ ] Submit event creation.
 - [ ] Open created event detail after success.
