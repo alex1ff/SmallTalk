@@ -204,9 +204,15 @@ class EventCreateCapacityDraft {
   final int capacity;
 }
 
+enum EventFormMode {
+  create,
+  edit,
+}
+
 class EventCreateWidget extends StatefulWidget {
   const EventCreateWidget({
     super.key,
+    this.formMode = EventFormMode.create,
     this.languageCatalogOverride,
     this.cityCatalogOverride,
     this.initialTitle,
@@ -238,6 +244,7 @@ class EventCreateWidget extends StatefulWidget {
   static String routeName = 'eventCreate';
   static String routePath = '/events/create';
 
+  final EventFormMode formMode;
   final EventLanguageCatalog? languageCatalogOverride;
   final EventCityCatalog? cityCatalogOverride;
   final String? initialTitle;
@@ -324,8 +331,8 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   bool _capacityDraftCallbackScheduled = false;
   bool _hasAttemptedSubmit = false;
   bool _isSubmitting = false;
-  bool _allowCreateFormExit = false;
-  bool _isLeavingCreateForm = false;
+  bool _allowEventFormExit = false;
+  bool _isLeavingEventForm = false;
   bool _discardDialogOpen = false;
   String? _startTimeErrorText;
   EventActionFailure? _submitFailure;
@@ -481,7 +488,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     return catalog.languages.first.code;
   }
 
-  bool get _isCreateFormDirty {
+  bool get _isEventFormDirty {
     if (_titleTextController.text.trim().isNotEmpty ||
         _descriptionTextController.text.trim().isNotEmpty ||
         _normalizeEventCreateLocationName(_locationTextController.text)
@@ -523,24 +530,24 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     if (_discardDialogOpen) {
       return;
     }
-    if (!_isCreateFormDirty) {
-      _leaveCreateForm();
+    if (!_isEventFormDirty) {
+      _leaveEventForm();
       return;
     }
-    final shouldDiscard = await _showDiscardCreateFormDialog();
+    final shouldDiscard = await _showDiscardEventFormDialog();
     if (!mounted || !shouldDiscard) {
       return;
     }
-    _leaveCreateForm();
+    _leaveEventForm();
   }
 
-  void _leaveCreateForm() {
+  void _leaveEventForm() {
     if (!mounted) {
       return;
     }
-    _isLeavingCreateForm = true;
+    _isLeavingEventForm = true;
     setState(() {
-      _allowCreateFormExit = true;
+      _allowEventFormExit = true;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -549,8 +556,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     });
   }
 
-  Future<bool> _showDiscardCreateFormDialog() async {
+  Future<bool> _showDiscardEventFormDialog() async {
     _discardDialogOpen = true;
+    final isEditMode = widget.formMode == EventFormMode.edit;
     try {
       final shouldDiscard = await showDialog<bool>(
         context: context,
@@ -558,14 +566,18 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
           key: eventCreateDiscardDialogKey,
           title: Text(
             FFLocalizations.of(context).getVariableText(
-              ruText: 'Закрыть форму?',
-              enText: 'Leave create form?',
+              ruText: isEditMode ? 'Закрыть редактирование?' : 'Закрыть форму?',
+              enText: isEditMode ? 'Leave edit form?' : 'Leave create form?',
             ),
           ),
           content: Text(
             FFLocalizations.of(context).getVariableText(
-              ruText: 'Заполненные данные будут потеряны.',
-              enText: 'Entered details will be lost.',
+              ruText: isEditMode
+                  ? 'Изменения будут потеряны.'
+                  : 'Заполненные данные будут потеряны.',
+              enText: isEditMode
+                  ? 'Entered changes will be lost.'
+                  : 'Entered details will be lost.',
             ),
           ),
           actions: [
@@ -1098,6 +1110,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     ).selectCity(
       city: city,
       source: source,
+      recordRecentCity: widget.formMode == EventFormMode.create,
     );
     final selectedState = resolveEventSelectedCityState(
       user: currentUserDocument,
@@ -1306,6 +1319,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   }
 
   Future<void> _handleSubmitPressed() async {
+    if (widget.formMode != EventFormMode.create) {
+      return;
+    }
     if (_isSubmitting) {
       return;
     }
@@ -1391,11 +1407,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         });
       }
     }
-    if (createResult == null || !mounted || _isLeavingCreateForm) {
+    if (createResult == null || !mounted || _isLeavingEventForm) {
       return;
     }
     setState(() {
-      _allowCreateFormExit = true;
+      _allowEventFormExit = true;
     });
     context.goNamed(
       EventDetailWidget.routeName,
@@ -1421,7 +1437,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       _eventCreateCapacityFromText(_capacityTextController.text),
     );
     return PopScope<Object?>(
-      canPop: _allowCreateFormExit,
+      canPop: _allowEventFormExit,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) {
           return;
@@ -1436,6 +1452,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _EventCreateTopBar(
+                  formMode: widget.formMode,
                   onBackPressed: () {
                     unawaited(_handleLeavePressed());
                   },
@@ -1731,10 +1748,13 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                           FFLocalizations.of(context),
                           submitFailure,
                         ),
+                  formMode: widget.formMode,
                   isSubmitting: _isSubmitting,
-                  onPressed: () {
-                    unawaited(_handleSubmitPressed());
-                  },
+                  onPressed: widget.formMode == EventFormMode.create
+                      ? () {
+                          unawaited(_handleSubmitPressed());
+                        }
+                      : null,
                 ),
               ],
             ),
@@ -1827,17 +1847,19 @@ class _EventCreateTextField extends StatelessWidget {
 class _EventCreateSubmitBar extends StatelessWidget {
   const _EventCreateSubmitBar({
     required this.errorText,
+    required this.formMode,
     required this.isSubmitting,
     required this.onPressed,
   });
 
   final String? errorText;
+  final EventFormMode formMode;
   final bool isSubmitting;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final isEnabled = !isSubmitting;
+    final isEnabled = !isSubmitting && onPressed != null;
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: ExpatlioDesign.card,
@@ -1910,8 +1932,12 @@ class _EventCreateSubmitBar extends StatelessWidget {
                           )
                         : Text(
                             FFLocalizations.of(context).getVariableText(
-                              ruText: 'Создать',
-                              enText: 'Create',
+                              ruText: formMode == EventFormMode.create
+                                  ? 'Создать'
+                                  : 'Сохранить',
+                              enText: formMode == EventFormMode.create
+                                  ? 'Create'
+                                  : 'Save',
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -3117,9 +3143,11 @@ class _EventCreateLanguageOptionTile extends StatelessWidget {
 
 class _EventCreateTopBar extends StatelessWidget {
   const _EventCreateTopBar({
+    required this.formMode,
     required this.onBackPressed,
   });
 
+  final EventFormMode formMode;
   final VoidCallback onBackPressed;
 
   @override
@@ -3143,8 +3171,12 @@ class _EventCreateTopBar extends StatelessWidget {
           Expanded(
             child: Text(
               FFLocalizations.of(context).getVariableText(
-                ruText: 'Создать событие',
-                enText: 'Create event',
+                ruText: formMode == EventFormMode.create
+                    ? 'Создать событие'
+                    : 'Редактировать событие',
+                enText: formMode == EventFormMode.create
+                    ? 'Create event'
+                    : 'Edit event',
               ),
               textAlign: TextAlign.center,
               maxLines: 1,

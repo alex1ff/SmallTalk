@@ -34,6 +34,25 @@ void main() {
       expect(store.saved.map((identity) => identity.identity), ['US:new_york']);
     });
 
+    test('can skip recording recent city for side-effect-free edit drafts',
+        () async {
+      final store = _MemoryRecentCityStore();
+      final service = EventTemporaryCitySelectionService(
+        chipSource: EventCityChipSource(recentStore: store),
+      );
+
+      final input = await service.selectCity(
+        city: catalog.resolve('IT', 'rome')!,
+        source: EventCitySelectionSource.manual,
+        recordRecentCity: false,
+      );
+
+      expect(input.countryCode, 'IT');
+      expect(input.cityKey, 'rome');
+      expect(input.source, EventCitySelectionSource.manual);
+      expect(store.saved, isEmpty);
+    });
+
     test('rejects profile source before recording recent city', () async {
       final store = _MemoryRecentCityStore();
       final service = EventTemporaryCitySelectionService(

@@ -18,6 +18,7 @@ class EventTemporaryCitySelectionService {
   Future<EventSelectedCityInput> selectCity({
     required EventCity city,
     required EventCitySelectionSource source,
+    bool recordRecentCity = true,
   }) async {
     if (source == EventCitySelectionSource.profile) {
       throw ArgumentError.value(
@@ -27,7 +28,9 @@ class EventTemporaryCitySelectionService {
       );
     }
 
-    await _chipSource.recordSelection(city: city);
+    if (recordRecentCity) {
+      await _chipSource.recordSelection(city: city);
+    }
     return EventSelectedCityInput(
       countryCode: city.countryCode,
       cityKey: city.cityKey,

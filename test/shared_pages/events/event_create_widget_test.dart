@@ -16,6 +16,7 @@ import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/services/event_action_error_mapper.dart';
 import 'package:small_talk/services/event_actions_repository.dart';
+import 'package:small_talk/services/event_city_chip_source.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
@@ -1054,6 +1055,49 @@ void main() {
     expect(find.byKey(eventCreateCitySheetKey), findsNothing);
     expect(_citySelectorText('Рим · Italia'), findsOneWidget);
     expect(drafts.map(_cityDraftValue), ['IT:rome:Europe/Rome:manual']);
+  });
+
+  testWidgets('edit mode city selection does not update recent city store',
+      (tester) async {
+    final preferences = await SharedPreferences.getInstance();
+    final recentStore = SharedPreferencesEventRecentCityStore(
+      preferences: preferences,
+    );
+    await recentStore.save(
+      const [
+        EventCityIdentity(countryCode: 'US', cityKey: 'new_york'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          formMode: EventFormMode.edit,
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _ensureVisibleInForm(
+      tester,
+      find.byKey(eventCreateCitySelectorKey),
+    );
+    await tester.tap(find.byKey(eventCreateCitySelectorKey));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(eventCreateCitySearchFieldKey), 'rome');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateCityOptionKey(_romeCity)));
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Рим · Italia'), findsOneWidget);
+    expect(
+      (await recentStore.load()).map(
+        (city) => '${city.countryCode}:${city.cityKey}',
+      ),
+      ['US:new_york'],
+    );
   });
 
   testWidgets('emits initial city draft when callback is added later',
@@ -3101,6 +3145,100 @@ void main() {
     expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateSubmitButtonKey), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('edit mode reuses create form fields without create submit',
+      (tester) async {
+    var submitCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          formMode: EventFormMode.edit,
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          createEventInvoker: (_, __) async {
+            submitCount += 1;
+            return _createEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Редактировать событие'), findsOneWidget);
+    expect(find.text('Создать событие'), findsNothing);
+    expect(find.text('Сохранить'), findsOneWidget);
+    expect(find.text('Создать'), findsNothing);
+    expect(find.byKey(eventCreateTitleFieldKey), findsOneWidget);
+    expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
+    expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateCitySelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateLocationFieldKey), findsOneWidget);
+    expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
+          .onPressed,
+      isNull,
+    );
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pump();
+
+    expect(submitCount, 0);
+  });
+
+  testWidgets('edit mode renders English title and disabled save',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('en'),
+        home: EventCreateWidget(
+          formMode: EventFormMode.edit,
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit event'), findsOneWidget);
+    expect(find.text('Create event'), findsNothing);
+    expect(find.text('Save'), findsOneWidget);
+    expect(find.text('Create'), findsNothing);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('dirty edit mode shows edit discard copy', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('en'),
+        home: EventCreateWidget(
+          formMode: EventFormMode.edit,
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventCreateTitleFieldKey), 'Edited club');
+    await tester.tap(find.byKey(eventCreateBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateDiscardDialogKey), findsOneWidget);
+    expect(find.text('Leave edit form?'), findsOneWidget);
+    expect(find.text('Entered changes will be lost.'), findsOneWidget);
+    expect(find.text('Leave create form?'), findsNothing);
+    expect(find.text('Entered details will be lost.'), findsNothing);
   });
 
   testWidgets('create form avoids backend submit before user submits',

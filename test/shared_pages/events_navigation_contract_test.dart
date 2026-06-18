@@ -303,6 +303,7 @@ void main() {
     );
     expect(index,
         contains("export '/shared_pages/events/event_create_widget.dart'"));
+    expect(index, contains('show EventCreateWidget, EventFormMode'));
     expect(index,
         contains("export '/shared_pages/events/event_edit_widget.dart'"));
     expect(
@@ -353,13 +354,14 @@ void main() {
     expect(create, isNot(contains('ProfileCitySaveService')));
   });
 
-  test('event edit screen stays a route placeholder before Phase 9', () {
+  test('event edit screen reuses create form in edit mode before Phase 9 save',
+      () {
     final edit = File('lib/shared_pages/events/event_edit_widget.dart')
         .readAsStringSync();
 
     expect(edit, contains('final String eventId;'));
-    expect(edit, contains('Редактировать событие'));
-    expect(edit, contains('Edit event'));
+    expect(edit, contains('EventCreateWidget('));
+    expect(edit, contains('formMode: EventFormMode.edit'));
     expect(edit, isNot(contains('EventActionsRepository')));
     expect(edit, isNot(contains('EventEditableFields')));
     expect(edit, isNot(contains('EventDetailRepository')));
@@ -426,8 +428,26 @@ void main() {
 
     expect(router.getCurrentLocation(), '/events/event-123/edit');
     expect(find.byType(EventEditWidget), findsOneWidget);
+    expect(tester.widget<EventEditWidget>(find.byType(EventEditWidget)).eventId,
+        'event-123');
+    expect(find.byType(EventCreateWidget), findsOneWidget);
     expect(find.byType(EventDetailWidget), findsNothing);
-    expect(find.text('event-123'), findsOneWidget);
+    expect(find.text('Edit event'), findsOneWidget);
+    expect(find.text('Save'), findsOneWidget);
+    expect(find.byKey(eventCreateTitleFieldKey), findsOneWidget);
+    expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
+    expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateCitySelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateLocationFieldKey), findsOneWidget);
+    expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
+          .onPressed,
+      isNull,
+    );
     expect(find.byType(NavBarWidget), findsNothing);
   });
 

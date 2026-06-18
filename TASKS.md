@@ -244,7 +244,7 @@ Date: 2026-06-14
 
 ## Phase 9: Edit And Cancel Event
 
-- [ ] Reuse create form for edit mode.
+- [x] Reuse create form for edit mode.
 - [ ] Prefill existing event values.
 - [ ] Hide edit route from non-organizers.
 - [ ] Do not show permanent delete action for active or canceled events.

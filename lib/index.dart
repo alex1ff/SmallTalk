@@ -45,7 +45,8 @@ export '/students_pages/flashcard/flashcard_widget.dart' show FlashcardWidget;
 export '/shared_pages/my_calls/my_calls_widget.dart' show MyCallsWidget;
 export '/shared_pages/events/event_list_widget.dart' show EventListWidget;
 export '/shared_pages/events/event_detail_widget.dart' show EventDetailWidget;
-export '/shared_pages/events/event_create_widget.dart' show EventCreateWidget;
+export '/shared_pages/events/event_create_widget.dart'
+    show EventCreateWidget, EventFormMode;
 export '/shared_pages/events/event_edit_widget.dart' show EventEditWidget;
 export '/shared_pages/events/event_group_chat_widget.dart'
     show EventGroupChatWidget;

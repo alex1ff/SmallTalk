@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '/flutter_flow/flutter_flow_icon_button.dart';
-import '/flutter_flow/flutter_flow_util.dart';
-import '/shared_pages/design/expatlio_design.dart';
+import '/shared_pages/events/event_create_widget.dart';
 
 class EventEditWidget extends StatelessWidget {
   const EventEditWidget({
@@ -10,6 +8,7 @@ class EventEditWidget extends StatelessWidget {
     required this.eventId,
   });
 
+  // Kept on the edit route wrapper for the upcoming prefill/save flow.
   final String eventId;
 
   static String routeName = 'eventEdit';
@@ -17,92 +16,8 @@ class EventEditWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ExpatlioDesign.background,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const _EventEditTopBar(),
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(ExpatlioDesign.space24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        FFLocalizations.of(context).getVariableText(
-                          ruText: 'Редактировать событие',
-                          enText: 'Edit event',
-                        ),
-                        textAlign: TextAlign.center,
-                        style: ExpatlioDesign.textStyle(
-                          context,
-                          size: 28,
-                          weight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: ExpatlioDesign.space8),
-                      Text(
-                        eventId,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: ExpatlioDesign.textStyle(
-                          context,
-                          color: ExpatlioDesign.muted,
-                          size: 14,
-                          weight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EventEditTopBar extends StatelessWidget {
-  const _EventEditTopBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: ExpatlioDesign.pageHeaderHeight,
-      child: Row(
-        children: [
-          FlutterFlowIconButton(
-            borderColor: Colors.transparent,
-            borderRadius: 24,
-            buttonSize: 48,
-            icon: Icon(
-              FFIcons.kchevronLeft,
-              color: ExpatlioDesign.text,
-              size: 24,
-            ),
-            onPressed: () => context.safePop(),
-          ),
-          Expanded(
-            child: Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Редактировать событие',
-                enText: 'Edit event',
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ExpatlioDesign.pageHeaderTitleStyle(context),
-            ),
-          ),
-          const SizedBox(width: 48),
-        ],
-      ),
+    return const EventCreateWidget(
+      formMode: EventFormMode.edit,
     );
   }
 }
