@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
+import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/services/event_actions_repository.dart';
@@ -35,6 +36,18 @@ Widget _buildTestApp({
     supportedLocales: _supportedLocales,
     localizationsDelegates: _localizationsDelegates,
     home: home,
+  );
+}
+
+Widget _buildRouterTestApp(
+  GoRouter router, {
+  Locale locale = const Locale('ru'),
+}) {
+  return MaterialApp.router(
+    locale: locale,
+    supportedLocales: _supportedLocales,
+    localizationsDelegates: _localizationsDelegates,
+    routerConfig: router,
   );
 }
 
@@ -245,6 +258,45 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(cancelCalls, 1);
+    expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
+  });
+
+  testWidgets('successful cancellation keeps organizer on detail route',
+      (tester) async {
+    var cancelCalls = 0;
+    final router = GoRouter(
+      initialLocation: '/events/event-1',
+      routes: [
+        GoRoute(
+          path: EventDetailWidget.routePath,
+          builder: (context, state) => EventDetailRouteWidget(
+            eventId: state.pathParameters['eventId']!,
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(),
+              ),
+            ),
+            cancelEventInvoker: (_, __) async {
+              cancelCalls += 1;
+              return _cancelEventResponse();
+            },
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await _tapVisible(tester, find.byKey(eventDetailOrganizerCancelButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailCancelDialogConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(cancelCalls, 1);
+    expect(router.getCurrentLocation(), '/events/event-1');
+    expect(find.byType(EventDetailRouteWidget), findsOneWidget);
     expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
   });
 }

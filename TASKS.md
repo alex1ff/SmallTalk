@@ -253,7 +253,7 @@ Date: 2026-06-14
 - [x] Save organizer edits.
 - [x] Add cancel confirmation dialog.
 - [x] Set event status to `canceled`.
-- [ ] Return user to detail or list after cancellation.
+- [x] Return user to detail or list after cancellation.
 - [ ] Ensure canceled event disappears from active list.
 
 ## Phase 10: Join And Leave UX
