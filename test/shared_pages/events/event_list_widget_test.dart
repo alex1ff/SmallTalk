@@ -12,6 +12,7 @@ import 'package:small_talk/flutter_flow/custom_icons.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
+import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
 import 'package:small_talk/shared_pages/events/event_list_widget.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_chip_source.dart';
@@ -1333,6 +1334,96 @@ void main() {
     expect(semantics.label, contains('Чат доступен только участникам'));
   });
 
+  testWidgets('opens event chat from participant card CTA', (tester) async {
+    final router = GoRouter(
+      initialLocation: EventListWidget.routePath,
+      routes: [
+        GoRoute(
+          name: EventListWidget.routeName,
+          path: EventListWidget.routePath,
+          builder: (context, state) => EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            eventCardsOverride: [
+              _eventCardFixture(
+                eventId: 'event-123',
+                chatCtaState: EventListChatCtaState.enabled,
+              ),
+            ],
+          ),
+        ),
+        GoRoute(
+          name: EventGroupChatWidget.routeName,
+          path: EventGroupChatWidget.routePath,
+          builder: (context, state) => EventGroupChatWidget(
+            eventId: state.pathParameters['eventId']!,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await Scrollable.ensureVisible(
+      tester.element(find.byKey(eventListCardChatCtaKey)),
+      alignment: 0.5,
+      duration: Duration.zero,
+    );
+    await tester.pump();
+    await tester.tap(find.text('Чат'));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/events/event-123/chat');
+    expect(find.byType(EventGroupChatWidget), findsOneWidget);
+    expect(find.text('event-123'), findsOneWidget);
+  });
+
+  testWidgets('does not open event chat from non-participant card CTA',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: EventListWidget.routePath,
+      routes: [
+        GoRoute(
+          name: EventListWidget.routeName,
+          path: EventListWidget.routePath,
+          builder: (context, state) => EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            eventCardsOverride: [
+              _eventCardFixture(eventId: 'event-123'),
+            ],
+          ),
+        ),
+        GoRoute(
+          name: EventGroupChatWidget.routeName,
+          path: EventGroupChatWidget.routePath,
+          builder: (context, state) => EventGroupChatWidget(
+            eventId: state.pathParameters['eventId']!,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await Scrollable.ensureVisible(
+      tester.element(find.byKey(eventListCardChatCtaKey)),
+      alignment: 0.5,
+      duration: Duration.zero,
+    );
+    await tester.pump();
+    await tester.tap(find.text('Чат'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/events');
+    expect(find.byType(EventListWidget), findsOneWidget);
+    expect(find.byType(EventGroupChatWidget), findsNothing);
+  });
+
   testWidgets('hides participant avatar stack for empty participants',
       (tester) async {
     await tester.pumpWidget(
@@ -1909,6 +2000,7 @@ EventSelectedCity _selectedCityFixture() {
 }
 
 EventListCardViewModel _eventCardFixture({
+  String eventId = 'event-1',
   String organizerDisplayName = 'Анастасия Иванова',
   String? organizerPhotoUrl = '',
   String languageCode = 'en',
@@ -1930,6 +2022,7 @@ EventListCardViewModel _eventCardFixture({
   EventListChatCtaState chatCtaState = EventListChatCtaState.participantOnly,
 }) {
   return EventListCardViewModel(
+    eventId: eventId,
     organizerDisplayName: organizerDisplayName,
     organizerPhotoUrl: organizerPhotoUrl,
     participants: participants,

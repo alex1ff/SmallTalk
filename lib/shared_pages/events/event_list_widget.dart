@@ -9,6 +9,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/events/event_create_widget.dart';
+import '/shared_pages/events/event_group_chat_widget.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_city_catalog.dart';
 import '/services/event_city_chip_source.dart';
@@ -100,6 +101,7 @@ enum EventListChatCtaState {
 
 class EventListCardViewModel {
   const EventListCardViewModel({
+    this.eventId = '',
     required this.organizerDisplayName,
     required this.languageCode,
     required this.title,
@@ -120,6 +122,7 @@ class EventListCardViewModel {
   });
 
   final String organizerDisplayName;
+  final String eventId;
   final String? organizerPhotoUrl;
   final List<EventListParticipantViewModel> participants;
   final int? participantsCount;
@@ -1710,6 +1713,10 @@ class _EventCardActionsShell extends StatelessWidget {
       );
     }
 
+    final eventId = event.eventId.trim();
+    final canOpenChat = event.chatCtaState == EventListChatCtaState.enabled &&
+        eventId.isNotEmpty;
+
     return Row(
       key: eventListCardActionsKey,
       children: [
@@ -1717,7 +1724,15 @@ class _EventCardActionsShell extends StatelessWidget {
           child: _EventCardPrimaryCta(state: event.joinCtaState),
         ),
         const SizedBox(width: ExpatlioDesign.space12),
-        _EventCardChatCta(state: event.chatCtaState),
+        _EventCardChatCta(
+          state: event.chatCtaState,
+          onPressed: canOpenChat
+              ? () => context.pushNamed(
+                    EventGroupChatWidget.routeName,
+                    pathParameters: <String, String>{'eventId': eventId},
+                  )
+              : null,
+        ),
       ],
     );
   }
@@ -1776,61 +1791,68 @@ class _EventCardPrimaryCta extends StatelessWidget {
 class _EventCardChatCta extends StatelessWidget {
   const _EventCardChatCta({
     required this.state,
+    required this.onPressed,
   });
 
   final EventListChatCtaState state;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = state == EventListChatCtaState.enabled;
+    final enabled = state == EventListChatCtaState.enabled && onPressed != null;
     final label = FFLocalizations.of(context).getVariableText(
       ruText: 'Чат',
       enText: 'Chat',
     );
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: enabled
-          ? label
-          : FFLocalizations.of(context).getVariableText(
-              ruText: 'Чат доступен только участникам',
-              enText: 'Chat is available to participants only',
-            ),
-      child: Container(
-        key: eventListCardChatCtaKey,
-        height: 48,
-        padding: const EdgeInsetsDirectional.symmetric(
-          horizontal: ExpatlioDesign.space12,
+    final disabledLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Чат доступен только участникам',
+      enText: 'Chat is available to participants only',
+    );
+    final foregroundColor =
+        enabled ? ExpatlioDesign.text : ExpatlioDesign.disabled;
+
+    return TextButton.icon(
+      key: eventListCardChatCtaKey,
+      onPressed: enabled ? onPressed : null,
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsetsDirectional.symmetric(
+            horizontal: ExpatlioDesign.space12,
+          ),
         ),
-        decoration: BoxDecoration(
-          color: enabled
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+          ),
+        ),
+        foregroundColor: WidgetStatePropertyAll(foregroundColor),
+        iconColor: WidgetStatePropertyAll(foregroundColor),
+        backgroundColor: WidgetStatePropertyAll(
+          enabled
               ? ExpatlioDesign.secondarySystemBackground
               : ExpatlioDesign.secondarySystemBackground.withValues(
                   alpha: 0.62,
                 ),
-          borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              enabled ? Icons.chat_bubble_outline : Icons.lock_outline,
-              color: enabled ? ExpatlioDesign.text : ExpatlioDesign.disabled,
-              size: 20,
-            ),
-            const SizedBox(width: ExpatlioDesign.space8),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: enabled ? ExpatlioDesign.text : ExpatlioDesign.disabled,
-                size: 16,
-                weight: FontWeight.w700,
-              ),
-            ),
-          ],
+        overlayColor: WidgetStatePropertyAll(
+          ExpatlioDesign.primary.withValues(alpha: 0.08),
+        ),
+      ),
+      icon: Icon(
+        enabled ? Icons.chat_bubble_outline : Icons.lock_outline,
+        size: 20,
+      ),
+      label: Text(
+        label,
+        semanticsLabel: enabled ? label : disabledLabel,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: foregroundColor,
+          size: 16,
+          weight: FontWeight.w700,
         ),
       ),
     );
