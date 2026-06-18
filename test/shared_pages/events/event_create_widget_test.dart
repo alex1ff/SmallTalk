@@ -4,9 +4,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/flutter_flow/flutter_flow_util.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
-import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
 
@@ -50,6 +51,8 @@ void main() {
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
+    await initializeDateFormatting('ru');
+    await initializeDateFormatting('en');
     await FFLocalizations.initialize();
   });
 
@@ -77,6 +80,9 @@ void main() {
     expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
     expect(find.text('Уровень'), findsOneWidget);
     expect(_levelSelectorText('B1-C1'), findsOneWidget);
+    expect(find.byKey(eventCreateDateLabelKey), findsOneWidget);
+    expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
+    expect(find.text('Дата'), findsOneWidget);
 
     final titleField = tester.widget<TextField>(
       find.descendant(
@@ -124,6 +130,7 @@ void main() {
     );
     expect(find.text('Level'), findsOneWidget);
     expect(_levelSelectorText('B1-C1'), findsOneWidget);
+    expect(find.text('Date'), findsOneWidget);
   });
 
   testWidgets('renders language selector from catalog in Russian',
@@ -490,6 +497,136 @@ void main() {
     expect(drafts.map(_levelDraftValue), ['B1:C1', 'C2:C2']);
   });
 
+  testWidgets('emits default date draft for submit handoff', (tester) async {
+    final drafts = <EventCreateDateDraft>[];
+    final todayBefore = _dateOnly(DateTime.now());
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onDateDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final todayAfter = _dateOnly(DateTime.now());
+    expect(drafts, hasLength(1));
+    expect(drafts.single.localDate.hour, 0);
+    expect(drafts.single.localDate.minute, 0);
+    expect(
+      <DateTime>{todayBefore, todayAfter},
+      contains(drafts.single.localDate),
+    );
+  });
+
+  testWidgets('emits date draft when handoff callback is added later',
+      (tester) async {
+    final drafts = <EventCreateDateDraft>[];
+    var callbackEnabled = false;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              initialDate: DateTime(2026, 6, 20, 18, 30),
+              onDateDraftChanged: callbackEnabled ? drafts.add : null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts, isEmpty);
+
+    setHostState(() {
+      callbackEnabled = true;
+    });
+    await tester.pumpAndSettle();
+
+    expect(drafts.map(_dateDraftValue), ['2026-06-20']);
+  });
+
+  testWidgets('normalizes initial date for submit handoff', (tester) async {
+    final drafts = <EventCreateDateDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialDate: DateTime(2026, 6, 20, 18, 30),
+          onDateDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+        _dateSelectorText(_dateLabel(DateTime(2026, 6, 20))), findsOneWidget);
+    expect(drafts.map(_dateDraftValue), ['2026-06-20']);
+  });
+
+  testWidgets('opens date picker and selects local calendar date',
+      (tester) async {
+    final drafts = <EventCreateDateDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialDate: DateTime(2026, 6, 15),
+          onDateDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateDateSelectorKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Выберите дату'), findsOneWidget);
+
+    await tester.tap(find.text('20').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Готово'));
+    await tester.pumpAndSettle();
+
+    expect(
+        _dateSelectorText(_dateLabel(DateTime(2026, 6, 20))), findsOneWidget);
+    expect(drafts.map(_dateDraftValue), ['2026-06-15', '2026-06-20']);
+  });
+
+  testWidgets('cancels date picker without changing date draft',
+      (tester) async {
+    final drafts = <EventCreateDateDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialDate: DateTime(2026, 6, 15),
+          onDateDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateDateSelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Отмена'));
+    await tester.pumpAndSettle();
+
+    expect(
+        _dateSelectorText(_dateLabel(DateTime(2026, 6, 15))), findsOneWidget);
+    expect(drafts.map(_dateDraftValue), ['2026-06-15']);
+  });
+
   testWidgets('shows language loading state before catalog resolves',
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
@@ -656,6 +793,12 @@ void main() {
       expect(levelSemantics.flagsCollection.isEnabled, isTrue);
       expect(levelSemantics.label, contains('Уровень события'));
       expect(levelSemantics.value, contains('B1-C1'));
+      final dateSemantics =
+          tester.getSemantics(find.byKey(eventCreateDateSelectorSemanticsKey));
+      expect(dateSemantics.flagsCollection.isButton, isTrue);
+      expect(dateSemantics.flagsCollection.isEnabled, isTrue);
+      expect(dateSemantics.label, contains('Дата события'));
+      expect(dateSemantics.value, isNotEmpty);
     } finally {
       semanticsHandle.dispose();
     }
@@ -701,6 +844,12 @@ void main() {
       expect(levelSemantics.flagsCollection.isEnabled, isTrue);
       expect(levelSemantics.label, contains('Event level'));
       expect(levelSemantics.value, contains('B1-C1'));
+      final dateSemantics =
+          tester.getSemantics(find.byKey(eventCreateDateSelectorSemanticsKey));
+      expect(dateSemantics.flagsCollection.isButton, isTrue);
+      expect(dateSemantics.flagsCollection.isEnabled, isTrue);
+      expect(dateSemantics.label, contains('Event date'));
+      expect(dateSemantics.value, isNotEmpty);
     } finally {
       semanticsHandle.dispose();
     }
@@ -789,6 +938,7 @@ void main() {
     expect(find.byKey(eventCreateTitleFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
   });
 
   testWidgets('form fields fit narrow large-text layouts', (tester) async {
@@ -814,6 +964,7 @@ void main() {
     expect(find.byKey(eventCreateTitleFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -830,6 +981,7 @@ void main() {
     expect(source, isNot(contains('FirebaseFirestore')));
     expect(source, isNot(contains('languageNameEn')));
     expect(source, isNot(contains('languageNameRu')));
+    expect(source, isNot(contains('startsAt')));
   });
 }
 
@@ -840,6 +992,32 @@ Finder _levelSelectorText(String text) => find.descendant(
 
 String _levelDraftValue(EventCreateLevelDraft draft) =>
     '${draft.levelMin}:${draft.levelMax}';
+
+Finder _dateSelectorText(String text) => find.descendant(
+      of: find.byKey(eventCreateDateSelectorKey),
+      matching: find.text(text),
+    );
+
+DateTime _dateOnly(DateTime value) =>
+    DateTime(value.year, value.month, value.day);
+
+String _dateDraftValue(EventCreateDateDraft draft) =>
+    _dateValue(draft.localDate);
+
+String _dateValue(DateTime date) {
+  final normalizedDate = _dateOnly(date);
+  final month = normalizedDate.month.toString().padLeft(2, '0');
+  final day = normalizedDate.day.toString().padLeft(2, '0');
+  return '${normalizedDate.year}-$month-$day';
+}
+
+String _dateLabel(DateTime date, {Locale locale = const Locale('ru')}) {
+  return dateTimeFormat(
+    'd MMM y',
+    _dateOnly(date),
+    locale: locale.languageCode,
+  );
+}
 
 final _languageCatalog = EventLanguageCatalog(
   languages: [

@@ -36,6 +36,12 @@ const ValueKey<String> eventCreateLevelSheetKey =
     ValueKey<String>('event_create_level_sheet');
 const ValueKey<String> eventCreateLevelDoneButtonKey =
     ValueKey<String>('event_create_level_done_button');
+const ValueKey<String> eventCreateDateLabelKey =
+    ValueKey<String>('event_create_date_label');
+const ValueKey<String> eventCreateDateSelectorSemanticsKey =
+    ValueKey<String>('event_create_date_selector_semantics');
+const ValueKey<String> eventCreateDateSelectorKey =
+    ValueKey<String>('event_create_date_selector');
 
 ValueKey<String> eventCreateLanguageOptionKey(String code) =>
     ValueKey<String>('event_create_language_option_$code');
@@ -64,6 +70,14 @@ class EventCreateLevelDraft {
   final String levelMax;
 }
 
+class EventCreateDateDraft {
+  const EventCreateDateDraft({
+    required this.localDate,
+  });
+
+  final DateTime localDate;
+}
+
 class EventCreateWidget extends StatefulWidget {
   const EventCreateWidget({
     super.key,
@@ -71,9 +85,11 @@ class EventCreateWidget extends StatefulWidget {
     this.initialLanguageCode,
     this.initialLevelMin,
     this.initialLevelMax,
+    this.initialDate,
     this.onLanguageCodeChanged,
     this.onLanguageDraftChanged,
     this.onLevelDraftChanged,
+    this.onDateDraftChanged,
   });
 
   static String routeName = 'eventCreate';
@@ -83,9 +99,11 @@ class EventCreateWidget extends StatefulWidget {
   final String? initialLanguageCode;
   final String? initialLevelMin;
   final String? initialLevelMax;
+  final DateTime? initialDate;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
   final ValueChanged<EventCreateLevelDraft>? onLevelDraftChanged;
+  final ValueChanged<EventCreateDateDraft>? onDateDraftChanged;
 
   @override
   State<EventCreateWidget> createState() => _EventCreateWidgetState();
@@ -102,12 +120,16 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   String? _selectedLanguageCode;
   String? _selectedLevelMin;
   String? _selectedLevelMax;
+  late DateTime _selectedDate;
   String? _lastEmittedLanguageDraftCode;
   String? _pendingLanguageDraftCode;
   bool _languageDraftCallbackScheduled = false;
   String? _lastEmittedLevelDraftKey;
   EventLevelRange? _pendingLevelDraftRange;
   bool _levelDraftCallbackScheduled = false;
+  String? _lastEmittedDateDraftKey;
+  DateTime? _pendingDateDraft;
+  bool _dateDraftCallbackScheduled = false;
 
   @override
   void initState() {
@@ -115,6 +137,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _selectedLanguageCode = widget.initialLanguageCode;
     _selectedLevelMin = widget.initialLevelMin;
     _selectedLevelMax = widget.initialLevelMax;
+    _selectedDate = _eventCreateDateOnly(widget.initialDate ?? DateTime.now());
   }
 
   @override
@@ -144,6 +167,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         oldWidget.initialLevelMax != widget.initialLevelMax) {
       _selectedLevelMin = widget.initialLevelMin;
       _selectedLevelMax = widget.initialLevelMax;
+    }
+    if (oldWidget.initialDate != widget.initialDate) {
+      _selectedDate = _eventCreateDateOnly(
+        widget.initialDate ?? DateTime.now(),
+      );
     }
   }
 
@@ -271,6 +299,48 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     );
   }
 
+  void _emitDateDraftNow(DateTime localDate) {
+    final normalizedDate = _eventCreateDateOnly(localDate);
+    _pendingDateDraft = null;
+    final draftKey = _eventCreateDateDraftKey(normalizedDate);
+    if (_lastEmittedDateDraftKey == draftKey) {
+      return;
+    }
+    final onDateDraftChanged = widget.onDateDraftChanged;
+    if (onDateDraftChanged == null) {
+      return;
+    }
+    _lastEmittedDateDraftKey = draftKey;
+    onDateDraftChanged(
+      EventCreateDateDraft(localDate: normalizedDate),
+    );
+  }
+
+  void _queueDateDraft(DateTime localDate) {
+    final normalizedDate = _eventCreateDateOnly(localDate);
+    final draftKey = _eventCreateDateDraftKey(normalizedDate);
+    if (_lastEmittedDateDraftKey == draftKey && _pendingDateDraft == null) {
+      return;
+    }
+    _pendingDateDraft = normalizedDate;
+    if (_dateDraftCallbackScheduled) {
+      return;
+    }
+    _dateDraftCallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _dateDraftCallbackScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      final pendingDate = _pendingDateDraft;
+      if (pendingDate == null ||
+          _lastEmittedDateDraftKey == _eventCreateDateDraftKey(pendingDate)) {
+        return;
+      }
+      _emitDateDraftNow(pendingDate);
+    });
+  }
+
   void _queueLevelDraft(EventLevelRange range) {
     final draftKey = _eventCreateLevelDraftKey(range);
     if (_lastEmittedLevelDraftKey == draftKey &&
@@ -341,10 +411,44 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _emitLevelDraftNow(selectedLevelRange);
   }
 
+  Future<void> _showDateSelector(DateTime selectedDate) async {
+    final normalizedSelectedDate = _eventCreateDateOnly(selectedDate);
+    final currentDate = _eventCreateDateOnly(DateTime.now());
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: normalizedSelectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100, 12, 31),
+      currentDate: currentDate,
+      locale: Localizations.localeOf(context),
+      helpText: FFLocalizations.of(context).getVariableText(
+        ruText: 'Выберите дату',
+        enText: 'Choose date',
+      ),
+      cancelText: FFLocalizations.of(context).getVariableText(
+        ruText: 'Отмена',
+        enText: 'Cancel',
+      ),
+      confirmText: FFLocalizations.of(context).getVariableText(
+        ruText: 'Готово',
+        enText: 'Done',
+      ),
+    );
+    if (pickedDate == null || !mounted) {
+      return;
+    }
+    final normalizedPickedDate = _eventCreateDateOnly(pickedDate);
+    setState(() {
+      _selectedDate = normalizedPickedDate;
+    });
+    _emitDateDraftNow(normalizedPickedDate);
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedLevelRange = _resolvedSelectedLevelRange();
     _queueLevelDraft(selectedLevelRange);
+    _queueDateDraft(_selectedDate);
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
       body: SafeArea(
@@ -453,6 +557,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                               selectedRange: selectedLevelRange,
                               onPressed: () =>
                                   _showLevelSelector(selectedLevelRange),
+                            ),
+                            const SizedBox(height: ExpatlioDesign.space20),
+                            _EventCreateDateSelector(
+                              selectedDate: _selectedDate,
+                              onPressed: () => _showDateSelector(_selectedDate),
                             ),
                           ],
                         ),
@@ -731,6 +840,101 @@ class _EventCreateLevelSelector extends StatelessWidget {
                   children: [
                     Icon(
                       Icons.school_outlined,
+                      color: ExpatlioDesign.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: ExpatlioDesign.space8),
+                    Expanded(
+                      child: Text(
+                        selectorLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: ExpatlioDesign.text,
+                          size: 16,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: ExpatlioDesign.space8),
+                    Icon(
+                      FFIcons.kchevronDown,
+                      color: ExpatlioDesign.muted,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventCreateDateSelector extends StatelessWidget {
+  const _EventCreateDateSelector({
+    required this.selectedDate,
+    required this.onPressed,
+  });
+
+  final DateTime selectedDate;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final fieldLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Дата',
+      enText: 'Date',
+    );
+    final selectorLabel = _eventCreateDateLabel(
+      context,
+      localDate: selectedDate,
+    );
+    final semanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Дата события',
+      enText: 'Event date',
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          key: eventCreateDateLabelKey,
+          fieldLabel,
+          style: ExpatlioDesign.formLabelStyle(context),
+        ),
+        const SizedBox(height: ExpatlioDesign.space8),
+        Semantics(
+          key: eventCreateDateSelectorSemanticsKey,
+          button: true,
+          enabled: true,
+          label: semanticsLabel,
+          value: selectorLabel,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: eventCreateDateSelectorKey,
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 48),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space12,
+                ),
+                decoration: ExpatlioDesign.cardDecoration(
+                  borderColor: ExpatlioDesign.separator,
+                  radius: ExpatlioDesign.controlRadius,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.calendar_today_outlined,
                       color: ExpatlioDesign.primary,
                       size: 20,
                     ),
@@ -1156,3 +1360,24 @@ String _eventCreateLevelRangeLabel(EventLevelRange range) =>
 
 String _eventCreateLevelDraftKey(EventLevelRange range) =>
     '${range.levelMin}:${range.levelMax}';
+
+DateTime _eventCreateDateOnly(DateTime value) =>
+    DateTime(value.year, value.month, value.day);
+
+String _eventCreateDateLabel(
+  BuildContext context, {
+  required DateTime localDate,
+}) {
+  return dateTimeFormat(
+    'd MMM y',
+    _eventCreateDateOnly(localDate),
+    locale: FFLocalizations.of(context).languageCode,
+  );
+}
+
+String _eventCreateDateDraftKey(DateTime localDate) {
+  final date = _eventCreateDateOnly(localDate);
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '${date.year}-$month-$day';
+}

@@ -220,7 +220,7 @@ Date: 2026-06-14
 - [x] Add language selector backed by the existing app language catalog.
 - [x] Submit selected language as primary `languageCode`; backend persists denormalized `languageNameEn` and `languageNameRu` from the synchronized allowlist.
 - [x] Add level/range selector.
-- [ ] Add date picker.
+- [x] Add date picker.
 - [ ] Add time picker.
 - [ ] Add city selector.
 - [ ] Add place/address input.
