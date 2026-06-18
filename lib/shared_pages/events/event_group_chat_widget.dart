@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
@@ -26,6 +27,12 @@ const ValueKey<String> eventGroupChatSendErrorSnackBarKey =
 
 ValueKey<String> eventGroupChatMessageBubbleKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_bubble_$messageId');
+
+ValueKey<String> eventGroupChatMessageSenderNameKey(String messageId) =>
+    ValueKey<String>('event_group_chat_message_sender_name_$messageId');
+
+ValueKey<String> eventGroupChatMessageSenderAvatarKey(String messageId) =>
+    ValueKey<String>('event_group_chat_message_sender_avatar_$messageId');
 
 /// Event chat intentionally uses an event-specific surface.
 ///
@@ -370,47 +377,186 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final messageId = message.reference.id;
     final isCurrentUser = message.senderId.trim() == currentUserUid.trim() &&
         currentUserUid.trim().isNotEmpty;
     final bubbleColor =
         isCurrentUser ? ExpatlioDesign.primary : ExpatlioDesign.card;
     final textColor = isCurrentUser ? Colors.white : ExpatlioDesign.text;
-    final alignment = isCurrentUser
-        ? AlignmentDirectional.centerEnd
-        : AlignmentDirectional.centerStart;
+    final senderNameColor =
+        isCurrentUser ? Colors.white : ExpatlioDesign.primary;
     final text = message.text.trim();
-
-    return Align(
-      alignment: alignment,
-      child: Container(
-        key: eventGroupChatMessageBubbleKey(message.reference.id),
-        constraints: const BoxConstraints(maxWidth: 320),
-        margin: const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space8),
-        padding: const EdgeInsetsDirectional.symmetric(
-          horizontal: ExpatlioDesign.space12,
-          vertical: ExpatlioDesign.space8,
-        ),
-        decoration: BoxDecoration(
-          color: bubbleColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isCurrentUser
-                ? ExpatlioDesign.primary
-                : ExpatlioDesign.separator,
+    final senderName = _senderDisplayName(context);
+    final avatar = _EventGroupChatSenderAvatar(
+      messageId: messageId,
+      displayName: senderName,
+      photoUrl: message.senderPhotoUrl,
+    );
+    final bubble = Flexible(
+      child: Align(
+        alignment: isCurrentUser
+            ? AlignmentDirectional.centerEnd
+            : AlignmentDirectional.centerStart,
+        child: Container(
+          key: eventGroupChatMessageBubbleKey(messageId),
+          constraints: const BoxConstraints(maxWidth: 280),
+          padding: const EdgeInsetsDirectional.symmetric(
+            horizontal: ExpatlioDesign.space12,
+            vertical: ExpatlioDesign.space8,
           ),
-        ),
-        child: Text(
-          text.isEmpty ? message.text : text,
-          style: ExpatlioDesign.textStyle(
-            context,
-            color: textColor,
-            size: 16,
-            height: 1.3,
-            weight: FontWeight.w500,
+          decoration: BoxDecoration(
+            color: bubbleColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isCurrentUser
+                  ? ExpatlioDesign.primary
+                  : ExpatlioDesign.separator,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                senderName,
+                key: eventGroupChatMessageSenderNameKey(messageId),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: senderNameColor,
+                  size: 13,
+                  height: 1.2,
+                  weight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                text.isEmpty ? message.text : text,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: textColor,
+                  size: 16,
+                  height: 1.3,
+                  weight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
+
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisAlignment:
+            isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: isCurrentUser
+            ? <Widget>[
+                bubble,
+                const SizedBox(width: ExpatlioDesign.space8),
+                avatar,
+              ]
+            : <Widget>[
+                avatar,
+                const SizedBox(width: ExpatlioDesign.space8),
+                bubble,
+              ],
+      ),
+    );
+  }
+
+  String _senderDisplayName(BuildContext context) {
+    final displayName = message.senderDisplayName.trim();
+    if (displayName.isNotEmpty) {
+      return displayName;
+    }
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Участник',
+      enText: 'Participant',
+    );
+  }
+}
+
+class _EventGroupChatSenderAvatar extends StatelessWidget {
+  const _EventGroupChatSenderAvatar({
+    required this.messageId,
+    required this.displayName,
+    required this.photoUrl,
+  });
+
+  static const double _dimension = 32;
+
+  final String messageId;
+  final String displayName;
+  final String photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedPhotoUrl = photoUrl.trim();
+
+    return Container(
+      key: eventGroupChatMessageSenderAvatarKey(messageId),
+      width: _dimension,
+      height: _dimension,
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(shape: BoxShape.circle),
+      child: normalizedPhotoUrl.isEmpty
+          ? _fallback(context)
+          : CachedNetworkImage(
+              imageUrl: normalizedPhotoUrl,
+              fit: BoxFit.cover,
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
+              memCacheWidth: (_dimension *
+                      MediaQuery.devicePixelRatioOf(
+                        context,
+                      ))
+                  .round(),
+              memCacheHeight: (_dimension *
+                      MediaQuery.devicePixelRatioOf(
+                        context,
+                      ))
+                  .round(),
+              placeholder: (context, _) => _fallback(context),
+              errorWidget: (context, _, __) => _fallback(context),
+            ),
+    );
+  }
+
+  Widget _fallback(BuildContext context) {
+    return Container(
+      color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+      alignment: Alignment.center,
+      child: Text(
+        _initials(),
+        maxLines: 1,
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: ExpatlioDesign.primary,
+          size: 12,
+          weight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  String _initials() {
+    final normalizedName = displayName.trim();
+    if (normalizedName.isEmpty) {
+      return '?';
+    }
+    final words = normalizedName
+        .split(RegExp(r'\s+'))
+        .where((word) => word.trim().isNotEmpty)
+        .toList(growable: false);
+    if (words.length >= 2) {
+      return '${words[0].characters.first}${words[1].characters.first}'
+          .toUpperCase();
+    }
+    return normalizedName.characters.take(2).toString().toUpperCase();
   }
 }
 

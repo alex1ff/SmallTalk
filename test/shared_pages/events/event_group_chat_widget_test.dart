@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_core_platform_interface/test.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -110,6 +111,111 @@ void main() {
     expect(find.byKey(eventGroupChatMessageBubbleKey('message-1')),
         findsOneWidget);
     expect(find.text('Всем привет!'), findsOneWidget);
+  });
+
+  testWidgets('shows sender name and avatar fallback for event chat messages',
+      (tester) async {
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final message = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'message-1',
+      text: 'Всем привет!',
+      senderDisplayName: 'Марко Росси',
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            message,
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatMessageBubbleKey('message-1')),
+        findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageSenderNameKey('message-1')),
+        findsOneWidget);
+    expect(find.text('Марко Росси'), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageSenderAvatarKey('message-1')),
+        findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventGroupChatMessageSenderAvatarKey('message-1')),
+        matching: find.text('МР'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('falls back when sender name is blank and photo fails',
+      (tester) async {
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final message = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'message-1',
+      text: 'Привет',
+      senderDisplayName: '   ',
+      senderPhotoUrl: 'https://invalid.example/avatar.png',
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            message,
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatMessageSenderNameKey('message-1')),
+        findsOneWidget);
+    expect(find.text('Участник'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventGroupChatMessageSenderAvatarKey('message-1')),
+        matching: find.text('УЧ'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('uses sender photo url for event chat avatar', (tester) async {
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final message = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'message-1',
+      text: 'Привет',
+      senderDisplayName: 'Marco',
+      senderPhotoUrl: 'https://example.com/avatar.png',
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            message,
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final image = tester.widget<CachedNetworkImage>(
+      find.descendant(
+        of: find.byKey(eventGroupChatMessageSenderAvatarKey('message-1')),
+        matching: find.byType(CachedNetworkImage),
+      ),
+    );
+    expect(image.imageUrl, 'https://example.com/avatar.png');
   });
 
   testWidgets('sends event chat message through callable and clears input',
@@ -232,12 +338,14 @@ EventChatMessagesRecord _messageFixture({
   required String messageId,
   required String text,
   String senderId = 'uid-1',
+  String senderDisplayName = 'Marco',
+  String? senderPhotoUrl,
 }) {
   return EventChatMessagesRecord.getDocumentFromData(
     {
       'senderId': senderId,
-      'senderDisplayName': 'Marco',
-      'senderPhotoUrl': null,
+      'senderDisplayName': senderDisplayName,
+      'senderPhotoUrl': senderPhotoUrl,
       'text': text,
       'createdAt': DateTime.parse('2026-06-14T10:00:00Z'),
       'deletedAt': null,

@@ -278,7 +278,7 @@ Date: 2026-06-14
 - [x] Show `Сначала присоединитесь к событию` for non-participants.
 - [x] Load event chat messages.
 - [x] Send event chat messages through `sendEventChatMessage`.
-- [ ] Show sender name/avatar.
+- [x] Show sender name/avatar.
 - [ ] Render removed/tombstoned message state when `deletedAt` is non-null, if such messages are encountered.
 - [ ] Prevent read/write after participant leaves.
 - [ ] Show canceled event chats as read-only for eligible organizer/participants.
