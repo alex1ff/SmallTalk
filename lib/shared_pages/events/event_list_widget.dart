@@ -15,6 +15,7 @@ import '/services/event_city_selection_source.dart';
 import '/services/event_selected_city_state.dart';
 import '/services/event_temporary_city_selection.dart';
 import '/services/event_list_date_bounds.dart';
+import '/services/event_level_helper.dart';
 
 const ValueKey<String> eventListCreateButtonKey =
     ValueKey<String>('event_list_create_button');
@@ -45,6 +46,7 @@ class EventListWidget extends StatefulWidget {
 class _EventListWidgetState extends State<EventListWidget> {
   late EventSelectedCity? _selectedCity;
   EventListDateFilter _selectedDateFilter = EventListDateFilter.today;
+  String? _selectedLevel;
   Future<EventCityCatalog>? _cityCatalogFuture;
   Future<List<EventCityChip>>? _cityChipsFuture;
   EventCityCatalog? _cityChipsCatalog;
@@ -171,6 +173,13 @@ class _EventListWidgetState extends State<EventListWidget> {
                         selectedFilter: _selectedDateFilter,
                         onChanged: (filter) => setState(() {
                           _selectedDateFilter = filter;
+                        }),
+                      ),
+                      const SizedBox(height: ExpatlioDesign.space12),
+                      _EventLevelChips(
+                        selectedLevel: _selectedLevel,
+                        onChanged: (level) => setState(() {
+                          _selectedLevel = level;
                         }),
                       ),
                       const SizedBox(height: ExpatlioDesign.space12),
@@ -328,6 +337,78 @@ class _EventListWidgetState extends State<EventListWidget> {
     );
   }
 }
+
+class _EventLevelChips extends StatelessWidget {
+  const _EventLevelChips({
+    required this.selectedLevel,
+    required this.onChanged,
+  });
+
+  final String? selectedLevel;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: ExpatlioDesign.space8,
+      runSpacing: ExpatlioDesign.space8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.school_outlined,
+              color: ExpatlioDesign.muted,
+              size: 18,
+            ),
+            const SizedBox(width: ExpatlioDesign.space4),
+            Text(
+              FFLocalizations.of(context).getVariableText(
+                ruText: 'Уровень:',
+                enText: 'Level:',
+              ),
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.muted,
+                size: 14,
+                weight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        for (final level in eventLevelRanks.keys)
+          ChoiceChip(
+            key: _eventLevelFilterChipKey(level),
+            label: Text(level),
+            selected: selectedLevel == level,
+            onSelected: (selected) => onChanged(selected ? level : null),
+            showCheckmark: false,
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            backgroundColor: ExpatlioDesign.secondarySystemBackground,
+            selectedColor: ExpatlioDesign.primary.withValues(alpha: 0.12),
+            side: BorderSide(
+              color: selectedLevel == level
+                  ? ExpatlioDesign.primary
+                  : ExpatlioDesign.separator,
+            ),
+            labelStyle: ExpatlioDesign.textStyle(
+              context,
+              color: selectedLevel == level
+                  ? ExpatlioDesign.primary
+                  : ExpatlioDesign.text,
+              size: 14,
+              weight: FontWeight.w600,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+ValueKey<String> _eventLevelFilterChipKey(String level) =>
+    ValueKey<String>('event_level_filter_$level');
 
 class _EventDateChips extends StatelessWidget {
   const _EventDateChips({

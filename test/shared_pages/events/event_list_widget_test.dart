@@ -17,6 +17,7 @@ import 'package:small_talk/services/event_city_chip_source.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
+import 'package:small_talk/services/event_level_helper.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -164,6 +165,57 @@ void main() {
         isFalse);
     expect(_dateFilterChip(tester, EventListDateFilter.currentMonth).selected,
         isTrue);
+  });
+
+  testWidgets('shows level filter chips with no level selected by default',
+      (tester) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Уровень:'), findsOneWidget);
+    expect(find.byIcon(Icons.school_outlined), findsOneWidget);
+    expect(
+      _widgetIndex(
+        tester,
+        find.text('Уровень:'),
+      ),
+      greaterThan(
+        _widgetIndex(
+          tester,
+          _dateFilterFinder(EventListDateFilter.currentMonth),
+        ),
+      ),
+    );
+    for (final level in eventLevelRanks.keys) {
+      expect(find.text(level), findsOneWidget);
+      expect(_levelFilterChip(tester, level).selected, isFalse);
+    }
+  });
+
+  testWidgets('level filter chips select switch and clear one level',
+      (tester) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(_levelFilterFinder('B2'));
+    await tester.pumpAndSettle();
+
+    expect(_levelFilterChip(tester, 'B2').selected, isTrue);
+    expect(_levelFilterChip(tester, 'B1').selected, isFalse);
+    expect(_levelFilterChip(tester, 'C1').selected, isFalse);
+
+    await tester.tap(_levelFilterFinder('C1'));
+    await tester.pumpAndSettle();
+
+    expect(_levelFilterChip(tester, 'B2').selected, isFalse);
+    expect(_levelFilterChip(tester, 'C1').selected, isTrue);
+
+    await tester.tap(_levelFilterFinder('C1'));
+    await tester.pumpAndSettle();
+
+    for (final level in eventLevelRanks.keys) {
+      expect(_levelFilterChip(tester, level).selected, isFalse);
+    }
   });
 
   testWidgets('shows a city selector placeholder below the header',
@@ -644,6 +696,15 @@ ChoiceChip _dateFilterChip(
   EventListDateFilter filter,
 ) =>
     tester.widget<ChoiceChip>(_dateFilterFinder(filter));
+
+Finder _levelFilterFinder(String level) =>
+    find.byKey(ValueKey<String>('event_level_filter_$level'));
+
+ChoiceChip _levelFilterChip(
+  WidgetTester tester,
+  String level,
+) =>
+    tester.widget<ChoiceChip>(_levelFilterFinder(level));
 
 EventCity _cityFixture({
   required String countryCode,

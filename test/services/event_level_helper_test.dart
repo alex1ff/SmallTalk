@@ -3,6 +3,29 @@ import 'package:small_talk/services/event_level_helper.dart';
 
 void main() {
   group('eventLevelRange', () {
+    test('keeps all six canonical levels in rank order', () {
+      expect(eventLevelRanks.keys.toList(growable: false), [
+        'A1',
+        'A2',
+        'B1',
+        'B2',
+        'C1',
+        'C2',
+      ]);
+
+      for (final entry in eventLevelRanks.entries) {
+        final range = eventLevelRange(
+          levelMin: entry.key,
+          levelMax: entry.key,
+        );
+
+        expect(range.levelMin, entry.key);
+        expect(range.levelMax, entry.key);
+        expect(range.minRank, entry.value);
+        expect(range.maxRank, entry.value);
+      }
+    });
+
     test('normalizes canonical levels and checks inclusive overlap', () {
       final range = eventLevelRange(levelMin: ' b1 ', levelMax: ' c1 ');
 
