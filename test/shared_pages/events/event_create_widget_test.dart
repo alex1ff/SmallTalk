@@ -181,6 +181,8 @@ void main() {
     expect(find.byKey(eventCreateCapacityLabelKey), findsOneWidget);
     expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
     expect(find.text('Лимит участников'), findsOneWidget);
+    expect(find.byKey(eventCreateSubmitButtonKey), findsOneWidget);
+    expect(find.text('Создать'), findsOneWidget);
 
     final titleField = tester.widget<TextField>(
       find.descendant(
@@ -260,6 +262,8 @@ void main() {
     expect(find.text('Time'), findsOneWidget);
     expect(_timeSelectorText('18:00'), findsOneWidget);
     expect(find.text('Participant limit'), findsOneWidget);
+    expect(find.byKey(eventCreateSubmitButtonKey), findsOneWidget);
+    expect(find.text('Create'), findsOneWidget);
     final capacityField = tester.widget<TextField>(
       find.descendant(
         of: find.byKey(eventCreateCapacityFieldKey),
@@ -897,6 +901,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _ensureVisibleInForm(
+      tester,
+      find.byKey(eventCreateCitySelectorKey),
+    );
     await tester.tap(find.byKey(eventCreateCitySelectorKey));
     await tester.pumpAndSettle();
 
@@ -1130,6 +1138,145 @@ void main() {
 
     expect(find.text('24'), findsOneWidget);
     expect(drafts.map(_capacityDraftValue), [10, 24]);
+  });
+
+  testWidgets('submit shows required field errors in Russian', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Введите название'), findsNothing);
+    expect(find.text('Введите описание'), findsNothing);
+    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Введите место'), findsNothing);
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Введите название'), findsOneWidget);
+    expect(find.text('Введите описание'), findsOneWidget);
+    expect(find.text('Выберите город события'), findsOneWidget);
+    expect(find.text('Введите место'), findsOneWidget);
+    expect(find.text('Введите лимит участников'), findsNothing);
+  });
+
+  testWidgets('submit shows required field errors in English', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('en'),
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter title'), findsOneWidget);
+    expect(find.text('Enter description'), findsOneWidget);
+    expect(find.text('Choose event city'), findsOneWidget);
+    expect(find.text('Enter place'), findsOneWidget);
+  });
+
+  testWidgets('cleared participant limit is required on submit',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventCreateTitleFieldKey), 'Клуб');
+    await tester.enterText(
+      find.byKey(eventCreateDescriptionFieldKey),
+      'Говорим на английском.',
+    );
+    await tester.enterText(
+      find.byKey(eventCreateLocationFieldKey),
+      'Кафе на Арбате',
+    );
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Введите лимит участников'), findsOneWidget);
+    expect(find.text('Введите название'), findsNothing);
+    expect(find.text('Введите описание'), findsNothing);
+    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Введите место'), findsNothing);
+  });
+
+  testWidgets('valid required fields submit without backend side effects',
+      (tester) async {
+    EventSelectedCity? selectedCity;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              cityCatalogOverride: _cityCatalog,
+              initialSelectedCity: selectedCity,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Введите название'), findsOneWidget);
+    expect(find.text('Введите описание'), findsOneWidget);
+    expect(find.text('Выберите город события'), findsOneWidget);
+    expect(find.text('Введите место'), findsOneWidget);
+
+    await tester.enterText(find.byKey(eventCreateTitleFieldKey), 'Клуб');
+    await tester.enterText(
+      find.byKey(eventCreateDescriptionFieldKey),
+      'Говорим на английском.',
+    );
+    setHostState(() {
+      selectedCity = const EventSelectedCity(
+        city: _moscowCity,
+        source: EventCitySelectionSource.static,
+      );
+    });
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(eventCreateLocationFieldKey),
+      'Кафе на Арбате',
+    );
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Введите название'), findsNothing);
+    expect(find.text('Введите описание'), findsNothing);
+    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Введите место'), findsNothing);
+    expect(find.text('Введите лимит участников'), findsNothing);
+    expect(find.byType(EventCreateWidget), findsOneWidget);
   });
 
   testWidgets('emits default date draft for submit handoff', (tester) async {
@@ -1777,6 +1924,7 @@ void main() {
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
+    expect(find.byKey(eventCreateSubmitButtonKey), findsOneWidget);
   });
 
   testWidgets('form fields fit narrow large-text layouts', (tester) async {
@@ -1807,6 +1955,7 @@ void main() {
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
+    expect(find.byKey(eventCreateSubmitButtonKey), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1850,6 +1999,19 @@ String _locationDraftValue(EventCreateLocationDraft draft) =>
     draft.locationName;
 
 int _capacityDraftValue(EventCreateCapacityDraft draft) => draft.capacity;
+
+Future<void> _ensureVisibleInForm(
+  WidgetTester tester,
+  Finder finder,
+) async {
+  expect(finder, findsOneWidget);
+  await Scrollable.ensureVisible(
+    tester.element(finder),
+    alignment: 0.25,
+    duration: Duration.zero,
+  );
+  await tester.pumpAndSettle();
+}
 
 int _widgetIndex(WidgetTester tester, Finder finder) {
   expect(finder, findsOneWidget);

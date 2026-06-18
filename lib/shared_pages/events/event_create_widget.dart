@@ -81,6 +81,8 @@ const ValueKey<String> eventCreateCapacityFieldSemanticsKey =
     ValueKey<String>('event_create_capacity_field_semantics');
 const ValueKey<String> eventCreateCapacityFieldKey =
     ValueKey<String>('event_create_capacity_field');
+const ValueKey<String> eventCreateSubmitButtonKey =
+    ValueKey<String>('event_create_submit_button');
 const TimeOfDay _eventCreateDefaultTime = TimeOfDay(hour: 18, minute: 0);
 const int _eventCreateDefaultCapacity = 10;
 
@@ -261,6 +263,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   int? _lastEmittedCapacityDraft;
   int? _pendingCapacityDraft;
   bool _capacityDraftCallbackScheduled = false;
+  bool _hasAttemptedSubmit = false;
 
   @override
   void initState() {
@@ -972,6 +975,13 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _emitTimeDraftNow(pickedTime);
   }
 
+  void _handleSubmitPressed() {
+    setState(() {
+      _hasAttemptedSubmit = true;
+    });
+    _formKey.currentState?.validate();
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedLevelRange = _resolvedSelectedLevelRange();
@@ -1007,6 +1017,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                         constraints: const BoxConstraints(maxWidth: 760),
                         child: Form(
                           key: _formKey,
+                          autovalidateMode: _hasAttemptedSubmit
+                              ? AutovalidateMode.onUserInteraction
+                              : AutovalidateMode.disabled,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -1028,6 +1041,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                 controller: _titleTextController,
                                 focusNode: _titleFocusNode,
                                 textInputAction: TextInputAction.next,
+                                validator: (value) => _eventCreateRequiredText(
+                                  context,
+                                  value,
+                                  ruText: 'Введите название',
+                                  enText: 'Enter title',
+                                ),
                                 onFieldSubmitted: () {
                                   _descriptionFocusNode.requestFocus();
                                 },
@@ -1055,6 +1074,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                 keyboardType: TextInputType.multiline,
                                 minLines: 4,
                                 maxLines: 8,
+                                validator: (value) => _eventCreateRequiredText(
+                                  context,
+                                  value,
+                                  ruText: 'Введите описание',
+                                  enText: 'Enter description',
+                                ),
                               ),
                               const SizedBox(height: ExpatlioDesign.space20),
                               FutureBuilder<EventLanguageCatalog>(
@@ -1137,6 +1162,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                         hasOutdatedProfileCity: selectedState
                                                 ?.hasOutdatedProfileCity ??
                                             false,
+                                        errorText: _eventCreateCityErrorText(
+                                          context,
+                                          selectedCity: selectedCity,
+                                          hasAttemptedSubmit:
+                                              _hasAttemptedSubmit,
+                                        ),
                                         showsMissingLocationPrompt:
                                             selectedState != null &&
                                                 selectedState
@@ -1191,6 +1222,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                 keyboardType: TextInputType.streetAddress,
                                 minLines: 1,
                                 maxLines: 2,
+                                validator: (value) => _eventCreateRequiredText(
+                                  context,
+                                  value,
+                                  ruText: 'Введите место',
+                                  enText: 'Enter place',
+                                ),
                               ),
                               const SizedBox(height: ExpatlioDesign.space20),
                               _EventCreateDateSelector(
@@ -1223,6 +1260,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                 inputFormatters: [
                                   FilteringTextInputFormatter.digitsOnly,
                                 ],
+                                validator: (value) => _eventCreateRequiredText(
+                                  context,
+                                  value,
+                                  ruText: 'Введите лимит участников',
+                                  enText: 'Enter participant limit',
+                                ),
                               ),
                             ],
                           ),
@@ -1231,6 +1274,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                     ),
                   ],
                 ),
+              ),
+              _EventCreateSubmitBar(
+                onPressed: _handleSubmitPressed,
               ),
             ],
           ),
@@ -1254,6 +1300,7 @@ class _EventCreateTextField extends StatelessWidget {
     this.inputFormatters,
     this.minLines,
     this.maxLines = 1,
+    this.validator,
     this.onFieldSubmitted,
   });
 
@@ -1269,6 +1316,7 @@ class _EventCreateTextField extends StatelessWidget {
   final List<TextInputFormatter>? inputFormatters;
   final int? minLines;
   final int maxLines;
+  final FormFieldValidator<String>? validator;
   final VoidCallback? onFieldSubmitted;
 
   @override
@@ -1300,6 +1348,7 @@ class _EventCreateTextField extends StatelessWidget {
             inputFormatters: inputFormatters,
             minLines: minLines,
             maxLines: maxLines,
+            validator: validator,
             onFieldSubmitted: (_) => onFieldSubmitted?.call(),
             decoration: ExpatlioDesign.formFieldDecoration(
               context,
@@ -1312,6 +1361,75 @@ class _EventCreateTextField extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _EventCreateSubmitBar extends StatelessWidget {
+  const _EventCreateSubmitBar({
+    required this.onPressed,
+  });
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: ExpatlioDesign.card,
+        border: Border(
+          top: BorderSide(color: ExpatlioDesign.separator),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space24,
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space24,
+          ExpatlioDesign.space16,
+        ),
+        child: Align(
+          alignment: AlignmentDirectional.center,
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                key: eventCreateSubmitButtonKey,
+                onPressed: onPressed,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
+                  padding: const EdgeInsetsDirectional.symmetric(
+                    horizontal: ExpatlioDesign.space16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.buttonRadius),
+                  ),
+                  backgroundColor: ExpatlioDesign.primary,
+                  foregroundColor: Colors.white,
+                ),
+                child: Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Создать',
+                    enText: 'Create',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: Colors.white,
+                    size: 16,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1550,6 +1668,7 @@ class _EventCreateCitySelector extends StatelessWidget {
     required this.state,
     this.selectedCity,
     this.hasOutdatedProfileCity = false,
+    this.errorText,
     this.showsMissingLocationPrompt = false,
     this.onPressed,
   });
@@ -1557,6 +1676,7 @@ class _EventCreateCitySelector extends StatelessWidget {
   final _EventCreateCitySelectorState state;
   final EventSelectedCity? selectedCity;
   final bool hasOutdatedProfileCity;
+  final String? errorText;
   final bool showsMissingLocationPrompt;
   final VoidCallback? onPressed;
 
@@ -1573,9 +1693,9 @@ class _EventCreateCitySelector extends StatelessWidget {
     );
     final isEnabled =
         onPressed != null && state == _EventCreateCitySelectorState.ready;
-    final iconColor = state == _EventCreateCitySelectorState.error
-        ? ExpatlioDesign.danger
-        : ExpatlioDesign.primary;
+    final hasError =
+        errorText != null || state == _EventCreateCitySelectorState.error;
+    final iconColor = hasError ? ExpatlioDesign.danger : ExpatlioDesign.primary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1607,7 +1727,9 @@ class _EventCreateCitySelector extends StatelessWidget {
                   ExpatlioDesign.space12,
                 ),
                 decoration: ExpatlioDesign.cardDecoration(
-                  borderColor: ExpatlioDesign.separator,
+                  borderColor: errorText == null
+                      ? ExpatlioDesign.separator
+                      : ExpatlioDesign.danger,
                   radius: ExpatlioDesign.controlRadius,
                 ),
                 child: Column(
@@ -1672,6 +1794,18 @@ class _EventCreateCitySelector extends StatelessWidget {
             ),
           ),
         ),
+        if (errorText != null) ...[
+          const SizedBox(height: ExpatlioDesign.space8),
+          Text(
+            errorText!,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.danger,
+              size: 12,
+              weight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -2564,3 +2698,32 @@ String _eventCreateCapacityText(int? capacity) =>
 
 int _eventCreateCapacityFromText(String value) =>
     int.tryParse(value) ?? _eventCreateDefaultCapacity;
+
+String? _eventCreateRequiredText(
+  BuildContext context,
+  String? value, {
+  required String ruText,
+  required String enText,
+}) {
+  if (value == null || value.trim().isEmpty) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: ruText,
+      enText: enText,
+    );
+  }
+  return null;
+}
+
+String? _eventCreateCityErrorText(
+  BuildContext context, {
+  required EventSelectedCity? selectedCity,
+  required bool hasAttemptedSubmit,
+}) {
+  if (!hasAttemptedSubmit || selectedCity != null) {
+    return null;
+  }
+  return FFLocalizations.of(context).getVariableText(
+    ruText: 'Выберите город события',
+    enText: 'Choose event city',
+  );
+}

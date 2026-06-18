@@ -225,7 +225,7 @@ Date: 2026-06-14
 - [x] Add city selector.
 - [x] Add place/address input.
 - [x] Add participant limit input.
-- [ ] Validate required fields.
+- [x] Validate required fields.
 - [ ] Interpret date/time in the selected event city's `timeZoneId` and block past values using trusted-time validation feedback.
 - [ ] Block capacity below 2.
 - [ ] Block capacity above 50.
