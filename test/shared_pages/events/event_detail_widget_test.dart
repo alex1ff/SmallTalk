@@ -403,13 +403,11 @@ void main() {
       ),
       findsOneWidget,
     );
-
-    final cardSemantics =
-        tester.widget<Semantics>(find.byKey(eventDetailOrganizerCardKey));
     expect(
-      cardSemantics.properties.label,
-      'Организатор: Анастасия Иванова. Ведущий встречи',
+      find.bySemanticsLabel('Организатор: Анастасия Иванова. Ведущий встречи'),
+      findsOneWidget,
     );
+    expect(find.byKey(eventDetailOrganizerMessageButtonKey), findsOneWidget);
   });
 
   testWidgets('hides organizer card when organizer name is blank',
@@ -427,6 +425,7 @@ void main() {
 
     expect(find.byKey(eventDetailOrganizerCardKey), findsNothing);
     expect(find.byKey(eventDetailOrganizerAvatarKey), findsNothing);
+    expect(find.byKey(eventDetailOrganizerMessageButtonKey), findsNothing);
   });
 
   testWidgets('organizer avatar falls back when image url is broken',
@@ -451,6 +450,63 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('organizer message action calls injected callback once',
+      (tester) async {
+    var tapCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          organizerDisplayName: 'Анастасия Иванова',
+          onOrganizerMessagePressed: () => tapCount += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailOrganizerMessageButtonKey), findsOneWidget);
+    expect(find.text('Написать'), findsOneWidget);
+
+    final buttonSemantics = tester.widget<Semantics>(
+      find.byKey(eventDetailOrganizerMessageButtonKey),
+    );
+    expect(buttonSemantics.properties.button, isTrue);
+    expect(buttonSemantics.properties.enabled, isTrue);
+    expect(
+      buttonSemantics.properties.label,
+      'Написать организатору Анастасия Иванова',
+    );
+    expect(buttonSemantics.properties.onTap, isNotNull);
+
+    await tester.tap(find.byKey(eventDetailOrganizerMessageButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(tapCount, 1);
+  });
+
+  testWidgets(
+      'organizer message action is visible but disabled without callback',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          organizerDisplayName: 'Анастасия Иванова',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final buttonSemantics = tester.widget<Semantics>(
+      find.byKey(eventDetailOrganizerMessageButtonKey),
+    );
+    expect(buttonSemantics.properties.button, isTrue);
+    expect(buttonSemantics.properties.enabled, isFalse);
+    expect(buttonSemantics.properties.onTap, isNull);
+    expect(find.text('Написать'), findsOneWidget);
   });
 
   testWidgets('organizer card fits narrow large-text layouts', (tester) async {
@@ -555,6 +611,11 @@ void main() {
     expect(source, isNot(contains('EventDetailRepository')));
     expect(source, isNot(contains('watchEventDetail')));
     expect(source, isNot(contains('EventsRecord')));
+    expect(source, isNot(contains('openChatThread')));
+    expect(source, isNot(contains('ChatThreadWidget')));
+    expect(source, isNot(contains('ConversationsRecord')));
+    expect(source, isNot(contains('MessagesRecord')));
+    expect(source, isNot(contains('FirebaseFirestore')));
   });
 }
 

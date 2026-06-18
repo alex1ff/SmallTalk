@@ -27,6 +27,8 @@ const ValueKey<String> eventDetailOrganizerAvatarKey =
     ValueKey<String>('event_detail_organizer_avatar');
 const ValueKey<String> eventDetailOrganizerNameKey =
     ValueKey<String>('event_detail_organizer_name');
+const ValueKey<String> eventDetailOrganizerMessageButtonKey =
+    ValueKey<String>('event_detail_organizer_message_button');
 
 class EventDetailWidget extends StatelessWidget {
   const EventDetailWidget({
@@ -43,6 +45,7 @@ class EventDetailWidget extends StatelessWidget {
     this.description,
     this.organizerDisplayName,
     this.organizerPhotoUrl,
+    this.onOrganizerMessagePressed,
   });
 
   final String eventId;
@@ -57,6 +60,7 @@ class EventDetailWidget extends StatelessWidget {
   final String? description;
   final String? organizerDisplayName;
   final String? organizerPhotoUrl;
+  final VoidCallback? onOrganizerMessagePressed;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
@@ -165,6 +169,7 @@ class EventDetailWidget extends StatelessWidget {
                             _EventDetailOrganizerCard(
                               displayName: organizerName,
                               photoUrl: organizerPhotoUrl,
+                              onMessagePressed: onOrganizerMessagePressed,
                             ),
                           ],
                         ],
@@ -285,10 +290,12 @@ class _EventDetailOrganizerCard extends StatelessWidget {
   const _EventDetailOrganizerCard({
     required this.displayName,
     required this.photoUrl,
+    required this.onMessagePressed,
   });
 
   final String displayName;
   final String? photoUrl;
+  final VoidCallback? onMessagePressed;
 
   @override
   Widget build(BuildContext context) {
@@ -301,67 +308,178 @@ class _EventDetailOrganizerCard extends StatelessWidget {
       enText: 'Meeting host',
     );
     final semanticsLabel = '$label: $displayName. $subtitle';
-
-    return Semantics(
-      key: eventDetailOrganizerCardKey,
+    final info = Semantics(
       container: true,
       label: semanticsLabel,
       child: ExcludeSemantics(
-        child: Container(
-          padding: ExpatlioDesign.cardPaddingDirectional,
-          decoration: ExpatlioDesign.cardDecoration(
-            borderColor: ExpatlioDesign.separator,
-          ),
-          child: Row(
+        child: _EventDetailOrganizerInfo(
+          displayName: displayName,
+          photoUrl: photoUrl,
+          label: label,
+          subtitle: subtitle,
+        ),
+      ),
+    );
+    final action = _EventDetailOrganizerMessageButton(
+      displayName: displayName,
+      onPressed: onMessagePressed,
+    );
+
+    return Container(
+      key: eventDetailOrganizerCardKey,
+      padding: ExpatlioDesign.cardPaddingDirectional,
+      decoration: ExpatlioDesign.cardDecoration(
+        borderColor: ExpatlioDesign.separator,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 360) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                info,
+                const SizedBox(height: ExpatlioDesign.space12),
+                action,
+              ],
+            );
+          }
+
+          return Row(
             children: [
-              _EventDetailOrganizerAvatar(
-                displayName: displayName,
-                photoUrl: photoUrl,
-              ),
+              Expanded(child: info),
               const SizedBox(width: ExpatlioDesign.space12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        color: ExpatlioDesign.muted,
-                        size: 15,
-                        weight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: ExpatlioDesign.space8),
-                    Text(
-                      key: eventDetailOrganizerNameKey,
-                      displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        size: 19,
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: ExpatlioDesign.space4),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        color: ExpatlioDesign.muted,
-                        size: 15,
-                        weight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+              SizedBox(
+                width: 144,
+                child: action,
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _EventDetailOrganizerInfo extends StatelessWidget {
+  const _EventDetailOrganizerInfo({
+    required this.displayName,
+    required this.photoUrl,
+    required this.label,
+    required this.subtitle,
+  });
+
+  final String displayName;
+  final String? photoUrl;
+  final String label;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _EventDetailOrganizerAvatar(
+          displayName: displayName,
+          photoUrl: photoUrl,
+        ),
+        const SizedBox(width: ExpatlioDesign.space12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 15,
+                  weight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: ExpatlioDesign.space8),
+              Text(
+                key: eventDetailOrganizerNameKey,
+                displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  size: 19,
+                  weight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: ExpatlioDesign.space4),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 15,
+                  weight: FontWeight.w500,
                 ),
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventDetailOrganizerMessageButton extends StatelessWidget {
+  const _EventDetailOrganizerMessageButton({
+    required this.displayName,
+    required this.onPressed,
+  });
+
+  final String displayName;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: 'Написать',
+      enText: 'Message',
+    );
+    final semanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Написать организатору $displayName',
+      enText: 'Message organizer $displayName',
+    );
+
+    return Semantics(
+      key: eventDetailOrganizerMessageButtonKey,
+      button: true,
+      enabled: onPressed != null,
+      label: semanticsLabel,
+      onTap: onPressed,
+      child: ExcludeSemantics(
+        child: OutlinedButton.icon(
+          onPressed: onPressed,
+          icon: const Icon(
+            Icons.chat_bubble_outline,
+            size: 20,
+          ),
+          label: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(0, 48),
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: ExpatlioDesign.space12,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+            ),
+            side: BorderSide.none,
+            backgroundColor: ExpatlioDesign.secondarySystemFill,
+            foregroundColor: ExpatlioDesign.text,
+            disabledForegroundColor: ExpatlioDesign.disabled,
+            disabledBackgroundColor: ExpatlioDesign.tertiarySystemFill,
           ),
         ),
       ),

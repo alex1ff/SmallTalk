@@ -203,7 +203,7 @@ Date: 2026-06-14
 - [x] Show language badge.
 - [x] Show title and full description.
 - [x] Show organizer card.
-- [ ] Add `Написать` action for organizer.
+- [x] Add `Написать` action for organizer.
 - [ ] Show date, time, and place block.
 - [ ] Show participant list.
 - [ ] Show occupancy.
