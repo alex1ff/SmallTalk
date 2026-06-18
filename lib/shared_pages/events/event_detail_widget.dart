@@ -52,6 +52,8 @@ const ValueKey<String> eventDetailPrimaryCtaKey =
 const ValueKey<String> eventDetailChatCtaKey =
     ValueKey<String>('event_detail_chat_cta');
 
+const Color _eventDetailDestructiveCtaBackground = Color(0xFFB42318);
+
 ValueKey<String> eventDetailParticipantTileKey(int index) =>
     ValueKey<String>('event_detail_participant_tile_$index');
 
@@ -67,6 +69,7 @@ class EventDetailParticipantViewModel {
 
 enum EventDetailJoinCtaState {
   join,
+  joined,
 }
 
 class EventDetailWidget extends StatelessWidget {
@@ -1072,14 +1075,32 @@ class _EventDetailPrimaryCta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = _eventDetailJoinCtaLabel(context, state);
-    final enabled = state == EventDetailJoinCtaState.join && onPressed != null;
+    final semanticsLabel = _eventDetailJoinCtaSemanticsLabel(context, state);
+    final enabled = switch (state) {
+      EventDetailJoinCtaState.join ||
+      EventDetailJoinCtaState.joined =>
+        onPressed != null,
+    };
+    final backgroundColor = enabled
+        ? switch (state) {
+            EventDetailJoinCtaState.join => ExpatlioDesign.primary,
+            EventDetailJoinCtaState.joined =>
+              _eventDetailDestructiveCtaBackground,
+          }
+        : ExpatlioDesign.secondarySystemBackground;
+    final textColor = enabled
+        ? switch (state) {
+            EventDetailJoinCtaState.join => Colors.white,
+            EventDetailJoinCtaState.joined => Colors.white,
+          }
+        : ExpatlioDesign.muted;
 
     return Semantics(
       key: eventDetailPrimaryCtaKey,
       container: true,
       button: true,
       enabled: enabled,
-      label: label,
+      label: semanticsLabel,
       onTap: enabled ? onPressed : null,
       child: ExcludeSemantics(
         child: TextButton(
@@ -1092,7 +1113,7 @@ class _EventDetailPrimaryCta extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
             ),
-            backgroundColor: ExpatlioDesign.primary,
+            backgroundColor: backgroundColor,
             disabledBackgroundColor: ExpatlioDesign.secondarySystemBackground,
             foregroundColor: Colors.white,
             disabledForegroundColor: ExpatlioDesign.muted,
@@ -1104,7 +1125,7 @@ class _EventDetailPrimaryCta extends StatelessWidget {
             textAlign: TextAlign.center,
             style: ExpatlioDesign.textStyle(
               context,
-              color: enabled ? Colors.white : ExpatlioDesign.muted,
+              color: textColor,
               size: 16,
               weight: FontWeight.w700,
             ),
@@ -1410,6 +1431,25 @@ String _eventDetailJoinCtaLabel(
     EventDetailJoinCtaState.join => FFLocalizations.of(context).getVariableText(
         ruText: 'Присоединиться',
         enText: 'Join',
+      ),
+    EventDetailJoinCtaState.joined =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Покинуть',
+        enText: 'Leave',
+      ),
+  };
+}
+
+String _eventDetailJoinCtaSemanticsLabel(
+  BuildContext context,
+  EventDetailJoinCtaState state,
+) {
+  return switch (state) {
+    EventDetailJoinCtaState.join => _eventDetailJoinCtaLabel(context, state),
+    EventDetailJoinCtaState.joined =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Вы участвуете. Покинуть событие',
+        enText: 'Joined. Leave event',
       ),
   };
 }

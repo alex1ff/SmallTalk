@@ -236,6 +236,138 @@ void main() {
     }
   });
 
+  testWidgets('joined CTA state shows leave action for participants',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    var leaveTapCount = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            joinCtaState: EventDetailJoinCtaState.joined,
+            onPrimaryCtaPressed: () => leaveTapCount += 1,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Покинуть'), findsOneWidget);
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isButton, isTrue);
+      expect(primarySemantics.flagsCollection.isEnabled, isTrue);
+      expect(primarySemantics.label, contains('Вы участвуете'));
+      expect(primarySemantics.label, contains('Покинуть событие'));
+
+      final primaryButton = tester.widget<TextButton>(
+        find.descendant(
+          of: find.byKey(eventDetailPrimaryCtaKey),
+          matching: find.byType(TextButton),
+        ),
+      );
+      expect(
+        primaryButton.style?.backgroundColor?.resolve(<WidgetState>{}),
+        const Color(0xFFB42318),
+      );
+      final leaveText = tester.widget<Text>(find.text('Покинуть'));
+      expect(leaveText.style?.color, Colors.white);
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(leaveTapCount, 1);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('joined CTA state shows English leave label', (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('en'),
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            joinCtaState: EventDetailJoinCtaState.joined,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Leave'), findsOneWidget);
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isButton, isTrue);
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, contains('Joined'));
+      expect(primarySemantics.label, contains('Leave event'));
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('joined participants can open chat when callback is provided',
+      (tester) async {
+    var chatTapCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          joinCtaState: EventDetailJoinCtaState.joined,
+          onChatPressed: () => chatTapCount += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailChatCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(chatTapCount, 1);
+  });
+
+  testWidgets('joined CTA state disables leave and chat without callbacks',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            joinCtaState: EventDetailJoinCtaState.joined,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isButton, isTrue);
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, contains('Вы участвуете'));
+
+      final chatSemantics =
+          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
+      expect(chatSemantics.flagsCollection.isButton, isTrue);
+      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
   testWidgets('bottom action bar stays outside scrollable content',
       (tester) async {
     var joinTapCount = 0;
@@ -292,7 +424,10 @@ void main() {
       MediaQuery(
         data: const MediaQueryData(textScaler: TextScaler.linear(3)),
         child: _buildTestApp(
-          home: const EventDetailWidget(eventId: 'event-123'),
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            joinCtaState: EventDetailJoinCtaState.joined,
+          ),
         ),
       ),
     );
@@ -301,6 +436,7 @@ void main() {
     expect(find.byKey(eventDetailBottomActionBarKey), findsOneWidget);
     expect(find.byKey(eventDetailPrimaryCtaKey), findsOneWidget);
     expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
+    expect(find.text('Покинуть'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

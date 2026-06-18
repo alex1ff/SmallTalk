@@ -209,7 +209,7 @@ Date: 2026-06-14
 - [x] Show occupancy.
 - [x] Add sticky bottom action bar.
 - [x] Show `Присоединиться` for non-participants.
-- [ ] Show joined/leave state for participants.
+- [x] Show joined/leave state for participants.
 - [ ] Show disabled state for full, canceled, and past events.
 - [ ] Show organizer edit/cancel controls.
 - [ ] Show canceled state when opening canceled event by direct link.
