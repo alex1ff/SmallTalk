@@ -266,7 +266,7 @@ Date: 2026-06-14
 - [x] Add leave confirmation.
 - [x] Hide or disable leave action at or after `startsAt`.
 - [x] Update occupancy after leave.
-- [ ] Remove chat access after leave.
+- [x] Remove chat access after leave.
 - [ ] Show clear errors for full event, canceled event, past event, and duplicate join.
 - [ ] Show clear error if leave races with event start and backend blocks it.
 

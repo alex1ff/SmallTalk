@@ -394,58 +394,67 @@ void main() {
 
   testWidgets('joined participant can leave through primary CTA',
       (tester) async {
-    var joinCalls = 0;
-    var leaveCalls = 0;
-    String? functionName;
-    Map<String, dynamic>? payload;
+    final semanticsHandle = tester.ensureSemantics();
+    try {
+      var joinCalls = 0;
+      var leaveCalls = 0;
+      String? functionName;
+      Map<String, dynamic>? payload;
 
-    await tester.pumpWidget(
-      _buildTestApp(
-        home: EventDetailRouteWidget(
-          eventId: ' event-1 ',
-          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
-            _FakeEventDocumentSnapshot(
-              reference: eventRef,
-              data: _eventData(),
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: ' event-1 ',
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(),
+              ),
             ),
+            joinEventInvoker: (_, __) async {
+              joinCalls += 1;
+              return _joinEventResponse();
+            },
+            leaveEventInvoker: (calledFunctionName, calledPayload) async {
+              leaveCalls += 1;
+              functionName = calledFunctionName;
+              payload = calledPayload;
+              return _leaveEventResponse();
+            },
           ),
-          joinEventInvoker: (_, __) async {
-            joinCalls += 1;
-            return _joinEventResponse();
-          },
-          leaveEventInvoker: (calledFunctionName, calledPayload) async {
-            leaveCalls += 1;
-            functionName = calledFunctionName;
-            payload = calledPayload;
-            return _leaveEventResponse();
-          },
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
 
-    expect(joinCalls, 1);
-    expect(find.text('Покинуть'), findsOneWidget);
+      expect(joinCalls, 1);
+      expect(find.text('Покинуть'), findsOneWidget);
 
-    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(eventDetailLeaveDialogKey), findsOneWidget);
-    expect(leaveCalls, 0);
+      expect(find.byKey(eventDetailLeaveDialogKey), findsOneWidget);
+      expect(leaveCalls, 0);
 
-    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+      await tester.pumpAndSettle();
 
-    expect(leaveCalls, 1);
-    expect(functionName, leaveEventFunctionName);
-    expect(payload, <String, dynamic>{'eventId': 'event-1'});
-    expect(find.text('Присоединиться'), findsOneWidget);
-    expect(find.text('Покинуть'), findsNothing);
-    expect(find.text('5/10 мест'), findsOneWidget);
-    expect(find.text('6/10 мест'), findsNothing);
+      expect(leaveCalls, 1);
+      expect(functionName, leaveEventFunctionName);
+      expect(payload, <String, dynamic>{'eventId': 'event-1'});
+      expect(find.text('Присоединиться'), findsOneWidget);
+      expect(find.text('Покинуть'), findsNothing);
+      expect(find.text('5/10 мест'), findsOneWidget);
+      expect(find.text('6/10 мест'), findsNothing);
+
+      final chatSemantics =
+          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
+      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+    } finally {
+      semanticsHandle.dispose();
+    }
   });
 
   testWidgets('leave updates occupancy until snapshot catches up',
