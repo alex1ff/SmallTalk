@@ -229,6 +229,47 @@ void main() {
     expect(find.text('Выберите город'), findsOneWidget);
   });
 
+  testWidgets('does not show event card layout before city is selected',
+      (tester) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+    expect(find.byKey(eventListCardHeaderKey), findsNothing);
+    expect(find.byKey(eventListCardActionsKey), findsNothing);
+  });
+
+  testWidgets('does not show event card layout in missing-city flows',
+      (tester) async {
+    for (final fixture in <Map<String, dynamic>>[
+      const {},
+      {
+        'Country_NS': {'code': 'RU'},
+      },
+      {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: 'old-version',
+        ).toMap(),
+      },
+    ]) {
+      currentUserDocument = _userFixture(
+        uid: 'missing-card-user',
+        data: fixture,
+      );
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(cityCatalogOverride: _catalog),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventListCardShellKey), findsNothing);
+    }
+  });
+
   testWidgets('shows selected city display name without identity',
       (tester) async {
     await tester.pumpWidget(
@@ -252,6 +293,40 @@ void main() {
 
     expect(find.text('Москва · Россия'), findsOneWidget);
     expect(find.textContaining('RU:moscow'), findsNothing);
+  });
+
+  testWidgets('shows event card layout shell after city is selected',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(eventListCardShellKey);
+    expect(card, findsOneWidget);
+    expect(find.byKey(eventListCardHeaderKey), findsOneWidget);
+    expect(find.byKey(eventListCardBodyKey), findsOneWidget);
+    expect(find.byKey(eventListCardMetaKey), findsOneWidget);
+    expect(find.byKey(eventListCardFooterKey), findsOneWidget);
+    expect(find.byKey(eventListCardActionsKey), findsOneWidget);
+    expect(
+      _widgetIndex(tester, card),
+      greaterThan(_widgetIndex(tester, find.byKey(eventListCitySelectorKey))),
+    );
   });
 
   testWidgets('shows resolved profile city as the default selector value',
@@ -402,6 +477,7 @@ void main() {
     expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('event_city_chip_IT_rome')),
         findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsOneWidget);
     expect(currentUserDocument!.hasProfileCity(), isFalse);
   });
 
@@ -470,7 +546,38 @@ void main() {
     expect(_citySelectorText('Нью-Йорк · United States'), findsOneWidget);
     expect(find.byKey(eventManualCitySearchFieldKey), findsNothing);
     expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsOneWidget);
     expect(currentUserDocument!.hasProfileCity(), isFalse);
+  });
+
+  testWidgets('event card layout shell stays bounded on a narrow viewport',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('leaves stale malformed and unknown profile cities unselected',

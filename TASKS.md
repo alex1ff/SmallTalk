@@ -184,7 +184,7 @@ Date: 2026-06-14
 - [x] Allow chip/manual city selection to unlock the event list without saving profile location.
 - [x] Add date filter chips: `Сегодня`, `Завтра`, `На этой неделе`, `В этом месяце`.
 - [x] Add level filter chips: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
-- [ ] Build event card layout from design.
+- [x] Build event card layout from design.
 - [ ] Show organizer avatar/name.
 - [ ] Show title, description, level/range, date, time, and place.
 - [ ] Show language badge from `languageCode`.

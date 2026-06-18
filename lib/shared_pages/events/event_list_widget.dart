@@ -23,6 +23,18 @@ const ValueKey<String> eventListCitySelectorKey =
     ValueKey<String>('event_list_city_selector');
 const ValueKey<String> eventManualCitySearchFieldKey =
     ValueKey<String>('event_manual_city_search_field');
+const ValueKey<String> eventListCardShellKey =
+    ValueKey<String>('event_list_card_shell');
+const ValueKey<String> eventListCardHeaderKey =
+    ValueKey<String>('event_list_card_header');
+const ValueKey<String> eventListCardBodyKey =
+    ValueKey<String>('event_list_card_body');
+const ValueKey<String> eventListCardMetaKey =
+    ValueKey<String>('event_list_card_meta');
+const ValueKey<String> eventListCardFooterKey =
+    ValueKey<String>('event_list_card_footer');
+const ValueKey<String> eventListCardActionsKey =
+    ValueKey<String>('event_list_card_actions');
 
 class EventListWidget extends StatefulWidget {
   const EventListWidget({
@@ -109,6 +121,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                     selectedState: selectedState,
                   )
                 : null;
+            final canShowEventCards = selectedState?.canLoadEvents ?? false;
             final onCitySelectorPressed = widget.onCitySelectorPressed ??
                 (catalog == null
                     ? null
@@ -169,44 +182,60 @@ class _EventListWidgetState extends State<EventListWidget> {
                         ],
                       ),
                       const SizedBox(height: ExpatlioDesign.space16),
-                      _EventDateChips(
-                        selectedFilter: _selectedDateFilter,
-                        onChanged: (filter) => setState(() {
-                          _selectedDateFilter = filter;
-                        }),
-                      ),
-                      const SizedBox(height: ExpatlioDesign.space12),
-                      _EventLevelChips(
-                        selectedLevel: _selectedLevel,
-                        onChanged: (level) => setState(() {
-                          _selectedLevel = level;
-                        }),
-                      ),
-                      const SizedBox(height: ExpatlioDesign.space12),
-                      _EventCitySelector(
-                        selectedCity: selectedState?.selected,
-                        hasOutdatedProfileCity:
-                            selectedState?.hasOutdatedProfileCity ?? false,
-                        showsMissingLocationPrompt: selectedState != null &&
-                            selectedState.needsCitySelection &&
-                            !selectedState.hasOutdatedProfileCity,
-                        onPressed: onCitySelectorPressed,
-                      ),
-                      if (cityChipsFuture != null && catalog != null) ...[
-                        const SizedBox(height: ExpatlioDesign.space12),
-                        _EventCityChips(
-                          chipsFuture: cityChipsFuture,
-                          onChipPressed: (chip) {
-                            unawaited(
-                              _selectTemporaryCity(
-                                catalog: catalog,
-                                city: chip.city,
-                                source: chip.source,
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _EventDateChips(
+                                selectedFilter: _selectedDateFilter,
+                                onChanged: (filter) => setState(() {
+                                  _selectedDateFilter = filter;
+                                }),
                               ),
-                            );
-                          },
+                              const SizedBox(height: ExpatlioDesign.space12),
+                              _EventLevelChips(
+                                selectedLevel: _selectedLevel,
+                                onChanged: (level) => setState(() {
+                                  _selectedLevel = level;
+                                }),
+                              ),
+                              const SizedBox(height: ExpatlioDesign.space12),
+                              _EventCitySelector(
+                                selectedCity: selectedState?.selected,
+                                hasOutdatedProfileCity:
+                                    selectedState?.hasOutdatedProfileCity ??
+                                        false,
+                                showsMissingLocationPrompt:
+                                    selectedState != null &&
+                                        selectedState.needsCitySelection &&
+                                        !selectedState.hasOutdatedProfileCity,
+                                onPressed: onCitySelectorPressed,
+                              ),
+                              if (cityChipsFuture != null &&
+                                  catalog != null) ...[
+                                const SizedBox(height: ExpatlioDesign.space12),
+                                _EventCityChips(
+                                  chipsFuture: cityChipsFuture,
+                                  onChipPressed: (chip) {
+                                    unawaited(
+                                      _selectTemporaryCity(
+                                        catalog: catalog,
+                                        city: chip.city,
+                                        source: chip.source,
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                              if (canShowEventCards) ...[
+                                const SizedBox(height: ExpatlioDesign.space16),
+                                const _EventCardShell(),
+                              ],
+                            ],
+                          ),
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),
@@ -334,6 +363,219 @@ class _EventListWidgetState extends State<EventListWidget> {
     return resolveEventSelectedCityState(
       user: currentUserDocument,
       catalog: catalog,
+    );
+  }
+}
+
+class _EventCardShell extends StatelessWidget {
+  const _EventCardShell();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: eventListCardShellKey,
+      padding: ExpatlioDesign.cardPaddingDirectional,
+      decoration: ExpatlioDesign.cardDecoration(
+        borderColor: ExpatlioDesign.separator,
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _EventCardHeaderShell(),
+          SizedBox(height: ExpatlioDesign.space16),
+          _EventCardBodyShell(),
+          SizedBox(height: ExpatlioDesign.space16),
+          _EventCardMetaShell(),
+          SizedBox(height: ExpatlioDesign.space16),
+          _EventCardFooterShell(),
+          SizedBox(height: ExpatlioDesign.space16),
+          _EventCardActionsShell(),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventCardHeaderShell extends StatelessWidget {
+  const _EventCardHeaderShell();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: eventListCardHeaderKey,
+      children: const [
+        _EventCardCirclePlaceholder(dimension: 48),
+        SizedBox(width: ExpatlioDesign.space12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _EventCardLinePlaceholder(widthFactor: 0.38, height: 12),
+              SizedBox(height: ExpatlioDesign.space8),
+              _EventCardLinePlaceholder(widthFactor: 0.58, height: 18),
+            ],
+          ),
+        ),
+        SizedBox(width: ExpatlioDesign.space12),
+        _EventCardPillPlaceholder(width: 72, height: 32),
+      ],
+    );
+  }
+}
+
+class _EventCardBodyShell extends StatelessWidget {
+  const _EventCardBodyShell();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      key: eventListCardBodyKey,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _EventCardLinePlaceholder(widthFactor: 0.86, height: 24),
+        SizedBox(height: ExpatlioDesign.space12),
+        _EventCardLinePlaceholder(widthFactor: 1, height: 16),
+        SizedBox(height: ExpatlioDesign.space8),
+        _EventCardLinePlaceholder(widthFactor: 0.72, height: 16),
+      ],
+    );
+  }
+}
+
+class _EventCardMetaShell extends StatelessWidget {
+  const _EventCardMetaShell();
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      key: eventListCardMetaKey,
+      spacing: ExpatlioDesign.space8,
+      runSpacing: ExpatlioDesign.space8,
+      children: const [
+        _EventCardPillPlaceholder(width: 104, height: 34),
+        _EventCardPillPlaceholder(width: 92, height: 34),
+        _EventCardPillPlaceholder(width: 184, height: 34),
+      ],
+    );
+  }
+}
+
+class _EventCardFooterShell extends StatelessWidget {
+  const _EventCardFooterShell();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: eventListCardFooterKey,
+      children: const [
+        SizedBox(
+          width: 136,
+          height: 34,
+          child: Stack(
+            children: [
+              Positioned(
+                left: 0,
+                child: _EventCardCirclePlaceholder(dimension: 34),
+              ),
+              Positioned(
+                left: 24,
+                child: _EventCardCirclePlaceholder(dimension: 34),
+              ),
+              Positioned(
+                left: 48,
+                child: _EventCardCirclePlaceholder(dimension: 34),
+              ),
+              Positioned(
+                left: 72,
+                child: _EventCardCirclePlaceholder(dimension: 34),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(width: ExpatlioDesign.space12),
+        Expanded(
+          child: _EventCardLinePlaceholder(widthFactor: 0.36, height: 16),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventCardActionsShell extends StatelessWidget {
+  const _EventCardActionsShell();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: eventListCardActionsKey,
+      children: const [
+        Expanded(
+          child: _EventCardPillPlaceholder(height: 48),
+        ),
+        SizedBox(width: ExpatlioDesign.space12),
+        _EventCardPillPlaceholder(width: 96, height: 48),
+      ],
+    );
+  }
+}
+
+class _EventCardCirclePlaceholder extends StatelessWidget {
+  const _EventCardCirclePlaceholder({
+    required this.dimension,
+  });
+
+  final double dimension;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: dimension,
+      height: dimension,
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+class _EventCardLinePlaceholder extends StatelessWidget {
+  const _EventCardLinePlaceholder({
+    required this.widthFactor,
+    required this.height,
+  });
+
+  final double widthFactor;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      widthFactor: widthFactor,
+      alignment: AlignmentDirectional.centerStart,
+      child: _EventCardPillPlaceholder(height: height),
+    );
+  }
+}
+
+class _EventCardPillPlaceholder extends StatelessWidget {
+  const _EventCardPillPlaceholder({
+    this.width,
+    required this.height,
+  });
+
+  final double? width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.secondarySystemBackground,
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+      ),
     );
   }
 }
