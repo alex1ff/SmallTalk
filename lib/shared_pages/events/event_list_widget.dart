@@ -51,6 +51,8 @@ const ValueKey<String> eventListCardPrimaryCtaKey =
     ValueKey<String>('event_list_card_primary_cta');
 const ValueKey<String> eventListCardChatCtaKey =
     ValueKey<String>('event_list_card_chat_cta');
+const ValueKey<String> eventListChatParticipantRequiredSnackBarKey =
+    ValueKey<String>('event_list_chat_participant_required_snack_bar');
 const ValueKey<String> eventListCardOrganizerAvatarKey =
     ValueKey<String>('event_list_card_organizer_avatar');
 const ValueKey<String> eventListCardOrganizerNameKey =
@@ -1716,6 +1718,8 @@ class _EventCardActionsShell extends StatelessWidget {
     final eventId = event.eventId.trim();
     final canOpenChat = event.chatCtaState == EventListChatCtaState.enabled &&
         eventId.isNotEmpty;
+    final canShowParticipantRequiredHint =
+        event.chatCtaState == EventListChatCtaState.participantOnly;
 
     return Row(
       key: eventListCardActionsKey,
@@ -1731,6 +1735,9 @@ class _EventCardActionsShell extends StatelessWidget {
                     EventGroupChatWidget.routeName,
                     pathParameters: <String, String>{'eventId': eventId},
                   )
+              : null,
+          onParticipantRequiredPressed: canShowParticipantRequiredHint
+              ? () => _showEventListChatParticipantRequiredSnackBar(context)
               : null,
         ),
       ],
@@ -1792,14 +1799,21 @@ class _EventCardChatCta extends StatelessWidget {
   const _EventCardChatCta({
     required this.state,
     required this.onPressed,
+    this.onParticipantRequiredPressed,
   });
 
   final EventListChatCtaState state;
   final VoidCallback? onPressed;
+  final VoidCallback? onParticipantRequiredPressed;
 
   @override
   Widget build(BuildContext context) {
     final enabled = state == EventListChatCtaState.enabled && onPressed != null;
+    final effectiveOnPressed = enabled
+        ? onPressed
+        : state == EventListChatCtaState.participantOnly
+            ? onParticipantRequiredPressed
+            : null;
     final label = FFLocalizations.of(context).getVariableText(
       ruText: 'Чат',
       enText: 'Chat',
@@ -1811,52 +1825,75 @@ class _EventCardChatCta extends StatelessWidget {
     final foregroundColor =
         enabled ? ExpatlioDesign.text : ExpatlioDesign.disabled;
 
-    return TextButton.icon(
+    return Semantics(
       key: eventListCardChatCtaKey,
-      onPressed: enabled ? onPressed : null,
-      style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
-        padding: const WidgetStatePropertyAll(
-          EdgeInsetsDirectional.symmetric(
-            horizontal: ExpatlioDesign.space12,
+      container: true,
+      button: true,
+      enabled: enabled,
+      label: enabled ? label : disabledLabel,
+      onTap: enabled ? onPressed : null,
+      child: ExcludeSemantics(
+        child: TextButton.icon(
+          onPressed: effectiveOnPressed,
+          style: ButtonStyle(
+            minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+            padding: const WidgetStatePropertyAll(
+              EdgeInsetsDirectional.symmetric(
+                horizontal: ExpatlioDesign.space12,
+              ),
+            ),
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.buttonRadius),
+              ),
+            ),
+            foregroundColor: WidgetStatePropertyAll(foregroundColor),
+            iconColor: WidgetStatePropertyAll(foregroundColor),
+            backgroundColor: WidgetStatePropertyAll(
+              enabled
+                  ? ExpatlioDesign.secondarySystemBackground
+                  : ExpatlioDesign.secondarySystemBackground.withValues(
+                      alpha: 0.62,
+                    ),
+            ),
+            overlayColor: WidgetStatePropertyAll(
+              ExpatlioDesign.primary.withValues(alpha: 0.08),
+            ),
           ),
-        ),
-        shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+          icon: Icon(
+            enabled ? Icons.chat_bubble_outline : Icons.lock_outline,
+            size: 20,
           ),
-        ),
-        foregroundColor: WidgetStatePropertyAll(foregroundColor),
-        iconColor: WidgetStatePropertyAll(foregroundColor),
-        backgroundColor: WidgetStatePropertyAll(
-          enabled
-              ? ExpatlioDesign.secondarySystemBackground
-              : ExpatlioDesign.secondarySystemBackground.withValues(
-                  alpha: 0.62,
-                ),
-        ),
-        overlayColor: WidgetStatePropertyAll(
-          ExpatlioDesign.primary.withValues(alpha: 0.08),
-        ),
-      ),
-      icon: Icon(
-        enabled ? Icons.chat_bubble_outline : Icons.lock_outline,
-        size: 20,
-      ),
-      label: Text(
-        label,
-        semanticsLabel: enabled ? label : disabledLabel,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: ExpatlioDesign.textStyle(
-          context,
-          color: foregroundColor,
-          size: 16,
-          weight: FontWeight.w700,
+          label: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: foregroundColor,
+              size: 16,
+              weight: FontWeight.w700,
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+void _showEventListChatParticipantRequiredSnackBar(BuildContext context) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      key: eventListChatParticipantRequiredSnackBarKey,
+      content: Text(
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Сначала присоединитесь к событию',
+          enText: 'Join the event first',
+        ),
+      ),
+    ),
+  );
 }
 
 String _eventPrimaryCtaLabel(

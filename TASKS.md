@@ -275,7 +275,7 @@ Date: 2026-06-14
 - [x] Decide whether to reuse existing chat UI or create event-specific chat wrapper. Decision: use an event-specific wrapper; reuse visual patterns only.
 - [x] Open chat from event card only for participants.
 - [x] Open chat from event detail only for participants.
-- [ ] Show `Сначала присоединитесь к событию` for non-participants.
+- [x] Show `Сначала присоединитесь к событию` for non-participants.
 - [ ] Load event chat messages.
 - [ ] Send event chat messages through `sendEventChatMessage`.
 - [ ] Show sender name/avatar.

@@ -1420,6 +1420,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(router.getCurrentLocation(), '/events');
+    expect(
+      find.byKey(eventListChatParticipantRequiredSnackBarKey),
+      findsOneWidget,
+    );
+    expect(find.text('Сначала присоединитесь к событию'), findsOneWidget);
     expect(find.byType(EventListWidget), findsOneWidget);
     expect(find.byType(EventGroupChatWidget), findsNothing);
   });

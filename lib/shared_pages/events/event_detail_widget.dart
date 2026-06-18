@@ -127,6 +127,7 @@ class EventDetailWidget extends StatelessWidget {
     this.joinCtaState = EventDetailJoinCtaState.join,
     this.onPrimaryCtaPressed,
     this.onChatPressed,
+    this.onChatParticipantRequiredPressed,
   });
 
   final String eventId;
@@ -154,6 +155,7 @@ class EventDetailWidget extends StatelessWidget {
   final EventDetailJoinCtaState joinCtaState;
   final VoidCallback? onPrimaryCtaPressed;
   final VoidCallback? onChatPressed;
+  final VoidCallback? onChatParticipantRequiredPressed;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
@@ -192,6 +194,7 @@ class EventDetailWidget extends StatelessWidget {
         joinCtaState: joinCtaState,
         onPrimaryPressed: onPrimaryCtaPressed,
         onChatPressed: onChatPressed,
+        onChatParticipantRequiredPressed: onChatParticipantRequiredPressed,
       ),
       body: SafeArea(
         child: Column(
@@ -1304,12 +1307,14 @@ class _EventDetailBottomActionBar extends StatelessWidget {
     required this.joinCtaState,
     required this.onPrimaryPressed,
     required this.onChatPressed,
+    required this.onChatParticipantRequiredPressed,
   });
 
   final String eventId;
   final EventDetailJoinCtaState joinCtaState;
   final VoidCallback? onPrimaryPressed;
   final VoidCallback? onChatPressed;
+  final VoidCallback? onChatParticipantRequiredPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -1344,6 +1349,8 @@ class _EventDetailBottomActionBar extends StatelessWidget {
                   );
                   final chatCta = _EventDetailChatCta(
                     onPressed: onChatPressed,
+                    onParticipantRequiredPressed:
+                        onChatParticipantRequiredPressed,
                   );
 
                   if (constraints.maxWidth < 360) {
@@ -1584,13 +1591,22 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
 class _EventDetailChatCta extends StatelessWidget {
   const _EventDetailChatCta({
     required this.onPressed,
+    required this.onParticipantRequiredPressed,
   });
 
   final VoidCallback? onPressed;
+  final VoidCallback? onParticipantRequiredPressed;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
+    final effectiveOnPressed =
+        enabled ? onPressed : onParticipantRequiredPressed;
+    final foregroundColor =
+        enabled ? ExpatlioDesign.text : ExpatlioDesign.disabled;
+    final backgroundColor = enabled
+        ? ExpatlioDesign.secondarySystemBackground
+        : ExpatlioDesign.secondarySystemBackground.withValues(alpha: 0.62);
     final label = FFLocalizations.of(context).getVariableText(
       ruText: 'Чат',
       enText: 'Chat',
@@ -1611,7 +1627,7 @@ class _EventDetailChatCta extends StatelessWidget {
       onTap: onPressed,
       child: ExcludeSemantics(
         child: TextButton.icon(
-          onPressed: onPressed,
+          onPressed: effectiveOnPressed,
           icon: Icon(
             enabled ? Icons.chat_bubble_outline : Icons.lock_outline,
             size: 20,
@@ -1629,13 +1645,10 @@ class _EventDetailChatCta extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
             ),
-            backgroundColor: ExpatlioDesign.secondarySystemBackground,
-            disabledBackgroundColor:
-                ExpatlioDesign.secondarySystemBackground.withValues(
-              alpha: 0.62,
-            ),
-            foregroundColor: ExpatlioDesign.text,
-            disabledForegroundColor: ExpatlioDesign.disabled,
+            backgroundColor: backgroundColor,
+            disabledBackgroundColor: backgroundColor,
+            foregroundColor: foregroundColor,
+            disabledForegroundColor: foregroundColor,
             textStyle: ExpatlioDesign.textStyle(
               context,
               size: 16,

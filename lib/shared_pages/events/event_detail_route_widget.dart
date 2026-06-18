@@ -25,6 +25,8 @@ const ValueKey<String> eventDetailJoinErrorSnackBarKey =
     ValueKey<String>('event_detail_join_error_snack_bar');
 const ValueKey<String> eventDetailLeaveErrorSnackBarKey =
     ValueKey<String>('event_detail_leave_error_snack_bar');
+const ValueKey<String> eventDetailChatParticipantRequiredSnackBarKey =
+    ValueKey<String>('event_detail_chat_participant_required_snack_bar');
 
 class EventDetailRouteWidget extends StatefulWidget {
   const EventDetailRouteWidget({
@@ -242,6 +244,20 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     }
   }
 
+  void _showChatParticipantRequiredSnackBar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        key: eventDetailChatParticipantRequiredSnackBarKey,
+        content: Text(
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Сначала присоединитесь к событию',
+            enText: 'Join the event first',
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<EventsRecord?>(
@@ -374,6 +390,8 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                         pathParameters: <String, String>{'eventId': eventId},
                       )
                   : null,
+              onChatParticipantRequiredPressed:
+                  canOpenChat ? null : _showChatParticipantRequiredSnackBar,
               onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
                   ? canJoin
                       ? _handleJoin

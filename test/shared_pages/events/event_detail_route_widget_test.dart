@@ -430,6 +430,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(router.getCurrentLocation(), '/events/event-1');
+    expect(
+      find.byKey(eventDetailChatParticipantRequiredSnackBarKey),
+      findsOneWidget,
+    );
+    expect(find.text('Сначала присоединитесь к событию'), findsOneWidget);
     expect(find.byType(EventGroupChatWidget), findsNothing);
 
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
@@ -538,6 +543,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(router.getCurrentLocation(), '/events/event-1');
+    expect(
+      find.byKey(eventDetailChatParticipantRequiredSnackBarKey),
+      findsOneWidget,
+    );
+    expect(find.text('Сначала присоединитесь к событию'), findsOneWidget);
     expect(find.byType(EventGroupChatWidget), findsNothing);
   });
 
