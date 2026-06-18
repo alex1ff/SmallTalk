@@ -1271,7 +1271,7 @@ void main() {
     expect(find.byKey(eventDetailOrganizerCancelButtonKey), findsNothing);
   });
 
-  testWidgets('organizer controls call edit and cancel callbacks once',
+  testWidgets('organizer controls confirm before cancel callback',
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
     var editTapCount = 0;
@@ -1313,6 +1313,35 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(editTapCount, 1);
+      expect(cancelTapCount, 0);
+      expect(find.byKey(eventDetailCancelDialogKey), findsOneWidget);
+      expect(find.text('Отменить событие?'), findsOneWidget);
+      expect(
+        find.text(
+          'Участники больше не смогут присоединиться. Событие останется доступно по прямой ссылке.',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(eventDetailCancelDialogDismissButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailCancelDialogKey), findsNothing);
+      expect(cancelTapCount, 0);
+
+      await tester.tap(find.byKey(eventDetailOrganizerCancelButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(1, 1));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailCancelDialogKey), findsNothing);
+      expect(cancelTapCount, 0);
+
+      await tester.tap(find.byKey(eventDetailOrganizerCancelButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailCancelDialogConfirmButtonKey));
+      await tester.pumpAndSettle();
+
       expect(cancelTapCount, 1);
     } finally {
       semanticsHandle.dispose();
@@ -1378,9 +1407,51 @@ void main() {
       final cancelSemantics =
           tester.getSemantics(find.byKey(eventDetailOrganizerCancelButtonKey));
       expect(cancelSemantics.label, 'Cancel event');
+
+      await tester.tap(find.byKey(eventDetailOrganizerCancelButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailCancelDialogKey), findsNothing);
     } finally {
       semanticsHandle.dispose();
     }
+  });
+
+  testWidgets('cancel confirmation dialog is localized in English',
+      (tester) async {
+    var cancelTapCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('en'),
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          showOrganizerControls: true,
+          onOrganizerCancelPressed: () => cancelTapCount += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailOrganizerCancelButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailCancelDialogKey), findsOneWidget);
+    expect(find.text('Cancel event?'), findsOneWidget);
+    expect(
+      find.text(
+        'Participants will no longer be able to join. The event will remain available by direct link.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Keep event'), findsOneWidget);
+    expect(find.text('Cancel event'), findsOneWidget);
+    expect(cancelTapCount, 0);
+
+    await tester.tap(find.byKey(eventDetailCancelDialogConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(cancelTapCount, 1);
   });
 
   testWidgets('organizer controls do not expose permanent delete actions',
@@ -1452,9 +1523,12 @@ void main() {
       expect(find.byIcon(Icons.delete_sweep), findsNothing);
       expect(find.byIcon(Icons.delete_sweep_outlined), findsNothing);
       expect(find.byIcon(Icons.delete_sweep_rounded), findsNothing);
+
+      await tester.tap(find.byKey(eventDetailCancelDialogDismissButtonKey));
+      await tester.pumpAndSettle();
     }
 
-    expect(cancelTapCount, 2);
+    expect(cancelTapCount, 0);
   });
 
   testWidgets('organizer card fits narrow large-text layouts', (tester) async {

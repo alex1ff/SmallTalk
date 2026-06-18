@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:timezone/timezone.dart' as timezone;
@@ -39,6 +41,12 @@ const ValueKey<String> eventDetailOrganizerEditButtonKey =
     ValueKey<String>('event_detail_organizer_edit_button');
 const ValueKey<String> eventDetailOrganizerCancelButtonKey =
     ValueKey<String>('event_detail_organizer_cancel_button');
+const ValueKey<String> eventDetailCancelDialogKey =
+    ValueKey<String>('event_detail_cancel_dialog');
+const ValueKey<String> eventDetailCancelDialogDismissButtonKey =
+    ValueKey<String>('event_detail_cancel_dialog_dismiss_button');
+const ValueKey<String> eventDetailCancelDialogConfirmButtonKey =
+    ValueKey<String>('event_detail_cancel_dialog_confirm_button');
 const ValueKey<String> eventDetailDetailsBlockKey =
     ValueKey<String>('event_detail_details_block');
 const ValueKey<String> eventDetailDateRowKey =
@@ -838,6 +846,56 @@ class _EventDetailOrganizerControls extends StatelessWidget {
   final VoidCallback? onEditPressed;
   final VoidCallback? onCancelPressed;
 
+  Future<void> _confirmCancel(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          key: eventDetailCancelDialogKey,
+          title: Text(
+            FFLocalizations.of(dialogContext).getVariableText(
+              ruText: 'Отменить событие?',
+              enText: 'Cancel event?',
+            ),
+          ),
+          content: Text(
+            FFLocalizations.of(dialogContext).getVariableText(
+              ruText:
+                  'Участники больше не смогут присоединиться. Событие останется доступно по прямой ссылке.',
+              enText:
+                  'Participants will no longer be able to join. The event will remain available by direct link.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              key: eventDetailCancelDialogDismissButtonKey,
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(
+                FFLocalizations.of(dialogContext).getVariableText(
+                  ruText: 'Не отменять',
+                  enText: 'Keep event',
+                ),
+              ),
+            ),
+            TextButton(
+              key: eventDetailCancelDialogConfirmButtonKey,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(
+                FFLocalizations.of(dialogContext).getVariableText(
+                  ruText: 'Отменить событие',
+                  enText: 'Cancel event',
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true) {
+      onCancelPressed?.call();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final editButton = _EventDetailOrganizerControlButton(
@@ -864,7 +922,11 @@ class _EventDetailOrganizerControls extends StatelessWidget {
         ruText: 'Отменить событие',
         enText: 'Cancel event',
       ),
-      onPressed: onCancelPressed,
+      onPressed: onCancelPressed == null
+          ? null
+          : () {
+              unawaited(_confirmCancel(context));
+            },
       isDestructive: true,
     );
 
