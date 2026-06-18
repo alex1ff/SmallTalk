@@ -27,11 +27,13 @@ class EventDetailRouteWidget extends StatefulWidget {
     required this.eventId,
     this.snapshotStream,
     this.cancelEventInvoker,
+    this.joinEventInvoker,
   });
 
   final String eventId;
   final EventDetailSnapshotStream? snapshotStream;
   final EventCallableInvoker? cancelEventInvoker;
+  final EventCallableInvoker? joinEventInvoker;
 
   @override
   State<EventDetailRouteWidget> createState() => _EventDetailRouteWidgetState();
@@ -40,6 +42,7 @@ class EventDetailRouteWidget extends StatefulWidget {
 class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   late Stream<EventsRecord?> _eventStream;
   bool _isCanceling = false;
+  bool _isJoining = false;
   String? _locallyCanceledEventId;
 
   @override
@@ -55,6 +58,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         oldWidget.snapshotStream != widget.snapshotStream) {
       _eventStream = _watchEvent();
       _locallyCanceledEventId = null;
+      _isJoining = false;
     }
   }
 
@@ -96,6 +100,30 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       if (mounted) {
         setState(() {
           _isCanceling = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleJoin() async {
+    if (_isJoining) {
+      return;
+    }
+
+    setState(() {
+      _isJoining = true;
+    });
+    try {
+      await EventActionsRepository.joinEvent(
+        eventId: widget.eventId,
+        invoker: widget.joinEventInvoker,
+      );
+    } catch (_) {
+      // Clear loading only. User-facing join errors are handled in a later task.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isJoining = false;
         });
       }
     }
@@ -144,6 +172,12 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         final isActive = status == 'active';
         final isCanceled = isLocallyCanceled || status == 'canceled';
         final canManage = _eventDetailCanCurrentUserManage(event);
+        final joinCtaState = _eventDetailJoinStateForEvent(
+          event,
+          isCanceled: isCanceled,
+          isJoining: _isJoining,
+        );
+        final canJoin = joinCtaState == EventDetailJoinCtaState.join;
 
         return EventDetailWidget(
           eventId: eventId,
@@ -173,10 +207,9 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           participantsCount:
               event.hasParticipantsCount() ? event.participantsCount : null,
           capacity: event.hasCapacity() ? event.capacity : null,
-          joinCtaState: _eventDetailJoinStateForEvent(
-            event,
-            isCanceled: isCanceled,
-          ),
+          joinCtaState: joinCtaState,
+          onPrimaryCtaPressed:
+              isActive && canJoin && !_isJoining ? _handleJoin : null,
         );
       },
     );
@@ -253,9 +286,13 @@ class _EventDetailRouteStateScaffold extends StatelessWidget {
 EventDetailJoinCtaState _eventDetailJoinStateForEvent(
   EventsRecord event, {
   required bool isCanceled,
+  required bool isJoining,
 }) {
   if (isCanceled) {
     return EventDetailJoinCtaState.canceled;
+  }
+  if (isJoining) {
+    return EventDetailJoinCtaState.joining;
   }
 
   final startsAt = event.startsAt;

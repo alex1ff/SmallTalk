@@ -85,6 +85,7 @@ class EventDetailParticipantViewModel {
 
 enum EventDetailJoinCtaState {
   join,
+  joining,
   joined,
   full,
   canceled,
@@ -1383,6 +1384,7 @@ class _EventDetailPrimaryCta extends StatelessWidget {
       EventDetailJoinCtaState.join ||
       EventDetailJoinCtaState.joined =>
         onPressed != null,
+      EventDetailJoinCtaState.joining ||
       EventDetailJoinCtaState.full ||
       EventDetailJoinCtaState.canceled ||
       EventDetailJoinCtaState.past =>
@@ -1391,6 +1393,8 @@ class _EventDetailPrimaryCta extends StatelessWidget {
     final backgroundColor = enabled
         ? switch (state) {
             EventDetailJoinCtaState.join => ExpatlioDesign.primary,
+            EventDetailJoinCtaState.joining =>
+              ExpatlioDesign.secondarySystemBackground,
             EventDetailJoinCtaState.joined =>
               _eventDetailDestructiveCtaBackground,
             EventDetailJoinCtaState.full ||
@@ -1402,6 +1406,7 @@ class _EventDetailPrimaryCta extends StatelessWidget {
     final textColor = enabled
         ? switch (state) {
             EventDetailJoinCtaState.join => Colors.white,
+            EventDetailJoinCtaState.joining => ExpatlioDesign.muted,
             EventDetailJoinCtaState.joined => Colors.white,
             EventDetailJoinCtaState.full ||
             EventDetailJoinCtaState.canceled ||
@@ -1433,18 +1438,47 @@ class _EventDetailPrimaryCta extends StatelessWidget {
             foregroundColor: Colors.white,
             disabledForegroundColor: ExpatlioDesign.muted,
           ),
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: ExpatlioDesign.textStyle(
-              context,
-              color: textColor,
-              size: 16,
-              weight: FontWeight.w700,
-            ),
-          ),
+          child: state == EventDetailJoinCtaState.joining
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        valueColor: AlwaysStoppedAnimation<Color>(textColor),
+                      ),
+                    ),
+                    const SizedBox(width: ExpatlioDesign.space8),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: textColor,
+                          size: 16,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: textColor,
+                    size: 16,
+                    weight: FontWeight.w700,
+                  ),
+                ),
         ),
       ),
     );
@@ -1747,6 +1781,11 @@ String _eventDetailJoinCtaLabel(
         ruText: 'Присоединиться',
         enText: 'Join',
       ),
+    EventDetailJoinCtaState.joining =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Присоединяемся...',
+        enText: 'Joining...',
+      ),
     EventDetailJoinCtaState.joined =>
       FFLocalizations.of(context).getVariableText(
         ruText: 'Покинуть',
@@ -1767,6 +1806,11 @@ String _eventDetailJoinCtaSemanticsLabel(
 ) {
   return switch (state) {
     EventDetailJoinCtaState.join => _eventDetailJoinCtaLabel(context, state),
+    EventDetailJoinCtaState.joining =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Присоединяемся к событию',
+        enText: 'Joining event',
+      ),
     EventDetailJoinCtaState.joined =>
       FFLocalizations.of(context).getVariableText(
         ruText: 'Вы участвуете. Покинуть событие',

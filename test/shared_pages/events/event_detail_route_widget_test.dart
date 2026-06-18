@@ -261,6 +261,135 @@ void main() {
     expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
   });
 
+  testWidgets('join tap calls join callable and shows loading until completion',
+      (tester) async {
+    final completer = Completer<Object?>();
+    var joinCalls = 0;
+    String? functionName;
+    Map<String, dynamic>? payload;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: ' event-1 ',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(),
+            ),
+          ),
+          joinEventInvoker: (calledFunctionName, calledPayload) {
+            joinCalls += 1;
+            functionName = calledFunctionName;
+            payload = calledPayload;
+            return completer.future;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Присоединиться'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pump();
+
+    expect(joinCalls, 1);
+    expect(functionName, joinEventFunctionName);
+    expect(payload, <String, dynamic>{'eventId': 'event-1'});
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    completer.complete(_joinEventResponse());
+    await tester.pumpAndSettle();
+
+    expect(joinCalls, 1);
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Присоединяемся...'), findsNothing);
+  });
+
+  testWidgets('join failure clears loading state without changing CTA',
+      (tester) async {
+    var joinCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(),
+            ),
+          ),
+          joinEventInvoker: (_, __) async {
+            joinCalls += 1;
+            throw StateError('join failed');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(joinCalls, 1);
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Присоединяемся...'), findsNothing);
+  });
+
+  testWidgets('event change clears in-flight join loading state',
+      (tester) async {
+    final completer = Completer<Object?>();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(title: 'First event'),
+            ),
+          ),
+          joinEventInvoker: (_, __) => completer.future,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pump();
+
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-2',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(title: 'Second event'),
+            ),
+          ),
+          joinEventInvoker: (_, __) => completer.future,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Second event'), findsOneWidget);
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Присоединяемся...'), findsNothing);
+
+    completer.complete(_joinEventResponse());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Присоединиться'), findsOneWidget);
+  });
+
   testWidgets('successful cancellation keeps organizer on detail route',
       (tester) async {
     var cancelCalls = 0;
@@ -313,11 +442,12 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
 }
 
 Map<String, dynamic> _eventData({
+  String title = 'Conversation club',
   String status = 'active',
   String organizerId = 'organizer-1',
 }) =>
     <String, dynamic>{
-      'title': 'Conversation club',
+      'title': title,
       'description': 'Casual practice',
       'languageCode': 'en',
       'languageNameEn': 'English',
@@ -338,6 +468,13 @@ Map<String, dynamic> _cancelEventResponse() => <String, dynamic>{
       'eventId': 'event-1',
       'status': 'canceled',
       'canceledAt': '2026-06-14T12:00:00.000Z',
+    };
+
+Map<String, dynamic> _joinEventResponse() => <String, dynamic>{
+      'eventId': 'event-1',
+      'participantStatus': 'active',
+      'participantsCount': 6,
+      'joinedAt': '2026-06-14T12:01:00.000Z',
     };
 
 // ignore: subtype_of_sealed_class

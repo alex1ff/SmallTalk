@@ -236,6 +236,41 @@ void main() {
     }
   });
 
+  testWidgets('joining CTA state shows loading and blocks taps',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    var joinTapCount = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            joinCtaState: EventDetailJoinCtaState.joining,
+            onPrimaryCtaPressed: () => joinTapCount += 1,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Присоединяемся...'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isButton, isTrue);
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, contains('Присоединяемся к событию'));
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pump();
+
+      expect(joinTapCount, 0);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
   testWidgets('joined CTA state shows leave action for participants',
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
