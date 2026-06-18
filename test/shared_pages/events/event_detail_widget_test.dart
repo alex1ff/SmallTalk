@@ -1383,6 +1383,80 @@ void main() {
     }
   });
 
+  testWidgets('organizer controls do not expose permanent delete actions',
+      (tester) async {
+    var cancelTapCount = 0;
+
+    for (final joinState in <EventDetailJoinCtaState>[
+      EventDetailJoinCtaState.join,
+      EventDetailJoinCtaState.canceled,
+    ]) {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            showOrganizerControls: true,
+            joinCtaState: joinState,
+            onOrganizerCancelPressed: () => cancelTapCount += 1,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailOrganizerControlsKey), findsOneWidget);
+      expect(find.byKey(eventDetailOrganizerEditButtonKey), findsOneWidget);
+      expect(find.byKey(eventDetailOrganizerCancelButtonKey), findsOneWidget);
+      expect(find.text('Редактировать'), findsOneWidget);
+      expect(find.text('Отменить'), findsOneWidget);
+
+      final cancelSemantics =
+          tester.getSemantics(find.byKey(eventDetailOrganizerCancelButtonKey));
+      expect(cancelSemantics.flagsCollection.isButton, isTrue);
+      expect(cancelSemantics.flagsCollection.isEnabled, isTrue);
+      await tester.tap(find.byKey(eventDetailOrganizerCancelButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining(RegExp(r'удал', caseSensitive: false)),
+        findsNothing,
+      );
+      expect(
+        find.textContaining(RegExp(r'delete', caseSensitive: false)),
+        findsNothing,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Semantics &&
+              (widget.properties.label?.toLowerCase().contains('delete') ??
+                  false),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Semantics &&
+              (widget.properties.label?.toLowerCase().contains('удал') ??
+                  false),
+        ),
+        findsNothing,
+      );
+      expect(find.byIcon(Icons.delete_outline), findsNothing);
+      expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
+      expect(find.byIcon(Icons.delete), findsNothing);
+      expect(find.byIcon(Icons.delete_rounded), findsNothing);
+      expect(find.byIcon(Icons.delete_forever), findsNothing);
+      expect(find.byIcon(Icons.delete_forever_outlined), findsNothing);
+      expect(find.byIcon(Icons.delete_forever_rounded), findsNothing);
+      expect(find.byIcon(Icons.delete_sweep), findsNothing);
+      expect(find.byIcon(Icons.delete_sweep_outlined), findsNothing);
+      expect(find.byIcon(Icons.delete_sweep_rounded), findsNothing);
+    }
+
+    expect(cancelTapCount, 2);
+  });
+
   testWidgets('organizer card fits narrow large-text layouts', (tester) async {
     tester.view.physicalSize = const Size(640, 1200);
     tester.view.devicePixelRatio = 2;
