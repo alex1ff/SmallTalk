@@ -192,7 +192,7 @@ Date: 2026-06-14
 - [x] Show occupancy like `5/10 мест`.
 - [x] Add card CTA states: join, joined, full, canceled/past unavailable.
 - [x] Add `Чат` CTA with participant-only behavior.
-- [ ] Add loading state.
+- [x] Add loading state.
 - [ ] Add empty state.
 - [ ] Add error state with retry.
 

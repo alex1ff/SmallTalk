@@ -328,6 +328,7 @@ void main() {
 
     final card = find.byKey(eventListCardShellKey);
     expect(card, findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
     expect(find.byKey(eventListCardHeaderKey), findsOneWidget);
     expect(find.byKey(eventListCardBodyKey), findsOneWidget);
     expect(find.byKey(eventListCardMetaKey), findsOneWidget);
@@ -339,6 +340,91 @@ void main() {
       _widgetIndex(tester, card),
       greaterThan(_widgetIndex(tester, find.byKey(eventListCitySelectorKey))),
     );
+  });
+
+  testWidgets('shows explicit loading state after city is selected',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: const [],
+          isLoadingEvents: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    expect(find.byKey(eventListCardActionsKey), findsOneWidget);
+    expect(find.byKey(eventListCardChatCtaKey), findsNothing);
+
+    final loadingSemantics = tester.widget<Semantics>(
+      find.byKey(eventListLoadingStateKey),
+    );
+    expect(loadingSemantics.properties.label, 'Загружаем события');
+    expect(loadingSemantics.properties.liveRegion, isTrue);
+    expect(loadingSemantics.container, isTrue);
+  });
+
+  testWidgets('does not show loading state before city is selected',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          isLoadingEvents: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+  });
+
+  testWidgets('loading state takes priority over provided event cards',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: [_eventCardFixture(title: 'Реальное событие')],
+          isLoadingEvents: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    expect(find.text('Реальное событие'), findsNothing);
+  });
+
+  testWidgets('hides loading state when event cards are available',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: [_eventCardFixture(title: 'Реальное событие')],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.text('Реальное событие'), findsOneWidget);
+    expect(find.byKey(eventListCardPrimaryCtaKey), findsOneWidget);
+    expect(find.byKey(eventListCardChatCtaKey), findsOneWidget);
   });
 
   testWidgets('shows organizer avatar fallback and name in event card header',
@@ -1603,6 +1689,19 @@ ChoiceChip _levelFilterChip(
 
 Finder _participantAvatarFinder(int index) =>
     find.byKey(ValueKey<String>('event_list_participant_avatar_$index'));
+
+EventSelectedCity _selectedCityFixture() {
+  return EventSelectedCity(
+    city: _cityFixture(
+      countryCode: 'RU',
+      cityKey: 'moscow',
+      cityNameRu: 'Москва',
+      cityNameEn: 'Moscow',
+      cityDisplayContext: 'Россия',
+    ),
+    source: EventCitySelectionSource.manual,
+  );
+}
 
 EventListCardViewModel _eventCardFixture({
   String organizerDisplayName = 'Анастасия Иванова',

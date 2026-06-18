@@ -26,6 +26,8 @@ const ValueKey<String> eventListCitySelectorKey =
     ValueKey<String>('event_list_city_selector');
 const ValueKey<String> eventManualCitySearchFieldKey =
     ValueKey<String>('event_manual_city_search_field');
+const ValueKey<String> eventListLoadingStateKey =
+    ValueKey<String>('event_list_loading_state');
 const ValueKey<String> eventListCardShellKey =
     ValueKey<String>('event_list_card_shell');
 const ValueKey<String> eventListCardHeaderKey =
@@ -153,6 +155,7 @@ class EventListWidget extends StatefulWidget {
     this.cityCatalogOverride,
     this.languageCatalogOverride,
     this.eventCardsOverride,
+    this.isLoadingEvents = false,
   });
 
   static String routeName = 'events';
@@ -163,6 +166,7 @@ class EventListWidget extends StatefulWidget {
   final EventCityCatalog? cityCatalogOverride;
   final EventLanguageCatalog? languageCatalogOverride;
   final List<EventListCardViewModel>? eventCardsOverride;
+  final bool isLoadingEvents;
 
   @override
   State<EventListWidget> createState() => _EventListWidgetState();
@@ -250,10 +254,10 @@ class _EventListWidgetState extends State<EventListWidget> {
                   )
                 : null;
             final canShowEventCards = selectedState?.canLoadEvents ?? false;
-            final eventCards = widget.eventCardsOverride ??
-                const <EventListCardViewModel?>[
-                  null,
-                ];
+            final isLoadingEvents =
+                widget.isLoadingEvents || widget.eventCardsOverride == null;
+            final eventCards =
+                widget.eventCardsOverride ?? const <EventListCardViewModel>[];
             final onCitySelectorPressed = widget.onCitySelectorPressed ??
                 (catalog == null
                     ? null
@@ -362,29 +366,33 @@ class _EventListWidgetState extends State<EventListWidget> {
                               ],
                               if (canShowEventCards) ...[
                                 const SizedBox(height: ExpatlioDesign.space16),
-                                FutureBuilder<EventLanguageCatalog>(
-                                  future: _languageCatalogFuture,
-                                  builder: (context, languageSnapshot) {
-                                    final languageCatalog =
-                                        languageSnapshot.data;
-                                    return Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        for (final eventCard in eventCards) ...[
-                                          _EventCardShell(
-                                            card: eventCard,
-                                            languageCatalog: languageCatalog,
-                                          ),
-                                          if (eventCard != eventCards.last)
-                                            const SizedBox(
-                                              height: ExpatlioDesign.space12,
+                                if (isLoadingEvents)
+                                  const _EventListLoadingState()
+                                else
+                                  FutureBuilder<EventLanguageCatalog>(
+                                    future: _languageCatalogFuture,
+                                    builder: (context, languageSnapshot) {
+                                      final languageCatalog =
+                                          languageSnapshot.data;
+                                      return Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          for (final eventCard
+                                              in eventCards) ...[
+                                            _EventCardShell(
+                                              card: eventCard,
+                                              languageCatalog: languageCatalog,
                                             ),
+                                            if (eventCard != eventCards.last)
+                                              const SizedBox(
+                                                height: ExpatlioDesign.space12,
+                                              ),
+                                          ],
                                         ],
-                                      ],
-                                    );
-                                  },
-                                ),
+                                      );
+                                    },
+                                  ),
                               ],
                             ],
                           ),
@@ -517,6 +525,36 @@ class _EventListWidgetState extends State<EventListWidget> {
     return resolveEventSelectedCityState(
       user: currentUserDocument,
       catalog: catalog,
+    );
+  }
+}
+
+class _EventListLoadingState extends StatelessWidget {
+  const _EventListLoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    final loadingLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Загружаем события',
+      enText: 'Loading events',
+    );
+
+    return Semantics(
+      key: eventListLoadingStateKey,
+      container: true,
+      liveRegion: true,
+      label: loadingLabel,
+      child: const ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _EventCardShell(
+              card: null,
+              languageCatalog: null,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
