@@ -17,6 +17,7 @@ import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
+import 'package:small_talk/services/event_list_date_bounds.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -128,6 +129,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await initializeDateFormatting('ru');
     await initializeDateFormatting('en');
+    initializeEventListTimeZones();
     setupFirebaseCoreMocks();
     await FFLocalizations.initialize();
     await Firebase.initializeApp();
@@ -1236,7 +1238,10 @@ void main() {
             return EventCreateWidget(
               languageCatalogOverride: _languageCatalog,
               cityCatalogOverride: _cityCatalog,
+              initialDate: DateTime(2026, 6, 20),
+              initialTime: const TimeOfDay(hour: 18, minute: 0),
               initialSelectedCity: selectedCity,
+              currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
             );
           },
         ),
@@ -1277,6 +1282,107 @@ void main() {
     expect(find.text('Введите место'), findsNothing);
     expect(find.text('Введите лимит участников'), findsNothing);
     expect(find.byType(EventCreateWidget), findsOneWidget);
+  });
+
+  testWidgets('submit blocks past start time in selected city timezone',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _moscowCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 18),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T15:00:00Z'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateStartTimeErrorKey), findsOneWidget);
+    expect(find.text('Выберите будущие дату и время.'), findsOneWidget);
+  });
+
+  testWidgets('same local wall time can be valid in another city timezone',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _newYorkCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 18),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T15:00:00Z'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateStartTimeErrorKey), findsNothing);
+    expect(find.text('Choose a future date and time.'), findsNothing);
+    expect(find.text('Выберите будущие дату и время.'), findsNothing);
+  });
+
+  testWidgets('future initial time clears previous start time error',
+      (tester) async {
+    var initialTime = const TimeOfDay(hour: 18, minute: 0);
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              cityCatalogOverride: _cityCatalog,
+              initialSelectedCity: const EventSelectedCity(
+                city: _moscowCity,
+                source: EventCitySelectionSource.manual,
+              ),
+              initialDate: DateTime(2026, 6, 18),
+              initialTime: initialTime,
+              currentUtcProvider: () => DateTime.parse('2026-06-18T15:00:00Z'),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Выберите будущие дату и время.'), findsOneWidget);
+
+    setHostState(() {
+      initialTime = const TimeOfDay(hour: 18, minute: 1);
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateStartTimeErrorKey), findsNothing);
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateStartTimeErrorKey), findsNothing);
   });
 
   testWidgets('emits default date draft for submit handoff', (tester) async {
@@ -1999,6 +2105,18 @@ String _locationDraftValue(EventCreateLocationDraft draft) =>
     draft.locationName;
 
 int _capacityDraftValue(EventCreateCapacityDraft draft) => draft.capacity;
+
+Future<void> _fillRequiredCreateFields(WidgetTester tester) async {
+  await tester.enterText(find.byKey(eventCreateTitleFieldKey), 'Клуб');
+  await tester.enterText(
+    find.byKey(eventCreateDescriptionFieldKey),
+    'Говорим на английском.',
+  );
+  await tester.enterText(
+    find.byKey(eventCreateLocationFieldKey),
+    'Кафе на Арбате',
+  );
+}
 
 Future<void> _ensureVisibleInForm(
   WidgetTester tester,

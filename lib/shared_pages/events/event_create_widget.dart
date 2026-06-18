@@ -13,6 +13,7 @@ import '/services/event_city_chip_source.dart';
 import '/services/event_city_resolution.dart';
 import '/services/event_city_selection_source.dart';
 import '/services/event_selected_city_state.dart';
+import '/services/event_start_time_validation.dart';
 import '/services/event_temporary_city_selection.dart';
 import '/services/event_language_catalog.dart';
 import '/services/event_level_helper.dart';
@@ -75,6 +76,8 @@ const ValueKey<String> eventCreateTimeSelectorSemanticsKey =
     ValueKey<String>('event_create_time_selector_semantics');
 const ValueKey<String> eventCreateTimeSelectorKey =
     ValueKey<String>('event_create_time_selector');
+const ValueKey<String> eventCreateStartTimeErrorKey =
+    ValueKey<String>('event_create_start_time_error');
 const ValueKey<String> eventCreateCapacityLabelKey =
     ValueKey<String>('event_create_capacity_label');
 const ValueKey<String> eventCreateCapacityFieldSemanticsKey =
@@ -182,6 +185,7 @@ class EventCreateWidget extends StatefulWidget {
     this.initialDate,
     this.initialTime,
     this.initialCapacity,
+    this.currentUtcProvider,
     this.onLanguageCodeChanged,
     this.onLanguageDraftChanged,
     this.onLevelDraftChanged,
@@ -205,6 +209,7 @@ class EventCreateWidget extends StatefulWidget {
   final DateTime? initialDate;
   final TimeOfDay? initialTime;
   final int? initialCapacity;
+  final DateTime Function()? currentUtcProvider;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
   final ValueChanged<EventCreateLevelDraft>? onLevelDraftChanged;
@@ -240,6 +245,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   String? _selectedLevelMin;
   String? _selectedLevelMax;
   EventSelectedCity? _selectedCity;
+  EventSelectedCity? _lastVisibleSelectedCity;
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
   String? _lastEmittedLanguageDraftCode;
@@ -264,6 +270,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   int? _pendingCapacityDraft;
   bool _capacityDraftCallbackScheduled = false;
   bool _hasAttemptedSubmit = false;
+  String? _startTimeErrorText;
 
   @override
   void initState() {
@@ -326,6 +333,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     }
     if (oldWidget.initialSelectedCity != widget.initialSelectedCity) {
       _selectedCity = widget.initialSelectedCity;
+      _startTimeErrorText = null;
       _clearCityChipsCache();
     }
     if (oldWidget.initialLocationName != widget.initialLocationName) {
@@ -336,9 +344,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       _selectedDate = _eventCreateDateOnly(
         widget.initialDate ?? DateTime.now(),
       );
+      _startTimeErrorText = null;
     }
     if (oldWidget.initialTime != widget.initialTime) {
       _selectedTime = widget.initialTime ?? _eventCreateDefaultTime;
+      _startTimeErrorText = null;
     }
     if (oldWidget.initialCapacity != widget.initialCapacity) {
       _capacityTextController.text =
@@ -825,6 +835,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     }
     setState(() {
       _selectedCity = selectedCity;
+      _startTimeErrorText = null;
       _clearCityChipsCache();
     });
     _emitCityDraftNow(selectedCity);
@@ -898,6 +909,48 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       currentUserUid.isNotEmpty &&
       currentUserDocument == null;
 
+  DateTime _currentUtc() {
+    final currentUtc =
+        widget.currentUtcProvider?.call() ?? DateTime.now().toUtc();
+    if (!currentUtc.isUtc) {
+      throw ArgumentError.value(
+        currentUtc,
+        'currentUtcProvider',
+        'Expected a UTC DateTime.',
+      );
+    }
+    return currentUtc;
+  }
+
+  bool _validateSelectedStartTime() {
+    final selectedCity = _lastVisibleSelectedCity;
+    if (selectedCity == null) {
+      setState(() {
+        _startTimeErrorText = null;
+      });
+      return false;
+    }
+    final validation = validateEventStartTime(
+      localDate: _selectedDate,
+      localTime: _selectedTime,
+      timeZoneId: selectedCity.city.timeZoneId,
+      nowUtc: _currentUtc(),
+    );
+    if (validation.isFuture) {
+      setState(() {
+        _startTimeErrorText = null;
+      });
+      return true;
+    }
+    setState(() {
+      _startTimeErrorText = FFLocalizations.of(context).getVariableText(
+        ruText: 'Выберите будущие дату и время.',
+        enText: 'Choose a future date and time.',
+      );
+    });
+    return false;
+  }
+
   void _clearCityChipsCache() {
     _cityChipsFuture = null;
     _cityChipsCatalog = null;
@@ -934,6 +987,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     final normalizedPickedDate = _eventCreateDateOnly(pickedDate);
     setState(() {
       _selectedDate = normalizedPickedDate;
+      _startTimeErrorText = null;
     });
     _emitDateDraftNow(normalizedPickedDate);
   }
@@ -971,6 +1025,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     }
     setState(() {
       _selectedTime = pickedTime;
+      _startTimeErrorText = null;
     });
     _emitTimeDraftNow(pickedTime);
   }
@@ -979,7 +1034,13 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     setState(() {
       _hasAttemptedSubmit = true;
     });
-    _formKey.currentState?.validate();
+    final formIsValid = _formKey.currentState?.validate() ?? false;
+    final hasSelectedCity = _lastVisibleSelectedCity != null;
+    final startTimeIsValid =
+        formIsValid && hasSelectedCity ? _validateSelectedStartTime() : true;
+    if (!formIsValid || !hasSelectedCity || !startTimeIsValid) {
+      return;
+    }
   }
 
   @override
@@ -1127,6 +1188,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                   final catalog = snapshot.data;
                                   if (catalog == null ||
                                       _isWaitingForCurrentUserDocument) {
+                                    _lastVisibleSelectedCity = _selectedCity;
                                     return _EventCreateCitySelector(
                                       state: snapshot.hasError
                                           ? _EventCreateCitySelectorState.error
@@ -1137,6 +1199,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                   final selectedState =
                                       _resolveVisibleSelectedCityState(catalog);
                                   final selectedCity = selectedState?.selected;
+                                  _lastVisibleSelectedCity = selectedCity;
                                   if (selectedCity != null) {
                                     _queueCityDraft(selectedCity);
                                   }
@@ -1232,12 +1295,14 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                               const SizedBox(height: ExpatlioDesign.space20),
                               _EventCreateDateSelector(
                                 selectedDate: _selectedDate,
+                                hasError: _startTimeErrorText != null,
                                 onPressed: () =>
                                     _showDateSelector(_selectedDate),
                               ),
                               const SizedBox(height: ExpatlioDesign.space20),
                               _EventCreateTimeSelector(
                                 selectedTime: _selectedTime,
+                                errorText: _startTimeErrorText,
                                 onPressed: () =>
                                     _showTimeSelector(_selectedTime),
                               ),
@@ -1903,10 +1968,12 @@ class _EventCreateDateSelector extends StatelessWidget {
   const _EventCreateDateSelector({
     required this.selectedDate,
     required this.onPressed,
+    this.hasError = false,
   });
 
   final DateTime selectedDate;
   final VoidCallback onPressed;
+  final bool hasError;
 
   @override
   Widget build(BuildContext context) {
@@ -1953,14 +2020,18 @@ class _EventCreateDateSelector extends StatelessWidget {
                   ExpatlioDesign.space12,
                 ),
                 decoration: ExpatlioDesign.cardDecoration(
-                  borderColor: ExpatlioDesign.separator,
+                  borderColor: hasError
+                      ? ExpatlioDesign.danger
+                      : ExpatlioDesign.separator,
                   radius: ExpatlioDesign.controlRadius,
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.calendar_today_outlined,
-                      color: ExpatlioDesign.primary,
+                      color: hasError
+                          ? ExpatlioDesign.danger
+                          : ExpatlioDesign.primary,
                       size: 20,
                     ),
                     const SizedBox(width: ExpatlioDesign.space8),
@@ -1998,10 +2069,12 @@ class _EventCreateTimeSelector extends StatelessWidget {
   const _EventCreateTimeSelector({
     required this.selectedTime,
     required this.onPressed,
+    this.errorText,
   });
 
   final TimeOfDay selectedTime;
   final VoidCallback onPressed;
+  final String? errorText;
 
   @override
   Widget build(BuildContext context) {
@@ -2045,14 +2118,18 @@ class _EventCreateTimeSelector extends StatelessWidget {
                   ExpatlioDesign.space12,
                 ),
                 decoration: ExpatlioDesign.cardDecoration(
-                  borderColor: ExpatlioDesign.separator,
+                  borderColor: errorText == null
+                      ? ExpatlioDesign.separator
+                      : ExpatlioDesign.danger,
                   radius: ExpatlioDesign.controlRadius,
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.schedule_outlined,
-                      color: ExpatlioDesign.primary,
+                      color: errorText == null
+                          ? ExpatlioDesign.primary
+                          : ExpatlioDesign.danger,
                       size: 20,
                     ),
                     const SizedBox(width: ExpatlioDesign.space8),
@@ -2081,6 +2158,19 @@ class _EventCreateTimeSelector extends StatelessWidget {
             ),
           ),
         ),
+        if (errorText != null) ...[
+          const SizedBox(height: ExpatlioDesign.space8),
+          Text(
+            key: eventCreateStartTimeErrorKey,
+            errorText!,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.danger,
+              size: 12,
+              weight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }
