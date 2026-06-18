@@ -1355,13 +1355,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _emitTimeDraftNow(pickedTime);
   }
 
-  Future<void> _handleSubmitPressed() async {
-    if (widget.formMode != EventFormMode.create) {
-      return;
-    }
-    if (_isSubmitting) {
-      return;
-    }
+  EventStartTimeValidationResult? _validateCurrentEventForm() {
     setState(() {
       _hasAttemptedSubmit = true;
       _submitFailure = null;
@@ -1373,6 +1367,22 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         ? _validateSelectedStartTime()
         : null;
     if (!formIsValid || selectedCity == null || startTimeValidation == null) {
+      return null;
+    }
+    return startTimeValidation;
+  }
+
+  Future<void> _handleSubmitPressed() async {
+    if (_isSubmitting) {
+      return;
+    }
+    final startTimeValidation = _validateCurrentEventForm();
+    if (startTimeValidation == null ||
+        widget.formMode != EventFormMode.create) {
+      return;
+    }
+    final selectedCity = _lastVisibleSelectedCity;
+    if (selectedCity == null) {
       return;
     }
     final levelRange = _resolvedSelectedLevelRange();
@@ -1787,11 +1797,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                         ),
                   formMode: widget.formMode,
                   isSubmitting: _isSubmitting,
-                  onPressed: widget.formMode == EventFormMode.create
-                      ? () {
-                          unawaited(_handleSubmitPressed());
-                        }
-                      : null,
+                  onPressed: () {
+                    unawaited(_handleSubmitPressed());
+                  },
                 ),
               ],
             ),

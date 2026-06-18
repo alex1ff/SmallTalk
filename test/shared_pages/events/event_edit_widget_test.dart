@@ -119,7 +119,7 @@ void main() {
       tester
           .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
           .onPressed,
-      isNull,
+      isNotNull,
     );
   });
 

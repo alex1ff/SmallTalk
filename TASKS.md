@@ -248,7 +248,7 @@ Date: 2026-06-14
 - [x] Prefill existing event values.
 - [x] Hide edit route from non-organizers.
 - [x] Do not show permanent delete action for active or canceled events.
-- [ ] Validate edited values.
+- [x] Validate edited values.
 - [ ] Block capacity below active participant count.
 - [ ] Save organizer edits.
 - [ ] Add cancel confirmation dialog.

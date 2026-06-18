@@ -3163,7 +3163,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('edit mode reuses create form fields without create submit',
+  testWidgets(
+      'edit mode reuses create form fields and validates without create submit',
       (tester) async {
     var submitCount = 0;
 
@@ -3198,16 +3199,20 @@ void main() {
       tester
           .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
           .onPressed,
-      isNull,
+      isNotNull,
     );
 
     await tester.tap(find.byKey(eventCreateSubmitButtonKey));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(submitCount, 0);
+    expect(find.text('Введите название'), findsOneWidget);
+    expect(find.text('Введите описание'), findsOneWidget);
+    expect(find.text('Выберите город события'), findsOneWidget);
+    expect(find.text('Введите место'), findsOneWidget);
   });
 
-  testWidgets('edit mode renders English title and disabled save',
+  testWidgets('edit mode renders English title and enabled validation save',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -3229,8 +3234,52 @@ void main() {
       tester
           .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
           .onPressed,
-      isNull,
+      isNotNull,
     );
+  });
+
+  testWidgets('valid edit mode save validates without backend create submit',
+      (tester) async {
+    var submitCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          formMode: EventFormMode.edit,
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialTitle: 'Conversation club',
+          initialDescription: 'Casual practice in a cafe.',
+          initialLanguageCode: 'en',
+          initialLevelMin: 'A2',
+          initialLevelMax: 'B2',
+          initialSelectedCity: const EventSelectedCity(
+            city: _moscowCity,
+            source: EventCitySelectionSource.static,
+          ),
+          initialLocationName: 'Starbucks, ул. Арбат, 5',
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createEventInvoker: (_, __) async {
+            submitCount += 1;
+            return _createEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(submitCount, 0);
+    expect(find.text('Введите название'), findsNothing);
+    expect(find.text('Введите описание'), findsNothing);
+    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Введите место'), findsNothing);
+    expect(find.byKey(eventCreateStartTimeErrorKey), findsNothing);
+    expect(find.byKey(eventCreateSubmitErrorKey), findsNothing);
   });
 
   testWidgets('clean prefilled edit mode leaves without discard confirmation',

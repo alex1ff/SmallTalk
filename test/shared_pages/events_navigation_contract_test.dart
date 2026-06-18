@@ -338,6 +338,7 @@ void main() {
     expect(create, contains('context.goNamed('));
     expect(create, contains('EventDetailWidget.routeName'));
     expect(create, contains("'eventId': createResult.eventId"));
+    expect(create, isNot(contains('.editEvent(')));
     expect(create, isNot(contains('pushNamed(')));
     expect(create, isNot(contains('EventsRecord')));
     expect(create, isNot(contains('EventChatsRecord')));
@@ -354,8 +355,7 @@ void main() {
     expect(create, isNot(contains('ProfileCitySaveService')));
   });
 
-  test(
-      'event edit screen loads detail data but keeps save disabled before Phase 9',
+  test('event edit screen loads detail data without save repository wiring',
       () {
     final edit = File('lib/shared_pages/events/event_edit_widget.dart')
         .readAsStringSync();
