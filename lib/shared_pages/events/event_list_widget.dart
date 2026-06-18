@@ -18,6 +18,7 @@ import '/services/event_selected_city_state.dart';
 import '/services/event_temporary_city_selection.dart';
 import '/services/event_list_date_bounds.dart';
 import '/services/event_level_helper.dart';
+import '/services/event_language_catalog.dart';
 
 const ValueKey<String> eventListCreateButtonKey =
     ValueKey<String>('event_list_create_button');
@@ -53,10 +54,13 @@ const ValueKey<String> eventListCardTimeKey =
     ValueKey<String>('event_list_card_time');
 const ValueKey<String> eventListCardPlaceKey =
     ValueKey<String>('event_list_card_place');
+const ValueKey<String> eventListCardLanguageBadgeKey =
+    ValueKey<String>('event_list_card_language_badge');
 
 class EventListCardViewModel {
   const EventListCardViewModel({
     required this.organizerDisplayName,
+    required this.languageCode,
     required this.title,
     required this.description,
     required this.levelMin,
@@ -65,10 +69,15 @@ class EventListCardViewModel {
     required this.timeZoneId,
     required this.locationName,
     this.organizerPhotoUrl,
+    this.languageNameEn,
+    this.languageNameRu,
   });
 
   final String organizerDisplayName;
   final String? organizerPhotoUrl;
+  final String languageCode;
+  final String? languageNameEn;
+  final String? languageNameRu;
   final String title;
   final String description;
   final String levelMin;
@@ -84,6 +93,7 @@ class EventListWidget extends StatefulWidget {
     this.initialSelectedCity,
     this.onCitySelectorPressed,
     this.cityCatalogOverride,
+    this.languageCatalogOverride,
     this.eventCardsOverride,
   });
 
@@ -93,6 +103,7 @@ class EventListWidget extends StatefulWidget {
   final EventSelectedCity? initialSelectedCity;
   final VoidCallback? onCitySelectorPressed;
   final EventCityCatalog? cityCatalogOverride;
+  final EventLanguageCatalog? languageCatalogOverride;
   final List<EventListCardViewModel>? eventCardsOverride;
 
   @override
@@ -104,6 +115,7 @@ class _EventListWidgetState extends State<EventListWidget> {
   EventListDateFilter _selectedDateFilter = EventListDateFilter.today;
   String? _selectedLevel;
   Future<EventCityCatalog>? _cityCatalogFuture;
+  Future<EventLanguageCatalog>? _languageCatalogFuture;
   Future<List<EventCityChip>>? _cityChipsFuture;
   EventCityCatalog? _cityChipsCatalog;
   String? _cityChipsCountryCodeHint;
@@ -119,6 +131,7 @@ class _EventListWidgetState extends State<EventListWidget> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _cityCatalogFuture ??= _loadCityCatalog();
+    _languageCatalogFuture ??= _loadLanguageCatalog();
   }
 
   @override
@@ -132,6 +145,9 @@ class _EventListWidgetState extends State<EventListWidget> {
       _cityChipsFuture = null;
       _cityChipsCatalog = null;
     }
+    if (oldWidget.languageCatalogOverride != widget.languageCatalogOverride) {
+      _languageCatalogFuture = _loadLanguageCatalog();
+    }
   }
 
   Future<EventCityCatalog> _loadCityCatalog() async {
@@ -140,6 +156,16 @@ class _EventListWidgetState extends State<EventListWidget> {
       return override;
     }
     return EventCityCatalog.loadFromAsset(
+      bundle: DefaultAssetBundle.of(context),
+    );
+  }
+
+  Future<EventLanguageCatalog> _loadLanguageCatalog() async {
+    final override = widget.languageCatalogOverride;
+    if (override != null) {
+      return override;
+    }
+    return EventLanguageCatalog.loadFromAsset(
       bundle: DefaultAssetBundle.of(context),
     );
   }
@@ -278,13 +304,29 @@ class _EventListWidgetState extends State<EventListWidget> {
                               ],
                               if (canShowEventCards) ...[
                                 const SizedBox(height: ExpatlioDesign.space16),
-                                for (final eventCard in eventCards) ...[
-                                  _EventCardShell(card: eventCard),
-                                  if (eventCard != eventCards.last)
-                                    const SizedBox(
-                                      height: ExpatlioDesign.space12,
-                                    ),
-                                ],
+                                FutureBuilder<EventLanguageCatalog>(
+                                  future: _languageCatalogFuture,
+                                  builder: (context, languageSnapshot) {
+                                    final languageCatalog =
+                                        languageSnapshot.data;
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        for (final eventCard in eventCards) ...[
+                                          _EventCardShell(
+                                            card: eventCard,
+                                            languageCatalog: languageCatalog,
+                                          ),
+                                          if (eventCard != eventCards.last)
+                                            const SizedBox(
+                                              height: ExpatlioDesign.space12,
+                                            ),
+                                        ],
+                                      ],
+                                    );
+                                  },
+                                ),
                               ],
                             ],
                           ),
@@ -424,9 +466,11 @@ class _EventListWidgetState extends State<EventListWidget> {
 class _EventCardShell extends StatelessWidget {
   const _EventCardShell({
     required this.card,
+    required this.languageCatalog,
   });
 
   final EventListCardViewModel? card;
+  final EventLanguageCatalog? languageCatalog;
 
   @override
   Widget build(BuildContext context) {
@@ -443,7 +487,10 @@ class _EventCardShell extends StatelessWidget {
           const SizedBox(height: ExpatlioDesign.space16),
           _EventCardBodyShell(card: card),
           const SizedBox(height: ExpatlioDesign.space16),
-          _EventCardMetaShell(card: card),
+          _EventCardMetaShell(
+            card: card,
+            languageCatalog: languageCatalog,
+          ),
           const SizedBox(height: ExpatlioDesign.space16),
           const _EventCardFooterShell(),
           const SizedBox(height: ExpatlioDesign.space16),
@@ -689,9 +736,11 @@ class _EventCardBodyShell extends StatelessWidget {
 class _EventCardMetaShell extends StatelessWidget {
   const _EventCardMetaShell({
     required this.card,
+    required this.languageCatalog,
   });
 
   final EventListCardViewModel? card;
+  final EventLanguageCatalog? languageCatalog;
 
   @override
   Widget build(BuildContext context) {
@@ -714,6 +763,11 @@ class _EventCardMetaShell extends StatelessWidget {
       startsAt: event.startsAt,
       timeZoneId: event.timeZoneId,
     );
+    final languageLabel = _eventLanguageLabel(
+      event: event,
+      languageCatalog: languageCatalog,
+      localeCode: locale,
+    );
     final locationName = event.locationName.trim();
 
     return Column(
@@ -724,6 +778,12 @@ class _EventCardMetaShell extends StatelessWidget {
           spacing: ExpatlioDesign.space8,
           runSpacing: ExpatlioDesign.space8,
           children: [
+            if (languageLabel.isNotEmpty)
+              _EventInfoChip(
+                key: eventListCardLanguageBadgeKey,
+                icon: Icons.translate,
+                label: languageLabel,
+              ),
             _EventInfoChip(
               key: eventListCardDateKey,
               icon: Icons.calendar_month_outlined,
@@ -828,38 +888,81 @@ class _EventInfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsetsDirectional.symmetric(
-        horizontal: ExpatlioDesign.space12,
-        vertical: ExpatlioDesign.space8,
-      ),
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.secondarySystemBackground,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: ExpatlioDesign.primary,
-            size: 18,
-          ),
-          const SizedBox(width: ExpatlioDesign.space8),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: ExpatlioDesign.textStyle(
-              context,
-              size: 15,
-              weight: FontWeight.w600,
+    final maxWidth =
+        (MediaQuery.sizeOf(context).width - 72).clamp(120.0, 280.0).toDouble();
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Container(
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: ExpatlioDesign.space12,
+          vertical: ExpatlioDesign.space8,
+        ),
+        decoration: BoxDecoration(
+          color: ExpatlioDesign.secondarySystemBackground,
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: ExpatlioDesign.primary,
+              size: 18,
             ),
-          ),
-        ],
+            const SizedBox(width: ExpatlioDesign.space8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  size: 15,
+                  weight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+String _eventLanguageLabel({
+  required EventListCardViewModel event,
+  required EventLanguageCatalog? languageCatalog,
+  required String? localeCode,
+}) {
+  final languageCatalogLabel = languageCatalog?.localizedDisplayName(
+    languageCode: event.languageCode,
+    localeCode: localeCode,
+    languageNameEn: event.languageNameEn,
+    languageNameRu: event.languageNameRu,
+  );
+  final normalizedCatalogLabel = languageCatalogLabel?.trim();
+  if (normalizedCatalogLabel != null && normalizedCatalogLabel.isNotEmpty) {
+    return normalizedCatalogLabel;
+  }
+
+  final isRussianLocale = _isRussianLocaleCode(localeCode);
+  final preferredFallback = (isRussianLocale
+          ? event.languageNameRu ?? event.languageNameEn
+          : event.languageNameEn ?? event.languageNameRu)
+      ?.trim();
+  if (preferredFallback != null && preferredFallback.isNotEmpty) {
+    return preferredFallback;
+  }
+
+  return event.languageCode.trim();
+}
+
+bool _isRussianLocaleCode(String? localeCode) {
+  final normalized = localeCode?.trim().toLowerCase();
+  return normalized == 'ru' ||
+      normalized?.startsWith('ru-') == true ||
+      normalized?.startsWith('ru_') == true;
 }
 
 String _eventLevelRangeLabel({

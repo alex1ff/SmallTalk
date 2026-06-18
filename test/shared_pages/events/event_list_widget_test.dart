@@ -19,6 +19,7 @@ import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
 import 'package:small_talk/services/event_level_helper.dart';
+import 'package:small_talk/services/event_language_catalog.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -36,7 +37,11 @@ Widget _buildTestApp({Widget? home}) {
     locale: Locale('ru'),
     supportedLocales: _supportedLocales,
     localizationsDelegates: _localizationsDelegates,
-    home: home ?? const EventListWidget(cityCatalogOverride: _catalog),
+    home: home ??
+        EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+        ),
   );
 }
 
@@ -279,6 +284,7 @@ void main() {
       _buildTestApp(
         home: EventListWidget(
           cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
           initialSelectedCity: EventSelectedCity(
             city: _cityFixture(
               countryCode: 'RU',
@@ -304,6 +310,7 @@ void main() {
       _buildTestApp(
         home: EventListWidget(
           cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
           initialSelectedCity: EventSelectedCity(
             city: _cityFixture(
               countryCode: 'RU',
@@ -338,6 +345,7 @@ void main() {
       _buildTestApp(
         home: EventListWidget(
           cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
           initialSelectedCity: EventSelectedCity(
             city: _cityFixture(
               countryCode: 'RU',
@@ -455,6 +463,7 @@ void main() {
       _buildTestApp(
         home: EventListWidget(
           cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
           initialSelectedCity: EventSelectedCity(
             city: _cityFixture(
               countryCode: 'RU',
@@ -478,6 +487,117 @@ void main() {
 
     expect(_textInsideKey(eventListCardLevelRangeKey, 'B1'), findsOneWidget);
     expect(_textInsideKey(eventListCardLevelRangeKey, 'B1-B1'), findsNothing);
+  });
+
+  testWidgets('shows localized language badge from language code',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(languageCode: ' EN-us '),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardLanguageBadgeKey), findsOneWidget);
+    expect(find.byIcon(Icons.translate), findsOneWidget);
+    expect(
+      _textInsideKey(eventListCardLanguageBadgeKey, 'Английский'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('language badge falls back to denormalized name and raw code',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              languageCode: 'unknown',
+              languageNameEn: 'Fallback English',
+              languageNameRu: 'Фолбэк русский',
+            ),
+            _eventCardFixture(
+              languageCode: ' custom-code ',
+              languageNameEn: ' ',
+              languageNameRu: null,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      _textInsideKey(eventListCardLanguageBadgeKey, 'Фолбэк русский'),
+      findsOneWidget,
+    );
+    expect(
+      _textInsideKey(eventListCardLanguageBadgeKey, 'custom-code'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('does not render language badge for blank language code',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              languageCode: ' ',
+              languageNameEn: '',
+              languageNameRu: null,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCardLanguageBadgeKey), findsNothing);
+    expect(find.byKey(eventListCardDateKey), findsOneWidget);
+    expect(find.byKey(eventListCardTimeKey), findsOneWidget);
   });
 
   testWidgets('shows resolved profile city as the default selector value',
@@ -712,6 +832,7 @@ void main() {
       _buildTestApp(
         home: EventListWidget(
           cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
           initialSelectedCity: EventSelectedCity(
             city: _cityFixture(
               countryCode: 'RU',
@@ -730,6 +851,9 @@ void main() {
                   'Очень длинное название встречи для проверки карточки на узком экране',
               description:
                   'Длинное описание события должно оставаться внутри карточки и не ломать раскладку.',
+              languageCode: 'unknown',
+              languageNameRu:
+                  'Очень длинное название языка для проверки переноса бейджа',
               locationName:
                   'Очень длинный адрес, который должен корректно переноситься',
             ),
@@ -949,6 +1073,29 @@ const _catalog = EventCityCatalog(
   ],
 );
 
+final _languageCatalog = EventLanguageCatalog(
+  languages: [
+    EventLanguage(
+      code: 'en',
+      alternateCodes: const ['en', 'en-US'],
+      nameEn: 'English',
+      nameRu: 'Английский',
+      model: 'nova-3',
+      isPopular: true,
+      iconUrl: 'https://example.com/english.png',
+    ),
+    EventLanguage(
+      code: 'es',
+      alternateCodes: const ['es', 'es-419'],
+      nameEn: 'Spanish',
+      nameRu: 'Испанский',
+      model: 'nova-3',
+      isPopular: true,
+      iconUrl: 'https://example.com/spanish.png',
+    ),
+  ],
+);
+
 int _widgetIndex(WidgetTester tester, Finder finder) {
   final element = tester.element(finder);
   return tester.allElements.toList(growable: false).indexOf(element);
@@ -985,6 +1132,9 @@ ChoiceChip _levelFilterChip(
 EventListCardViewModel _eventCardFixture({
   String organizerDisplayName = 'Анастасия Иванова',
   String? organizerPhotoUrl = '',
+  String languageCode = 'en',
+  String? languageNameEn,
+  String? languageNameRu,
   String title = 'Разговорный клуб: кофе и английский',
   String description =
       'Неформальная встреча для практики разговорного английского.',
@@ -997,6 +1147,9 @@ EventListCardViewModel _eventCardFixture({
   return EventListCardViewModel(
     organizerDisplayName: organizerDisplayName,
     organizerPhotoUrl: organizerPhotoUrl,
+    languageCode: languageCode,
+    languageNameEn: languageNameEn,
+    languageNameRu: languageNameRu,
     title: title,
     description: description,
     levelMin: levelMin,

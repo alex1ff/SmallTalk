@@ -187,7 +187,7 @@ Date: 2026-06-14
 - [x] Build event card layout from design.
 - [x] Show organizer avatar/name.
 - [x] Show title, description, level/range, date, time, and place.
-- [ ] Show language badge from `languageCode`.
+- [x] Show language badge from `languageCode`.
 - [ ] Show participant avatar stack.
 - [ ] Show occupancy like `5/10 мест`.
 - [ ] Add card CTA states: join, joined, full, canceled/past unavailable.
