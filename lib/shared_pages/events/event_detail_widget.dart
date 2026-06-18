@@ -31,6 +31,12 @@ const ValueKey<String> eventDetailOrganizerNameKey =
     ValueKey<String>('event_detail_organizer_name');
 const ValueKey<String> eventDetailOrganizerMessageButtonKey =
     ValueKey<String>('event_detail_organizer_message_button');
+const ValueKey<String> eventDetailOrganizerControlsKey =
+    ValueKey<String>('event_detail_organizer_controls');
+const ValueKey<String> eventDetailOrganizerEditButtonKey =
+    ValueKey<String>('event_detail_organizer_edit_button');
+const ValueKey<String> eventDetailOrganizerCancelButtonKey =
+    ValueKey<String>('event_detail_organizer_cancel_button');
 const ValueKey<String> eventDetailDetailsBlockKey =
     ValueKey<String>('event_detail_details_block');
 const ValueKey<String> eventDetailDateRowKey =
@@ -91,6 +97,9 @@ class EventDetailWidget extends StatelessWidget {
     this.organizerDisplayName,
     this.organizerPhotoUrl,
     this.onOrganizerMessagePressed,
+    this.showOrganizerControls = false,
+    this.onOrganizerEditPressed,
+    this.onOrganizerCancelPressed,
     this.startsAt,
     this.timeZoneId,
     this.locationName,
@@ -115,6 +124,9 @@ class EventDetailWidget extends StatelessWidget {
   final String? organizerDisplayName;
   final String? organizerPhotoUrl;
   final VoidCallback? onOrganizerMessagePressed;
+  final bool showOrganizerControls;
+  final VoidCallback? onOrganizerEditPressed;
+  final VoidCallback? onOrganizerCancelPressed;
   final DateTime? startsAt;
   final String? timeZoneId;
   final String? locationName;
@@ -253,6 +265,13 @@ class EventDetailWidget extends StatelessWidget {
                               displayName: organizerName,
                               photoUrl: organizerPhotoUrl,
                               onMessagePressed: onOrganizerMessagePressed,
+                            ),
+                          ],
+                          if (showOrganizerControls) ...[
+                            const SizedBox(height: ExpatlioDesign.space24),
+                            _EventDetailOrganizerControls(
+                              onEditPressed: onOrganizerEditPressed,
+                              onCancelPressed: onOrganizerCancelPressed,
                             ),
                           ],
                           if (participants.isNotEmpty || hasOccupancy) ...[
@@ -722,6 +741,144 @@ class _EventDetailOrganizerMessageButton extends StatelessWidget {
             foregroundColor: ExpatlioDesign.text,
             disabledForegroundColor: ExpatlioDesign.disabled,
             disabledBackgroundColor: ExpatlioDesign.tertiarySystemFill,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventDetailOrganizerControls extends StatelessWidget {
+  const _EventDetailOrganizerControls({
+    required this.onEditPressed,
+    required this.onCancelPressed,
+  });
+
+  final VoidCallback? onEditPressed;
+  final VoidCallback? onCancelPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final editButton = _EventDetailOrganizerControlButton(
+      key: eventDetailOrganizerEditButtonKey,
+      icon: Icons.edit_outlined,
+      label: FFLocalizations.of(context).getVariableText(
+        ruText: 'Редактировать',
+        enText: 'Edit',
+      ),
+      semanticsLabel: FFLocalizations.of(context).getVariableText(
+        ruText: 'Редактировать событие',
+        enText: 'Edit event',
+      ),
+      onPressed: onEditPressed,
+    );
+    final cancelButton = _EventDetailOrganizerControlButton(
+      key: eventDetailOrganizerCancelButtonKey,
+      icon: Icons.event_busy_outlined,
+      label: FFLocalizations.of(context).getVariableText(
+        ruText: 'Отменить',
+        enText: 'Cancel',
+      ),
+      semanticsLabel: FFLocalizations.of(context).getVariableText(
+        ruText: 'Отменить событие',
+        enText: 'Cancel event',
+      ),
+      onPressed: onCancelPressed,
+      isDestructive: true,
+    );
+
+    return Container(
+      key: eventDetailOrganizerControlsKey,
+      padding: ExpatlioDesign.cardPaddingDirectional,
+      decoration: ExpatlioDesign.cardDecoration(
+        borderColor: ExpatlioDesign.separator,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 360) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                editButton,
+                const SizedBox(height: ExpatlioDesign.space12),
+                cancelButton,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: editButton),
+              const SizedBox(width: ExpatlioDesign.space12),
+              Expanded(child: cancelButton),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _EventDetailOrganizerControlButton extends StatelessWidget {
+  const _EventDetailOrganizerControlButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.semanticsLabel,
+    required this.onPressed,
+    this.isDestructive = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String semanticsLabel;
+  final VoidCallback? onPressed;
+  final bool isDestructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final foregroundColor = enabled
+        ? isDestructive
+            ? _eventDetailDestructiveCtaBackground
+            : ExpatlioDesign.text
+        : ExpatlioDesign.disabled;
+    final backgroundColor = isDestructive && enabled
+        ? _eventDetailDestructiveCtaBackground.withValues(alpha: 0.10)
+        : ExpatlioDesign.secondarySystemBackground;
+
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: enabled,
+      label: semanticsLabel,
+      onTap: onPressed,
+      child: ExcludeSemantics(
+        child: TextButton.icon(
+          onPressed: onPressed,
+          icon: Icon(icon, size: 20),
+          label: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: ExpatlioDesign.space12,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+            ),
+            backgroundColor: backgroundColor,
+            disabledBackgroundColor: ExpatlioDesign.secondarySystemBackground,
+            foregroundColor: foregroundColor,
+            disabledForegroundColor: ExpatlioDesign.disabled,
+            textStyle: ExpatlioDesign.textStyle(
+              context,
+              size: 16,
+              weight: FontWeight.w700,
+            ),
           ),
         ),
       ),

@@ -211,7 +211,7 @@ Date: 2026-06-14
 - [x] Show `Присоединиться` for non-participants.
 - [x] Show joined/leave state for participants.
 - [x] Show disabled state for full, canceled, and past events.
-- [ ] Show organizer edit/cancel controls.
+- [x] Show organizer edit/cancel controls.
 - [ ] Show canceled state when opening canceled event by direct link.
 
 ## Phase 8: Create Event Screen

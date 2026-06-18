@@ -1127,6 +1127,134 @@ void main() {
     expect(find.text('Написать'), findsOneWidget);
   });
 
+  testWidgets('hides organizer controls by default', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          organizerDisplayName: 'Анастасия Иванова',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailOrganizerControlsKey), findsNothing);
+    expect(find.byKey(eventDetailOrganizerEditButtonKey), findsNothing);
+    expect(find.byKey(eventDetailOrganizerCancelButtonKey), findsNothing);
+  });
+
+  testWidgets('organizer controls call edit and cancel callbacks once',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    var editTapCount = 0;
+    var cancelTapCount = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            organizerDisplayName: 'Анастасия Иванова',
+            showOrganizerControls: true,
+            onOrganizerEditPressed: () => editTapCount += 1,
+            onOrganizerCancelPressed: () => cancelTapCount += 1,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailOrganizerControlsKey), findsOneWidget);
+      expect(find.text('Редактировать'), findsOneWidget);
+      expect(find.text('Отменить'), findsOneWidget);
+
+      final editSemantics =
+          tester.getSemantics(find.byKey(eventDetailOrganizerEditButtonKey));
+      expect(editSemantics.flagsCollection.isButton, isTrue);
+      expect(editSemantics.flagsCollection.isEnabled, isTrue);
+      expect(editSemantics.label, 'Редактировать событие');
+
+      final cancelSemantics =
+          tester.getSemantics(find.byKey(eventDetailOrganizerCancelButtonKey));
+      expect(cancelSemantics.flagsCollection.isButton, isTrue);
+      expect(cancelSemantics.flagsCollection.isEnabled, isTrue);
+      expect(cancelSemantics.label, 'Отменить событие');
+
+      await tester.tap(find.byKey(eventDetailOrganizerEditButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailOrganizerCancelButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(editTapCount, 1);
+      expect(cancelTapCount, 1);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('organizer controls are disabled without callbacks',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            showOrganizerControls: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventDetailOrganizerControlsKey), findsOneWidget);
+      expect(find.byKey(eventDetailOrganizerCardKey), findsNothing);
+
+      final editSemantics =
+          tester.getSemantics(find.byKey(eventDetailOrganizerEditButtonKey));
+      expect(editSemantics.flagsCollection.isButton, isTrue);
+      expect(editSemantics.flagsCollection.isEnabled, isFalse);
+      expect(editSemantics.label, 'Редактировать событие');
+
+      final cancelSemantics =
+          tester.getSemantics(find.byKey(eventDetailOrganizerCancelButtonKey));
+      expect(cancelSemantics.flagsCollection.isButton, isTrue);
+      expect(cancelSemantics.flagsCollection.isEnabled, isFalse);
+      expect(cancelSemantics.label, 'Отменить событие');
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('organizer controls show English labels', (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('en'),
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            showOrganizerControls: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+
+      final editSemantics =
+          tester.getSemantics(find.byKey(eventDetailOrganizerEditButtonKey));
+      expect(editSemantics.label, 'Edit event');
+
+      final cancelSemantics =
+          tester.getSemantics(find.byKey(eventDetailOrganizerCancelButtonKey));
+      expect(cancelSemantics.label, 'Cancel event');
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
   testWidgets('organizer card fits narrow large-text layouts', (tester) async {
     tester.view.physicalSize = const Size(640, 1200);
     tester.view.devicePixelRatio = 2;
@@ -1143,6 +1271,7 @@ void main() {
             eventId: 'event-123',
             organizerDisplayName:
                 'Очень длинное имя организатора встречи для переноса',
+            showOrganizerControls: true,
           ),
         ),
       ),
@@ -1150,6 +1279,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventDetailOrganizerCardKey), findsOneWidget);
+    expect(find.byKey(eventDetailOrganizerControlsKey), findsOneWidget);
     expect(find.byKey(eventDetailOrganizerNameKey), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -1533,6 +1663,7 @@ void main() {
 
     expect(source, isNot(contains('EventDetailRepository')));
     expect(source, isNot(contains('EventActionsRepository')));
+    expect(source, isNot(contains('EventEditableFields')));
     expect(source, isNot(contains('watchEventDetail')));
     expect(source, isNot(contains('EventsRecord')));
     expect(source, isNot(contains('openChatThread')));
