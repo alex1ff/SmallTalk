@@ -1,8 +1,13 @@
 import 'dart:io';
 
+import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
+import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/auth/firebase_auth/auth_util.dart';
+import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/custom_icons.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
@@ -40,8 +45,62 @@ Widget _buildRouterTestApp(GoRouter router) {
   );
 }
 
+class _TestFirebaseAuthPlatform extends FirebaseAuthPlatform {
+  _TestFirebaseAuthPlatform({FirebaseApp? app}) : super(appInstance: app);
+
+  UserPlatform? _currentUser;
+
+  @override
+  FirebaseAuthPlatform delegateFor({required FirebaseApp app}) {
+    return _TestFirebaseAuthPlatform(app: app).._currentUser = _currentUser;
+  }
+
+  @override
+  FirebaseAuthPlatform setInitialValues({
+    PigeonUserDetails? currentUser,
+    String? languageCode,
+  }) {
+    this.languageCode = languageCode;
+    return this;
+  }
+
+  @override
+  UserPlatform? get currentUser => _currentUser;
+
+  @override
+  set currentUser(UserPlatform? userPlatform) {
+    _currentUser = userPlatform;
+  }
+
+  @override
+  String? languageCode;
+
+  @override
+  Stream<UserPlatform?> authStateChanges() =>
+      const Stream<UserPlatform?>.empty();
+
+  @override
+  Stream<UserPlatform?> idTokenChanges() => const Stream<UserPlatform?>.empty();
+
+  @override
+  Stream<UserPlatform?> userChanges() => const Stream<UserPlatform?>.empty();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    setupFirebaseCoreMocks();
+    await FFLocalizations.initialize();
+    await Firebase.initializeApp();
+    FirebaseAuthPlatform.instance = _TestFirebaseAuthPlatform();
+  });
+
+  tearDown(() {
+    currentUser = null;
+    currentUserDocument = null;
+  });
 
   testWidgets('shows the events screen header title', (tester) async {
     await tester.pumpWidget(_buildTestApp());
@@ -93,6 +152,121 @@ void main() {
 
     expect(find.text('Москва · Россия'), findsOneWidget);
     expect(find.textContaining('RU:moscow'), findsNothing);
+  });
+
+  testWidgets('shows resolved profile city as the default selector value',
+      (tester) async {
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(cityCatalogOverride: _catalog),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Москва · Россия'), findsOneWidget);
+    expect(find.text('Выберите город'), findsNothing);
+  });
+
+  testWidgets('does not select a city from country-only profile data',
+      (tester) async {
+    currentUserDocument = _userFixture(
+      uid: 'country-only-user',
+      data: {
+        'Country_NS': {'code': 'RU'},
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(cityCatalogOverride: _catalog),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Выберите город'), findsOneWidget);
+    expect(find.text('Москва · Россия'), findsNothing);
+  });
+
+  testWidgets('leaves stale and unknown profile cities unselected for now',
+      (tester) async {
+    for (final fixture in <Map<String, dynamic>>[
+      {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: 'old-version',
+        ).toMap(),
+      },
+      {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'unknown_city',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    ]) {
+      currentUserDocument = _userFixture(
+        uid: 'unresolved-profile-city-user',
+        data: fixture,
+      );
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(cityCatalogOverride: _catalog),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Выберите город'), findsOneWidget);
+      expect(find.text('Москва · Россия'), findsNothing);
+    }
+  });
+
+  testWidgets('keeps explicit selected city ahead of profile default',
+      (tester) async {
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-override-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'US',
+              cityKey: 'new_york',
+              cityNameRu: 'Нью-Йорк',
+              cityNameEn: 'New York',
+              cityDisplayContext: 'United States',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Нью-Йорк · United States'), findsOneWidget);
+    expect(find.text('Москва · Россия'), findsNothing);
   });
 
   testWidgets('city selector delegates taps when a callback is provided',
@@ -152,10 +326,42 @@ void main() {
     expect(source, isNot(contains('EventListRepository')));
     expect(source, isNot(contains('EventsRecord')));
     expect(source, isNot(contains('queryEventsRecord')));
-    expect(source, isNot(contains('resolveEventSelectedCityState')));
-    expect(source, isNot(contains('currentUserDocument')));
   });
 }
+
+const _catalog = EventCityCatalog(
+  catalogVersion: 'test-catalog',
+  cities: [
+    EventCity(
+      countryCode: 'RU',
+      cityKey: 'moscow',
+      cityNameRu: 'Москва',
+      cityNameEn: 'Moscow',
+      regionCode: null,
+      regionNameRu: null,
+      regionNameEn: null,
+      timeZoneId: 'Europe/Moscow',
+      cityDisplayContext: 'Россия',
+      aliases: [],
+      transliterations: [],
+      priority: 100,
+    ),
+    EventCity(
+      countryCode: 'US',
+      cityKey: 'new_york',
+      cityNameRu: 'Нью-Йорк',
+      cityNameEn: 'New York',
+      regionCode: 'NY',
+      regionNameRu: 'Нью-Йорк',
+      regionNameEn: 'New York',
+      timeZoneId: 'America/New_York',
+      cityDisplayContext: 'United States',
+      aliases: [],
+      transliterations: [],
+      priority: 90,
+    ),
+  ],
+);
 
 EventCity _cityFixture({
   required String countryCode,
@@ -177,5 +383,33 @@ EventCity _cityFixture({
     aliases: const [],
     transliterations: const [],
     priority: 100,
+  );
+}
+
+ProfileCityStruct _profileCityFixture({
+  required String countryCode,
+  required String cityKey,
+  required String catalogVersion,
+}) {
+  return ProfileCityStruct(
+    countryCode: countryCode,
+    cityKey: cityKey,
+    cityNameRu: 'Stored city',
+    cityNameEn: 'Stored city',
+    cityDisplayContext: 'Stored context',
+    catalogVersion: catalogVersion,
+  );
+}
+
+UsersRecord _userFixture({
+  required String uid,
+  required Map<String, dynamic> data,
+}) {
+  return UsersRecord.getDocumentFromData(
+    {
+      'uid': uid,
+      ...data,
+    },
+    UsersRecord.collection.doc(uid),
   );
 }

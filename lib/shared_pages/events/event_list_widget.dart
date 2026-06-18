@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/events/event_create_widget.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/event_city_catalog.dart';
 import '/services/event_selected_city_state.dart';
 
 const ValueKey<String> eventListCreateButtonKey =
@@ -16,6 +18,7 @@ class EventListWidget extends StatefulWidget {
     super.key,
     this.initialSelectedCity,
     this.onCitySelectorPressed,
+    this.cityCatalogOverride,
   });
 
   static String routeName = 'events';
@@ -23,6 +26,7 @@ class EventListWidget extends StatefulWidget {
 
   final EventSelectedCity? initialSelectedCity;
   final VoidCallback? onCitySelectorPressed;
+  final EventCityCatalog? cityCatalogOverride;
 
   @override
   State<EventListWidget> createState() => _EventListWidgetState();
@@ -30,6 +34,7 @@ class EventListWidget extends StatefulWidget {
 
 class _EventListWidgetState extends State<EventListWidget> {
   late EventSelectedCity? _selectedCity;
+  Future<EventCityCatalog>? _cityCatalogFuture;
 
   @override
   void initState() {
@@ -38,75 +43,116 @@ class _EventListWidgetState extends State<EventListWidget> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _cityCatalogFuture ??= _loadCityCatalog();
+  }
+
+  @override
   void didUpdateWidget(covariant EventListWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialSelectedCity != widget.initialSelectedCity) {
       _selectedCity = widget.initialSelectedCity;
     }
+    if (oldWidget.cityCatalogOverride != widget.cityCatalogOverride) {
+      _cityCatalogFuture = _loadCityCatalog();
+    }
+  }
+
+  Future<EventCityCatalog> _loadCityCatalog() async {
+    final override = widget.cityCatalogOverride;
+    if (override != null) {
+      return override;
+    }
+    return EventCityCatalog.loadFromAsset(
+      bundle: DefaultAssetBundle.of(context),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ExpatlioDesign.background,
-      body: SafeArea(
-        child: Padding(
-          padding: ExpatlioDesign.pageScrollPadding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      FFLocalizations.of(context).getVariableText(
-                        ruText: 'События',
-                        enText: 'Events',
+    return AuthUserStreamWidget(
+      builder: (context) {
+        return FutureBuilder<EventCityCatalog>(
+          future: _cityCatalogFuture,
+          builder: (context, snapshot) {
+            final selectedCity = _resolveVisibleSelectedCity(snapshot.data);
+
+            return Scaffold(
+              backgroundColor: ExpatlioDesign.background,
+              body: SafeArea(
+                child: Padding(
+                  padding: ExpatlioDesign.pageScrollPadding,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              FFLocalizations.of(context).getVariableText(
+                                ruText: 'События',
+                                enText: 'Events',
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                size: 34,
+                                weight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: ExpatlioDesign.space16),
+                          Tooltip(
+                            message:
+                                FFLocalizations.of(context).getVariableText(
+                              ruText: 'Создать событие',
+                              enText: 'Create event',
+                            ),
+                            child: FlutterFlowIconButton(
+                              key: eventListCreateButtonKey,
+                              borderColor: Colors.transparent,
+                              borderRadius: 24,
+                              buttonSize: 48,
+                              fillColor: ExpatlioDesign.primary,
+                              icon: const Icon(
+                                Icons.add_sharp,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                              onPressed: () => context.pushNamed(
+                                EventCreateWidget.routeName,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        size: 34,
-                        weight: FontWeight.w700,
+                      const SizedBox(height: ExpatlioDesign.space16),
+                      _EventCitySelector(
+                        selectedCity: selectedCity,
+                        onPressed: widget.onCitySelectorPressed,
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: ExpatlioDesign.space16),
-                  Tooltip(
-                    message: FFLocalizations.of(context).getVariableText(
-                      ruText: 'Создать событие',
-                      enText: 'Create event',
-                    ),
-                    child: FlutterFlowIconButton(
-                      key: eventListCreateButtonKey,
-                      borderColor: Colors.transparent,
-                      borderRadius: 24,
-                      buttonSize: 48,
-                      fillColor: ExpatlioDesign.primary,
-                      icon: const Icon(
-                        Icons.add_sharp,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                      onPressed: () => context.pushNamed(
-                        EventCreateWidget.routeName,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: ExpatlioDesign.space16),
-              _EventCitySelector(
-                selectedCity: _selectedCity,
-                onPressed: widget.onCitySelectorPressed,
-              ),
-            ],
-          ),
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
+  }
+
+  EventSelectedCity? _resolveVisibleSelectedCity(EventCityCatalog? catalog) {
+    if (_selectedCity != null || catalog == null) {
+      return _selectedCity;
+    }
+    return resolveEventSelectedCityState(
+      user: currentUserDocument,
+      catalog: catalog,
+    ).selected;
   }
 }
 
