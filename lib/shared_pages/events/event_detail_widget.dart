@@ -16,6 +16,10 @@ const ValueKey<String> eventDetailLevelRangeBadgeKey =
     ValueKey<String>('event_detail_level_range_badge');
 const ValueKey<String> eventDetailLanguageBadgeKey =
     ValueKey<String>('event_detail_language_badge');
+const ValueKey<String> eventDetailTitleKey =
+    ValueKey<String>('event_detail_title');
+const ValueKey<String> eventDetailDescriptionKey =
+    ValueKey<String>('event_detail_description');
 
 class EventDetailWidget extends StatelessWidget {
   const EventDetailWidget({
@@ -28,6 +32,8 @@ class EventDetailWidget extends StatelessWidget {
     this.languageNameEn,
     this.languageNameRu,
     this.languageCatalog,
+    this.title,
+    this.description,
   });
 
   final String eventId;
@@ -38,6 +44,8 @@ class EventDetailWidget extends StatelessWidget {
   final String? languageNameEn;
   final String? languageNameRu;
   final EventLanguageCatalog? languageCatalog;
+  final String? title;
+  final String? description;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
@@ -55,6 +63,10 @@ class EventDetailWidget extends StatelessWidget {
       languageCatalog: languageCatalog,
       localeCode: FFLocalizations.of(context).languageCode,
     );
+    final titleLabel = _eventDetailTitleLabel(context, title);
+    final descriptionText = description?.trim() ?? '';
+    final showEventIdFallback =
+        (title?.trim().isEmpty ?? true) && descriptionText.isEmpty;
 
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
@@ -64,57 +76,83 @@ class EventDetailWidget extends StatelessWidget {
           children: [
             _EventDetailTopBar(onSharePressed: onSharePressed),
             Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(ExpatlioDesign.space24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (levelRangeLabel.isNotEmpty ||
-                          languageLabel.isNotEmpty) ...[
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: ExpatlioDesign.space8,
-                          runSpacing: ExpatlioDesign.space8,
-                          children: [
-                            if (levelRangeLabel.isNotEmpty)
-                              _EventDetailLevelRangeBadge(
-                                label: levelRangeLabel,
-                              ),
-                            if (languageLabel.isNotEmpty)
-                              _EventDetailLanguageBadge(label: languageLabel),
-                          ],
-                        ),
-                        const SizedBox(height: ExpatlioDesign.space12),
-                      ],
-                      Text(
-                        FFLocalizations.of(context).getVariableText(
-                          ruText: 'Событие',
-                          enText: 'Event',
-                        ),
-                        textAlign: TextAlign.center,
-                        style: ExpatlioDesign.textStyle(
-                          context,
-                          size: 28,
-                          weight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: ExpatlioDesign.space8),
-                      Text(
-                        eventId,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: ExpatlioDesign.textStyle(
-                          context,
-                          color: ExpatlioDesign.muted,
-                          size: 14,
-                          weight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
+              child: ListView(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space32,
                 ),
+                children: [
+                  Align(
+                    alignment: AlignmentDirectional.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 760),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (levelRangeLabel.isNotEmpty ||
+                              languageLabel.isNotEmpty) ...[
+                            Wrap(
+                              spacing: ExpatlioDesign.space8,
+                              runSpacing: ExpatlioDesign.space8,
+                              children: [
+                                if (levelRangeLabel.isNotEmpty)
+                                  _EventDetailLevelRangeBadge(
+                                    label: levelRangeLabel,
+                                  ),
+                                if (languageLabel.isNotEmpty)
+                                  _EventDetailLanguageBadge(
+                                    label: languageLabel,
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: ExpatlioDesign.space20),
+                          ],
+                          Text(
+                            key: eventDetailTitleKey,
+                            titleLabel,
+                            softWrap: true,
+                            style: ExpatlioDesign.textStyle(
+                              context,
+                              size: 32,
+                              height: 1.18,
+                              weight: FontWeight.w700,
+                            ),
+                          ),
+                          if (descriptionText.isNotEmpty) ...[
+                            const SizedBox(height: ExpatlioDesign.space16),
+                            Text(
+                              key: eventDetailDescriptionKey,
+                              descriptionText,
+                              softWrap: true,
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                color: ExpatlioDesign.muted,
+                                size: 18,
+                                height: 1.42,
+                                weight: FontWeight.w500,
+                              ),
+                            ),
+                          ] else if (showEventIdFallback) ...[
+                            const SizedBox(height: ExpatlioDesign.space8),
+                            Text(
+                              eventId,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                color: ExpatlioDesign.muted,
+                                size: 14,
+                                weight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -310,6 +348,18 @@ class _EventDetailTopBar extends StatelessWidget {
       ),
     );
   }
+}
+
+String _eventDetailTitleLabel(BuildContext context, String? title) {
+  final normalizedTitle = title?.trim() ?? '';
+  if (normalizedTitle.isNotEmpty) {
+    return normalizedTitle;
+  }
+
+  return FFLocalizations.of(context).getVariableText(
+    ruText: 'Без названия',
+    enText: 'Untitled',
+  );
 }
 
 String _eventDetailLevelRangeLabel({

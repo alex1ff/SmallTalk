@@ -296,6 +296,88 @@ void main() {
     expect(find.byKey(eventDetailLanguageBadgeKey), findsNothing);
   });
 
+  testWidgets('shows title and full multiline description', (tester) async {
+    const description = 'Неформальная встреча для разговорной практики.\n\n'
+        'Приходите сами и приводите друзей. Обсудим путешествия, работу '
+        'и повседневные темы без строгой программы.';
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          title: '  Разговорный клуб: кофе и английский  ',
+          description: description,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ListView), findsOneWidget);
+    expect(find.byKey(eventDetailTitleKey), findsOneWidget);
+    expect(find.text('Разговорный клуб: кофе и английский'), findsOneWidget);
+    expect(find.byKey(eventDetailDescriptionKey), findsOneWidget);
+    expect(find.text(description), findsOneWidget);
+
+    final titleWidget = tester.widget<Text>(find.byKey(eventDetailTitleKey));
+    expect(titleWidget.maxLines, isNull);
+    expect(titleWidget.overflow, isNull);
+
+    final descriptionWidget =
+        tester.widget<Text>(find.byKey(eventDetailDescriptionKey));
+    expect(descriptionWidget.maxLines, isNull);
+    expect(descriptionWidget.overflow, isNull);
+    expect(descriptionWidget.softWrap, isTrue);
+  });
+
+  testWidgets('falls back to untitled and hides blank description',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          title: ' ',
+          description: '   ',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailTitleKey), findsOneWidget);
+    expect(find.text('Без названия'), findsOneWidget);
+    expect(find.byKey(eventDetailDescriptionKey), findsNothing);
+  });
+
+  testWidgets('title and description fit narrow large-text layouts',
+      (tester) async {
+    tester.view.physicalSize = const Size(640, 1200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+        child: _buildTestApp(
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            title: 'Очень длинное название события для проверки переноса',
+            description:
+                'Очень длинное описание события с несколькими предложениями, '
+                'которое должно переноситься на узком экране и оставаться '
+                'доступным для чтения без обрезки и layout overflow.',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailTitleKey), findsOneWidget);
+    expect(find.byKey(eventDetailDescriptionKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('language and level badges fit narrow large-text layouts',
       (tester) async {
     tester.view.physicalSize = const Size(640, 1200);
@@ -416,6 +498,6 @@ class _StackRoot extends StatelessWidget {
 }
 
 Finder _detailBodyTitle() => find.descendant(
-      of: find.byType(Center),
-      matching: find.text('Событие'),
+      of: find.byType(ListView),
+      matching: find.byKey(eventDetailTitleKey),
     );
