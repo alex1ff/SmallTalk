@@ -1517,6 +1517,129 @@ void main() {
     expect(find.text('Raw backend message'), findsNothing);
   });
 
+  testWidgets('retries the same create payload with one createRequestId',
+      (tester) async {
+    final requestIds = <String>[];
+    final generatedRequestIds = <String>[];
+    var nextId = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createRequestIdGenerator: () {
+            final id = _requestId(nextId);
+            nextId += 1;
+            generatedRequestIds.add(id);
+            return id;
+          },
+          createEventInvoker: (_, payload) async {
+            requestIds.add(payload['createRequestId']! as String);
+            throw _dailyLimitError();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(requestIds, <String>[_requestId(0), _requestId(0)]);
+    expect(generatedRequestIds, <String>[_requestId(0)]);
+  });
+
+  testWidgets('changed create payload uses a new createRequestId',
+      (tester) async {
+    final requestIds = <String>[];
+    final generatedRequestIds = <String>[];
+    var nextId = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createRequestIdGenerator: () {
+            final id = _requestId(nextId);
+            nextId += 1;
+            generatedRequestIds.add(id);
+            return id;
+          },
+          createEventInvoker: (_, payload) async {
+            requestIds.add(payload['createRequestId']! as String);
+            throw _dailyLimitError();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(eventCreateDescriptionFieldKey),
+      'Говорим на английском и обсуждаем путешествия.',
+    );
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(requestIds, <String>[_requestId(0), _requestId(1)]);
+    expect(generatedRequestIds, <String>[_requestId(0), _requestId(1)]);
+  });
+
+  testWidgets('invalid create form does not generate createRequestId',
+      (tester) async {
+    final generatedRequestIds = <String>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createRequestIdGenerator: () {
+            final id = _requestId(generatedRequestIds.length);
+            generatedRequestIds.add(id);
+            return id;
+          },
+          createEventInvoker: _successfulCreateEventInvoker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(generatedRequestIds, isEmpty);
+  });
+
   testWidgets('submit blocks past start time in selected city timezone',
       (tester) async {
     await tester.pumpWidget(
@@ -2343,6 +2466,9 @@ String _locationDraftValue(EventCreateLocationDraft draft) =>
     draft.locationName;
 
 int _capacityDraftValue(EventCreateCapacityDraft draft) => draft.capacity;
+
+String _requestId(int index) =>
+    '00000000-0000-4000-8000-${index.toString().padLeft(12, '0')}';
 
 Future<Object?> _successfulCreateEventInvoker(
   String functionName,

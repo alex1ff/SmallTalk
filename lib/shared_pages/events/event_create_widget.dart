@@ -193,6 +193,7 @@ class EventCreateWidget extends StatefulWidget {
     this.initialCapacity,
     this.currentUtcProvider,
     this.createEventInvoker,
+    this.createRequestIdGenerator,
     this.onLanguageCodeChanged,
     this.onLanguageDraftChanged,
     this.onLevelDraftChanged,
@@ -218,6 +219,7 @@ class EventCreateWidget extends StatefulWidget {
   final int? initialCapacity;
   final DateTime Function()? currentUtcProvider;
   final EventCallableInvoker? createEventInvoker;
+  final String Function()? createRequestIdGenerator;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
   final ValueChanged<EventCreateLevelDraft>? onLevelDraftChanged;
@@ -281,6 +283,8 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   bool _isSubmitting = false;
   String? _startTimeErrorText;
   String? _submitErrorText;
+  String? _activeCreateRequestId;
+  String? _activeCreatePayloadSignature;
 
   @override
   void initState() {
@@ -1074,23 +1078,34 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         throw StateError('Event language catalog is not ready.');
       }
 
-      await EventActionsRepository.createEvent(
-        createRequestId: newEventCreateRequestId(),
-        fields: EventEditableFields(
-          title: _titleTextController.text,
-          description: _descriptionTextController.text,
-          languageCode: languageCode,
-          levelMin: levelRange.levelMin,
-          levelMax: levelRange.levelMax,
-          countryCode: selectedCity.city.countryCode,
-          cityKey: selectedCity.city.cityKey,
-          locationName: _normalizeEventCreateLocationName(
-            _locationTextController.text,
-          ),
-          locationGeoPoint: null,
-          startsAt: startTimeValidation.startsAtUtc,
-          capacity: capacity,
+      final fields = EventEditableFields(
+        title: _titleTextController.text,
+        description: _descriptionTextController.text,
+        languageCode: languageCode,
+        levelMin: levelRange.levelMin,
+        levelMax: levelRange.levelMax,
+        countryCode: selectedCity.city.countryCode,
+        cityKey: selectedCity.city.cityKey,
+        locationName: _normalizeEventCreateLocationName(
+          _locationTextController.text,
         ),
+        locationGeoPoint: null,
+        startsAt: startTimeValidation.startsAtUtc,
+        capacity: capacity,
+      );
+      final payloadSignature = _eventCreatePayloadSignature(fields);
+      var createRequestId = _activeCreateRequestId;
+      if (createRequestId == null ||
+          _activeCreatePayloadSignature != payloadSignature) {
+        createRequestId =
+            (widget.createRequestIdGenerator ?? newEventCreateRequestId).call();
+        _activeCreateRequestId = createRequestId;
+        _activeCreatePayloadSignature = payloadSignature;
+      }
+
+      await EventActionsRepository.createEvent(
+        createRequestId: createRequestId,
+        fields: fields,
         invoker: widget.createEventInvoker,
       );
     } catch (error) {
@@ -2898,6 +2913,13 @@ String _eventCreateCapacityText(int? capacity) =>
 
 int _eventCreateCapacityFromText(String value) =>
     int.tryParse(value) ?? _eventCreateDefaultCapacity;
+
+String _eventCreatePayloadSignature(EventEditableFields fields) {
+  final payload = fields.toCreatePayload(
+    createRequestId: '00000000-0000-4000-8000-000000000000',
+  )..remove('createRequestId');
+  return jsonEncode(payload);
+}
 
 String? _eventCreateCapacityValidationText(
   BuildContext context,
