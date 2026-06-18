@@ -444,6 +444,122 @@ void main() {
     expect(payload, <String, dynamic>{'eventId': 'event-1'});
     expect(find.text('Присоединиться'), findsOneWidget);
     expect(find.text('Покинуть'), findsNothing);
+    expect(find.text('5/10 мест'), findsOneWidget);
+    expect(find.text('6/10 мест'), findsNothing);
+  });
+
+  testWidgets('leave updates occupancy until snapshot catches up',
+      (tester) async {
+    final streamController = StreamController<DocumentSnapshot>();
+    addTearDown(streamController.close);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => streamController.stream,
+          joinEventInvoker: (_, __) async =>
+              _joinEventResponse(participantsCount: 6),
+          leaveEventInvoker: (_, __) async =>
+              _leaveEventResponse(participantsCount: 5),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(participantsCount: 5),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('6/10 мест'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('5/10 мест'), findsOneWidget);
+    expect(find.text('6/10 мест'), findsNothing);
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(participantsCount: 4),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('4/10 мест'), findsOneWidget);
+    expect(find.text('5/10 мест'), findsNothing);
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(participantsCount: 7),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('7/10 мест'), findsOneWidget);
+    expect(find.text('5/10 мест'), findsNothing);
+  });
+
+  testWidgets('leave count re-enables join when stale snapshot was full',
+      (tester) async {
+    final streamController = StreamController<DocumentSnapshot>();
+    addTearDown(streamController.close);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => streamController.stream,
+          joinEventInvoker: (_, __) async =>
+              _joinEventResponse(participantsCount: 10),
+          leaveEventInvoker: (_, __) async =>
+              _leaveEventResponse(participantsCount: 9),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(participantsCount: 9),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('10/10 мест'), findsOneWidget);
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(participantsCount: 10),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('9/10 мест'), findsOneWidget);
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Мест нет'), findsNothing);
   });
 
   testWidgets('in-flight leave blocks repeated primary taps', (tester) async {
@@ -768,12 +884,18 @@ void main() {
     expect(secondJoinCalls, 1);
     expect(find.text('Покинуть'), findsOneWidget);
 
-    leaveCompleter.complete(_leaveEventResponse(eventId: 'event-1'));
+    leaveCompleter.complete(
+      _leaveEventResponse(
+        eventId: 'event-1',
+        participantsCount: 2,
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Second event'), findsOneWidget);
     expect(find.text('Покинуть'), findsOneWidget);
     expect(find.text('Присоединиться'), findsNothing);
+    expect(find.text('2/10 мест'), findsNothing);
   });
 
   testWidgets('leave confirmation ignores confirm after leave becomes stale',
