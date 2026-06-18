@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
@@ -74,7 +75,14 @@ const ValueKey<String> eventCreateTimeSelectorSemanticsKey =
     ValueKey<String>('event_create_time_selector_semantics');
 const ValueKey<String> eventCreateTimeSelectorKey =
     ValueKey<String>('event_create_time_selector');
+const ValueKey<String> eventCreateCapacityLabelKey =
+    ValueKey<String>('event_create_capacity_label');
+const ValueKey<String> eventCreateCapacityFieldSemanticsKey =
+    ValueKey<String>('event_create_capacity_field_semantics');
+const ValueKey<String> eventCreateCapacityFieldKey =
+    ValueKey<String>('event_create_capacity_field');
 const TimeOfDay _eventCreateDefaultTime = TimeOfDay(hour: 18, minute: 0);
+const int _eventCreateDefaultCapacity = 10;
 
 ValueKey<String> eventCreateLanguageOptionKey(String code) =>
     ValueKey<String>('event_create_language_option_$code');
@@ -151,6 +159,14 @@ class EventCreateTimeDraft {
   final TimeOfDay localTime;
 }
 
+class EventCreateCapacityDraft {
+  const EventCreateCapacityDraft({
+    required this.capacity,
+  });
+
+  final int capacity;
+}
+
 class EventCreateWidget extends StatefulWidget {
   const EventCreateWidget({
     super.key,
@@ -163,6 +179,7 @@ class EventCreateWidget extends StatefulWidget {
     this.initialLocationName,
     this.initialDate,
     this.initialTime,
+    this.initialCapacity,
     this.onLanguageCodeChanged,
     this.onLanguageDraftChanged,
     this.onLevelDraftChanged,
@@ -170,6 +187,7 @@ class EventCreateWidget extends StatefulWidget {
     this.onLocationDraftChanged,
     this.onDateDraftChanged,
     this.onTimeDraftChanged,
+    this.onCapacityDraftChanged,
   });
 
   static String routeName = 'eventCreate';
@@ -184,6 +202,7 @@ class EventCreateWidget extends StatefulWidget {
   final String? initialLocationName;
   final DateTime? initialDate;
   final TimeOfDay? initialTime;
+  final int? initialCapacity;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
   final ValueChanged<EventCreateLevelDraft>? onLevelDraftChanged;
@@ -191,6 +210,7 @@ class EventCreateWidget extends StatefulWidget {
   final ValueChanged<EventCreateLocationDraft>? onLocationDraftChanged;
   final ValueChanged<EventCreateDateDraft>? onDateDraftChanged;
   final ValueChanged<EventCreateTimeDraft>? onTimeDraftChanged;
+  final ValueChanged<EventCreateCapacityDraft>? onCapacityDraftChanged;
 
   @override
   State<EventCreateWidget> createState() => _EventCreateWidgetState();
@@ -201,9 +221,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   final _titleTextController = TextEditingController();
   final _descriptionTextController = TextEditingController();
   final _locationTextController = TextEditingController();
+  final _capacityTextController = TextEditingController();
   final _titleFocusNode = FocusNode();
   final _descriptionFocusNode = FocusNode();
   final _locationFocusNode = FocusNode();
+  final _capacityFocusNode = FocusNode();
   Future<EventLanguageCatalog>? _languageCatalogFuture;
   AssetBundle? _languageCatalogBundle;
   Future<EventCityCatalog>? _cityCatalogFuture;
@@ -236,6 +258,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   String? _lastEmittedTimeDraftKey;
   TimeOfDay? _pendingTimeDraft;
   bool _timeDraftCallbackScheduled = false;
+  int? _lastEmittedCapacityDraft;
+  int? _pendingCapacityDraft;
+  bool _capacityDraftCallbackScheduled = false;
 
   @override
   void initState() {
@@ -249,6 +274,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _locationTextController.addListener(_handleLocationTextChanged);
     _selectedDate = _eventCreateDateOnly(widget.initialDate ?? DateTime.now());
     _selectedTime = widget.initialTime ?? _eventCreateDefaultTime;
+    _capacityTextController.text =
+        _eventCreateCapacityText(widget.initialCapacity);
+    _capacityTextController.addListener(_handleCapacityTextChanged);
   }
 
   @override
@@ -309,17 +337,24 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     if (oldWidget.initialTime != widget.initialTime) {
       _selectedTime = widget.initialTime ?? _eventCreateDefaultTime;
     }
+    if (oldWidget.initialCapacity != widget.initialCapacity) {
+      _capacityTextController.text =
+          _eventCreateCapacityText(widget.initialCapacity);
+    }
   }
 
   @override
   void dispose() {
     _locationTextController.removeListener(_handleLocationTextChanged);
+    _capacityTextController.removeListener(_handleCapacityTextChanged);
     _titleTextController.dispose();
     _descriptionTextController.dispose();
     _locationTextController.dispose();
+    _capacityTextController.dispose();
     _titleFocusNode.dispose();
     _descriptionFocusNode.dispose();
     _locationFocusNode.dispose();
+    _capacityFocusNode.dispose();
     super.dispose();
   }
 
@@ -625,6 +660,51 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     });
   }
 
+  void _emitCapacityDraftNow(int capacity) {
+    _pendingCapacityDraft = null;
+    if (_lastEmittedCapacityDraft == capacity) {
+      return;
+    }
+    final onCapacityDraftChanged = widget.onCapacityDraftChanged;
+    if (onCapacityDraftChanged == null) {
+      return;
+    }
+    _lastEmittedCapacityDraft = capacity;
+    onCapacityDraftChanged(
+      EventCreateCapacityDraft(capacity: capacity),
+    );
+  }
+
+  void _queueCapacityDraft(int capacity) {
+    if (_lastEmittedCapacityDraft == capacity &&
+        _pendingCapacityDraft == null) {
+      return;
+    }
+    _pendingCapacityDraft = capacity;
+    if (_capacityDraftCallbackScheduled) {
+      return;
+    }
+    _capacityDraftCallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _capacityDraftCallbackScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      final pendingCapacity = _pendingCapacityDraft;
+      if (pendingCapacity == null ||
+          _lastEmittedCapacityDraft == pendingCapacity) {
+        return;
+      }
+      _emitCapacityDraftNow(pendingCapacity);
+    });
+  }
+
+  void _handleCapacityTextChanged() {
+    _queueCapacityDraft(
+      _eventCreateCapacityFromText(_capacityTextController.text),
+    );
+  }
+
   void _queueLevelDraft(EventLevelRange range) {
     final draftKey = _eventCreateLevelDraftKey(range);
     if (_lastEmittedLevelDraftKey == draftKey &&
@@ -901,6 +981,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     );
     _queueDateDraft(_selectedDate);
     _queueTimeDraft(_selectedTime);
+    _queueCapacityDraft(
+      _eventCreateCapacityFromText(_capacityTextController.text),
+    );
     return AuthUserStreamWidget(
       builder: (context) => Scaffold(
         backgroundColor: ExpatlioDesign.background,
@@ -1121,6 +1204,26 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                 onPressed: () =>
                                     _showTimeSelector(_selectedTime),
                               ),
+                              const SizedBox(height: ExpatlioDesign.space20),
+                              _EventCreateTextField(
+                                labelKey: eventCreateCapacityLabelKey,
+                                semanticsKey:
+                                    eventCreateCapacityFieldSemanticsKey,
+                                fieldKey: eventCreateCapacityFieldKey,
+                                label:
+                                    FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Лимит участников',
+                                  enText: 'Participant limit',
+                                ),
+                                hintText: '10',
+                                controller: _capacityTextController,
+                                focusNode: _capacityFocusNode,
+                                textInputAction: TextInputAction.done,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -1148,6 +1251,7 @@ class _EventCreateTextField extends StatelessWidget {
     this.hintText,
     this.textInputAction,
     this.keyboardType,
+    this.inputFormatters,
     this.minLines,
     this.maxLines = 1,
     this.onFieldSubmitted,
@@ -1162,6 +1266,7 @@ class _EventCreateTextField extends StatelessWidget {
   final FocusNode focusNode;
   final TextInputAction? textInputAction;
   final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
   final int? minLines;
   final int maxLines;
   final VoidCallback? onFieldSubmitted;
@@ -1192,6 +1297,7 @@ class _EventCreateTextField extends StatelessWidget {
             textCapitalization: TextCapitalization.sentences,
             textInputAction: textInputAction,
             keyboardType: keyboardType,
+            inputFormatters: inputFormatters,
             minLines: minLines,
             maxLines: maxLines,
             onFieldSubmitted: (_) => onFieldSubmitted?.call(),
@@ -2452,3 +2558,9 @@ String _eventCreateTimeDraftKey(TimeOfDay localTime) {
   final minute = localTime.minute.toString().padLeft(2, '0');
   return '$hour:$minute';
 }
+
+String _eventCreateCapacityText(int? capacity) =>
+    (capacity ?? _eventCreateDefaultCapacity).toString();
+
+int _eventCreateCapacityFromText(String value) =>
+    int.tryParse(value) ?? _eventCreateDefaultCapacity;

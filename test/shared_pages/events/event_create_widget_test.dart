@@ -178,6 +178,9 @@ void main() {
     expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
     expect(find.text('Время'), findsOneWidget);
     expect(_timeSelectorText('18:00'), findsOneWidget);
+    expect(find.byKey(eventCreateCapacityLabelKey), findsOneWidget);
+    expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
+    expect(find.text('Лимит участников'), findsOneWidget);
 
     final titleField = tester.widget<TextField>(
       find.descendant(
@@ -208,6 +211,21 @@ void main() {
     expect(locationField.maxLines, 2);
     expect(locationField.keyboardType, TextInputType.streetAddress);
     expect(locationField.textInputAction, TextInputAction.done);
+    final capacityField = tester.widget<TextField>(
+      find.descendant(
+        of: find.byKey(eventCreateCapacityFieldKey),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(capacityField.maxLines, 1);
+    expect(capacityField.keyboardType, TextInputType.number);
+    expect(capacityField.textInputAction, TextInputAction.done);
+    expect(capacityField.controller?.text, '10');
+    expect(capacityField.inputFormatters, hasLength(1));
+    expect(
+      capacityField.inputFormatters!.single,
+      isA<FilteringTextInputFormatter>(),
+    );
   });
 
   testWidgets('renders title and description fields in English',
@@ -241,6 +259,14 @@ void main() {
     expect(find.text('Date'), findsOneWidget);
     expect(find.text('Time'), findsOneWidget);
     expect(_timeSelectorText('18:00'), findsOneWidget);
+    expect(find.text('Participant limit'), findsOneWidget);
+    final capacityField = tester.widget<TextField>(
+      find.descendant(
+        of: find.byKey(eventCreateCapacityFieldKey),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(capacityField.controller?.text, '10');
   });
 
   testWidgets('renders language selector from catalog in Russian',
@@ -1018,6 +1044,94 @@ void main() {
     );
   });
 
+  testWidgets('emits default capacity draft for submit handoff',
+      (tester) async {
+    final drafts = <EventCreateCapacityDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onCapacityDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts.map(_capacityDraftValue), [10]);
+  });
+
+  testWidgets('uses initial capacity for submit handoff', (tester) async {
+    final drafts = <EventCreateCapacityDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialCapacity: 8,
+          onCapacityDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('8'), findsOneWidget);
+    expect(drafts.map(_capacityDraftValue), [8]);
+  });
+
+  testWidgets('emits capacity draft when handoff callback is added later',
+      (tester) async {
+    final drafts = <EventCreateCapacityDraft>[];
+    var callbackEnabled = false;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              initialCapacity: 12,
+              onCapacityDraftChanged: callbackEnabled ? drafts.add : null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts, isEmpty);
+
+    setHostState(() {
+      callbackEnabled = true;
+    });
+    await tester.pumpAndSettle();
+
+    expect(drafts.map(_capacityDraftValue), [12]);
+  });
+
+  testWidgets('edits participant limit field and emits capacity draft',
+      (tester) async {
+    final drafts = <EventCreateCapacityDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onCapacityDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventCreateCapacityFieldKey), '24');
+    await tester.pumpAndSettle();
+
+    expect(find.text('24'), findsOneWidget);
+    expect(drafts.map(_capacityDraftValue), [10, 24]);
+  });
+
   testWidgets('emits default date draft for submit handoff', (tester) async {
     final drafts = <EventCreateDateDraft>[];
     final todayBefore = _dateOnly(DateTime.now());
@@ -1475,6 +1589,12 @@ void main() {
       expect(timeSemantics.flagsCollection.isEnabled, isTrue);
       expect(timeSemantics.label, contains('Время события'));
       expect(timeSemantics.value, contains('18:00'));
+      final capacitySemantics =
+          tester.getSemantics(find.byKey(eventCreateCapacityFieldSemanticsKey));
+      expect(capacitySemantics.flagsCollection.isTextField, isTrue);
+      expect(capacitySemantics.flagsCollection.isMultiline, isFalse);
+      expect(capacitySemantics.label, contains('Лимит участников'));
+      expect(capacitySemantics.hint, contains('10'));
     } finally {
       semanticsHandle.dispose();
     }
@@ -1548,6 +1668,12 @@ void main() {
       expect(timeSemantics.flagsCollection.isEnabled, isTrue);
       expect(timeSemantics.label, contains('Event time'));
       expect(timeSemantics.value, contains('18:00'));
+      final capacitySemantics =
+          tester.getSemantics(find.byKey(eventCreateCapacityFieldSemanticsKey));
+      expect(capacitySemantics.flagsCollection.isTextField, isTrue);
+      expect(capacitySemantics.flagsCollection.isMultiline, isFalse);
+      expect(capacitySemantics.label, contains('Participant limit'));
+      expect(capacitySemantics.hint, contains('10'));
     } finally {
       semanticsHandle.dispose();
     }
@@ -1600,6 +1726,10 @@ void main() {
       find.byKey(eventCreateLocationFieldKey),
       'Лофт на Ленина',
     );
+    await tester.enterText(
+      find.byKey(eventCreateCapacityFieldKey),
+      '18',
+    );
     await tester.pump();
 
     await tester.pumpWidget(
@@ -1617,6 +1747,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Лофт на Ленина'), findsOneWidget);
+    expect(find.text('18'), findsOneWidget);
   });
 
   testWidgets('create route renders the form fields', (tester) async {
@@ -1645,6 +1776,7 @@ void main() {
     expect(find.byKey(eventCreateLocationFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
   });
 
   testWidgets('form fields fit narrow large-text layouts', (tester) async {
@@ -1674,6 +1806,7 @@ void main() {
     expect(find.byKey(eventCreateLocationFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateCapacityFieldKey), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1715,6 +1848,8 @@ String _cityDraftValue(EventCreateCityDraft draft) =>
 
 String _locationDraftValue(EventCreateLocationDraft draft) =>
     draft.locationName;
+
+int _capacityDraftValue(EventCreateCapacityDraft draft) => draft.capacity;
 
 int _widgetIndex(WidgetTester tester, Finder finder) {
   expect(finder, findsOneWidget);
