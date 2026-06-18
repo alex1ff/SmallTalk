@@ -1,14 +1,21 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
+import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/auth/firebase_auth/auth_util.dart';
+import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/flutter_flow_util.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
+import 'package:small_talk/services/event_city_catalog.dart';
+import 'package:small_talk/services/event_city_selection_source.dart';
+import 'package:small_talk/services/event_selected_city_state.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
 
 const _supportedLocales = [
@@ -46,6 +53,74 @@ Widget _buildRouterTestApp(
   );
 }
 
+class _TestFirebaseAuthPlatform extends FirebaseAuthPlatform {
+  _TestFirebaseAuthPlatform({FirebaseApp? app}) : super(appInstance: app);
+
+  UserPlatform? _currentUser;
+
+  @override
+  FirebaseAuthPlatform delegateFor({required FirebaseApp app}) {
+    return _TestFirebaseAuthPlatform(app: app).._currentUser = _currentUser;
+  }
+
+  @override
+  FirebaseAuthPlatform setInitialValues({
+    PigeonUserDetails? currentUser,
+    String? languageCode,
+  }) {
+    this.languageCode = languageCode;
+    return this;
+  }
+
+  @override
+  UserPlatform? get currentUser => _currentUser;
+
+  @override
+  set currentUser(UserPlatform? userPlatform) {
+    _currentUser = userPlatform;
+  }
+
+  @override
+  String? languageCode;
+
+  @override
+  Stream<UserPlatform?> authStateChanges() =>
+      const Stream<UserPlatform?>.empty();
+
+  @override
+  Stream<UserPlatform?> idTokenChanges() => const Stream<UserPlatform?>.empty();
+
+  @override
+  Stream<UserPlatform?> userChanges() => const Stream<UserPlatform?>.empty();
+}
+
+class _TestAuthUser extends BaseAuthUser {
+  _TestAuthUser(this._uid);
+
+  final String _uid;
+
+  @override
+  bool get loggedIn => true;
+
+  @override
+  bool get emailVerified => true;
+
+  @override
+  AuthUserInfo get authUserInfo => AuthUserInfo(uid: _uid);
+
+  @override
+  Future? delete() => null;
+
+  @override
+  Future? sendEmailVerification() => null;
+
+  @override
+  Future? updateEmail(String email) => null;
+
+  @override
+  Future? updatePassword(String newPassword) => null;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -53,7 +128,16 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await initializeDateFormatting('ru');
     await initializeDateFormatting('en');
+    setupFirebaseCoreMocks();
     await FFLocalizations.initialize();
+    await Firebase.initializeApp();
+    FirebaseAuthPlatform.instance = _TestFirebaseAuthPlatform();
+  });
+
+  tearDown(() {
+    currentUser = null;
+    currentUserDocument = null;
+    SharedPreferences.setMockInitialValues({});
   });
 
   testWidgets('renders title and description fields in Russian',
@@ -80,6 +164,9 @@ void main() {
     expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
     expect(find.text('Уровень'), findsOneWidget);
     expect(_levelSelectorText('B1-C1'), findsOneWidget);
+    expect(find.byKey(eventCreateCityLabelKey), findsOneWidget);
+    expect(find.byKey(eventCreateCitySelectorKey), findsOneWidget);
+    expect(find.text('Город'), findsOneWidget);
     expect(find.byKey(eventCreateDateLabelKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.text('Дата'), findsOneWidget);
@@ -134,6 +221,7 @@ void main() {
     );
     expect(find.text('Level'), findsOneWidget);
     expect(_levelSelectorText('B1-C1'), findsOneWidget);
+    expect(find.text('City'), findsOneWidget);
     expect(find.text('Date'), findsOneWidget);
     expect(find.text('Time'), findsOneWidget);
     expect(_timeSelectorText('18:00'), findsOneWidget);
@@ -503,6 +591,322 @@ void main() {
     expect(drafts.map(_levelDraftValue), ['B1:C1', 'C2:C2']);
   });
 
+  testWidgets('shows missing city selector and quick city chips',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateCityLabelKey), findsOneWidget);
+    expect(find.text('Город'), findsOneWidget);
+    expect(_citySelectorText('Выберите город'), findsOneWidget);
+    expect(
+      find.text('Выберите город события или нажмите один из вариантов ниже.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(eventCreateCityChipKey(_moscowCity)), findsOneWidget);
+    expect(find.byKey(eventCreateCityChipKey(_newYorkCity)), findsOneWidget);
+  });
+
+  testWidgets('uses country hint to order city chips', (tester) async {
+    currentUserDocument = _userFixture(
+      uid: 'country-hint-user',
+      data: const {
+        'Country_NS': {'code': 'US'},
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      _widgetIndex(tester, find.byKey(eventCreateCityChipKey(_newYorkCity))),
+      lessThan(
+        _widgetIndex(tester, find.byKey(eventCreateCityChipKey(_moscowCity))),
+      ),
+    );
+  });
+
+  testWidgets('uses resolved profile city as default submit draft',
+      (tester) async {
+    final drafts = <EventCreateCityDraft>[];
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-user',
+      data: {
+        'Country_NS': {'code': 'US'},
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _cityCatalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          onCityDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Москва · Россия'), findsOneWidget);
+    expect(find.textContaining('Stored city'), findsNothing);
+    expect(find.byKey(eventCreateCityChipKey(_moscowCity)), findsNothing);
+    expect(drafts.map(_cityDraftValue), ['RU:moscow:Europe/Moscow:profile']);
+  });
+
+  testWidgets('shows stale profile city prompt without draft', (tester) async {
+    final drafts = <EventCreateCityDraft>[];
+    currentUserDocument = _userFixture(
+      uid: 'stale-profile-city-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: 'old-version',
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          onCityDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Выберите город заново'), findsOneWidget);
+    expect(
+      find.text(
+        'Сохранённый город больше недоступен. Выберите актуальный город для события.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(eventCreateCityChipKey(_moscowCity)), findsNothing);
+    expect(drafts, isEmpty);
+  });
+
+  testWidgets('waits for current user document before showing city chips',
+      (tester) async {
+    currentUser = _TestAuthUser('loading-profile-user');
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Загрузка городов...'), findsOneWidget);
+    expect(find.byKey(eventCreateCityChipKey(_moscowCity)), findsNothing);
+    expect(find.byKey(eventCreateCityChipKey(_newYorkCity)), findsNothing);
+  });
+
+  testWidgets('updates city selector when profile city arrives later',
+      (tester) async {
+    final drafts = <EventCreateCityDraft>[];
+    currentUser = _TestAuthUser('late-profile-city-user');
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              cityCatalogOverride: _cityCatalog,
+              onCityDraftChanged: drafts.add,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Загрузка городов...'), findsOneWidget);
+    expect(drafts, isEmpty);
+
+    setHostState(() {
+      currentUserDocument = _userFixture(
+        uid: 'late-profile-city-user',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _cityCatalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+    });
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Москва · Россия'), findsOneWidget);
+    expect(drafts.map(_cityDraftValue), ['RU:moscow:Europe/Moscow:profile']);
+  });
+
+  testWidgets('updates stale profile prompt when user document arrives later',
+      (tester) async {
+    final drafts = <EventCreateCityDraft>[];
+    currentUser = _TestAuthUser('late-stale-profile-city-user');
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              cityCatalogOverride: _cityCatalog,
+              onCityDraftChanged: drafts.add,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Загрузка городов...'), findsOneWidget);
+
+    setHostState(() {
+      currentUserDocument = _userFixture(
+        uid: 'late-stale-profile-city-user',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: 'old-version',
+          ).toMap(),
+        },
+      );
+    });
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Выберите город заново'), findsOneWidget);
+    expect(
+      find.text(
+        'Сохранённый город больше недоступен. Выберите актуальный город для события.',
+      ),
+      findsOneWidget,
+    );
+    expect(drafts, isEmpty);
+  });
+
+  testWidgets('selects city chip and emits submit draft', (tester) async {
+    final drafts = <EventCreateCityDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          onCityDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(eventCreateCityChipKey(_moscowCity)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateCityChipKey(_moscowCity)));
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Москва · Россия'), findsOneWidget);
+    expect(drafts.map(_cityDraftValue), ['RU:moscow:Europe/Moscow:static']);
+  });
+
+  testWidgets('opens city sheet and selects manual city search result',
+      (tester) async {
+    final drafts = <EventCreateCityDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          onCityDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateCitySelectorKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateCitySheetKey), findsOneWidget);
+    expect(find.text('Поиск города'), findsOneWidget);
+
+    await tester.enterText(find.byKey(eventCreateCitySearchFieldKey), 'rome');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateCityOptionKey(_romeCity)));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateCitySheetKey), findsNothing);
+    expect(_citySelectorText('Рим · Italia'), findsOneWidget);
+    expect(drafts.map(_cityDraftValue), ['IT:rome:Europe/Rome:manual']);
+  });
+
+  testWidgets('emits initial city draft when callback is added later',
+      (tester) async {
+    final drafts = <EventCreateCityDraft>[];
+    var callbackEnabled = false;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              cityCatalogOverride: _cityCatalog,
+              initialSelectedCity: const EventSelectedCity(
+                city: _romeCity,
+                source: EventCitySelectionSource.manual,
+              ),
+              onCityDraftChanged: callbackEnabled ? drafts.add : null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts, isEmpty);
+
+    setHostState(() {
+      callbackEnabled = true;
+    });
+    await tester.pumpAndSettle();
+
+    expect(drafts.map(_cityDraftValue), ['IT:rome:Europe/Rome:manual']);
+  });
+
   testWidgets('emits default date draft for submit handoff', (tester) async {
     final drafts = <EventCreateDateDraft>[];
     final todayBefore = _dateOnly(DateTime.now());
@@ -593,6 +997,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(eventCreateDateSelectorKey));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(eventCreateDateSelectorKey));
     await tester.pumpAndSettle();
 
@@ -623,6 +1029,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(eventCreateDateSelectorKey));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(eventCreateDateSelectorKey));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Отмена'));
@@ -898,6 +1306,7 @@ void main() {
         _buildTestApp(
           home: EventCreateWidget(
             languageCatalogOverride: _languageCatalog,
+            cityCatalogOverride: _cityCatalog,
           ),
         ),
       );
@@ -928,6 +1337,12 @@ void main() {
       expect(levelSemantics.flagsCollection.isEnabled, isTrue);
       expect(levelSemantics.label, contains('Уровень события'));
       expect(levelSemantics.value, contains('B1-C1'));
+      final citySemantics =
+          tester.getSemantics(find.byKey(eventCreateCitySelectorSemanticsKey));
+      expect(citySemantics.flagsCollection.isButton, isTrue);
+      expect(citySemantics.flagsCollection.isEnabled, isTrue);
+      expect(citySemantics.label, contains('Город события'));
+      expect(citySemantics.value, isNotEmpty);
       final dateSemantics =
           tester.getSemantics(find.byKey(eventCreateDateSelectorSemanticsKey));
       expect(dateSemantics.flagsCollection.isButton, isTrue);
@@ -955,6 +1370,7 @@ void main() {
           locale: const Locale('en'),
           home: EventCreateWidget(
             languageCatalogOverride: _languageCatalog,
+            cityCatalogOverride: _cityCatalog,
           ),
         ),
       );
@@ -985,6 +1401,12 @@ void main() {
       expect(levelSemantics.flagsCollection.isEnabled, isTrue);
       expect(levelSemantics.label, contains('Event level'));
       expect(levelSemantics.value, contains('B1-C1'));
+      final citySemantics =
+          tester.getSemantics(find.byKey(eventCreateCitySelectorSemanticsKey));
+      expect(citySemantics.flagsCollection.isButton, isTrue);
+      expect(citySemantics.flagsCollection.isEnabled, isTrue);
+      expect(citySemantics.label, contains('Event city'));
+      expect(citySemantics.value, isNotEmpty);
       final dateSemantics =
           tester.getSemantics(find.byKey(eventCreateDateSelectorSemanticsKey));
       expect(dateSemantics.flagsCollection.isButton, isTrue);
@@ -1085,6 +1507,7 @@ void main() {
     expect(find.byKey(eventCreateTitleFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateCitySelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
   });
@@ -1112,6 +1535,7 @@ void main() {
     expect(find.byKey(eventCreateTitleFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateCitySelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -1121,6 +1545,7 @@ void main() {
     final source = File('lib/shared_pages/events/event_create_widget.dart')
         .readAsStringSync();
 
+    expect(source, contains('AuthUserStreamWidget'));
     expect(source, isNot(contains('EventActionsRepository')));
     expect(source, isNot(contains('EventEditableFields')));
     expect(source, isNot(contains('createRequestId')));
@@ -1128,6 +1553,7 @@ void main() {
     expect(source, isNot(contains('.createEvent(')));
     expect(source, isNot(contains('EventsRecord')));
     expect(source, isNot(contains('FirebaseFirestore')));
+    expect(source, isNot(contains('ProfileCitySaveService')));
     expect(source, isNot(contains('languageNameEn')));
     expect(source, isNot(contains('languageNameRu')));
     expect(source, isNot(contains('startsAt')));
@@ -1141,6 +1567,22 @@ Finder _levelSelectorText(String text) => find.descendant(
 
 String _levelDraftValue(EventCreateLevelDraft draft) =>
     '${draft.levelMin}:${draft.levelMax}';
+
+Finder _citySelectorText(String text) => find.descendant(
+      of: find.byKey(eventCreateCitySelectorKey),
+      matching: find.text(text),
+    );
+
+String _cityDraftValue(EventCreateCityDraft draft) =>
+    '${draft.countryCode}:${draft.cityKey}:${draft.timeZoneId}:'
+    '${draft.citySource}';
+
+int _widgetIndex(WidgetTester tester, Finder finder) {
+  expect(finder, findsOneWidget);
+  return tester.allWidgets
+      .toList(growable: false)
+      .indexOf(tester.widget(finder));
+}
 
 Finder _dateSelectorText(String text) => find.descendant(
       of: find.byKey(eventCreateDateSelectorKey),
@@ -1180,6 +1622,105 @@ String _timeValue(TimeOfDay time) {
   final hour = time.hour.toString().padLeft(2, '0');
   final minute = time.minute.toString().padLeft(2, '0');
   return '$hour:$minute';
+}
+
+const _moscowCity = EventCity(
+  countryCode: 'RU',
+  cityKey: 'moscow',
+  cityNameRu: 'Москва',
+  cityNameEn: 'Moscow',
+  regionCode: null,
+  regionNameRu: null,
+  regionNameEn: null,
+  timeZoneId: 'Europe/Moscow',
+  cityDisplayContext: 'Россия',
+  aliases: [],
+  transliterations: [],
+  priority: 100,
+);
+
+const _newYorkCity = EventCity(
+  countryCode: 'US',
+  cityKey: 'new_york',
+  cityNameRu: 'Нью-Йорк',
+  cityNameEn: 'New York',
+  regionCode: 'NY',
+  regionNameRu: 'Нью-Йорк',
+  regionNameEn: 'New York',
+  timeZoneId: 'America/New_York',
+  cityDisplayContext: 'United States',
+  aliases: ['NYC'],
+  transliterations: [],
+  priority: 95,
+);
+
+const _romeCity = EventCity(
+  countryCode: 'IT',
+  cityKey: 'rome',
+  cityNameRu: 'Рим',
+  cityNameEn: 'Rome',
+  regionCode: 'LAZ',
+  regionNameRu: 'Лацио',
+  regionNameEn: 'Lazio',
+  timeZoneId: 'Europe/Rome',
+  cityDisplayContext: 'Italia',
+  aliases: [],
+  transliterations: [],
+  priority: 90,
+);
+
+const _cityCatalog = EventCityCatalog(
+  catalogVersion: '2026-06-01',
+  cities: [_moscowCity, _newYorkCity, _romeCity],
+);
+
+ProfileCityStruct _profileCityFixture({
+  required String countryCode,
+  required String cityKey,
+  required String catalogVersion,
+}) {
+  return ProfileCityStruct(
+    countryCode: countryCode,
+    cityKey: cityKey,
+    cityNameRu: 'Stored city',
+    cityNameEn: 'Stored city',
+    cityDisplayContext: 'Stored context',
+    catalogVersion: catalogVersion,
+  );
+}
+
+UsersRecord _userFixture({
+  required String uid,
+  required Map<String, dynamic> data,
+}) {
+  return UsersRecord.getDocumentFromData(
+    {
+      'uid': uid,
+      ..._mutableFirestoreMap(data),
+    },
+    UsersRecord.collection.doc(uid),
+  );
+}
+
+Map<String, dynamic> _mutableFirestoreMap(Map<String, dynamic> data) {
+  return data.map(
+    (key, value) => MapEntry(key, _mutableFirestoreValue(value)),
+  );
+}
+
+dynamic _mutableFirestoreValue(dynamic value) {
+  if (value is Map) {
+    return value.map(
+      (key, nestedValue) => MapEntry(
+        key.toString(),
+        _mutableFirestoreValue(nestedValue),
+      ),
+    );
+  }
+  if (value is List) {
+    return value.map(_mutableFirestoreValue).toList(growable: true);
+  }
+  return value;
 }
 
 final _languageCatalog = EventLanguageCatalog(

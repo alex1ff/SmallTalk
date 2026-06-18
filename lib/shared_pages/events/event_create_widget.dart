@@ -1,8 +1,18 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/event_city_catalog.dart';
+import '/services/event_city_chip_source.dart';
+import '/services/event_city_resolution.dart';
+import '/services/event_city_selection_source.dart';
+import '/services/event_selected_city_state.dart';
+import '/services/event_temporary_city_selection.dart';
 import '/services/event_language_catalog.dart';
 import '/services/event_level_helper.dart';
 
@@ -36,6 +46,16 @@ const ValueKey<String> eventCreateLevelSheetKey =
     ValueKey<String>('event_create_level_sheet');
 const ValueKey<String> eventCreateLevelDoneButtonKey =
     ValueKey<String>('event_create_level_done_button');
+const ValueKey<String> eventCreateCityLabelKey =
+    ValueKey<String>('event_create_city_label');
+const ValueKey<String> eventCreateCitySelectorSemanticsKey =
+    ValueKey<String>('event_create_city_selector_semantics');
+const ValueKey<String> eventCreateCitySelectorKey =
+    ValueKey<String>('event_create_city_selector');
+const ValueKey<String> eventCreateCitySheetKey =
+    ValueKey<String>('event_create_city_sheet');
+const ValueKey<String> eventCreateCitySearchFieldKey =
+    ValueKey<String>('event_create_city_search_field');
 const ValueKey<String> eventCreateDateLabelKey =
     ValueKey<String>('event_create_date_label');
 const ValueKey<String> eventCreateDateSelectorSemanticsKey =
@@ -59,6 +79,12 @@ ValueKey<String> eventCreateLevelMinOptionKey(String level) =>
 ValueKey<String> eventCreateLevelMaxOptionKey(String level) =>
     ValueKey<String>('event_create_level_max_option_$level');
 
+ValueKey<String> eventCreateCityChipKey(EventCity city) => ValueKey<String>(
+    'event_create_city_chip_${city.countryCode}_${city.cityKey}');
+
+ValueKey<String> eventCreateCityOptionKey(EventCity city) => ValueKey<String>(
+    'event_create_city_option_${city.countryCode}_${city.cityKey}');
+
 class EventCreateLanguageDraft {
   const EventCreateLanguageDraft({
     required this.languageCode,
@@ -75,6 +101,22 @@ class EventCreateLevelDraft {
 
   final String levelMin;
   final String levelMax;
+}
+
+class EventCreateCityDraft {
+  const EventCreateCityDraft({
+    required this.countryCode,
+    required this.cityKey,
+    required this.timeZoneId,
+    required this.citySource,
+  });
+
+  final String countryCode;
+  final String cityKey;
+  final String timeZoneId;
+  final String citySource;
+
+  String get identity => '$countryCode:$cityKey';
 }
 
 class EventCreateDateDraft {
@@ -97,14 +139,17 @@ class EventCreateWidget extends StatefulWidget {
   const EventCreateWidget({
     super.key,
     this.languageCatalogOverride,
+    this.cityCatalogOverride,
     this.initialLanguageCode,
     this.initialLevelMin,
     this.initialLevelMax,
+    this.initialSelectedCity,
     this.initialDate,
     this.initialTime,
     this.onLanguageCodeChanged,
     this.onLanguageDraftChanged,
     this.onLevelDraftChanged,
+    this.onCityDraftChanged,
     this.onDateDraftChanged,
     this.onTimeDraftChanged,
   });
@@ -113,14 +158,17 @@ class EventCreateWidget extends StatefulWidget {
   static String routePath = '/events/create';
 
   final EventLanguageCatalog? languageCatalogOverride;
+  final EventCityCatalog? cityCatalogOverride;
   final String? initialLanguageCode;
   final String? initialLevelMin;
   final String? initialLevelMax;
+  final EventSelectedCity? initialSelectedCity;
   final DateTime? initialDate;
   final TimeOfDay? initialTime;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
   final ValueChanged<EventCreateLevelDraft>? onLevelDraftChanged;
+  final ValueChanged<EventCreateCityDraft>? onCityDraftChanged;
   final ValueChanged<EventCreateDateDraft>? onDateDraftChanged;
   final ValueChanged<EventCreateTimeDraft>? onTimeDraftChanged;
 
@@ -136,9 +184,16 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   final _descriptionFocusNode = FocusNode();
   Future<EventLanguageCatalog>? _languageCatalogFuture;
   AssetBundle? _languageCatalogBundle;
+  Future<EventCityCatalog>? _cityCatalogFuture;
+  AssetBundle? _cityCatalogBundle;
+  Future<List<EventCityChip>>? _cityChipsFuture;
+  EventCityCatalog? _cityChipsCatalog;
+  String? _cityChipsCountryCodeHint;
+  String? _cityChipsSelectedIdentity;
   String? _selectedLanguageCode;
   String? _selectedLevelMin;
   String? _selectedLevelMax;
+  EventSelectedCity? _selectedCity;
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
   String? _lastEmittedLanguageDraftCode;
@@ -147,6 +202,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   String? _lastEmittedLevelDraftKey;
   EventLevelRange? _pendingLevelDraftRange;
   bool _levelDraftCallbackScheduled = false;
+  String? _lastEmittedCityDraftKey;
+  EventSelectedCity? _pendingCityDraft;
+  bool _cityDraftCallbackScheduled = false;
   String? _lastEmittedDateDraftKey;
   DateTime? _pendingDateDraft;
   bool _dateDraftCallbackScheduled = false;
@@ -160,6 +218,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _selectedLanguageCode = widget.initialLanguageCode;
     _selectedLevelMin = widget.initialLevelMin;
     _selectedLevelMax = widget.initialLevelMax;
+    _selectedCity = widget.initialSelectedCity;
     _selectedDate = _eventCreateDateOnly(widget.initialDate ?? DateTime.now());
     _selectedTime = widget.initialTime ?? _eventCreateDefaultTime;
   }
@@ -168,11 +227,19 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final bundle = DefaultAssetBundle.of(context);
-    final previousBundle = _languageCatalogBundle;
+    final previousLanguageBundle = _languageCatalogBundle;
+    final previousCityBundle = _cityCatalogBundle;
     _languageCatalogBundle = bundle;
+    _cityCatalogBundle = bundle;
     if (_languageCatalogFuture == null ||
-        (widget.languageCatalogOverride == null && previousBundle != bundle)) {
+        (widget.languageCatalogOverride == null &&
+            previousLanguageBundle != bundle)) {
       _languageCatalogFuture = _loadLanguageCatalog(bundle: bundle);
+    }
+    if (_cityCatalogFuture == null ||
+        (widget.cityCatalogOverride == null && previousCityBundle != bundle)) {
+      _cityCatalogFuture = _loadCityCatalog(bundle: bundle);
+      _clearCityChipsCache();
     }
   }
 
@@ -184,6 +251,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         bundle: _languageCatalogBundle ?? DefaultAssetBundle.of(context),
       );
     }
+    if (oldWidget.cityCatalogOverride != widget.cityCatalogOverride) {
+      _cityCatalogFuture = _loadCityCatalog(
+        bundle: _cityCatalogBundle ?? DefaultAssetBundle.of(context),
+      );
+      _clearCityChipsCache();
+    }
     if (oldWidget.initialLanguageCode != widget.initialLanguageCode) {
       _selectedLanguageCode = widget.initialLanguageCode;
     }
@@ -191,6 +264,10 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         oldWidget.initialLevelMax != widget.initialLevelMax) {
       _selectedLevelMin = widget.initialLevelMin;
       _selectedLevelMax = widget.initialLevelMax;
+    }
+    if (oldWidget.initialSelectedCity != widget.initialSelectedCity) {
+      _selectedCity = widget.initialSelectedCity;
+      _clearCityChipsCache();
     }
     if (oldWidget.initialDate != widget.initialDate) {
       _selectedDate = _eventCreateDateOnly(
@@ -219,6 +296,18 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       return override;
     }
     return EventLanguageCatalog.loadFromAsset(
+      bundle: bundle ?? DefaultAssetBundle.of(context),
+    );
+  }
+
+  Future<EventCityCatalog> _loadCityCatalog({
+    AssetBundle? bundle,
+  }) async {
+    final override = widget.cityCatalogOverride;
+    if (override != null) {
+      return override;
+    }
+    return EventCityCatalog.loadFromAsset(
       bundle: bundle ?? DefaultAssetBundle.of(context),
     );
   }
@@ -324,6 +413,51 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         levelMax: range.levelMax,
       ),
     );
+  }
+
+  void _emitCityDraftNow(EventSelectedCity selectedCity) {
+    _pendingCityDraft = null;
+    final draftKey = _eventCreateCityDraftKey(selectedCity);
+    if (_lastEmittedCityDraftKey == draftKey) {
+      return;
+    }
+    final onCityDraftChanged = widget.onCityDraftChanged;
+    if (onCityDraftChanged == null) {
+      return;
+    }
+    _lastEmittedCityDraftKey = draftKey;
+    onCityDraftChanged(
+      EventCreateCityDraft(
+        countryCode: selectedCity.city.countryCode,
+        cityKey: selectedCity.city.cityKey,
+        timeZoneId: selectedCity.city.timeZoneId,
+        citySource: selectedCity.source.analyticsValue,
+      ),
+    );
+  }
+
+  void _queueCityDraft(EventSelectedCity selectedCity) {
+    final draftKey = _eventCreateCityDraftKey(selectedCity);
+    if (_lastEmittedCityDraftKey == draftKey && _pendingCityDraft == null) {
+      return;
+    }
+    _pendingCityDraft = selectedCity;
+    if (_cityDraftCallbackScheduled) {
+      return;
+    }
+    _cityDraftCallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _cityDraftCallbackScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      final pendingCity = _pendingCityDraft;
+      if (pendingCity == null ||
+          _lastEmittedCityDraftKey == _eventCreateCityDraftKey(pendingCity)) {
+        return;
+      }
+      _emitCityDraftNow(pendingCity);
+    });
   }
 
   void _emitDateDraftNow(DateTime localDate) {
@@ -478,6 +612,133 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _emitLevelDraftNow(selectedLevelRange);
   }
 
+  Future<void> _showCitySelector({
+    required EventCityCatalog catalog,
+    required String? countryCodeHint,
+  }) async {
+    final city = await showModalBottomSheet<EventCity>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _EventCreateCitySheet(
+        catalog: catalog,
+        countryCodeHint: countryCodeHint,
+      ),
+    );
+    if (city == null || !mounted) {
+      return;
+    }
+    await _selectCity(
+      catalog: catalog,
+      city: city,
+      source: EventCitySelectionSource.manual,
+    );
+  }
+
+  Future<void> _selectCity({
+    required EventCityCatalog catalog,
+    required EventCity city,
+    required EventCitySelectionSource source,
+  }) async {
+    final chipSource = await _loadCityChipSource();
+    final input = await EventTemporaryCitySelectionService(
+      chipSource: chipSource,
+    ).selectCity(
+      city: city,
+      source: source,
+    );
+    final selectedState = resolveEventSelectedCityState(
+      user: currentUserDocument,
+      catalog: catalog,
+      temporarySelection: input,
+    );
+    final selectedCity = selectedState.selected;
+    if (selectedCity == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _selectedCity = selectedCity;
+      _clearCityChipsCache();
+    });
+    _emitCityDraftNow(selectedCity);
+  }
+
+  Future<List<EventCityChip>> _loadCityChips({
+    required EventCityCatalog catalog,
+    required EventSelectedCityState selectedState,
+  }) {
+    final countryCodeHint = selectedState.countryCodeHint;
+    final selectedIdentity = selectedState.selected?.city.identity;
+    if (_cityChipsFuture == null ||
+        _cityChipsCatalog != catalog ||
+        _cityChipsCountryCodeHint != countryCodeHint ||
+        _cityChipsSelectedIdentity != selectedIdentity) {
+      _cityChipsCatalog = catalog;
+      _cityChipsCountryCodeHint = countryCodeHint;
+      _cityChipsSelectedIdentity = selectedIdentity;
+      _cityChipsFuture = _loadCityChipsFromStore(
+        catalog: catalog,
+        selectedCityToExclude: selectedState.selected?.city,
+        countryCodeHint: countryCodeHint,
+      );
+    }
+    return _cityChipsFuture!;
+  }
+
+  Future<List<EventCityChip>> _loadCityChipsFromStore({
+    required EventCityCatalog catalog,
+    required EventCity? selectedCityToExclude,
+    required String? countryCodeHint,
+  }) async {
+    final chipSource = await _loadCityChipSource();
+    return chipSource.loadChips(
+      catalog: catalog,
+      selectedCityToExclude: selectedCityToExclude,
+      countryCodeHint: countryCodeHint,
+    );
+  }
+
+  Future<EventCityChipSource> _loadCityChipSource() async {
+    final preferences = await SharedPreferences.getInstance();
+    return EventCityChipSource(
+      recentStore: SharedPreferencesEventRecentCityStore(
+        preferences: preferences,
+      ),
+    );
+  }
+
+  EventSelectedCityState? _resolveVisibleSelectedCityState(
+    EventCityCatalog? catalog,
+  ) {
+    if (_selectedCity != null) {
+      return EventSelectedCityState(
+        profileStatus: EventCityResolutionStatus.missingProfileCity,
+        countryCodeHint: null,
+        selected: _selectedCity,
+      );
+    }
+    if (catalog == null) {
+      return null;
+    }
+    return resolveEventSelectedCityState(
+      user: currentUserDocument,
+      catalog: catalog,
+    );
+  }
+
+  bool get _isWaitingForCurrentUserDocument =>
+      _selectedCity == null &&
+      currentUserUid.isNotEmpty &&
+      currentUserDocument == null;
+
+  void _clearCityChipsCache() {
+    _cityChipsFuture = null;
+    _cityChipsCatalog = null;
+    _cityChipsCountryCodeHint = null;
+    _cityChipsSelectedIdentity = null;
+  }
+
   Future<void> _showDateSelector(DateTime selectedDate) async {
     final normalizedSelectedDate = _eventCreateDateOnly(selectedDate);
     final currentDate = _eventCreateDateOnly(DateTime.now());
@@ -554,134 +815,213 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _queueLevelDraft(selectedLevelRange);
     _queueDateDraft(_selectedDate);
     _queueTimeDraft(_selectedTime);
-    return Scaffold(
-      backgroundColor: ExpatlioDesign.background,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const _EventCreateTopBar(),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space24,
-                  ExpatlioDesign.space24,
-                  ExpatlioDesign.space24,
-                  ExpatlioDesign.space32,
-                ),
-                children: [
-                  Align(
-                    alignment: AlignmentDirectional.topCenter,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 760),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _EventCreateTextField(
-                              labelKey: eventCreateTitleLabelKey,
-                              semanticsKey: eventCreateTitleFieldSemanticsKey,
-                              fieldKey: eventCreateTitleFieldKey,
-                              label:
-                                  FFLocalizations.of(context).getVariableText(
-                                ruText: 'Название',
-                                enText: 'Title',
+    return AuthUserStreamWidget(
+      builder: (context) => Scaffold(
+        backgroundColor: ExpatlioDesign.background,
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _EventCreateTopBar(),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space24,
+                    ExpatlioDesign.space24,
+                    ExpatlioDesign.space24,
+                    ExpatlioDesign.space32,
+                  ),
+                  children: [
+                    Align(
+                      alignment: AlignmentDirectional.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 760),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _EventCreateTextField(
+                                labelKey: eventCreateTitleLabelKey,
+                                semanticsKey: eventCreateTitleFieldSemanticsKey,
+                                fieldKey: eventCreateTitleFieldKey,
+                                label:
+                                    FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Название',
+                                  enText: 'Title',
+                                ),
+                                hintText:
+                                    FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Разговорный клуб: кофе и английский',
+                                  enText:
+                                      'Conversation club: coffee and English',
+                                ),
+                                controller: _titleTextController,
+                                focusNode: _titleFocusNode,
+                                textInputAction: TextInputAction.next,
+                                onFieldSubmitted: () {
+                                  _descriptionFocusNode.requestFocus();
+                                },
                               ),
-                              hintText:
-                                  FFLocalizations.of(context).getVariableText(
-                                ruText: 'Разговорный клуб: кофе и английский',
-                                enText: 'Conversation club: coffee and English',
+                              const SizedBox(height: ExpatlioDesign.space20),
+                              _EventCreateTextField(
+                                labelKey: eventCreateDescriptionLabelKey,
+                                semanticsKey:
+                                    eventCreateDescriptionFieldSemanticsKey,
+                                fieldKey: eventCreateDescriptionFieldKey,
+                                label:
+                                    FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Описание',
+                                  enText: 'Description',
+                                ),
+                                hintText:
+                                    FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Расскажите, что будет на встрече',
+                                  enText:
+                                      'Tell people what will happen at the meetup',
+                                ),
+                                controller: _descriptionTextController,
+                                focusNode: _descriptionFocusNode,
+                                textInputAction: TextInputAction.newline,
+                                keyboardType: TextInputType.multiline,
+                                minLines: 4,
+                                maxLines: 8,
                               ),
-                              controller: _titleTextController,
-                              focusNode: _titleFocusNode,
-                              textInputAction: TextInputAction.next,
-                              onFieldSubmitted: () {
-                                _descriptionFocusNode.requestFocus();
-                              },
-                            ),
-                            const SizedBox(height: ExpatlioDesign.space20),
-                            _EventCreateTextField(
-                              labelKey: eventCreateDescriptionLabelKey,
-                              semanticsKey:
-                                  eventCreateDescriptionFieldSemanticsKey,
-                              fieldKey: eventCreateDescriptionFieldKey,
-                              label:
-                                  FFLocalizations.of(context).getVariableText(
-                                ruText: 'Описание',
-                                enText: 'Description',
-                              ),
-                              hintText:
-                                  FFLocalizations.of(context).getVariableText(
-                                ruText: 'Расскажите, что будет на встрече',
-                                enText:
-                                    'Tell people what will happen at the meetup',
-                              ),
-                              controller: _descriptionTextController,
-                              focusNode: _descriptionFocusNode,
-                              textInputAction: TextInputAction.newline,
-                              keyboardType: TextInputType.multiline,
-                              minLines: 4,
-                              maxLines: 8,
-                            ),
-                            const SizedBox(height: ExpatlioDesign.space20),
-                            FutureBuilder<EventLanguageCatalog>(
-                              future: _languageCatalogFuture,
-                              builder: (context, snapshot) {
-                                final catalog = snapshot.data;
-                                if (catalog == null) {
+                              const SizedBox(height: ExpatlioDesign.space20),
+                              FutureBuilder<EventLanguageCatalog>(
+                                future: _languageCatalogFuture,
+                                builder: (context, snapshot) {
+                                  final catalog = snapshot.data;
+                                  if (catalog == null) {
+                                    return _EventCreateLanguageSelector(
+                                      state: snapshot.hasError
+                                          ? _EventCreateLanguageSelectorState
+                                              .error
+                                          : _EventCreateLanguageSelectorState
+                                              .loading,
+                                    );
+                                  }
+                                  final selectedLanguageCode =
+                                      _resolvedSelectedLanguageCode(catalog);
+                                  _queueLanguageDraft(selectedLanguageCode);
                                   return _EventCreateLanguageSelector(
-                                    state: snapshot.hasError
-                                        ? _EventCreateLanguageSelectorState
-                                            .error
-                                        : _EventCreateLanguageSelectorState
-                                            .loading,
+                                    state: _EventCreateLanguageSelectorState
+                                        .selected,
+                                    selectedLabel:
+                                        _eventCreateLanguageDisplayName(
+                                      context: context,
+                                      catalog: catalog,
+                                      languageCode: selectedLanguageCode,
+                                    ),
+                                    onPressed: () => _showLanguageSelector(
+                                      catalog,
+                                      selectedLanguageCode,
+                                    ),
                                   );
-                                }
-                                final selectedLanguageCode =
-                                    _resolvedSelectedLanguageCode(catalog);
-                                _queueLanguageDraft(selectedLanguageCode);
-                                return _EventCreateLanguageSelector(
-                                  state: _EventCreateLanguageSelectorState
-                                      .selected,
-                                  selectedLabel:
-                                      _eventCreateLanguageDisplayName(
-                                    context: context,
-                                    catalog: catalog,
-                                    languageCode: selectedLanguageCode,
-                                  ),
-                                  onPressed: () => _showLanguageSelector(
-                                    catalog,
-                                    selectedLanguageCode,
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: ExpatlioDesign.space20),
-                            _EventCreateLevelSelector(
-                              selectedRange: selectedLevelRange,
-                              onPressed: () =>
-                                  _showLevelSelector(selectedLevelRange),
-                            ),
-                            const SizedBox(height: ExpatlioDesign.space20),
-                            _EventCreateDateSelector(
-                              selectedDate: _selectedDate,
-                              onPressed: () => _showDateSelector(_selectedDate),
-                            ),
-                            const SizedBox(height: ExpatlioDesign.space20),
-                            _EventCreateTimeSelector(
-                              selectedTime: _selectedTime,
-                              onPressed: () => _showTimeSelector(_selectedTime),
-                            ),
-                          ],
+                                },
+                              ),
+                              const SizedBox(height: ExpatlioDesign.space20),
+                              _EventCreateLevelSelector(
+                                selectedRange: selectedLevelRange,
+                                onPressed: () =>
+                                    _showLevelSelector(selectedLevelRange),
+                              ),
+                              const SizedBox(height: ExpatlioDesign.space20),
+                              FutureBuilder<EventCityCatalog>(
+                                future: _cityCatalogFuture,
+                                builder: (context, snapshot) {
+                                  final catalog = snapshot.data;
+                                  if (catalog == null ||
+                                      _isWaitingForCurrentUserDocument) {
+                                    return _EventCreateCitySelector(
+                                      state: snapshot.hasError
+                                          ? _EventCreateCitySelectorState.error
+                                          : _EventCreateCitySelectorState
+                                              .loading,
+                                    );
+                                  }
+                                  final selectedState =
+                                      _resolveVisibleSelectedCityState(catalog);
+                                  final selectedCity = selectedState?.selected;
+                                  if (selectedCity != null) {
+                                    _queueCityDraft(selectedCity);
+                                  }
+                                  final showsCityChips =
+                                      selectedState != null &&
+                                          selectedState.needsCitySelection &&
+                                          !selectedState.hasOutdatedProfileCity;
+                                  final cityChipsFuture = showsCityChips
+                                      ? _loadCityChips(
+                                          catalog: catalog,
+                                          selectedState: selectedState,
+                                        )
+                                      : null;
+
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _EventCreateCitySelector(
+                                        state:
+                                            _EventCreateCitySelectorState.ready,
+                                        selectedCity: selectedCity,
+                                        hasOutdatedProfileCity: selectedState
+                                                ?.hasOutdatedProfileCity ??
+                                            false,
+                                        showsMissingLocationPrompt:
+                                            selectedState != null &&
+                                                selectedState
+                                                    .needsCitySelection &&
+                                                !selectedState
+                                                    .hasOutdatedProfileCity,
+                                        onPressed: () => _showCitySelector(
+                                          catalog: catalog,
+                                          countryCodeHint:
+                                              selectedState?.countryCodeHint,
+                                        ),
+                                      ),
+                                      if (cityChipsFuture != null) ...[
+                                        const SizedBox(
+                                            height: ExpatlioDesign.space12),
+                                        _EventCreateCityChips(
+                                          chipsFuture: cityChipsFuture,
+                                          onChipPressed: (chip) {
+                                            unawaited(
+                                              _selectCity(
+                                                catalog: catalog,
+                                                city: chip.city,
+                                                source: chip.source,
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: ExpatlioDesign.space20),
+                              _EventCreateDateSelector(
+                                selectedDate: _selectedDate,
+                                onPressed: () =>
+                                    _showDateSelector(_selectedDate),
+                              ),
+                              const SizedBox(height: ExpatlioDesign.space20),
+                              _EventCreateTimeSelector(
+                                selectedTime: _selectedTime,
+                                onPressed: () =>
+                                    _showTimeSelector(_selectedTime),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -980,6 +1320,232 @@ class _EventCreateLevelSelector extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+enum _EventCreateCitySelectorState {
+  loading,
+  error,
+  ready,
+}
+
+class _EventCreateCitySelector extends StatelessWidget {
+  const _EventCreateCitySelector({
+    required this.state,
+    this.selectedCity,
+    this.hasOutdatedProfileCity = false,
+    this.showsMissingLocationPrompt = false,
+    this.onPressed,
+  });
+
+  final _EventCreateCitySelectorState state;
+  final EventSelectedCity? selectedCity;
+  final bool hasOutdatedProfileCity;
+  final bool showsMissingLocationPrompt;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final fieldLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Город',
+      enText: 'City',
+    );
+    final selectorLabel = _citySelectorLabel(context);
+    final semanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Город события',
+      enText: 'Event city',
+    );
+    final isEnabled =
+        onPressed != null && state == _EventCreateCitySelectorState.ready;
+    final iconColor = state == _EventCreateCitySelectorState.error
+        ? ExpatlioDesign.danger
+        : ExpatlioDesign.primary;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          key: eventCreateCityLabelKey,
+          fieldLabel,
+          style: ExpatlioDesign.formLabelStyle(context),
+        ),
+        const SizedBox(height: ExpatlioDesign.space8),
+        Semantics(
+          key: eventCreateCitySelectorSemanticsKey,
+          button: true,
+          enabled: isEnabled,
+          label: semanticsLabel,
+          value: selectorLabel,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: eventCreateCitySelectorKey,
+              onTap: isEnabled ? onPressed : null,
+              borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 48),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space12,
+                ),
+                decoration: ExpatlioDesign.cardDecoration(
+                  borderColor: ExpatlioDesign.separator,
+                  radius: ExpatlioDesign.controlRadius,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.location_on_outlined,
+                          color: iconColor,
+                          size: 20,
+                        ),
+                        const SizedBox(width: ExpatlioDesign.space8),
+                        Expanded(
+                          child: Text(
+                            selectorLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ExpatlioDesign.textStyle(
+                              context,
+                              color: selectedCity == null
+                                  ? ExpatlioDesign.muted
+                                  : ExpatlioDesign.text,
+                              size: 16,
+                              weight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: ExpatlioDesign.space8),
+                        if (state == _EventCreateCitySelectorState.loading)
+                          Icon(
+                            Icons.hourglass_empty,
+                            color: ExpatlioDesign.muted,
+                            size: 20,
+                          )
+                        else
+                          Icon(
+                            FFIcons.kchevronDown,
+                            color: isEnabled
+                                ? ExpatlioDesign.muted
+                                : ExpatlioDesign.disabled,
+                            size: 20,
+                          ),
+                      ],
+                    ),
+                    if (hasOutdatedProfileCity ||
+                        showsMissingLocationPrompt) ...[
+                      const SizedBox(height: ExpatlioDesign.space8),
+                      Text(
+                        _helperText(context),
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: ExpatlioDesign.muted,
+                          size: 13,
+                          weight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _citySelectorLabel(BuildContext context) {
+    final city = selectedCity?.city;
+    if (state == _EventCreateCitySelectorState.loading) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Загрузка городов...',
+        enText: 'Loading cities...',
+      );
+    }
+    if (state == _EventCreateCitySelectorState.error) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Не удалось загрузить города',
+        enText: 'Could not load cities',
+      );
+    }
+    if (city == null) {
+      if (hasOutdatedProfileCity) {
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Выберите город заново',
+          enText: 'Choose city again',
+        );
+      }
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Выберите город',
+        enText: 'Choose city',
+      );
+    }
+    return _eventCreateCityLabel(context, city);
+  }
+
+  String _helperText(BuildContext context) {
+    if (hasOutdatedProfileCity) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText:
+            'Сохранённый город больше недоступен. Выберите актуальный город для события.',
+        enText:
+            'Your saved city is no longer available. Choose a current city for the event.',
+      );
+    }
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Выберите город события или нажмите один из вариантов ниже.',
+      enText: 'Choose the event city or tap one of the options below.',
+    );
+  }
+}
+
+class _EventCreateCityChips extends StatelessWidget {
+  const _EventCreateCityChips({
+    required this.chipsFuture,
+    required this.onChipPressed,
+  });
+
+  final Future<List<EventCityChip>> chipsFuture;
+  final ValueChanged<EventCityChip> onChipPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<EventCityChip>>(
+      future: chipsFuture,
+      builder: (context, snapshot) {
+        final chips = snapshot.data;
+        if (chips == null || chips.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Wrap(
+          spacing: ExpatlioDesign.space8,
+          runSpacing: ExpatlioDesign.space8,
+          children: [
+            for (final chip in chips)
+              ActionChip(
+                key: eventCreateCityChipKey(chip.city),
+                label: Text(_eventCreateCityLabel(context, chip.city)),
+                onPressed: () => onChipPressed(chip),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                backgroundColor: ExpatlioDesign.secondarySystemBackground,
+                side: BorderSide(color: ExpatlioDesign.separator),
+                labelStyle: ExpatlioDesign.textStyle(
+                  context,
+                  size: 14,
+                  weight: FontWeight.w600,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1366,6 +1932,176 @@ class _EventCreateLevelChipGroup extends StatelessWidget {
   }
 }
 
+class _EventCreateCitySheet extends StatefulWidget {
+  const _EventCreateCitySheet({
+    required this.catalog,
+    required this.countryCodeHint,
+  });
+
+  final EventCityCatalog catalog;
+  final String? countryCodeHint;
+
+  @override
+  State<_EventCreateCitySheet> createState() => _EventCreateCitySheetState();
+}
+
+class _EventCreateCitySheetState extends State<_EventCreateCitySheet> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final options = _options;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.78;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        key: eventCreateCitySheetKey,
+        decoration: ExpatlioDesign.sheetDecoration(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space20,
+              ExpatlioDesign.space20,
+              ExpatlioDesign.space20,
+              ExpatlioDesign.space20 + bottomInset,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Выберите город',
+                    enText: 'Choose city',
+                  ),
+                  style: ExpatlioDesign.bottomSheetTitleStyle(context),
+                ),
+                const SizedBox(height: ExpatlioDesign.space12),
+                TextField(
+                  key: eventCreateCitySearchFieldKey,
+                  controller: _searchController,
+                  autofocus: true,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: FFLocalizations.of(context).getVariableText(
+                      ruText: 'Поиск города',
+                      enText: 'Search city',
+                    ),
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: ExpatlioDesign.secondarySystemBackground,
+                    border: OutlineInputBorder(
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.controlRadius),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space16,
+                      ExpatlioDesign.space12,
+                      ExpatlioDesign.space16,
+                      ExpatlioDesign.space12,
+                    ),
+                  ),
+                  onChanged: (value) => setState(() {
+                    _query = value;
+                  }),
+                ),
+                const SizedBox(height: ExpatlioDesign.space12),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: ExpatlioDesign.space8),
+                    itemBuilder: (context, index) {
+                      final option = options[index];
+                      return _EventCreateCityOptionTile(
+                        option: option,
+                        onTap: () => Navigator.of(context).pop(option.city),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<EventCitySearchOption> get _options {
+    if (_query.trim().isEmpty) {
+      return widget.catalog
+          .popularCities(countryCodeHint: widget.countryCodeHint)
+          .map((city) => EventCitySearchOption(city: city))
+          .toList(growable: false);
+    }
+    return widget.catalog.searchOptions(
+      _query,
+      countryCodeHint: widget.countryCodeHint,
+    );
+  }
+}
+
+class _EventCreateCityOptionTile extends StatelessWidget {
+  const _EventCreateCityOptionTile({
+    required this.option,
+    required this.onTap,
+  });
+
+  final EventCitySearchOption option;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: _eventCreateCityLabel(context, option.city),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: eventCreateCityOptionKey(option.city),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
+          child: Container(
+            padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space12,
+            ),
+            decoration: ExpatlioDesign.cardDecoration(
+              borderColor: ExpatlioDesign.separator,
+              radius: ExpatlioDesign.controlRadius,
+            ),
+            child: Text(
+              _eventCreateCityLabel(context, option.city),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ExpatlioDesign.textStyle(
+                context,
+                size: 16,
+                weight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EventCreateLanguageSheet extends StatelessWidget {
   const _EventCreateLanguageSheet({
     required this.catalog,
@@ -1562,6 +2298,18 @@ String _eventCreateLevelRangeLabel(EventLevelRange range) =>
 
 String _eventCreateLevelDraftKey(EventLevelRange range) =>
     '${range.levelMin}:${range.levelMax}';
+
+String _eventCreateCityLabel(BuildContext context, EventCity city) {
+  final isRu = FFLocalizations.of(context).languageCode == 'ru';
+  final cityName = isRu ? city.cityNameRu : city.cityNameEn;
+  return '$cityName · ${city.cityDisplayContext}';
+}
+
+String _eventCreateCityDraftKey(EventSelectedCity selectedCity) {
+  return '${selectedCity.city.identity}:'
+      '${selectedCity.city.timeZoneId}:'
+      '${selectedCity.source.analyticsValue}';
+}
 
 DateTime _eventCreateDateOnly(DateTime value) =>
     DateTime(value.year, value.month, value.day);
