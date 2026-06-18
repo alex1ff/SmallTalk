@@ -329,6 +329,10 @@ void main() {
       expect(profile, contains('ensureCanonicalCurrentUserDocument('));
       expect(profile, contains('DashboardNSWidget.routeName'));
       expect(profile, contains('availabilityToday:'));
+      expect(
+        profile,
+        contains('role: UserRole.native_speaker'),
+      );
       expect(profile, isNot(contains('isInCall: false')));
       expect(profile, contains('Подать заявку снова'));
       expect(celebration, contains('ваша заявка отправлена'));
@@ -423,6 +427,10 @@ void main() {
       expect(studentDashboard,
           isNot(contains('_buildAnimatedAvailabilitySection')));
       expect(studentDashboard, isNot(contains('availabilityToday:')));
+      expect(
+          studentDashboard, isNot(contains('createAvailabilityTodayStruct')));
+      expect(studentDashboard, isNot(contains('getIntervalsFirestoreData')));
+      expect(studentDashboard, isNot(contains('updateIntervalsStruct')));
       expect(studentDashboard, isNot(contains('isInCall: false')));
       expect(studentDashboard, isNot(contains('FieldValue.arrayRemove')));
       expect(studentDashboard,
