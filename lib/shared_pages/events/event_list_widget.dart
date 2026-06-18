@@ -15,6 +15,8 @@ const ValueKey<String> eventListCreateButtonKey =
     ValueKey<String>('event_list_create_button');
 const ValueKey<String> eventListCitySelectorKey =
     ValueKey<String>('event_list_city_selector');
+const ValueKey<String> eventManualCitySearchFieldKey =
+    ValueKey<String>('event_manual_city_search_field');
 
 class EventListWidget extends StatefulWidget {
   const EventListWidget({
@@ -99,6 +101,13 @@ class _EventListWidgetState extends State<EventListWidget> {
                     selectedState: selectedState,
                   )
                 : null;
+            final onCitySelectorPressed = widget.onCitySelectorPressed ??
+                (catalog == null
+                    ? null
+                    : () => _openManualCityPicker(
+                          catalog: catalog,
+                          countryCodeHint: selectedState?.countryCodeHint,
+                        ));
 
             return Scaffold(
               backgroundColor: ExpatlioDesign.background,
@@ -159,7 +168,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                         showsMissingLocationPrompt: selectedState != null &&
                             selectedState.needsCitySelection &&
                             !selectedState.hasOutdatedProfileCity,
-                        onPressed: widget.onCitySelectorPressed,
+                        onPressed: onCitySelectorPressed,
                       ),
                       if (cityChipsFuture != null) ...[
                         const SizedBox(height: ExpatlioDesign.space12),
@@ -173,6 +182,26 @@ class _EventListWidgetState extends State<EventListWidget> {
           },
         );
       },
+    );
+  }
+
+  Future<void> _openManualCityPicker({
+    required EventCityCatalog catalog,
+    required String? countryCodeHint,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: ExpatlioDesign.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(ExpatlioDesign.sheetRadius),
+        ),
+      ),
+      builder: (context) => _EventManualCityPicker(
+        catalog: catalog,
+        countryCodeHint: countryCodeHint,
+      ),
     );
   }
 
@@ -235,6 +264,162 @@ class _EventListWidgetState extends State<EventListWidget> {
     );
   }
 }
+
+class _EventManualCityPicker extends StatefulWidget {
+  const _EventManualCityPicker({
+    required this.catalog,
+    required this.countryCodeHint,
+  });
+
+  final EventCityCatalog catalog;
+  final String? countryCodeHint;
+
+  @override
+  State<_EventManualCityPicker> createState() => _EventManualCityPickerState();
+}
+
+class _EventManualCityPickerState extends State<_EventManualCityPicker> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final options = _options;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space16,
+          ExpatlioDesign.space16 + bottomInset,
+        ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                FFLocalizations.of(context).getVariableText(
+                  ruText: 'Выберите город',
+                  enText: 'Choose city',
+                ),
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  size: 22,
+                  weight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: ExpatlioDesign.space12),
+              TextField(
+                key: eventManualCitySearchFieldKey,
+                controller: _searchController,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Поиск города',
+                    enText: 'Search city',
+                  ),
+                  prefixIcon: const Icon(Icons.search),
+                  filled: true,
+                  fillColor: ExpatlioDesign.secondarySystemBackground,
+                  border: OutlineInputBorder(
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.controlRadius),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space12,
+                  ),
+                ),
+                onChanged: (value) => setState(() {
+                  _query = value;
+                }),
+              ),
+              const SizedBox(height: ExpatlioDesign.space12),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: options.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: ExpatlioDesign.space8),
+                  itemBuilder: (context, index) => _EventManualCityOptionTile(
+                    option: options[index],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<EventCitySearchOption> get _options {
+    if (_query.trim().isEmpty) {
+      return widget.catalog
+          .popularCities(countryCodeHint: widget.countryCodeHint)
+          .map((city) => EventCitySearchOption(city: city))
+          .toList(growable: false);
+    }
+    return widget.catalog.searchOptions(
+      _query,
+      countryCodeHint: widget.countryCodeHint,
+    );
+  }
+}
+
+class _EventManualCityOptionTile extends StatelessWidget {
+  const _EventManualCityOptionTile({
+    required this.option,
+  });
+
+  final EventCitySearchOption option;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: _eventManualCityOptionKey(option.city),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.space12,
+        ExpatlioDesign.space12,
+        ExpatlioDesign.space12,
+        ExpatlioDesign.space12,
+      ),
+      decoration: ExpatlioDesign.cardDecoration(
+        borderColor: ExpatlioDesign.separator,
+        radius: ExpatlioDesign.controlRadius,
+      ),
+      child: Text(
+        _cityChipLabel(context, option.city),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: ExpatlioDesign.textStyle(
+          context,
+          size: 16,
+          weight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+ValueKey<String> _eventManualCityOptionKey(EventCity city) => ValueKey<String>(
+    'event_manual_city_option_${city.countryCode}_${city.cityKey}');
 
 class _EventCityChips extends StatelessWidget {
   const _EventCityChips({

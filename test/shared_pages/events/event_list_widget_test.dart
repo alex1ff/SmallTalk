@@ -281,6 +281,45 @@ void main() {
     expect(find.text('static'), findsNothing);
   });
 
+  testWidgets(
+      'opens manual city picker from selector without injected callback',
+      (tester) async {
+    final fullCatalog = EventCityCatalog.fromJsonString(
+      File(eventCityCatalogAssetPath).readAsStringSync(),
+    );
+    currentUserDocument = _userFixture(
+      uid: 'manual-city-picker-user',
+      data: {},
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(cityCatalogOverride: fullCatalog),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey<String>('event_city_chip_GE_tbilisi')),
+        findsNothing);
+
+    await tester.tap(find.byKey(eventListCitySelectorKey));
+    await tester.pumpAndSettle();
+
+    final searchField =
+        find.byKey(const ValueKey<String>('event_manual_city_search_field'));
+    expect(searchField, findsOneWidget);
+
+    await tester.enterText(searchField, 'Тбилиси');
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('event_manual_city_option_GE_tbilisi')),
+      findsOneWidget,
+    );
+    expect(find.text('Тбилиси · საქართველო'), findsOneWidget);
+    expect(_citySelectorText('Тбилиси · საქართველო'), findsNothing);
+  });
+
   testWidgets('leaves stale malformed and unknown profile cities unselected',
       (tester) async {
     for (final fixture in <Map<String, dynamic>>[
@@ -386,8 +425,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(eventListCitySelectorKey));
+    await tester.pumpAndSettle();
 
     expect(taps, 1);
+    expect(find.byKey(eventManualCitySearchFieldKey), findsNothing);
   });
 
   testWidgets('opens event create as a pushed screen from the header',

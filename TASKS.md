@@ -180,7 +180,7 @@ Date: 2026-06-14
 - [x] If profile has only existing `Country_NS`, show missing-city flow and use country only to prioritize city suggestions.
 - [x] Show location prompt when profile city is missing.
 - [x] Add city chips in missing-location flow: recent selections first, static popular cities second.
-- [ ] Add manual city selection action because chips are shortcuts, not the full city set.
+- [x] Add manual city selection action because chips are shortcuts, not the full city set.
 - [ ] Allow chip/manual city selection to unlock the event list without saving profile location.
 - [ ] Add date filter chips: `Сегодня`, `Завтра`, `На этой неделе`, `В этом месяце`.
 - [ ] Add level filter chips: `A1`, `A2`, `B1`, `B2`, `C1`, `C2`.
