@@ -42,6 +42,13 @@ const ValueKey<String> eventCreateDateSelectorSemanticsKey =
     ValueKey<String>('event_create_date_selector_semantics');
 const ValueKey<String> eventCreateDateSelectorKey =
     ValueKey<String>('event_create_date_selector');
+const ValueKey<String> eventCreateTimeLabelKey =
+    ValueKey<String>('event_create_time_label');
+const ValueKey<String> eventCreateTimeSelectorSemanticsKey =
+    ValueKey<String>('event_create_time_selector_semantics');
+const ValueKey<String> eventCreateTimeSelectorKey =
+    ValueKey<String>('event_create_time_selector');
+const TimeOfDay _eventCreateDefaultTime = TimeOfDay(hour: 18, minute: 0);
 
 ValueKey<String> eventCreateLanguageOptionKey(String code) =>
     ValueKey<String>('event_create_language_option_$code');
@@ -78,6 +85,14 @@ class EventCreateDateDraft {
   final DateTime localDate;
 }
 
+class EventCreateTimeDraft {
+  const EventCreateTimeDraft({
+    required this.localTime,
+  });
+
+  final TimeOfDay localTime;
+}
+
 class EventCreateWidget extends StatefulWidget {
   const EventCreateWidget({
     super.key,
@@ -86,10 +101,12 @@ class EventCreateWidget extends StatefulWidget {
     this.initialLevelMin,
     this.initialLevelMax,
     this.initialDate,
+    this.initialTime,
     this.onLanguageCodeChanged,
     this.onLanguageDraftChanged,
     this.onLevelDraftChanged,
     this.onDateDraftChanged,
+    this.onTimeDraftChanged,
   });
 
   static String routeName = 'eventCreate';
@@ -100,10 +117,12 @@ class EventCreateWidget extends StatefulWidget {
   final String? initialLevelMin;
   final String? initialLevelMax;
   final DateTime? initialDate;
+  final TimeOfDay? initialTime;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateLanguageDraft>? onLanguageDraftChanged;
   final ValueChanged<EventCreateLevelDraft>? onLevelDraftChanged;
   final ValueChanged<EventCreateDateDraft>? onDateDraftChanged;
+  final ValueChanged<EventCreateTimeDraft>? onTimeDraftChanged;
 
   @override
   State<EventCreateWidget> createState() => _EventCreateWidgetState();
@@ -121,6 +140,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   String? _selectedLevelMin;
   String? _selectedLevelMax;
   late DateTime _selectedDate;
+  late TimeOfDay _selectedTime;
   String? _lastEmittedLanguageDraftCode;
   String? _pendingLanguageDraftCode;
   bool _languageDraftCallbackScheduled = false;
@@ -130,6 +150,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   String? _lastEmittedDateDraftKey;
   DateTime? _pendingDateDraft;
   bool _dateDraftCallbackScheduled = false;
+  String? _lastEmittedTimeDraftKey;
+  TimeOfDay? _pendingTimeDraft;
+  bool _timeDraftCallbackScheduled = false;
 
   @override
   void initState() {
@@ -138,6 +161,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _selectedLevelMin = widget.initialLevelMin;
     _selectedLevelMax = widget.initialLevelMax;
     _selectedDate = _eventCreateDateOnly(widget.initialDate ?? DateTime.now());
+    _selectedTime = widget.initialTime ?? _eventCreateDefaultTime;
   }
 
   @override
@@ -172,6 +196,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       _selectedDate = _eventCreateDateOnly(
         widget.initialDate ?? DateTime.now(),
       );
+    }
+    if (oldWidget.initialTime != widget.initialTime) {
+      _selectedTime = widget.initialTime ?? _eventCreateDefaultTime;
     }
   }
 
@@ -341,6 +368,46 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     });
   }
 
+  void _emitTimeDraftNow(TimeOfDay localTime) {
+    _pendingTimeDraft = null;
+    final draftKey = _eventCreateTimeDraftKey(localTime);
+    if (_lastEmittedTimeDraftKey == draftKey) {
+      return;
+    }
+    final onTimeDraftChanged = widget.onTimeDraftChanged;
+    if (onTimeDraftChanged == null) {
+      return;
+    }
+    _lastEmittedTimeDraftKey = draftKey;
+    onTimeDraftChanged(
+      EventCreateTimeDraft(localTime: localTime),
+    );
+  }
+
+  void _queueTimeDraft(TimeOfDay localTime) {
+    final draftKey = _eventCreateTimeDraftKey(localTime);
+    if (_lastEmittedTimeDraftKey == draftKey && _pendingTimeDraft == null) {
+      return;
+    }
+    _pendingTimeDraft = localTime;
+    if (_timeDraftCallbackScheduled) {
+      return;
+    }
+    _timeDraftCallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _timeDraftCallbackScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      final pendingTime = _pendingTimeDraft;
+      if (pendingTime == null ||
+          _lastEmittedTimeDraftKey == _eventCreateTimeDraftKey(pendingTime)) {
+        return;
+      }
+      _emitTimeDraftNow(pendingTime);
+    });
+  }
+
   void _queueLevelDraft(EventLevelRange range) {
     final draftKey = _eventCreateLevelDraftKey(range);
     if (_lastEmittedLevelDraftKey == draftKey &&
@@ -444,11 +511,49 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _emitDateDraftNow(normalizedPickedDate);
   }
 
+  Future<void> _showTimeSelector(TimeOfDay selectedTime) async {
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: selectedTime,
+      initialEntryMode: TimePickerEntryMode.inputOnly,
+      helpText: FFLocalizations.of(context).getVariableText(
+        ruText: 'Выберите время',
+        enText: 'Choose time',
+      ),
+      cancelText: FFLocalizations.of(context).getVariableText(
+        ruText: 'Отмена',
+        enText: 'Cancel',
+      ),
+      confirmText: FFLocalizations.of(context).getVariableText(
+        ruText: 'Готово',
+        enText: 'Done',
+      ),
+      builder: (context, child) {
+        final mediaQuery = MediaQuery.maybeOf(context);
+        if (mediaQuery == null || child == null) {
+          return child ?? const SizedBox.shrink();
+        }
+        return MediaQuery(
+          data: mediaQuery.copyWith(alwaysUse24HourFormat: true),
+          child: child,
+        );
+      },
+    );
+    if (pickedTime == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _selectedTime = pickedTime;
+    });
+    _emitTimeDraftNow(pickedTime);
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedLevelRange = _resolvedSelectedLevelRange();
     _queueLevelDraft(selectedLevelRange);
     _queueDateDraft(_selectedDate);
+    _queueTimeDraft(_selectedTime);
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
       body: SafeArea(
@@ -562,6 +667,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                             _EventCreateDateSelector(
                               selectedDate: _selectedDate,
                               onPressed: () => _showDateSelector(_selectedDate),
+                            ),
+                            const SizedBox(height: ExpatlioDesign.space20),
+                            _EventCreateTimeSelector(
+                              selectedTime: _selectedTime,
+                              onPressed: () => _showTimeSelector(_selectedTime),
                             ),
                           ],
                         ),
@@ -935,6 +1045,98 @@ class _EventCreateDateSelector extends StatelessWidget {
                   children: [
                     Icon(
                       Icons.calendar_today_outlined,
+                      color: ExpatlioDesign.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: ExpatlioDesign.space8),
+                    Expanded(
+                      child: Text(
+                        selectorLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: ExpatlioDesign.text,
+                          size: 16,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: ExpatlioDesign.space8),
+                    Icon(
+                      FFIcons.kchevronDown,
+                      color: ExpatlioDesign.muted,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventCreateTimeSelector extends StatelessWidget {
+  const _EventCreateTimeSelector({
+    required this.selectedTime,
+    required this.onPressed,
+  });
+
+  final TimeOfDay selectedTime;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final fieldLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Время',
+      enText: 'Time',
+    );
+    final selectorLabel = _eventCreateTimeLabel(selectedTime);
+    final semanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Время события',
+      enText: 'Event time',
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          key: eventCreateTimeLabelKey,
+          fieldLabel,
+          style: ExpatlioDesign.formLabelStyle(context),
+        ),
+        const SizedBox(height: ExpatlioDesign.space8),
+        Semantics(
+          key: eventCreateTimeSelectorSemanticsKey,
+          button: true,
+          enabled: true,
+          label: semanticsLabel,
+          value: selectorLabel,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: eventCreateTimeSelectorKey,
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 48),
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space12,
+                ),
+                decoration: ExpatlioDesign.cardDecoration(
+                  borderColor: ExpatlioDesign.separator,
+                  radius: ExpatlioDesign.controlRadius,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.schedule_outlined,
                       color: ExpatlioDesign.primary,
                       size: 20,
                     ),
@@ -1380,4 +1582,13 @@ String _eventCreateDateDraftKey(DateTime localDate) {
   final month = date.month.toString().padLeft(2, '0');
   final day = date.day.toString().padLeft(2, '0');
   return '${date.year}-$month-$day';
+}
+
+String _eventCreateTimeLabel(TimeOfDay localTime) =>
+    _eventCreateTimeDraftKey(localTime);
+
+String _eventCreateTimeDraftKey(TimeOfDay localTime) {
+  final hour = localTime.hour.toString().padLeft(2, '0');
+  final minute = localTime.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
 }

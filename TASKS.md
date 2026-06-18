@@ -221,7 +221,7 @@ Date: 2026-06-14
 - [x] Submit selected language as primary `languageCode`; backend persists denormalized `languageNameEn` and `languageNameRu` from the synchronized allowlist.
 - [x] Add level/range selector.
 - [x] Add date picker.
-- [ ] Add time picker.
+- [x] Add time picker.
 - [ ] Add city selector.
 - [ ] Add place/address input.
 - [ ] Add participant limit input.

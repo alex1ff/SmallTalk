@@ -83,6 +83,10 @@ void main() {
     expect(find.byKey(eventCreateDateLabelKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
     expect(find.text('Дата'), findsOneWidget);
+    expect(find.byKey(eventCreateTimeLabelKey), findsOneWidget);
+    expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
+    expect(find.text('Время'), findsOneWidget);
+    expect(_timeSelectorText('18:00'), findsOneWidget);
 
     final titleField = tester.widget<TextField>(
       find.descendant(
@@ -131,6 +135,8 @@ void main() {
     expect(find.text('Level'), findsOneWidget);
     expect(_levelSelectorText('B1-C1'), findsOneWidget);
     expect(find.text('Date'), findsOneWidget);
+    expect(find.text('Time'), findsOneWidget);
+    expect(_timeSelectorText('18:00'), findsOneWidget);
   });
 
   testWidgets('renders language selector from catalog in Russian',
@@ -627,6 +633,135 @@ void main() {
     expect(drafts.map(_dateDraftValue), ['2026-06-15']);
   });
 
+  testWidgets('emits default time draft for submit handoff', (tester) async {
+    final drafts = <EventCreateTimeDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          onTimeDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts.map(_timeDraftValue), ['18:00']);
+  });
+
+  testWidgets('emits time draft when handoff callback is added later',
+      (tester) async {
+    final drafts = <EventCreateTimeDraft>[];
+    var callbackEnabled = false;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventCreateWidget(
+              languageCatalogOverride: _languageCatalog,
+              initialTime: const TimeOfDay(hour: 19, minute: 30),
+              onTimeDraftChanged: callbackEnabled ? drafts.add : null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(drafts, isEmpty);
+
+    setHostState(() {
+      callbackEnabled = true;
+    });
+    await tester.pumpAndSettle();
+
+    expect(drafts.map(_timeDraftValue), ['19:30']);
+  });
+
+  testWidgets('uses initial time for submit handoff', (tester) async {
+    final drafts = <EventCreateTimeDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialDate: DateTime(2026, 6, 20, 18, 30),
+          initialTime: const TimeOfDay(hour: 7, minute: 5),
+          onTimeDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_timeSelectorText('07:05'), findsOneWidget);
+    expect(drafts.map(_timeDraftValue), ['07:05']);
+  });
+
+  testWidgets('opens time picker and selects local time', (tester) async {
+    final drafts = <EventCreateTimeDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          onTimeDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(eventCreateTimeSelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateTimeSelectorKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Выберите время'), findsOneWidget);
+    expect(find.byIcon(Icons.access_time), findsNothing);
+    final timeFields = find.descendant(
+      of: find.byType(TimePickerDialog),
+      matching: find.byType(TextField),
+    );
+    expect(timeFields, findsNWidgets(2));
+
+    await tester.enterText(timeFields.at(0), '20');
+    await tester.enterText(timeFields.at(1), '30');
+    await tester.tap(find.text('Готово'));
+    await tester.pumpAndSettle();
+
+    expect(_timeSelectorText('20:30'), findsOneWidget);
+    expect(drafts.map(_timeDraftValue), ['18:00', '20:30']);
+  });
+
+  testWidgets('cancels time picker without changing time draft',
+      (tester) async {
+    final drafts = <EventCreateTimeDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          onTimeDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(eventCreateTimeSelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateTimeSelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Отмена'));
+    await tester.pumpAndSettle();
+
+    expect(_timeSelectorText('18:00'), findsOneWidget);
+    expect(drafts.map(_timeDraftValue), ['18:00']);
+  });
+
   testWidgets('shows language loading state before catalog resolves',
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
@@ -799,6 +934,12 @@ void main() {
       expect(dateSemantics.flagsCollection.isEnabled, isTrue);
       expect(dateSemantics.label, contains('Дата события'));
       expect(dateSemantics.value, isNotEmpty);
+      final timeSemantics =
+          tester.getSemantics(find.byKey(eventCreateTimeSelectorSemanticsKey));
+      expect(timeSemantics.flagsCollection.isButton, isTrue);
+      expect(timeSemantics.flagsCollection.isEnabled, isTrue);
+      expect(timeSemantics.label, contains('Время события'));
+      expect(timeSemantics.value, contains('18:00'));
     } finally {
       semanticsHandle.dispose();
     }
@@ -850,6 +991,12 @@ void main() {
       expect(dateSemantics.flagsCollection.isEnabled, isTrue);
       expect(dateSemantics.label, contains('Event date'));
       expect(dateSemantics.value, isNotEmpty);
+      final timeSemantics =
+          tester.getSemantics(find.byKey(eventCreateTimeSelectorSemanticsKey));
+      expect(timeSemantics.flagsCollection.isButton, isTrue);
+      expect(timeSemantics.flagsCollection.isEnabled, isTrue);
+      expect(timeSemantics.label, contains('Event time'));
+      expect(timeSemantics.value, contains('18:00'));
     } finally {
       semanticsHandle.dispose();
     }
@@ -939,6 +1086,7 @@ void main() {
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
   });
 
   testWidgets('form fields fit narrow large-text layouts', (tester) async {
@@ -965,6 +1113,7 @@ void main() {
     expect(find.byKey(eventCreateDescriptionFieldKey), findsOneWidget);
     expect(find.byKey(eventCreateLevelSelectorKey), findsOneWidget);
     expect(find.byKey(eventCreateDateSelectorKey), findsOneWidget);
+    expect(find.byKey(eventCreateTimeSelectorKey), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1017,6 +1166,20 @@ String _dateLabel(DateTime date, {Locale locale = const Locale('ru')}) {
     _dateOnly(date),
     locale: locale.languageCode,
   );
+}
+
+Finder _timeSelectorText(String text) => find.descendant(
+      of: find.byKey(eventCreateTimeSelectorKey),
+      matching: find.text(text),
+    );
+
+String _timeDraftValue(EventCreateTimeDraft draft) =>
+    _timeValue(draft.localTime);
+
+String _timeValue(TimeOfDay time) {
+  final hour = time.hour.toString().padLeft(2, '0');
+  final minute = time.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
 }
 
 final _languageCatalog = EventLanguageCatalog(
