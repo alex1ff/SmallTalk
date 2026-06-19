@@ -272,6 +272,13 @@ test.beforeEach(async () => {
         privateEmail: "malformed-owner@example.com",
       }),
     );
+    await db.doc("events/editable-event/participants/invalid-status").set(
+      participantData({
+        userId: "invalid-status",
+        displayName: "Invalid Status",
+        status: "pending",
+      }),
+    );
     await db.doc("events/canceled-editable-event/participants/user-a").set(
       participantData(),
     );
@@ -394,6 +401,7 @@ test("participant get is limited to active roster docs and own membership state"
   const activeUser = testEnv.authenticatedContext("user-a");
   const leftUser = testEnv.authenticatedContext("user-left");
   const malformedOwner = testEnv.authenticatedContext("malformed-owner");
+  const invalidStatusUser = testEnv.authenticatedContext("invalid-status");
   const missingUser = testEnv.authenticatedContext("missing-user");
 
   await assertSucceeds(
@@ -411,6 +419,16 @@ test("participant get is limited to active roster docs and own membership state"
   await assertFails(
     malformedOwner.firestore()
       .doc("events/editable-event/participants/malformed-owner")
+      .get(),
+  );
+  await assertFails(
+    viewer.firestore()
+      .doc("events/editable-event/participants/invalid-status")
+      .get(),
+  );
+  await assertFails(
+    invalidStatusUser.firestore()
+      .doc("events/editable-event/participants/invalid-status")
       .get(),
   );
 

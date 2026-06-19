@@ -1825,18 +1825,17 @@ test("executeCreateEventTransaction creates all event documents", async () => {
       store.get("events/event-new").organizerPhotoUrl,
       "https://example.test/avatar.jpg",
   );
-  assert.equal(
-      store.get("events/event-new/participants/uid").role,
-      "organizer",
-  );
-  assert.equal(
-      store.get("events/event-new/participants/uid").displayName,
-      "Анастасия Иванова",
-  );
-  assert.equal(
-      store.get("events/event-new/participants/uid").photoUrl,
-      "https://example.test/avatar.jpg",
-  );
+  assert.deepEqual(store.get("events/event-new/participants/uid"), {
+    userId: "uid",
+    displayName: "Анастасия Иванова",
+    photoUrl: "https://example.test/avatar.jpg",
+    role: "organizer",
+    status: "active",
+    joinedAt: fixedTimestamp,
+    leftAt: null,
+    createdAt: fixedTimestamp,
+    updatedAt: fixedTimestamp,
+  });
   assert.equal(store.get("events/event-new").languageCode, "en");
   assert.equal(store.get("events/event-new").languageNameEn, "English");
   assert.equal(store.get("events/event-new").languageNameRu, "Английский");

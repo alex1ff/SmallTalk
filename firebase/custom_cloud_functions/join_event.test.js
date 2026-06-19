@@ -303,13 +303,24 @@ function counterData() {
 }
 
 test("normalizeJoinEventPayload rejects unknown and missing keys", () => {
-  assertHttpsError(
-      () => normalizeJoinEventPayload({eventId: "event-1", status: "active"}),
-      "invalid-argument",
-      "invalid_join_request",
-      "status",
-      "unknown_key",
-  );
+  for (const field of [
+    "status",
+    "role",
+    "displayName",
+    "photoUrl",
+    "joinedAt",
+    "leftAt",
+    "createdAt",
+    "updatedAt",
+  ]) {
+    assertHttpsError(
+        () => normalizeJoinEventPayload({eventId: "event-1", [field]: "x"}),
+        "invalid-argument",
+        "invalid_join_request",
+        field,
+        "unknown_key",
+    );
+  }
   assertHttpsError(
       () => normalizeJoinEventPayload({}),
       "invalid-argument",
@@ -482,6 +493,20 @@ test("executeJoinEventTransaction rejoins left participant", async () => {
         "update:eventChats/event-1",
       ],
   );
+  assert.deepEqual(writes[1].data, {
+    displayName: "Марко",
+    photoUrl: null,
+    status: "active",
+    joinedAt: fixedTimestamp,
+    leftAt: null,
+    updatedAt: fixedTimestamp,
+  });
+  for (const immutableField of ["userId", "role", "createdAt"]) {
+    assert.equal(
+        Object.prototype.hasOwnProperty.call(writes[1].data, immutableField),
+        false,
+    );
+  }
 });
 
 test("executeJoinEventTransaction concurrent rejoins reuse one membership",

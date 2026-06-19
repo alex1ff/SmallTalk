@@ -314,13 +314,24 @@ function createFirstAttemptBarrier(expectedCommits = 2) {
 }
 
 test("normalizeLeaveEventPayload rejects unknown and missing keys", () => {
-  assertHttpsError(
-      () => normalizeLeaveEventPayload({eventId: "event-1", leftAt: "now"}),
-      "invalid-argument",
-      "invalid_leave_request",
-      "leftAt",
-      "unknown_key",
-  );
+  for (const field of [
+    "status",
+    "role",
+    "displayName",
+    "photoUrl",
+    "joinedAt",
+    "leftAt",
+    "createdAt",
+    "updatedAt",
+  ]) {
+    assertHttpsError(
+        () => normalizeLeaveEventPayload({eventId: "event-1", [field]: "x"}),
+        "invalid-argument",
+        "invalid_leave_request",
+        field,
+        "unknown_key",
+    );
+  }
   assertHttpsError(
       () => normalizeLeaveEventPayload({}),
       "invalid-argument",
@@ -359,6 +370,7 @@ test("executeLeaveEventTransaction marks participant left", async () => {
     participantsCount: 1,
     leftAt: "2026-06-16T10:00:00.000Z",
   });
+  assert.equal(store.has("events/event-1/participants/uid"), true);
   assert.equal(store.get("events/event-1").participantsCount, 1);
   assert.equal(store.get("events/event-1").updatedAt, fixedTimestamp);
   assert.equal(membership.status, "left");
@@ -389,6 +401,24 @@ test("executeLeaveEventTransaction marks participant left", async () => {
         "update:eventChats/event-1",
       ],
   );
+  assert.deepEqual(writes[1].data, {
+    status: "left",
+    leftAt: fixedTimestamp,
+    updatedAt: fixedTimestamp,
+  });
+  for (const immutableField of [
+    "userId",
+    "role",
+    "displayName",
+    "photoUrl",
+    "joinedAt",
+    "createdAt",
+  ]) {
+    assert.equal(
+        Object.prototype.hasOwnProperty.call(writes[1].data, immutableField),
+        false,
+    );
+  }
 });
 
 test("executeLeaveEventTransaction concurrent duplicate leaves decrement once",
