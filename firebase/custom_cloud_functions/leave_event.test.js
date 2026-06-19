@@ -652,14 +652,11 @@ test("executeLeaveEventTransaction rechecks startsAt on retry", async () => {
 });
 
 test("executeLeaveEventTransaction blocks organizer leave", async () => {
-  const {db, writes} = createFakeFirestore({
-    "events/event-1": activeEvent({
-      organizerId: "organizer",
-      participantsCount: 1,
-    }),
-    "eventChats/event-1": eventChat({readAccessUserIds: ["organizer"]}),
-    "events/event-1/participants/organizer": organizerParticipant(),
-  });
+  const {db, store, writes} = createFakeFirestore(validLeaveSeed());
+  const eventBefore = store.get("events/event-1");
+  const organizerBefore = store.get("events/event-1/participants/organizer");
+  const participantBefore = store.get("events/event-1/participants/uid");
+  const chatBefore = store.get("eventChats/event-1");
 
   await assertRejectsHttpsError(
       () => executeLeave({
@@ -672,6 +669,16 @@ test("executeLeaveEventTransaction blocks organizer leave", async () => {
       "failed-precondition",
       "organizer_cannot_leave",
   );
+  assert.deepEqual(store.get("events/event-1"), eventBefore);
+  assert.deepEqual(
+      store.get("events/event-1/participants/organizer"),
+      organizerBefore,
+  );
+  assert.deepEqual(
+      store.get("events/event-1/participants/uid"),
+      participantBefore,
+  );
+  assert.deepEqual(store.get("eventChats/event-1"), chatBefore);
   assert.deepEqual(writes, []);
 });
 
