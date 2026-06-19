@@ -390,7 +390,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add event chat message rules tests for active participant read, left/nonparticipant read denial while active, canceled read for frozen `readAccessUserIds`, canceled read denial for users outside the snapshot, missing/mismatched chat metadata fail-closed behavior, and direct client create/update/delete denied.
 - [x] Add event chat message repository/UI tests for stable ordering and pagination by `createdAt` plus `__name__` / document id.
 - [x] Add widget tests for canceled chat read-only banner/status and hidden or disabled composer.
-- [ ] Add widget tests for list empty/loading/error states.
+- [x] Add widget tests for list empty/loading/error states.
 - [ ] Add widget tests for create form validation.
 - [ ] Add widget tests for detail CTA states.
 - Deferred: Add deep link test for opening event detail.
