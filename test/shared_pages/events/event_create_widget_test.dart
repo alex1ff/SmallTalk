@@ -3183,8 +3183,8 @@ void main() {
 
   testWidgets('valid form discard before submit does not call event creation',
       (tester) async {
-    var submitCount = 0;
     final generatedRequestIds = <String>[];
+    final serverWrites = _EventCreateServerWriteProbe();
     final router = _buildEventCreateRouter(
       initialSelectedCity: const EventSelectedCity(
         city: _moscowCity,
@@ -3199,7 +3199,7 @@ void main() {
         return id;
       },
       createEventInvoker: (_, __) async {
-        submitCount += 1;
+        serverWrites.recordSubmittedCreate();
         return _createEventResponse();
       },
     );
@@ -3214,8 +3214,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(router.getCurrentLocation(), '/');
-    expect(submitCount, 0);
     expect(generatedRequestIds, isEmpty);
+    expect(serverWrites.events, isEmpty);
+    expect(serverWrites.eventParticipants, isEmpty);
+    expect(serverWrites.eventChats, isEmpty);
+    expect(serverWrites.eventCreationCounters, isEmpty);
+    expect(serverWrites.eventCreateRequests, isEmpty);
   });
 
   testWidgets('discard confirmation copy does not promise draft restore',
@@ -3836,6 +3840,22 @@ int _capacityDraftValue(EventCreateCapacityDraft draft) => draft.capacity;
 
 String _requestId(int index) =>
     '00000000-0000-4000-8000-${index.toString().padLeft(12, '0')}';
+
+class _EventCreateServerWriteProbe {
+  final events = <String>[];
+  final eventParticipants = <String>[];
+  final eventChats = <String>[];
+  final eventCreationCounters = <String>[];
+  final eventCreateRequests = <String>[];
+
+  void recordSubmittedCreate() {
+    events.add('events/event-1');
+    eventParticipants.add('events/event-1/participants/current-user');
+    eventChats.add('eventChats/event-1');
+    eventCreationCounters.add('eventCreationCounters/current-user');
+    eventCreateRequests.add('eventCreateRequests/current-user');
+  }
+}
 
 Future<Object?> _successfulCreateEventInvoker(
   String functionName,

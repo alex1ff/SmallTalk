@@ -330,7 +330,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add unit tests for level overlap helper covering all six canonical ranks, no selected level, same-level ranges, rejected invalid levels, and rejected reversed ranges.
 - [x] Add repository tests for event creation validation.
 - [x] Add `createEvent` request/response schema tests for required exact keys, unknown keys denied, invalid/missing `createRequestId`, per-field required/null/type/range validation, ISO-8601 UTC millisecond `startsAt`, nullable or `{latitude, longitude}` `locationGeoPoint`, exact success response fields/types, idempotent retry response returning original `eventId`/`createdAt`/`dailyCreation`, and normalized payload hashing inputs.
-- [ ] Add create discard tests proving leaving create form before submit creates no server event, participant, chat, counter, or request-marker documents.
+- [x] Add create discard tests proving leaving create form before submit creates no server event, participant, chat, counter, or request-marker documents.
 - [ ] Add create atomicity tests proving failed/interrupted creates do not leave partial event, participant, chat, counter, or request-marker documents.
 - [ ] Add submit double-tap/retry tests proving duplicate event creation is blocked or idempotently handled through UUID v4 `createRequestId`.
 - [ ] Add daily creation counter schema tests for `userId`, `dayKeyUtc`, `count`, `eventIds`, `requestEventIds`, `requestPayloadHashes`, `windowStartAt`, `windowEndAt`, `createdAt`, `updatedAt`, and count/request map invariants.
