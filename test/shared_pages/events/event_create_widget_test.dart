@@ -1858,6 +1858,10 @@ void main() {
         },
       ],
     );
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventEditedEventName),
+      isEmpty,
+    );
     expect(router.getCurrentLocation(), '/events/event-1');
     expect(find.byType(EventCreateWidget), findsNothing);
     expect(find.byType(EventDetailWidget), findsOneWidget);
@@ -3432,6 +3436,7 @@ void main() {
       (tester) async {
     var createSubmitCount = 0;
     var editSubmitCount = 0;
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -3461,6 +3466,7 @@ void main() {
             editSubmitCount += 1;
             throw _eventNotEditableError();
           },
+          analyticsTracker: analyticsTracker,
         ),
       ),
     );
@@ -3471,6 +3477,10 @@ void main() {
 
     expect(createSubmitCount, 0);
     expect(editSubmitCount, 1);
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventEditedEventName),
+      isEmpty,
+    );
     expect(find.text('Введите название'), findsNothing);
     expect(find.text('Введите описание'), findsNothing);
     expect(find.text('Выберите город события'), findsNothing);
@@ -3530,6 +3540,21 @@ void main() {
           .payloadsFor(EventsAnalyticsService.eventCreatedEventName),
       isEmpty,
     );
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventEditedEventName),
+      [
+        <String, String>{
+          'countryCode': 'RU',
+          'cityKey': 'moscow',
+        },
+      ],
+    );
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventEditedEventName)
+          .single,
+      isNot(contains('citySource')),
+    );
     expect(functionName, editEventFunctionName);
     expect(payload, <String, dynamic>{
       'eventId': 'event-1',
@@ -3548,6 +3573,39 @@ void main() {
     expect(payload, isNot(containsPair('createRequestId', anything)));
     expect(router.getCurrentLocation(), '/events/event-1');
     expect(find.byType(EventCreateWidget), findsNothing);
+    expect(find.byType(EventDetailWidget), findsOneWidget);
+  });
+
+  testWidgets('event edited analytics failure does not block edit success',
+      (tester) async {
+    final router = _buildEventCreateRouter(
+      formMode: EventFormMode.edit,
+      eventId: 'event-1',
+      initialTitle: 'Conversation club',
+      initialDescription: 'Casual practice in a cafe.',
+      initialLanguageCode: 'en',
+      initialLevelMin: 'A2',
+      initialLevelMax: 'B2',
+      initialSelectedCity: const EventSelectedCity(
+        city: _moscowCity,
+        source: EventCitySelectionSource.static,
+      ),
+      initialLocationName: 'Starbucks, ул. Арбат, 5',
+      initialDate: DateTime(2026, 6, 20),
+      initialTime: const TimeOfDay(hour: 18, minute: 0),
+      initialCapacity: 8,
+      currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+      editEventInvoker: (_, __) async => _editEventResponse(),
+      analyticsTracker: const _ThrowingEventEditedAnalyticsTracker(),
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/events/event-1');
     expect(find.byType(EventDetailWidget), findsOneWidget);
   });
 
@@ -3890,6 +3948,28 @@ class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
       ),
     );
   }
+
+  @override
+  Future<void> trackEventEdited({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) async {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: countryCode,
+      cityKey: cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return;
+    }
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.eventEditedEventName,
+        payload: payload.cast<String, String>(),
+      ),
+    );
+  }
 }
 
 class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
@@ -3919,6 +3999,13 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
     required String cityKey,
     String? citySource,
   }) async {}
+
+  @override
+  Future<void> trackEventEdited({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) async {}
 }
 
 class _ThrowingEventCreatedAnalyticsTracker
@@ -3927,6 +4014,19 @@ class _ThrowingEventCreatedAnalyticsTracker
 
   @override
   Future<void> trackEventCreated({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) {
+    throw StateError('analytics failed');
+  }
+}
+
+class _ThrowingEventEditedAnalyticsTracker extends _NoopEventsAnalyticsTracker {
+  const _ThrowingEventEditedAnalyticsTracker();
+
+  @override
+  Future<void> trackEventEdited({
     required String countryCode,
     required String cityKey,
     String? citySource,

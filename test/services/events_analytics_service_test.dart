@@ -207,4 +207,45 @@ void main() {
       },
     );
   });
+
+  test('tracks event edited with canonical city payload only', () async {
+    final loggedEvents = <String, Map<String, Object>>{};
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        loggedEvents[name] = parameters;
+      },
+    );
+
+    await service.trackEventEdited(
+      countryCode: ' ru ',
+      cityKey: ' moscow ',
+      citySource: ' static ',
+    );
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventEditedEventName],
+      <String, Object>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+        'citySource': 'static',
+      },
+    );
+
+    await service.trackEventEdited(
+      countryCode: 'RU',
+      cityKey: 'moscow',
+      citySource: '   ',
+    );
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventEditedEventName],
+      <String, Object>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+      },
+    );
+  });
 }

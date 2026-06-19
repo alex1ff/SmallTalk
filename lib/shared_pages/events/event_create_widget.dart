@@ -350,6 +350,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   String? _activeCreateRequestId;
   String? _activeCreatePayloadSignature;
   String? _lastTrackedCreatedEventId;
+  String? _lastTrackedEditedEventId;
   _EventFormDirtySnapshot? _editDirtyBaseline;
 
   @override
@@ -1480,6 +1481,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
           invoker: widget.editEventInvoker,
         );
         savedEventId = editResult.eventId;
+        _trackEventEditedIfNeeded(
+          eventId: editResult.eventId,
+          selectedCity: selectedCity,
+          tracker: analyticsTracker,
+        );
       }
     } catch (error) {
       if (!mounted) {
@@ -1530,6 +1536,27 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
           countryCode: selectedCity.city.countryCode,
           cityKey: selectedCity.city.cityKey,
           citySource: selectedCity.source.analyticsValue,
+        ),
+      ).catchError(
+        (Object error, StackTrace stackTrace) {},
+      ),
+    );
+  }
+
+  void _trackEventEditedIfNeeded({
+    required String eventId,
+    required EventSelectedCity selectedCity,
+    required EventsAnalyticsTracker tracker,
+  }) {
+    if (_lastTrackedEditedEventId == eventId) {
+      return;
+    }
+    _lastTrackedEditedEventId = eventId;
+    unawaited(
+      Future<void>.sync(
+        () => tracker.trackEventEdited(
+          countryCode: selectedCity.city.countryCode,
+          cityKey: selectedCity.city.cityKey,
         ),
       ).catchError(
         (Object error, StackTrace stackTrace) {},

@@ -315,7 +315,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Track level filter selected.
 - [x] Track event detail opened with canonical city payload and optional `citySource` only when known.
 - [x] Track event created with canonical city payload and optional `citySource` only when known.
-- [ ] Track event edited with canonical city payload and optional `citySource` only when known.
+- [x] Track event edited with canonical city payload and optional `citySource` only when known.
 - [ ] Track event canceled with canonical city payload and optional `citySource` only when known.
 - [ ] Track event joined with canonical city payload and optional `citySource` only when known.
 - [ ] Track event left with canonical city payload and optional `citySource` only when known.
