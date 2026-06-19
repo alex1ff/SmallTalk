@@ -834,6 +834,56 @@ test("normalizeCreateEventPayload normalizes trusted create fields", () => {
   assert.equal(normalized.capacity, 10);
 });
 
+test("normalizeCreateEventPayload derives timezone from selected city", () => {
+  const dubai = normalizeCreateEventPayload(
+      cloneValidRequest({
+        countryCode: "ae",
+        cityKey: "dubai",
+        startsAt: "2026-12-31T20:00:00.000Z",
+      }),
+      {now: fixedNow},
+  );
+  const newYork = normalizeCreateEventPayload(
+      cloneValidRequest({
+        countryCode: "us",
+        cityKey: "new_york",
+        startsAt: "2026-06-20T15:00:00.000Z",
+      }),
+      {now: fixedNow},
+  );
+
+  assert.equal(dubai.city.timeZoneId, "Asia/Dubai");
+  assert.equal(dubai.startsAtIso, "2026-12-31T20:00:00.000Z");
+  assert.equal(dubai.startsAtTimestamp.toMillis(),
+      Date.parse("2026-12-31T20:00:00.000Z"));
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(dubai.hashPayload, "timeZoneId"),
+      false,
+  );
+  assert.equal(newYork.city.timeZoneId, "America/New_York");
+  assert.equal(newYork.startsAtIso, "2026-06-20T15:00:00.000Z");
+});
+
+test("normalizeCreateEventPayload validates startsAt against trusted now", () => {
+  for (const startsAt of [
+    "2026-06-16T09:59:59.999Z",
+    "2026-06-16T10:00:00.000Z",
+  ]) {
+    assertInvalidCreateRequest({startsAt}, "startsAt", "past_starts_at");
+  }
+
+  const normalized = normalizeCreateEventPayload(
+      cloneValidRequest({startsAt: "2026-06-16T10:00:00.001Z"}),
+      {now: fixedNow},
+  );
+
+  assert.equal(normalized.startsAtIso, "2026-06-16T10:00:00.001Z");
+  assert.equal(
+      normalized.startsAtTimestamp.toMillis(),
+      Date.parse("2026-06-16T10:00:00.001Z"),
+  );
+});
+
 test("normalizeCreateEventPayload builds exact hash input fields", () => {
   const normalized =
     normalizeCreateEventPayload(cloneValidRequest(), {now: fixedNow});
@@ -1892,6 +1942,70 @@ test("createEvent callable validates capacity before transaction writes",
         assertNoCreateDocuments(store);
       }
     });
+
+test("createEvent callable validates startsAt against trusted backend time",
+    async () => {
+      for (const startsAt of [
+        "2026-06-16T09:59:59.999Z",
+        "2026-06-16T10:00:00.000Z",
+      ]) {
+        const {db, reads, store, writes} = createFakeFirestore({
+          "users/uid": {display_name: "Анастасия Иванова"},
+        });
+
+        await withAdminFirestore(db, async () => {
+          await withSequencedDate(["2026-06-16T10:00:00.000Z"],
+              async () => {
+                await assertRejectsHttpsError(
+                    () => createEvent.run(
+                        cloneValidRequest({startsAt}),
+                        {auth: {uid: "uid"}},
+                    ),
+                    "invalid-argument",
+                    "invalid_create_request",
+                    "startsAt",
+                    "past_starts_at",
+                );
+              });
+        });
+
+        assert.deepEqual(reads, [
+          `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+        ]);
+        assert.deepEqual(writes, []);
+        assertNoCreateDocuments(store);
+      }
+    });
+
+test("createEvent callable rejects client timezone mismatch fields", async () => {
+  for (const key of [
+    "timeZoneId",
+    "timezoneOffsetMinutes",
+    "timezoneName",
+    "clientNowUtc",
+  ]) {
+    const {db, reads, store, writes} = createFakeFirestore({
+      "users/uid": {display_name: "Анастасия Иванова"},
+    });
+
+    await withAdminFirestore(db, async () => {
+      await assertRejectsHttpsError(
+          () => createEvent.run(
+              cloneValidRequest({[key]: "America/New_York"}),
+              {auth: {uid: "uid"}},
+          ),
+          "invalid-argument",
+          "invalid_create_request",
+          key,
+          "unknown_key",
+      );
+    });
+
+    assert.deepEqual(reads, []);
+    assert.deepEqual(writes, []);
+    assertNoCreateDocuments(store);
+  }
+});
 
 test("executeCreateEventTransaction rolls back buffered writes on failure", async () => {
   const {db, makeRef, store, writes} = createFakeFirestore(

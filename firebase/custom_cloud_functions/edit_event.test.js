@@ -179,6 +179,36 @@ async function withAdminFirestore(db, callback) {
   }
 }
 
+async function withSequencedDate(isoValues, callback) {
+  const RealDate = Date;
+  const millisValues = isoValues.map((isoValue) => RealDate.parse(isoValue));
+  let noArgDateCalls = 0;
+
+  class SequencedDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) {
+        const index = Math.min(noArgDateCalls, millisValues.length - 1);
+        noArgDateCalls += 1;
+        super(millisValues[index]);
+        return;
+      }
+      super(...args);
+    }
+
+    static now() {
+      return millisValues[Math.min(noArgDateCalls, millisValues.length - 1)];
+    }
+  }
+
+  Object.setPrototypeOf(SequencedDate, RealDate);
+  global.Date = SequencedDate;
+  try {
+    return await callback(() => noArgDateCalls);
+  } finally {
+    global.Date = RealDate;
+  }
+}
+
 function eventData(overrides = {}) {
   return {
     organizerId: "uid",
@@ -223,6 +253,24 @@ test("normalizeEditEventPayload rejects unknown and missing keys", () => {
       "unknown_key",
   );
 
+  for (const key of [
+    "clientNowUtc",
+    "timezoneOffsetMinutes",
+    "timezoneName",
+    "timeZoneId",
+  ]) {
+    assertHttpsError(
+        () => normalizeEditEventPayload(
+            cloneValidEditRequest({[key]: "America/New_York"}),
+            {now: fixedNow},
+        ),
+        "invalid-argument",
+        "invalid_edit_request",
+        key,
+        "unknown_key",
+    );
+  }
+
   for (const key of Object.keys(validEditRequest)) {
     const missing = cloneValidEditRequest();
     delete missing[key];
@@ -253,6 +301,33 @@ test("normalizeEditEventPayload normalizes city and editable fields", () => {
   assert.equal(payload.normalized.locationGeoPoint, null);
 });
 
+test("normalizeEditEventPayload derives timezone from selected city", () => {
+  const payload = normalizeEditEventPayload(
+      cloneValidEditRequest({
+        countryCode: "US",
+        cityKey: "new_york",
+        startsAt: "2026-06-16T10:00:00.001Z",
+      }),
+      {now: fixedNow},
+  );
+
+  assert.equal(payload.normalized.city.countryCode, "US");
+  assert.equal(payload.normalized.city.cityKey, "new_york");
+  assert.equal(payload.normalized.city.timeZoneId, "America/New_York");
+  assert.equal(payload.normalized.startsAtIso, "2026-06-16T10:00:00.001Z");
+  assert.equal(
+      payload.normalized.startsAtTimestamp.toMillis(),
+      Date.parse("2026-06-16T10:00:00.001Z"),
+  );
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(
+          payload.normalized.hashPayload,
+          "timeZoneId",
+      ),
+      false,
+  );
+});
+
 test("normalizeEditEventPayload remaps create validation errors", () => {
   assertHttpsError(
       () => normalizeEditEventPayload(
@@ -267,6 +342,16 @@ test("normalizeEditEventPayload remaps create validation errors", () => {
   assertHttpsError(
       () => normalizeEditEventPayload(
           cloneValidEditRequest({startsAt: "2026-06-16T09:00:00.000Z"}),
+          {now: fixedNow},
+      ),
+      "invalid-argument",
+      "invalid_edit_request",
+      "startsAt",
+      "past_starts_at",
+  );
+  assertHttpsError(
+      () => normalizeEditEventPayload(
+          cloneValidEditRequest({startsAt: "2026-06-16T10:00:00.000Z"}),
           {now: fixedNow},
       ),
       "invalid-argument",
@@ -536,6 +621,37 @@ test("editEvent callable validates capacity before transaction writes",
               "capacity",
               currentCase.reason,
           );
+        });
+
+        assert.deepEqual(reads, []);
+        assert.deepEqual(writes, []);
+      }
+    });
+
+test("editEvent callable validates startsAt against trusted backend time",
+    async () => {
+      for (const startsAt of [
+        "2026-06-16T09:59:59.999Z",
+        "2026-06-16T10:00:00.000Z",
+      ]) {
+        const {db, reads, writes} = createFakeFirestore({
+          "events/event-1": eventData(),
+        });
+
+        await withAdminFirestore(db, async () => {
+          await withSequencedDate(["2026-06-16T10:00:00.000Z"],
+              async () => {
+                await assertRejectsHttpsError(
+                    () => editEvent.run(
+                        cloneValidEditRequest({startsAt}),
+                        {auth: {uid: "uid"}},
+                    ),
+                    "invalid-argument",
+                    "invalid_edit_request",
+                    "startsAt",
+                    "past_starts_at",
+                );
+              });
         });
 
         assert.deepEqual(reads, []);

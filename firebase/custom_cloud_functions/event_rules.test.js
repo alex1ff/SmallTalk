@@ -1837,6 +1837,7 @@ test("direct organizer edit validates editable field values", async () => {
     {locationName: "x".repeat(201)},
     {locationGeoPoint: "not-a-geopoint"},
     {startsAt: new Date("2020-06-20T15:00:00.000Z")},
+    {startsAt: firebaseCompat.firestore.FieldValue.serverTimestamp()},
     {capacity: 51},
   ];
 
