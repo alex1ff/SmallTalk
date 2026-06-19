@@ -282,7 +282,7 @@ Date: 2026-06-14
 - [x] Render removed/tombstoned message state when `deletedAt` is non-null, if such messages are encountered.
 - [x] Prevent read/write after participant leaves.
 - [x] Show canceled event chats as read-only for eligible organizer/participants.
-- [ ] Show read-only status/banner for canceled event chats.
+- [x] Show read-only status/banner for canceled event chats.
 - [ ] Hide or disable message composer/send for canceled event chats.
 
 ## Phase 12: Sharing And Deep Links

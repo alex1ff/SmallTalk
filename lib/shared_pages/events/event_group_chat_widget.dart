@@ -30,6 +30,8 @@ const ValueKey<String> eventGroupChatSendErrorSnackBarKey =
     ValueKey<String>('event_group_chat_send_error_snack_bar');
 const ValueKey<String> eventGroupChatReadOnlySnackBarKey =
     ValueKey<String>('event_group_chat_read_only_snack_bar');
+const ValueKey<String> eventGroupChatCanceledReadOnlyBannerKey =
+    ValueKey<String>('event_group_chat_canceled_read_only_banner');
 
 ValueKey<String> eventGroupChatMessageBubbleKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_bubble_$messageId');
@@ -294,8 +296,11 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
               );
             }
 
+            final accessState = accessSnapshot.data!;
             return _buildMessagesContent(
-              isReadOnly: accessSnapshot.data!.readOnly,
+              isReadOnly: accessState.readOnly,
+              showCanceledReadOnlyBanner:
+                  accessState.status == 'canceled' && accessState.readOnly,
             );
           },
         );
@@ -303,12 +308,17 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     );
   }
 
-  Widget _buildMessagesContent({required bool isReadOnly}) {
+  Widget _buildMessagesContent({
+    required bool isReadOnly,
+    required bool showCanceledReadOnlyBanner,
+  }) {
     final messagesStream = _messagesStream ??= _watchMessages();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (showCanceledReadOnlyBanner)
+          const _EventGroupChatCanceledReadOnlyBanner(),
         Expanded(
           child: StreamBuilder<List<EventChatMessagesRecord>>(
             stream: messagesStream,
@@ -386,6 +396,85 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       titleEn: 'Join the event first',
       messageRu: 'Чат доступен только участникам события.',
       messageEn: 'Only event participants can access this chat.',
+    );
+  }
+}
+
+class _EventGroupChatCanceledReadOnlyBanner extends StatelessWidget {
+  const _EventGroupChatCanceledReadOnlyBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final title = FFLocalizations.of(context).getVariableText(
+      ruText: 'Событие отменено',
+      enText: 'Event canceled',
+    );
+    final description = FFLocalizations.of(context).getVariableText(
+      ruText: 'Чат доступен только для чтения.',
+      enText: 'This chat is read-only.',
+    );
+
+    return Semantics(
+      key: eventGroupChatCanceledReadOnlyBannerKey,
+      container: true,
+      label: '$title. $description',
+      child: ExcludeSemantics(
+        child: Container(
+          margin: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.space8,
+          ),
+          padding: const EdgeInsetsDirectional.all(ExpatlioDesign.space12),
+          decoration: BoxDecoration(
+            color: ExpatlioDesign.danger.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusSmall),
+            border: Border.all(
+              color: ExpatlioDesign.danger.withValues(alpha: 0.24),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.event_busy_outlined,
+                color: ExpatlioDesign.danger,
+                size: 20,
+              ),
+              const SizedBox(width: ExpatlioDesign.space8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.text,
+                        size: 14,
+                        height: 1.2,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: ExpatlioDesign.space4),
+                    Text(
+                      description,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.muted,
+                        size: 13,
+                        height: 1.25,
+                        weight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

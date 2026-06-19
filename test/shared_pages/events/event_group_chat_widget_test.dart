@@ -114,6 +114,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventGroupChatMessagesEmptyKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsNothing);
     expect(find.text('Сообщений пока нет'), findsOneWidget);
   });
 
@@ -349,6 +350,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('До встречи!'), findsOneWidget);
+    expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventGroupChatCanceledReadOnlyBannerKey),
+        matching: find.text('Событие отменено'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(eventGroupChatCanceledReadOnlyBannerKey),
+        matching: find.text('Чат доступен только для чтения.'),
+      ),
+      findsOneWidget,
+    );
     expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
     expect(find.byKey(eventGroupChatSendButtonKey), findsOneWidget);
 
@@ -357,7 +373,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventGroupChatReadOnlySnackBarKey), findsOneWidget);
-    expect(find.text('Чат доступен только для чтения.'), findsOneWidget);
     expect(sendCalls, 0);
   });
 
@@ -426,6 +441,7 @@ void main() {
 
     expect(accessCalls, 2);
     expect(find.byKey(eventGroupChatAccessLoadingKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsNothing);
     expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
 
     canceledAccess.complete(<String, dynamic>{
@@ -435,6 +451,7 @@ void main() {
     });
     await tester.pumpAndSettle();
 
+    expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsOneWidget);
     await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
     await tester.tap(find.byKey(eventGroupChatSendButtonKey));
     await tester.pumpAndSettle();
