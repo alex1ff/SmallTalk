@@ -1,8 +1,10 @@
 const fs = require("node:fs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const admin = require("firebase-admin");
 
 const {
+  createEvent,
   __private__: {
     CREATE_EVENT_KEYS,
     DAILY_CREATE_LIMIT,
@@ -199,6 +201,62 @@ function createFakeFirestore(seed = {}, {
   return {db, makeRef, reads, store, writes};
 }
 
+async function withAdminFirestore(db, callback) {
+  const originalFirestore = Object.getOwnPropertyDescriptor(admin, "firestore");
+  const timestamp = admin.firestore.Timestamp;
+  const geoPoint = admin.firestore.GeoPoint;
+  const firestore = () => db;
+  firestore.Timestamp = timestamp;
+  firestore.GeoPoint = geoPoint;
+
+  Object.defineProperty(admin, "firestore", {
+    configurable: true,
+    value: firestore,
+  });
+
+  try {
+    return await callback();
+  } finally {
+    if (originalFirestore) {
+      Object.defineProperty(admin, "firestore", originalFirestore);
+    } else {
+      delete admin.firestore;
+    }
+  }
+}
+
+async function withSequencedDate(isoValues, callback) {
+  const RealDate = Date;
+  const millisValues = isoValues.map((isoValue) => RealDate.parse(isoValue));
+  let noArgDateCalls = 0;
+
+  class SequencedDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) {
+        const index = Math.min(noArgDateCalls, millisValues.length - 1);
+        noArgDateCalls += 1;
+        super(millisValues[index]);
+        return;
+      }
+      super(...args);
+    }
+
+    static now() {
+      const index = Math.min(noArgDateCalls, millisValues.length - 1);
+      return millisValues[index];
+    }
+  }
+  SequencedDate.parse = RealDate.parse;
+  SequencedDate.UTC = RealDate.UTC;
+
+  global.Date = SequencedDate;
+  try {
+    return await callback(() => noArgDateCalls);
+  } finally {
+    global.Date = RealDate;
+  }
+}
+
 function buildValidCounterData({
   uid = "uid",
   dayInfo = buildUtcDayInfo(fixedNow),
@@ -374,6 +432,29 @@ test("normalizeCreateEventPayload rejects unknown and missing keys", () => {
     );
   }
 });
+
+test("normalizeCreateEventPayload rejects client time and timezone spoof keys",
+    () => {
+      for (const key of [
+        "creationTimeUtc",
+        "createdAt",
+        "clientNowUtc",
+        "timezoneOffsetMinutes",
+        "timezoneName",
+        "timeZoneId",
+      ]) {
+        assertHttpsError(
+            () => normalizeCreateEventPayload(
+                cloneValidRequest({[key]: "2026-06-17T00:00:00.000Z"}),
+                {now: fixedNow},
+            ),
+            "invalid-argument",
+            "invalid_create_request",
+            key,
+            "unknown_key",
+        );
+      }
+    });
 
 test("normalizeCreateEventPayload rejects invalid schema field values", () => {
   const cases = [
@@ -765,23 +846,47 @@ test("hashCreatePayload uses stable canonical JSON and excludes request id", () 
   );
 });
 
-test("buildUtcDayInfo and buildDailyCreation use trusted UTC day", () => {
-  const dayInfo = buildUtcDayInfo(
-      new Date("2026-06-16T23:59:59.999Z"),
-  );
-  const dailyCreation = buildDailyCreation(3, dayInfo);
+test("buildUtcDayInfo and buildDailyCreation use trusted UTC boundaries", () => {
+  for (const {
+    now,
+    dayKeyUtc,
+    dayKeyCompact,
+    resetAtUtc,
+    windowStartAt,
+    windowEndAt,
+  } of [
+    {
+      now: "2026-06-16T23:59:59.999Z",
+      dayKeyUtc: "2026-06-16",
+      dayKeyCompact: "20260616",
+      resetAtUtc: "2026-06-17T00:00:00.000Z",
+      windowStartAt: "2026-06-16T00:00:00.000Z",
+      windowEndAt: "2026-06-17T00:00:00.000Z",
+    },
+    {
+      now: "2026-06-17T00:00:00.000Z",
+      dayKeyUtc: "2026-06-17",
+      dayKeyCompact: "20260617",
+      resetAtUtc: "2026-06-18T00:00:00.000Z",
+      windowStartAt: "2026-06-17T00:00:00.000Z",
+      windowEndAt: "2026-06-18T00:00:00.000Z",
+    },
+  ]) {
+    const dayInfo = buildUtcDayInfo(new Date(now));
+    const dailyCreation = buildDailyCreation(3, dayInfo);
 
-  assert.equal(dayInfo.dayKeyUtc, "2026-06-16");
-  assert.equal(dayInfo.dayKeyCompact, "20260616");
-  assert.equal(dayInfo.resetAtUtc, "2026-06-17T00:00:00.000Z");
-  assert.equal(dayInfo.windowStartAt.toMillis(), Date.parse("2026-06-16Z"));
-  assert.equal(dayInfo.windowEndAt.toMillis(), Date.parse("2026-06-17Z"));
-  assert.deepEqual(dailyCreation, {
-    dayKeyUtc: "2026-06-16",
-    count: 3,
-    remaining: 2,
-    resetAtUtc: "2026-06-17T00:00:00.000Z",
-  });
+    assert.equal(dayInfo.dayKeyUtc, dayKeyUtc);
+    assert.equal(dayInfo.dayKeyCompact, dayKeyCompact);
+    assert.equal(dayInfo.resetAtUtc, resetAtUtc);
+    assert.equal(dayInfo.windowStartAt.toMillis(), Date.parse(windowStartAt));
+    assert.equal(dayInfo.windowEndAt.toMillis(), Date.parse(windowEndAt));
+    assert.deepEqual(dailyCreation, {
+      dayKeyUtc,
+      count: 3,
+      remaining: 2,
+      resetAtUtc,
+    });
+  }
 });
 
 test("buildNextCounterState appends atomically counted create request", () => {
@@ -1302,6 +1407,115 @@ test("executeCreateEventTransaction creates all event documents", async () => {
       ],
   );
 });
+
+test("executeCreateEventTransaction ignores event day and city timezone for counter",
+    async () => {
+      const creationDate = new Date("2026-06-16T23:59:59.999Z");
+      const creationTimestamp = admin.firestore.Timestamp.fromDate(creationDate);
+      const dayInfo = buildUtcDayInfo(creationDate);
+      const {db, makeRef, store} = createFakeFirestore({
+        "users/uid": {display_name: "Анастасия Иванова"},
+      });
+      const {normalized, payloadHash} = buildNormalizedAndHash(
+          cloneValidRequest({
+            countryCode: "ae",
+            cityKey: "dubai",
+            startsAt: "2026-12-31T20:00:00.000Z",
+          }),
+          {now: creationDate},
+      );
+
+      const response = await executeCreateEventTransaction({
+        db,
+        uid: "uid",
+        creationDate,
+        creationTimestamp,
+        dayInfo,
+        normalized,
+        payloadHash,
+        eventRef: makeRef("events/event-new"),
+      });
+
+      assert.equal(response.createdAt, "2026-06-16T23:59:59.999Z");
+      assert.deepEqual(response.dailyCreation, {
+        dayKeyUtc: "2026-06-16",
+        count: 1,
+        remaining: 4,
+        resetAtUtc: "2026-06-17T00:00:00.000Z",
+      });
+      assert.equal(store.get("events/event-new").cityKey, "dubai");
+      assert.equal(store.get("events/event-new").timeZoneId, "Asia/Dubai");
+      assert.equal(
+          store.get("events/event-new").startsAt.toMillis(),
+          Date.parse("2026-12-31T20:00:00.000Z"),
+      );
+      assert.equal(
+          store.get("eventCreationCounters/uid/days/20260616").dayKeyUtc,
+          "2026-06-16",
+      );
+      assert.equal(
+          store.has("eventCreationCounters/uid/days/20260617"),
+          false,
+      );
+      assert.equal(
+          store.has("eventCreationCounters/uid/days/20261231"),
+          false,
+      );
+    });
+
+test("createEvent callable captures one trusted backend UTC instant",
+    async () => {
+      const {db, store} = createFakeFirestore({
+        "users/uid": {display_name: "Анастасия Иванова"},
+      });
+      const request = cloneValidRequest({
+        countryCode: "ae",
+        cityKey: "dubai",
+        startsAt: "2026-12-31T20:00:00.000Z",
+      });
+
+      await withAdminFirestore(db, async () => {
+        await withSequencedDate([
+          "2026-06-16T23:59:59.999Z",
+          "2026-06-17T00:00:00.000Z",
+        ], async (dateCallCount) => {
+          const response = await createEvent.run(request, {
+            auth: {uid: "uid"},
+          });
+
+          assert.equal(dateCallCount(), 1);
+          assertCreateSuccessResponse(response, {
+            eventId: "event-new",
+            createdAt: "2026-06-16T23:59:59.999Z",
+            dailyCreation: {
+              dayKeyUtc: "2026-06-16",
+              count: 1,
+              remaining: 4,
+              resetAtUtc: "2026-06-17T00:00:00.000Z",
+            },
+          });
+          const counter =
+            store.get("eventCreationCounters/uid/days/20260616");
+          const marker = store.get(
+              `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+          );
+
+          assert.equal(counter.dayKeyUtc, "2026-06-16");
+          assert.equal(
+              counter.createdAt.toMillis(),
+              Date.parse("2026-06-16T23:59:59.999Z"),
+          );
+          assert.equal(
+              counter.updatedAt.toMillis(),
+              Date.parse("2026-06-16T23:59:59.999Z"),
+          );
+          assert.equal(marker.createdAt.toMillis(), counter.createdAt.toMillis());
+          assert.deepEqual(marker.dailyCreation, response.dailyCreation);
+          assert.equal(store.has("eventCreationCounters/uid/days/20260617"),
+              false);
+        });
+      });
+    });
 
 test("executeCreateEventTransaction rolls back buffered writes on failure", async () => {
   const {db, makeRef, store, writes} = createFakeFirestore(
