@@ -7,6 +7,16 @@ const {
     normalizeJoinEventPayload,
   },
 } = require("./join_event");
+const {
+  __private__: {
+    executeLeaveEventTransaction,
+  },
+} = require("./leave_event");
+const {
+  __private__: {
+    executeCancelEventTransaction,
+  },
+} = require("./cancel_event");
 
 const fixedNow = new Date("2026-06-16T10:00:00.000Z");
 const oldDate = new Date("2026-06-15T10:00:00.000Z");
@@ -287,6 +297,11 @@ function assertParticipantCountInvariant(store, eventId = "event-1") {
   assert.equal(activeIds.includes(event.organizerId), true);
 }
 
+function assertUniqueSameMembers(actual, expected) {
+  assert.equal(new Set(actual).size, actual.length);
+  assert.deepEqual([...actual].sort(), [...expected].sort());
+}
+
 function counterData() {
   return {
     userId: "organizer",
@@ -300,6 +315,38 @@ function counterData() {
     createdAt: oldTimestamp,
     updatedAt: oldTimestamp,
   };
+}
+
+async function joinParticipant(db, uid = "uid") {
+  return executeJoinEventTransaction({
+    db,
+    uid,
+    joinDate: fixedNow,
+    joinTimestamp: fixedTimestamp,
+    payload: {eventId: "event-1"},
+  });
+}
+
+async function leaveParticipant(db, uid = "uid") {
+  return executeLeaveEventTransaction({
+    db,
+    uid,
+    getLeaveTime: () => ({
+      leaveDate: fixedNow,
+      leaveTimestamp: fixedTimestamp,
+    }),
+    payload: {eventId: "event-1"},
+  });
+}
+
+async function cancelAsOrganizer(db) {
+  return executeCancelEventTransaction({
+    db,
+    uid: "organizer",
+    cancelDate: fixedNow,
+    cancelTimestamp: fixedTimestamp,
+    payload: {eventId: "event-1"},
+  });
 }
 
 test("normalizeJoinEventPayload rejects unknown and missing keys", () => {
@@ -458,6 +505,30 @@ test("executeJoinEventTransaction allows join into last available seat",
       });
     });
 
+test("executeJoinEventTransaction treats existing chat access as an unordered set",
+    async () => {
+      const {db, store, writes} = createFakeFirestore({
+        "events/event-1": activeEvent({participantsCount: 2, capacity: 3}),
+        "eventChats/event-1": eventChat({
+          readAccessUserIds: ["user-a", "organizer"],
+        }),
+        "events/event-1/participants/organizer": organizerParticipant(),
+        "events/event-1/participants/user-a": participant({userId: "user-a"}),
+        "users/uid": userProfile(),
+      });
+
+      await joinParticipant(db);
+
+      assertUniqueSameMembers(
+          store.get("eventChats/event-1").readAccessUserIds,
+          ["organizer", "user-a", "uid"],
+      );
+      assertUniqueSameMembers(
+          writes[2].data.readAccessUserIds,
+          ["organizer", "user-a", "uid"],
+      );
+    });
+
 test("executeJoinEventTransaction rejoins left participant", async () => {
   const {db, store, writes} = createFakeFirestore({
     "events/event-1": activeEvent({participantsCount: 1}),
@@ -612,7 +683,7 @@ test("executeJoinEventTransaction blocks duplicate active join without writes", 
     activeEvent({participantsCount: 2}),
     activeEvent({participantsCount: 3, capacity: 3}),
   ]) {
-    const {db, writes} = createFakeFirestore({
+    const {db, store, writes} = createFakeFirestore({
       "events/event-1": eventData,
       "eventChats/event-1": eventChat({
         readAccessUserIds: ["organizer", "uid"],
@@ -620,17 +691,20 @@ test("executeJoinEventTransaction blocks duplicate active join without writes", 
       "events/event-1/participants/organizer": organizerParticipant(),
       "events/event-1/participants/uid": participant(),
     });
+    const eventBefore = store.get("events/event-1");
+    const chatBefore = store.get("eventChats/event-1");
+    const participantBefore = store.get("events/event-1/participants/uid");
 
     await assertRejectsHttpsError(
-        () => executeJoinEventTransaction({
-          db,
-          uid: "uid",
-          joinDate: fixedNow,
-          joinTimestamp: fixedTimestamp,
-          payload: {eventId: "event-1"},
-        }),
+        () => joinParticipant(db),
         "failed-precondition",
         "already_joined",
+    );
+    assert.strictEqual(store.get("events/event-1"), eventBefore);
+    assert.strictEqual(store.get("eventChats/event-1"), chatBefore);
+    assert.strictEqual(
+        store.get("events/event-1/participants/uid"),
+        participantBefore,
     );
     assert.deepEqual(writes, []);
   }
@@ -1021,6 +1095,166 @@ test("executeJoinEventTransaction concurrent joins never exceed capacity",
             "update:eventChats/event-1",
           ],
       );
+    });
+
+test("executeJoinEventTransaction fails closed when active chat access is stale",
+    async () => {
+      const {db, store, writes} = createFakeFirestore({
+        "events/event-1": activeEvent({participantsCount: 2, capacity: 3}),
+        "eventChats/event-1": eventChat({
+          readAccessUserIds: ["organizer"],
+        }),
+        "events/event-1/participants/organizer": organizerParticipant(),
+        "events/event-1/participants/user-a": participant({userId: "user-a"}),
+        "users/uid": userProfile(),
+      });
+      const chatBefore = store.get("eventChats/event-1");
+
+      await assertRejectsHttpsError(
+          () => joinParticipant(db),
+          "failed-precondition",
+          "event_chat_metadata_invalid",
+      );
+      assert.strictEqual(store.get("eventChats/event-1"), chatBefore);
+      assert.deepEqual(writes, []);
+    });
+
+test("event chat read access follows join leave rejoin and cancel order",
+    async () => {
+      {
+        const {db, store} = createFakeFirestore({
+          "events/event-1": activeEvent({participantsCount: 1, capacity: 3}),
+          "eventChats/event-1": eventChat(),
+          "events/event-1/participants/organizer": organizerParticipant(),
+          "users/uid": userProfile(),
+        });
+
+        await joinParticipant(db);
+        await cancelAsOrganizer(db);
+
+        assert.equal(store.get("events/event-1").status, "canceled");
+        assertUniqueSameMembers(
+            store.get("eventChats/event-1").readAccessUserIds,
+            ["organizer", "uid"],
+        );
+      }
+
+      {
+        const {db, store, writes} = createFakeFirestore({
+          "events/event-1": activeEvent({participantsCount: 1, capacity: 3}),
+          "eventChats/event-1": eventChat(),
+          "events/event-1/participants/organizer": organizerParticipant(),
+          "users/uid": userProfile(),
+        });
+
+        await cancelAsOrganizer(db);
+        await assertRejectsHttpsError(
+            () => joinParticipant(db),
+            "failed-precondition",
+            "event_not_joinable",
+        );
+
+        assertUniqueSameMembers(
+            store.get("eventChats/event-1").readAccessUserIds,
+            ["organizer"],
+        );
+        assert.equal(writes.filter((write) =>
+          write.path === "eventChats/event-1").length, 1);
+      }
+
+      {
+        const {db, store} = createFakeFirestore({
+          "events/event-1": activeEvent({participantsCount: 2, capacity: 3}),
+          "eventChats/event-1": eventChat({
+            readAccessUserIds: ["organizer", "uid"],
+          }),
+          "events/event-1/participants/organizer": organizerParticipant(),
+          "events/event-1/participants/uid": participant(),
+        });
+
+        await leaveParticipant(db);
+        await cancelAsOrganizer(db);
+
+        assertUniqueSameMembers(
+            store.get("eventChats/event-1").readAccessUserIds,
+            ["organizer"],
+        );
+      }
+
+      {
+        const {db, store, writes} = createFakeFirestore({
+          "events/event-1": activeEvent({participantsCount: 2, capacity: 3}),
+          "eventChats/event-1": eventChat({
+            readAccessUserIds: ["organizer", "uid"],
+          }),
+          "events/event-1/participants/organizer": organizerParticipant(),
+          "events/event-1/participants/uid": participant(),
+        });
+
+        await cancelAsOrganizer(db);
+        await assertRejectsHttpsError(
+            () => leaveParticipant(db),
+            "failed-precondition",
+            "event_not_leaveable",
+        );
+
+        assertUniqueSameMembers(
+            store.get("eventChats/event-1").readAccessUserIds,
+            ["organizer", "uid"],
+        );
+        assert.equal(writes.filter((write) =>
+          write.path === "eventChats/event-1").length, 1);
+      }
+
+      {
+        const {db, store} = createFakeFirestore({
+          "events/event-1": activeEvent({participantsCount: 1, capacity: 3}),
+          "eventChats/event-1": eventChat(),
+          "events/event-1/participants/organizer": organizerParticipant(),
+          "events/event-1/participants/uid": participant({
+            status: "left",
+            leftAt: oldTimestamp,
+            createdAt: oldTimestamp,
+          }),
+          "users/uid": userProfile(),
+        });
+
+        await joinParticipant(db);
+        await cancelAsOrganizer(db);
+
+        assertUniqueSameMembers(
+            store.get("eventChats/event-1").readAccessUserIds,
+            ["organizer", "uid"],
+        );
+      }
+
+      {
+        const {db, store, writes} = createFakeFirestore({
+          "events/event-1": activeEvent({participantsCount: 1, capacity: 3}),
+          "eventChats/event-1": eventChat(),
+          "events/event-1/participants/organizer": organizerParticipant(),
+          "events/event-1/participants/uid": participant({
+            status: "left",
+            leftAt: oldTimestamp,
+            createdAt: oldTimestamp,
+          }),
+          "users/uid": userProfile(),
+        });
+
+        await cancelAsOrganizer(db);
+        await assertRejectsHttpsError(
+            () => joinParticipant(db),
+            "failed-precondition",
+            "event_not_joinable",
+        );
+
+        assertUniqueSameMembers(
+            store.get("eventChats/event-1").readAccessUserIds,
+            ["organizer"],
+        );
+        assert.equal(writes.filter((write) =>
+          write.path === "eventChats/event-1").length, 1);
+      }
     });
 
 test("executeJoinEventTransaction fails closed on invalid chat metadata", async () => {

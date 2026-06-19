@@ -386,7 +386,7 @@ test("executeCancelEventTransaction cancels active event without counter writes"
   const {db, reads, store, writes} = createFakeFirestore({
     "events/event-1": eventBefore,
     "eventChats/event-1": eventChat({
-      readAccessUserIds: ["uid", "left-before-cancel"],
+      readAccessUserIds: ["uid", "left-before-cancel", "stale-reader"],
     }),
     "events/event-1/participants/uid": participant("active"),
     "events/event-1/participants/alex": participant("active"),

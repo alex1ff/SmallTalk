@@ -1787,6 +1787,10 @@ test("event, participant, chat, and marker builders share one timestamp", () => 
       false,
   );
   assert.deepEqual(chatData.readAccessUserIds, ["uid"]);
+  assert.equal(
+      new Set(chatData.readAccessUserIds).size,
+      chatData.readAccessUserIds.length,
+  );
   assert.equal(marker.status, "created");
   assert.equal(marker.dailyCreation, dailyCreation);
   assert.equal(marker.createdAt, fixedTimestamp);
@@ -1866,6 +1870,10 @@ test("executeCreateEventTransaction creates all event documents", async () => {
     createdAt: fixedTimestamp,
     updatedAt: fixedTimestamp,
   });
+  assert.equal(
+      new Set(store.get("eventChats/event-new").readAccessUserIds).size,
+      store.get("eventChats/event-new").readAccessUserIds.length,
+  );
   const counter = store.get("eventCreationCounters/uid/days/20260616");
   assert.deepEqual(Object.keys(counter).sort(), EXPECTED_DAILY_COUNTER_KEYS);
   assert.equal(counter.userId, "uid");

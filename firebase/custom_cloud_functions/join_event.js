@@ -255,7 +255,12 @@ function assertChatMetadata({chatExists, chatData, eventId}) {
   }
 }
 
-function validateReadAccessUserIds(value, {organizerId}) {
+function areEqualStringArrays(left, right) {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index]);
+}
+
+function validateReadAccessUserIds(value, {organizerId, activeParticipantIds}) {
   if (!Array.isArray(value)) {
     throwJoinError(
         "failed-precondition",
@@ -279,6 +284,17 @@ function validateReadAccessUserIds(value, {organizerId}) {
         "failed-precondition",
         "Event chat access metadata is invalid",
         {domainCode: "event_chat_metadata_invalid", reason: "missing_organizer"},
+    );
+  }
+  const readAccessUserIds = [...seen].sort();
+  if (
+    Array.isArray(activeParticipantIds) &&
+    !areEqualStringArrays(readAccessUserIds, activeParticipantIds)
+  ) {
+    throwJoinError(
+        "failed-precondition",
+        "Event chat access metadata is invalid",
+        {domainCode: "event_chat_metadata_invalid", reason: "invalid_access"},
     );
   }
   return [...value];
@@ -311,6 +327,7 @@ function assertParticipantCountInvariant({
   ) {
     failParticipantStateInconsistent();
   }
+  return activeParticipantIds;
 }
 
 function assertParticipantJoinable({
@@ -481,7 +498,7 @@ async function executeJoinEventTransaction({
       eventStartsAt: eventData.startsAt,
       now: joinDate,
     });
-    assertParticipantCountInvariant({
+    const activeParticipantIds = assertParticipantCountInvariant({
       activeParticipantDocs: activeParticipantsSnapshot.docs || [],
       eventData,
     });
@@ -493,6 +510,7 @@ async function executeJoinEventTransaction({
     const readAccessUserIds = addReadAccessUser(
         validateReadAccessUserIds(chatData.readAccessUserIds, {
           organizerId: eventData.organizerId,
+          activeParticipantIds,
         }),
         uid,
     );

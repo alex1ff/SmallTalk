@@ -363,7 +363,9 @@ test("normalizeLeaveEventPayload rejects unknown and missing keys", () => {
 test("executeLeaveEventTransaction marks participant left", async () => {
   const counterBefore = counterData();
   const {db, reads, store, writes} = createFakeFirestore({
-    ...validLeaveSeed(),
+    ...validLeaveSeed({
+      chat: {readAccessUserIds: ["uid", "organizer"]},
+    }),
     "eventCreationCounters/organizer/days/20260616": counterBefore,
   });
 
