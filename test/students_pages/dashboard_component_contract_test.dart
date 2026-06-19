@@ -91,6 +91,8 @@ void main() {
     expect(source, contains("'connecting'"));
     expect(source, contains("'no_tutors_available'"));
     expect(source, contains('StudentDashboardSearchState.noMatchFound'));
+    expect(source, contains('StudentDashboardSearchState.error'));
+    expect(source, contains('StudentDashboardSearchErrorReason'));
     expect(source, contains('Duration(minutes: 10)'));
     expect(
       source,

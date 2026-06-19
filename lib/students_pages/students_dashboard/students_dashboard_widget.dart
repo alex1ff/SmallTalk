@@ -35,6 +35,13 @@ enum StudentDashboardSearchState {
   searching,
   connecting,
   noMatchFound,
+  error,
+}
+
+enum StudentDashboardSearchErrorReason {
+  mediaPermissionDenied,
+  searchUnavailable,
+  activeSessionUnavailable,
 }
 
 class StudentsDashboardWidget extends StatefulWidget {
@@ -76,7 +83,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   bool _isStartingSearch = false;
   bool _ignoreStartSearchUntilNextFrame = false;
   String? _suppressedActiveSessionId;
+  String? _lastActiveSessionId;
   Timer? _searchTimeoutTimer;
+  StudentDashboardSearchErrorReason? _searchErrorReason;
+  StudentDashboardSearchState _lastActiveSessionSearchState =
+      StudentDashboardSearchState.idle;
 
   bool get _showLegacyDashboard => false;
   bool _isStopSearchState(StudentDashboardSearchState searchState) =>
@@ -86,9 +97,24 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   bool _showsSearchStatus(StudentDashboardSearchState searchState) =>
       searchState != StudentDashboardSearchState.idle;
 
+  bool _canSurfaceActiveSessionError(String expectedSessionId) =>
+      expectedSessionId.isNotEmpty &&
+      _searchState == StudentDashboardSearchState.idle &&
+      (_lastActiveSessionId != expectedSessionId ||
+          _lastActiveSessionSearchState == StudentDashboardSearchState.idle);
+
   void _clearSearchTimeoutTimer() {
     _searchTimeoutTimer?.cancel();
     _searchTimeoutTimer = null;
+  }
+
+  void _setSearchError(StudentDashboardSearchErrorReason reason) {
+    _clearSearchTimeoutTimer();
+    safeSetState(() {
+      _searchState = StudentDashboardSearchState.error;
+      _searchErrorReason = reason;
+      _suppressedActiveSessionId = null;
+    });
   }
 
   void _startSearchTimeoutTimer() {
@@ -134,6 +160,52 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       default:
         return StudentDashboardSearchState.idle;
     }
+  }
+
+  void _clearRecoveredActiveSessionError() {
+    if (_searchState == StudentDashboardSearchState.error &&
+        _searchErrorReason ==
+            StudentDashboardSearchErrorReason.activeSessionUnavailable) {
+      _searchState = StudentDashboardSearchState.idle;
+      _searchErrorReason = null;
+    }
+  }
+
+  void _rememberActiveSessionSnapshot(
+    VideoSessionsRecord? session,
+    String expectedSessionId,
+  ) {
+    _clearRecoveredActiveSessionError();
+    final sessionSearchState = _searchStateForSession(session);
+    final sessionId = session?.reference.id;
+    if (expectedSessionId.isEmpty ||
+        sessionId == null ||
+        sessionId != expectedSessionId ||
+        sessionSearchState == StudentDashboardSearchState.idle) {
+      _lastActiveSessionSearchState = StudentDashboardSearchState.idle;
+      _lastActiveSessionId = null;
+      return;
+    }
+
+    _lastActiveSessionSearchState = sessionSearchState;
+    _lastActiveSessionId = sessionId;
+  }
+
+  StudentDashboardSearchState? _cachedSearchStateForActiveSessionError(
+    String expectedSessionId,
+  ) {
+    final cachedSessionId = _lastActiveSessionId;
+    if (cachedSessionId == null ||
+        expectedSessionId.isEmpty ||
+        cachedSessionId != expectedSessionId ||
+        cachedSessionId == _suppressedActiveSessionId ||
+        _lastActiveSessionSearchState == StudentDashboardSearchState.idle ||
+        (_searchState != StudentDashboardSearchState.idle &&
+            _searchState != StudentDashboardSearchState.noMatchFound)) {
+      return null;
+    }
+
+    return _lastActiveSessionSearchState;
   }
 
   StudentDashboardSearchState _effectiveSearchStateFor(
@@ -837,6 +909,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     if (_isStopSearchState(visibleSearchState)) {
       safeSetState(() {
         _searchState = StudentDashboardSearchState.idle;
+        _searchErrorReason = null;
         _suppressedActiveSessionId = visibleSessionId;
         _ignoreStartSearchUntilNextFrame = true;
       });
@@ -855,6 +928,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
     safeSetState(() {
       _isStartingSearch = true;
+      _searchErrorReason = null;
       _suppressedActiveSessionId = null;
     });
     _clearSearchTimeoutTimer();
@@ -882,7 +956,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         return;
       }
 
-      if (!(await ensureCameraAndMicrophonePermissions())) {
+      final hasMediaPermissions = await ensureCameraAndMicrophonePermissions();
+      if (!hasMediaPermissions) {
+        _setSearchError(
+          StudentDashboardSearchErrorReason.mediaPermissionDenied,
+        );
         return;
       }
 
@@ -892,9 +970,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
       safeSetState(() {
         _searchState = StudentDashboardSearchState.searching;
+        _searchErrorReason = null;
         _suppressedActiveSessionId = null;
       });
       _startSearchTimeoutTimer();
+    } on Exception {
+      if (mounted) {
+        _setSearchError(StudentDashboardSearchErrorReason.searchUnavailable);
+      }
     } finally {
       if (mounted) {
         safeSetState(() => _isStartingSearch = false);
@@ -976,6 +1059,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
           ruText: 'Пока никого не нашли',
           enText: 'No one found yet',
         ),
+      StudentDashboardSearchState.error => _searchErrorText(context),
       StudentDashboardSearchState.searching =>
         FFLocalizations.of(context).getVariableText(
           ruText: 'Ищем собеседника',
@@ -1047,6 +1131,27 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         ),
       ),
     );
+  }
+
+  String _searchErrorText(BuildContext context) {
+    switch (_searchErrorReason) {
+      case StudentDashboardSearchErrorReason.mediaPermissionDenied:
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Разрешите камеру и микрофон',
+          enText: 'Allow camera and microphone',
+        );
+      case StudentDashboardSearchErrorReason.activeSessionUnavailable:
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Не удалось обновить поиск',
+          enText: 'Could not update search',
+        );
+      case StudentDashboardSearchErrorReason.searchUnavailable:
+      case null:
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Не удалось начать поиск',
+          enText: 'Could not start search',
+        );
+    }
   }
 
   Widget _buildStartSearchButton(
@@ -1340,10 +1445,49 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                       StreamBuilder<VideoSessionsRecord?>(
                         stream: _activeSessionStreamFor(user),
                         builder: (context, activeSessionSnapshot) {
-                          final activeSession = activeSessionSnapshot.data;
-                          final effectiveSearchState =
+                          final activeSessionIdFromUser =
+                              user.currentSessionId.trim();
+                          final activeSession =
+                              activeSessionSnapshot.data?.reference.id ==
+                                      activeSessionIdFromUser
+                                  ? activeSessionSnapshot.data
+                                  : null;
+                          if (!activeSessionSnapshot.hasError) {
+                            _rememberActiveSessionSnapshot(
+                              activeSession,
+                              activeSessionIdFromUser,
+                            );
+                          }
+                          final cachedSearchState =
+                              activeSessionSnapshot.hasError &&
+                                      activeSession == null
+                                  ? _cachedSearchStateForActiveSessionError(
+                                      activeSessionIdFromUser,
+                                    )
+                                  : null;
+                          if (activeSessionSnapshot.hasError &&
+                              activeSession == null &&
+                              cachedSearchState == null &&
+                              _canSurfaceActiveSessionError(
+                                activeSessionIdFromUser,
+                              )) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted &&
+                                  _canSurfaceActiveSessionError(
+                                    activeSessionIdFromUser,
+                                  )) {
+                                _setSearchError(
+                                  StudentDashboardSearchErrorReason
+                                      .activeSessionUnavailable,
+                                );
+                              }
+                            });
+                          }
+                          final effectiveSearchState = cachedSearchState ??
                               _effectiveSearchStateFor(activeSession);
-                          final activeSessionId = activeSession?.reference.id;
+                          final activeSessionId = cachedSearchState == null
+                              ? activeSession?.reference.id
+                              : _lastActiveSessionId;
 
                           return _buildReferenceSearchHero(
                             context,

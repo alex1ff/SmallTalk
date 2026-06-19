@@ -25,6 +25,7 @@ int _checkPermissionStatusCallCount = 0;
 int _requestPermissionsCallCount = 0;
 Future<Map<int, int>> Function(List<int> permissions)?
     _requestPermissionsHandler;
+Object? _checkPermissionStatusError;
 
 Widget _buildDashboardTestApp(
   Widget child, {
@@ -139,6 +140,7 @@ void main() {
     _checkPermissionStatusCallCount = 0;
     _requestPermissionsCallCount = 0;
     _requestPermissionsHandler = null;
+    _checkPermissionStatusError = null;
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_permissionsChannel, (call) async {
@@ -155,6 +157,10 @@ void main() {
           };
         case 'checkPermissionStatus':
           _checkPermissionStatusCallCount += 1;
+          final error = _checkPermissionStatusError;
+          if (error != null) {
+            throw error;
+          }
           return _permissionStatus;
         case 'checkServiceStatus':
           return _permissionGranted;
@@ -485,6 +491,119 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('active session stream errors keep last session search state',
+      (tester) async {
+    Future<void> verifyCachedState({
+      required String userId,
+      required String sessionId,
+      required String status,
+      required String statusText,
+      required String buttonText,
+    }) async {
+      final activeSessionController = StreamController<VideoSessionsRecord?>();
+      addTearDown(activeSessionController.close);
+      setActiveStudent(userId, currentSessionId: sessionId);
+
+      await tester.pumpWidget(
+        _buildDashboardTestApp(
+          StudentsDashboardWidget(
+            activeSessionStream: activeSessionController.stream,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      activeSessionController.add(sessionFixture(sessionId, status));
+      await tester.pump();
+
+      expect(find.text(statusText), findsOneWidget);
+      expect(find.text(buttonText), findsOneWidget);
+
+      activeSessionController.addError(
+        StateError('active session stream failed after $status'),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text(statusText), findsOneWidget);
+      expect(find.text(buttonText), findsOneWidget);
+      expect(find.text('Не удалось обновить поиск'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+
+    await verifyCachedState(
+      userId: 'student-stream-error-after-connecting-test',
+      sessionId: 'session-error-after-connecting-test',
+      status: 'pending_confirmation',
+      statusText: 'Соединяем',
+      buttonText: 'Остановить поиск',
+    );
+    await verifyCachedState(
+      userId: 'student-stream-error-after-searching-test',
+      sessionId: 'session-error-after-searching-test',
+      status: 'searching',
+      statusText: 'Ищем собеседника',
+      buttonText: 'Остановить поиск',
+    );
+    await verifyCachedState(
+      userId: 'student-stream-error-after-no-match-test',
+      sessionId: 'session-error-after-no-match-test',
+      status: 'no_tutors_available',
+      statusText: 'Пока никого не нашли',
+      buttonText: 'Начать поиск',
+    );
+  });
+
+  testWidgets('active session stream error ignores stale cached session',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    const userId = 'student-stream-error-stale-cache-test';
+    const oldSessionId = 'session-stream-error-stale-cache-old-test';
+    const newSessionId = 'session-stream-error-stale-cache-new-test';
+    setActiveStudent(userId, currentSessionId: oldSessionId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(sessionFixture(oldSessionId, 'searching'));
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+
+    setActiveStudent(userId, currentSessionId: newSessionId);
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Начать поиск'), findsOneWidget);
+
+    activeSessionController.addError(
+      StateError('new session stream failed after stale cached session'),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Не удалось обновить поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Начать поиск'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('pair session stream clears stale no match timeout',
       (tester) async {
     final activeSessionController = StreamController<VideoSessionsRecord?>();
@@ -656,11 +775,212 @@ void main() {
     expect(find.text('Остановить поиск'), findsNothing);
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Разрешите камеру и микрофон'), findsOneWidget);
 
     await tester.pump(const Duration(minutes: 10));
     await tester.pump();
 
     expect(find.text('Пока никого не нашли'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard handles permission plugin errors and retries',
+      (tester) async {
+    _checkPermissionStatusError = PlatformException(
+      code: 'permission_error',
+      message: 'permission check failed',
+    );
+    setActiveStudent('student-permission-exception-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Не удалось начать поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    _checkPermissionStatusError = null;
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Не удалось начать поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard handles active session stream errors',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(
+      'student-stream-error-test',
+      currentSessionId: 'session-stream-error-test',
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.addError(StateError('session stream failed'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Не удалось обновить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Не удалось обновить поиск'), findsNothing);
+
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Не удалось обновить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('active session stream recovery clears stream error',
+      (tester) async {
+    Future<void> pumpStreamDashboard({
+      required StreamController<VideoSessionsRecord?> controller,
+      required String userId,
+      required String sessionId,
+    }) async {
+      setActiveStudent(userId, currentSessionId: sessionId);
+      await tester.pumpWidget(
+        _buildDashboardTestApp(
+          StudentsDashboardWidget(activeSessionStream: controller.stream),
+        ),
+      );
+      await tester.pump();
+    }
+
+    final idleRecoveryController = StreamController<VideoSessionsRecord?>();
+    addTearDown(idleRecoveryController.close);
+    await pumpStreamDashboard(
+      controller: idleRecoveryController,
+      userId: 'student-stream-error-idle-recovery-test',
+      sessionId: 'session-stream-error-idle-recovery-test',
+    );
+
+    idleRecoveryController.addError(StateError('session stream failed'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Не удалось обновить поиск'), findsOneWidget);
+
+    idleRecoveryController.add(null);
+    await tester.pump();
+
+    expect(find.text('Не удалось обновить поиск'), findsNothing);
+    expect(find.text('Начать поиск'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    final activeRecoveryController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeRecoveryController.close);
+    const activeRecoverySessionId = 'session-stream-error-active-recovery-test';
+    await pumpStreamDashboard(
+      controller: activeRecoveryController,
+      userId: 'student-stream-error-active-recovery-test',
+      sessionId: activeRecoverySessionId,
+    );
+
+    activeRecoveryController.addError(StateError('session stream failed'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Не удалось обновить поиск'), findsOneWidget);
+
+    activeRecoveryController.add(
+      sessionFixture(activeRecoverySessionId, 'searching'),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Не удалось обновить поиск'), findsNothing);
+
+    activeRecoveryController.add(
+      sessionFixture(activeRecoverySessionId, 'ended'),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Не удалось обновить поиск'), findsNothing);
+    expect(find.text('Начать поиск'), findsOneWidget);
+
+    activeRecoveryController.add(null);
+    await tester.pump();
+
+    expect(find.text('Не удалось обновить поиск'), findsNothing);
+    expect(find.text('Начать поиск'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('search error status fits compact dashboard layout',
+      (tester) async {
+    tester.view.physicalSize = const Size(360.0, 520.0);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    _permissionStatus = _permissionDenied;
+    setActiveStudent('student-search-error-compact-layout-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        const StudentsDashboardWidget(),
+        textScaleFactor: 1.8,
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Разрешите камеру и микрофон'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
