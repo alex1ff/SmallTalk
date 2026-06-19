@@ -391,7 +391,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add event chat message repository/UI tests for stable ordering and pagination by `createdAt` plus `__name__` / document id.
 - [x] Add widget tests for canceled chat read-only banner/status and hidden or disabled composer.
 - [x] Add widget tests for list empty/loading/error states.
-- [ ] Add widget tests for create form validation.
+- [x] Add widget tests for create form validation.
 - [ ] Add widget tests for detail CTA states.
 - Deferred: Add deep link test for opening event detail.
 - Deferred: Add deep link test for preserving target `eventId` through auth redirect.

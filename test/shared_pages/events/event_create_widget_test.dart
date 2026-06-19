@@ -1396,6 +1396,52 @@ void main() {
     expect(find.text('Enter place'), findsOneWidget);
   });
 
+  testWidgets('submit treats whitespace-only required fields as empty',
+      (tester) async {
+    final generatedRequestIds = <String>[];
+    var submitCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createRequestIdGenerator: () {
+            final id = _requestId(generatedRequestIds.length);
+            generatedRequestIds.add(id);
+            return id;
+          },
+          createEventInvoker: (_, __) async {
+            submitCount += 1;
+            return _createEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventCreateTitleFieldKey), '   ');
+    await tester.enterText(find.byKey(eventCreateDescriptionFieldKey), '\n  ');
+    await tester.enterText(find.byKey(eventCreateLocationFieldKey), '   ');
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Введите название'), findsOneWidget);
+    expect(find.text('Введите описание'), findsOneWidget);
+    expect(find.text('Введите место'), findsOneWidget);
+    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Введите лимит участников'), findsNothing);
+    expect(generatedRequestIds, isEmpty);
+    expect(submitCount, 0);
+  });
+
   testWidgets('cleared participant limit is required on submit',
       (tester) async {
     await tester.pumpWidget(
@@ -2396,6 +2442,48 @@ void main() {
 
     expect(find.byKey(eventCreateStartTimeErrorKey), findsOneWidget);
     expect(find.text('Выберите будущие дату и время.'), findsOneWidget);
+  });
+
+  testWidgets('past start time error is localized in English', (tester) async {
+    final generatedRequestIds = <String>[];
+    var submitCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('en'),
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _moscowCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 18),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T15:00:00Z'),
+          createRequestIdGenerator: () {
+            final id = _requestId(generatedRequestIds.length);
+            generatedRequestIds.add(id);
+            return id;
+          },
+          createEventInvoker: (_, __) async {
+            submitCount += 1;
+            return _createEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateStartTimeErrorKey), findsOneWidget);
+    expect(find.text('Choose a future date and time.'), findsOneWidget);
+    expect(find.text('Выберите будущие дату и время.'), findsNothing);
+    expect(generatedRequestIds, isEmpty);
+    expect(submitCount, 0);
   });
 
   testWidgets('same local wall time can be valid in another city timezone',
