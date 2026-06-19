@@ -201,6 +201,7 @@ class _EventListWidgetState extends State<EventListWidget> {
   String? _cityChipsCountryCodeHint;
   String? _cityChipsSelectedIdentity;
   String? _lastTrackedEventListOpenKey;
+  String? _lastTrackedCitySelectedKey;
 
   @override
   void initState() {
@@ -278,6 +279,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                 (widget.eventCardsOverride == null && !hasEventListError);
             final eventCards =
                 widget.eventCardsOverride ?? const <EventListCardViewModel>[];
+            _trackCitySelectedIfNeeded(selectedState);
             _trackEventListOpenedIfNeeded(selectedState);
             final onCitySelectorPressed = widget.onCitySelectorPressed ??
                 (catalog == null
@@ -573,6 +575,28 @@ class _EventListWidgetState extends State<EventListWidget> {
         widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
     unawaited(
       tracker.trackEventListOpened(selected).catchError(
+            (Object error, StackTrace stackTrace) {},
+          ),
+    );
+  }
+
+  void _trackCitySelectedIfNeeded(
+    EventSelectedCityState? selectedState,
+  ) {
+    final selected = selectedState?.selected;
+    if (selected == null) {
+      return;
+    }
+    final trackingKey =
+        '${selected.city.identity}|${selected.source.analyticsValue}';
+    if (_lastTrackedCitySelectedKey == trackingKey) {
+      return;
+    }
+    _lastTrackedCitySelectedKey = trackingKey;
+    final tracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
+    unawaited(
+      tracker.trackCitySelected(selected).catchError(
             (Object error, StackTrace stackTrace) {},
           ),
     );

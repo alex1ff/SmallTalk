@@ -1524,7 +1524,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(analyticsTracker.payloads, [
+    expect(analyticsTracker.payloadsFor('event_list_opened'), [
+      <String, String>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+        'citySource': 'profile',
+      },
+    ]);
+    expect(analyticsTracker.payloadsFor('city_selected'), [
       <String, String>{
         'countryCode': 'RU',
         'cityKey': 'moscow',
@@ -1535,7 +1542,8 @@ void main() {
     await tester.tap(_dateFilterFinder(EventListDateFilter.tomorrow));
     await tester.pumpAndSettle();
 
-    expect(analyticsTracker.payloads, hasLength(1));
+    expect(analyticsTracker.payloadsFor('event_list_opened'), hasLength(1));
+    expect(analyticsTracker.payloadsFor('city_selected'), hasLength(1));
   });
 
   testWidgets('does not select a city from country-only profile data',
@@ -1580,7 +1588,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(analyticsTracker.payloads, isEmpty);
+    expect(analyticsTracker.events, isEmpty);
   });
 
   testWidgets(
@@ -1681,7 +1689,7 @@ void main() {
     expect(currentUserDocument!.hasProfileCity(), isFalse);
   });
 
-  testWidgets('tracks event list opened after recent city chip selection',
+  testWidgets('tracks analytics after recent city chip selection',
       (tester) async {
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     SharedPreferences.setMockInitialValues({
@@ -1704,17 +1712,55 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(analyticsTracker.payloads, isEmpty);
+    expect(analyticsTracker.events, isEmpty);
 
     await tester
         .tap(find.byKey(const ValueKey<String>('event_city_chip_IT_rome')));
     await tester.pumpAndSettle();
 
-    expect(analyticsTracker.payloads, [
+    expect(analyticsTracker.payloadsFor('city_selected'), [
       <String, String>{
         'countryCode': 'IT',
         'cityKey': 'rome',
         'citySource': 'recent',
+      },
+    ]);
+    expect(analyticsTracker.payloadsFor('event_list_opened'), [
+      <String, String>{
+        'countryCode': 'IT',
+        'cityKey': 'rome',
+        'citySource': 'recent',
+      },
+    ]);
+  });
+
+  testWidgets('tracks city selected from static city chip', (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+    SharedPreferences.setMockInitialValues({});
+    currentUserDocument = _userFixture(
+      uid: 'static-chip-analytics-user',
+      data: {},
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          analyticsTracker: analyticsTracker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester
+        .tap(find.byKey(const ValueKey<String>('event_city_chip_RU_moscow')));
+    await tester.pumpAndSettle();
+
+    expect(analyticsTracker.payloadsFor('city_selected'), [
+      <String, String>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+        'citySource': 'static',
       },
     ]);
   });
@@ -1786,6 +1832,41 @@ void main() {
     expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
     expect(currentUserDocument!.hasProfileCity(), isFalse);
+  });
+
+  testWidgets('tracks city selected from manual picker as manual source',
+      (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+    currentUserDocument = _userFixture(
+      uid: 'manual-selection-analytics-user',
+      data: {},
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          analyticsTracker: analyticsTracker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventListCitySelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+          const ValueKey<String>('event_manual_city_option_US_new_york')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(analyticsTracker.payloadsFor('city_selected'), [
+      <String, String>{
+        'countryCode': 'US',
+        'cityKey': 'new_york',
+        'citySource': 'manual',
+      },
+    ]);
   });
 
   testWidgets('event card layout shell stays bounded on a narrow viewport',
@@ -2208,11 +2289,31 @@ UsersRecord _userFixture({
 }
 
 class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
-  final List<Map<String, String>> payloads = <Map<String, String>>[];
+  final List<_RecordedAnalyticsEvent> events = <_RecordedAnalyticsEvent>[];
+
+  List<Map<String, String>> payloadsFor(String name) => events
+      .where((event) => event.name == name)
+      .map((event) => event.payload)
+      .toList(growable: false);
 
   @override
   Future<void> trackEventListOpened(EventSelectedCity selectedCity) async {
-    payloads.add(selectedCity.analyticsPayload);
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.eventListOpenedEventName,
+        payload: selectedCity.analyticsPayload,
+      ),
+    );
+  }
+
+  @override
+  Future<void> trackCitySelected(EventSelectedCity selectedCity) async {
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.citySelectedEventName,
+        payload: selectedCity.analyticsPayload,
+      ),
+    );
   }
 }
 
@@ -2221,4 +2322,17 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
 
   @override
   Future<void> trackEventListOpened(EventSelectedCity selectedCity) async {}
+
+  @override
+  Future<void> trackCitySelected(EventSelectedCity selectedCity) async {}
+}
+
+class _RecordedAnalyticsEvent {
+  const _RecordedAnalyticsEvent({
+    required this.name,
+    required this.payload,
+  });
+
+  final String name;
+  final Map<String, String> payload;
 }
