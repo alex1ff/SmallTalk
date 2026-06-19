@@ -20,6 +20,7 @@ import '/services/event_start_time_validation.dart';
 import '/services/event_temporary_city_selection.dart';
 import '/services/event_language_catalog.dart';
 import '/services/event_level_helper.dart';
+import '/services/events_analytics_service.dart';
 
 const ValueKey<String> eventCreateTitleLabelKey =
     ValueKey<String>('event_create_title_label');
@@ -231,6 +232,7 @@ class EventCreateWidget extends StatefulWidget {
     this.currentUtcProvider,
     this.createEventInvoker,
     this.editEventInvoker,
+    this.analyticsTracker,
     this.createRequestIdGenerator,
     this.onLanguageCodeChanged,
     this.onTitleDraftChanged,
@@ -267,6 +269,7 @@ class EventCreateWidget extends StatefulWidget {
   final DateTime Function()? currentUtcProvider;
   final EventCallableInvoker? createEventInvoker;
   final EventCallableInvoker? editEventInvoker;
+  final EventsAnalyticsTracker? analyticsTracker;
   final String Function()? createRequestIdGenerator;
   final ValueChanged<String>? onLanguageCodeChanged;
   final ValueChanged<EventCreateTitleDraft>? onTitleDraftChanged;
@@ -346,6 +349,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   EventActionFailure? _submitFailure;
   String? _activeCreateRequestId;
   String? _activeCreatePayloadSignature;
+  String? _lastTrackedCreatedEventId;
   _EventFormDirtySnapshot? _editDirtyBaseline;
 
   @override
@@ -1408,6 +1412,8 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     }
     final levelRange = _resolvedSelectedLevelRange();
     final capacity = _eventCreateCapacityFromText(_capacityTextController.text);
+    final analyticsTracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
 
     setState(() {
       _isSubmitting = true;
@@ -1458,6 +1464,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
           invoker: widget.createEventInvoker,
         );
         savedEventId = createResult.eventId;
+        _trackEventCreatedIfNeeded(
+          eventId: createResult.eventId,
+          selectedCity: selectedCity,
+          tracker: analyticsTracker,
+        );
       } else {
         final editEventId = widget.eventId?.trim();
         if (editEventId == null || editEventId.isEmpty) {
@@ -1501,6 +1512,28 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       pathParameters: <String, String>{
         'eventId': savedEventId,
       },
+    );
+  }
+
+  void _trackEventCreatedIfNeeded({
+    required String eventId,
+    required EventSelectedCity selectedCity,
+    required EventsAnalyticsTracker tracker,
+  }) {
+    if (_lastTrackedCreatedEventId == eventId) {
+      return;
+    }
+    _lastTrackedCreatedEventId = eventId;
+    unawaited(
+      Future<void>.sync(
+        () => tracker.trackEventCreated(
+          countryCode: selectedCity.city.countryCode,
+          cityKey: selectedCity.city.cityKey,
+          citySource: selectedCity.source.analyticsValue,
+        ),
+      ).catchError(
+        (Object error, StackTrace stackTrace) {},
+      ),
     );
   }
 

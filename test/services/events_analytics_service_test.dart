@@ -166,4 +166,45 @@ void main() {
       },
     );
   });
+
+  test('tracks event created with canonical city payload only', () async {
+    final loggedEvents = <String, Map<String, Object>>{};
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        loggedEvents[name] = parameters;
+      },
+    );
+
+    await service.trackEventCreated(
+      countryCode: ' it ',
+      cityKey: ' rome ',
+      citySource: ' manual ',
+    );
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventCreatedEventName],
+      <String, Object>{
+        'countryCode': 'IT',
+        'cityKey': 'rome',
+        'citySource': 'manual',
+      },
+    );
+
+    await service.trackEventCreated(
+      countryCode: 'IT',
+      cityKey: 'rome',
+      citySource: '   ',
+    );
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventCreatedEventName],
+      <String, Object>{
+        'countryCode': 'IT',
+        'cityKey': 'rome',
+      },
+    );
+  });
 }

@@ -22,6 +22,7 @@ import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
+import 'package:small_talk/services/events_analytics_service.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -75,6 +76,7 @@ GoRouter _buildEventCreateRouter({
   DateTime Function()? currentUtcProvider,
   EventCallableInvoker? createEventInvoker,
   EventCallableInvoker? editEventInvoker,
+  EventsAnalyticsTracker? analyticsTracker,
   String Function()? createRequestIdGenerator,
 }) {
   return GoRouter(
@@ -108,6 +110,7 @@ GoRouter _buildEventCreateRouter({
           currentUtcProvider: currentUtcProvider,
           createEventInvoker: createEventInvoker,
           editEventInvoker: editEventInvoker,
+          analyticsTracker: analyticsTracker,
           createRequestIdGenerator: createRequestIdGenerator,
         ),
       ),
@@ -204,7 +207,12 @@ void main() {
     FirebaseAuthPlatform.instance = _TestFirebaseAuthPlatform();
   });
 
+  setUp(() {
+    EventsAnalyticsService.defaultTracker = const _NoopEventsAnalyticsTracker();
+  });
+
   tearDown(() {
+    EventsAnalyticsService.defaultTracker = EventsAnalyticsService.instance;
     currentUser = null;
     currentUserDocument = null;
     SharedPreferences.setMockInitialValues({});
@@ -1815,6 +1823,7 @@ void main() {
 
   testWidgets('successful create opens created event detail', (tester) async {
     var submitCount = 0;
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     final router = _buildEventCreateRouter(
       initialSelectedCity: const EventSelectedCity(
         city: _romeCity,
@@ -1827,6 +1836,7 @@ void main() {
         submitCount += 1;
         return _createEventResponse();
       },
+      analyticsTracker: analyticsTracker,
     );
 
     await tester.pumpWidget(_buildRouterTestApp(router));
@@ -1837,6 +1847,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(submitCount, 1);
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventCreatedEventName),
+      [
+        <String, String>{
+          'countryCode': 'IT',
+          'cityKey': 'rome',
+          'citySource': 'manual',
+        },
+      ],
+    );
     expect(router.getCurrentLocation(), '/events/event-1');
     expect(find.byType(EventCreateWidget), findsNothing);
     expect(find.byType(EventDetailWidget), findsOneWidget);
@@ -1850,9 +1871,68 @@ void main() {
     expect(find.text('Events home'), findsOneWidget);
   });
 
+  testWidgets('failed create does not track event created', (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          initialSelectedCity: const EventSelectedCity(
+            city: _romeCity,
+            source: EventCitySelectionSource.manual,
+          ),
+          initialDate: DateTime(2026, 6, 20),
+          initialTime: const TimeOfDay(hour: 18, minute: 0),
+          currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+          createEventInvoker: (_, __) async => throw _dailyLimitError(),
+          analyticsTracker: analyticsTracker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventCreatedEventName),
+      isEmpty,
+    );
+  });
+
+  testWidgets('event created analytics failure does not block create success',
+      (tester) async {
+    final router = _buildEventCreateRouter(
+      initialSelectedCity: const EventSelectedCity(
+        city: _romeCity,
+        source: EventCitySelectionSource.manual,
+      ),
+      initialDate: DateTime(2026, 6, 20),
+      initialTime: const TimeOfDay(hour: 18, minute: 0),
+      currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+      createEventInvoker: (_, __) async => _createEventResponse(),
+      analyticsTracker: const _ThrowingEventCreatedAnalyticsTracker(),
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/events/event-1');
+    expect(find.byType(EventDetailWidget), findsOneWidget);
+  });
+
   testWidgets('create completion after leaving form does not open detail',
       (tester) async {
     final createCompleter = Completer<Object?>();
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     final router = _buildEventCreateRouter(
       initialSelectedCity: const EventSelectedCity(
         city: _romeCity,
@@ -1862,6 +1942,7 @@ void main() {
       initialTime: const TimeOfDay(hour: 18, minute: 0),
       currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
       createEventInvoker: (_, __) => createCompleter.future,
+      analyticsTracker: analyticsTracker,
     );
 
     await tester.pumpWidget(_buildRouterTestApp(router));
@@ -1881,6 +1962,17 @@ void main() {
     expect(router.getCurrentLocation(), '/');
     expect(find.byType(EventDetailWidget), findsNothing);
     expect(find.text('Events home'), findsOneWidget);
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventCreatedEventName),
+      [
+        <String, String>{
+          'countryCode': 'IT',
+          'cityKey': 'rome',
+          'citySource': 'manual',
+        },
+      ],
+    );
   });
 
   testWidgets('create completion after confirmed discard does not open detail',
@@ -3394,6 +3486,7 @@ void main() {
     Map<String, dynamic>? payload;
     var createSubmitCount = 0;
     var editSubmitCount = 0;
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     final router = _buildEventCreateRouter(
       formMode: EventFormMode.edit,
       eventId: ' event-1 ',
@@ -3421,6 +3514,7 @@ void main() {
         payload = calledPayload;
         return _editEventResponse();
       },
+      analyticsTracker: analyticsTracker,
     );
 
     await tester.pumpWidget(_buildRouterTestApp(router));
@@ -3431,6 +3525,11 @@ void main() {
 
     expect(createSubmitCount, 0);
     expect(editSubmitCount, 1);
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventCreatedEventName),
+      isEmpty,
+    );
     expect(functionName, editEventFunctionName);
     expect(payload, <String, dynamic>{
       'eventId': 'event-1',
@@ -3742,6 +3841,108 @@ class _TestFirebaseFunctionsException extends FirebaseFunctionsException {
     required super.message,
     super.details,
   });
+}
+
+class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
+  final List<_RecordedAnalyticsEvent> events = <_RecordedAnalyticsEvent>[];
+
+  List<Map<String, String>> payloadsFor(String name) => events
+      .where((event) => event.name == name)
+      .map((event) => event.payload)
+      .toList(growable: false);
+
+  @override
+  Future<void> trackEventListOpened(EventSelectedCity selectedCity) async {}
+
+  @override
+  Future<void> trackCitySelected(EventSelectedCity selectedCity) async {}
+
+  @override
+  Future<void> trackDateFilterSelected(EventListDateFilter dateFilter) async {}
+
+  @override
+  Future<void> trackLevelFilterSelected(String? selectedLevel) async {}
+
+  @override
+  Future<void> trackEventDetailOpened(
+    EventsRecord event, {
+    String? citySource,
+  }) async {}
+
+  @override
+  Future<void> trackEventCreated({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) async {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: countryCode,
+      cityKey: cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return;
+    }
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.eventCreatedEventName,
+        payload: payload.cast<String, String>(),
+      ),
+    );
+  }
+}
+
+class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
+  const _NoopEventsAnalyticsTracker();
+
+  @override
+  Future<void> trackEventListOpened(EventSelectedCity selectedCity) async {}
+
+  @override
+  Future<void> trackCitySelected(EventSelectedCity selectedCity) async {}
+
+  @override
+  Future<void> trackDateFilterSelected(EventListDateFilter dateFilter) async {}
+
+  @override
+  Future<void> trackLevelFilterSelected(String? selectedLevel) async {}
+
+  @override
+  Future<void> trackEventDetailOpened(
+    EventsRecord event, {
+    String? citySource,
+  }) async {}
+
+  @override
+  Future<void> trackEventCreated({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) async {}
+}
+
+class _ThrowingEventCreatedAnalyticsTracker
+    extends _NoopEventsAnalyticsTracker {
+  const _ThrowingEventCreatedAnalyticsTracker();
+
+  @override
+  Future<void> trackEventCreated({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) {
+    throw StateError('analytics failed');
+  }
+}
+
+class _RecordedAnalyticsEvent {
+  const _RecordedAnalyticsEvent({
+    required this.name,
+    required this.payload,
+  });
+
+  final String name;
+  final Map<String, String> payload;
 }
 
 Future<void> _fillRequiredCreateFields(WidgetTester tester) async {

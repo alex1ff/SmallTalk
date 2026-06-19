@@ -21,6 +21,12 @@ abstract interface class EventsAnalyticsTracker {
   Future<void> trackLevelFilterSelected(String? selectedLevel);
 
   Future<void> trackEventDetailOpened(EventsRecord event, {String? citySource});
+
+  Future<void> trackEventCreated({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  });
 }
 
 class EventsAnalyticsService implements EventsAnalyticsTracker {
@@ -36,6 +42,7 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
   static const String dateFilterSelectedEventName = 'date_filter_selected';
   static const String levelFilterSelectedEventName = 'level_filter_selected';
   static const String eventDetailOpenedEventName = 'event_detail_opened';
+  static const String eventCreatedEventName = 'event_created';
 
   final EventsAnalyticsLogEvent _logEvent;
 
@@ -90,6 +97,26 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
     }
     return _logEvent(
       name: eventDetailOpenedEventName,
+      parameters: payload,
+    );
+  }
+
+  @override
+  Future<void> trackEventCreated({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: countryCode,
+      cityKey: cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return Future<void>.value();
+    }
+    return _logEvent(
+      name: eventCreatedEventName,
       parameters: payload,
     );
   }
