@@ -50,6 +50,85 @@ void main() {
       expect(result.dailyCreation.remaining, 3);
     });
 
+    test('accepts create validation boundary fields before calling function',
+        () async {
+      final calls = <Map<String, dynamic>>[];
+      Future<Object?> invoker(
+          String functionName, Map<String, dynamic> payload) async {
+        expect(functionName, createEventFunctionName);
+        calls.add(payload);
+        return createEventResponse();
+      }
+
+      final validCases = <({
+        String name,
+        EventEditableFields fields,
+        int expectedCapacity,
+        Map<String, dynamic>? expectedGeo,
+      })>[
+        (
+          name: 'minimum capacity',
+          fields: eventFieldsFixture(capacity: 2),
+          expectedCapacity: 2,
+          expectedGeo: null,
+        ),
+        (
+          name: 'maximum capacity',
+          fields: eventFieldsFixture(capacity: 50),
+          expectedCapacity: 50,
+          expectedGeo: null,
+        ),
+        (
+          name: 'nullable geo',
+          fields: eventFieldsFixture(locationGeoPoint: null),
+          expectedCapacity: 10,
+          expectedGeo: null,
+        ),
+        (
+          name: 'southwest geo boundary',
+          fields: eventFieldsFixture(
+            locationGeoPoint: const LatLng(-90, -180),
+          ),
+          expectedCapacity: 10,
+          expectedGeo: <String, dynamic>{
+            'latitude': -90.0,
+            'longitude': -180.0,
+          },
+        ),
+        (
+          name: 'northeast geo boundary',
+          fields: eventFieldsFixture(
+            locationGeoPoint: const LatLng(90, 180),
+          ),
+          expectedCapacity: 10,
+          expectedGeo: <String, dynamic>{
+            'latitude': 90.0,
+            'longitude': 180.0,
+          },
+        ),
+      ];
+
+      for (final currentCase in validCases) {
+        await EventActionsRepository.createEvent(
+          createRequestId: '550e8400-e29b-41d4-a716-446655440000',
+          fields: currentCase.fields,
+          invoker: invoker,
+        );
+
+        final payload = calls.removeLast();
+        expect(
+          payload['capacity'],
+          currentCase.expectedCapacity,
+          reason: currentCase.name,
+        );
+        expect(
+          payload['locationGeoPoint'],
+          currentCase.expectedGeo,
+          reason: currentCase.name,
+        );
+      }
+    });
+
     test('edits an event with the exact callable payload', () async {
       String? functionName;
       Map<String, dynamic>? payload;
@@ -260,27 +339,73 @@ void main() {
         return createEventResponse();
       }
 
-      final invalidFields = <EventEditableFields>[
-        eventFieldsFixture(startsAt: DateTime(2026, 6, 18, 15, 30)),
-        eventFieldsFixture(startsAt: DateTime.utc(10000, 1, 1)),
-        eventFieldsFixture(capacity: 1),
-        eventFieldsFixture(capacity: 51),
-        eventFieldsFixture(levelMin: 'C1', levelMax: 'B1'),
-        eventFieldsFixture(levelMin: 'D1'),
-        eventFieldsFixture(countryCode: 'RUS'),
-        eventFieldsFixture(cityKey: 'Moscow'),
-        eventFieldsFixture(locationGeoPoint: const LatLng(91, 37.6156)),
-        eventFieldsFixture(locationGeoPoint: LatLng(double.nan, 37.6156)),
+      final invalidFields = <({String name, EventEditableFields fields})>[
+        (
+          name: 'non-UTC startsAt',
+          fields: eventFieldsFixture(startsAt: DateTime(2026, 6, 18, 15, 30)),
+        ),
+        (
+          name: 'five-digit startsAt year',
+          fields: eventFieldsFixture(startsAt: DateTime.utc(10000, 1, 1)),
+        ),
+        (
+          name: 'capacity below minimum',
+          fields: eventFieldsFixture(capacity: 1),
+        ),
+        (
+          name: 'capacity above maximum',
+          fields: eventFieldsFixture(capacity: 51),
+        ),
+        (
+          name: 'reversed level range',
+          fields: eventFieldsFixture(levelMin: 'C1', levelMax: 'B1'),
+        ),
+        (name: 'unknown level', fields: eventFieldsFixture(levelMin: 'D1')),
+        (
+          name: 'invalid country code',
+          fields: eventFieldsFixture(countryCode: 'RUS'),
+        ),
+        (
+          name: 'invalid city key',
+          fields: eventFieldsFixture(cityKey: 'Moscow'),
+        ),
+        (
+          name: 'latitude above range',
+          fields:
+              eventFieldsFixture(locationGeoPoint: const LatLng(91, 37.6156)),
+        ),
+        (
+          name: 'longitude below range',
+          fields:
+              eventFieldsFixture(locationGeoPoint: const LatLng(55.7522, -181)),
+        ),
+        (
+          name: 'longitude above range',
+          fields:
+              eventFieldsFixture(locationGeoPoint: const LatLng(55.7522, 181)),
+        ),
+        (
+          name: 'NaN latitude',
+          fields:
+              eventFieldsFixture(locationGeoPoint: LatLng(double.nan, 37.6156)),
+        ),
+        (
+          name: 'infinite longitude',
+          fields: eventFieldsFixture(
+            locationGeoPoint: LatLng(55.7522, double.infinity),
+          ),
+        ),
       ];
 
-      for (final fields in invalidFields) {
+      for (final currentCase in invalidFields) {
         await expectLater(
           EventActionsRepository.createEvent(
             createRequestId: '550e8400-e29b-41d4-a716-446655440000',
-            fields: fields,
+            fields: currentCase.fields,
             invoker: invoker,
           ),
           throwsA(isA<ArgumentError>()),
+          reason: currentCase.name,
         );
       }
       expect(calls, 0);
@@ -296,6 +421,69 @@ void main() {
         ),
         throwsA(same(error)),
       );
+    });
+
+    test('throws on malformed create success responses', () async {
+      final malformedResponses = <({String name, Object? response})>[
+        (
+          name: 'missing eventId',
+          response: <String, dynamic>{
+            'createdAt': '2026-06-14T10:00:00.000Z',
+            'dailyCreation': dailyCreationResponse(),
+          },
+        ),
+        (
+          name: 'empty eventId',
+          response: createEventResponse(eventId: ''),
+        ),
+        (
+          name: 'non-millis createdAt',
+          response: createEventResponse(createdAt: '2026-06-14T10:00:00Z'),
+        ),
+        (
+          name: 'missing dailyCreation',
+          response: <String, dynamic>{
+            'eventId': 'event-1',
+            'createdAt': '2026-06-14T10:00:00.000Z',
+          },
+        ),
+        (
+          name: 'non-map dailyCreation',
+          response: createEventResponse(dailyCreation: 'invalid'),
+        ),
+        (
+          name: 'non-int daily count',
+          response: createEventResponse(
+            dailyCreation: dailyCreationResponse(count: '2'),
+          ),
+        ),
+        (
+          name: 'non-int daily remaining',
+          response: createEventResponse(
+            dailyCreation: dailyCreationResponse(remaining: '3'),
+          ),
+        ),
+        (
+          name: 'bad daily reset timestamp',
+          response: createEventResponse(
+            dailyCreation: dailyCreationResponse(
+              resetAtUtc: '2026-06-15T00:00:00Z',
+            ),
+          ),
+        ),
+      ];
+
+      for (final currentCase in malformedResponses) {
+        await expectLater(
+          EventActionsRepository.createEvent(
+            createRequestId: '550e8400-e29b-41d4-a716-446655440000',
+            fields: eventFieldsFixture(),
+            invoker: (_, __) async => currentCase.response,
+          ),
+          throwsA(isA<FormatException>()),
+          reason: currentCase.name,
+        );
+      }
     });
 
     test('throws on malformed success responses', () async {
@@ -420,13 +608,30 @@ EventEditableFields eventFieldsFixture({
       capacity: capacity,
     );
 
-Map<String, dynamic> createEventResponse() => <String, dynamic>{
-      'eventId': 'event-1',
-      'createdAt': '2026-06-14T10:00:00.000Z',
-      'dailyCreation': <String, dynamic>{
-        'dayKeyUtc': '2026-06-14',
-        'count': 2,
-        'remaining': 3,
-        'resetAtUtc': '2026-06-15T00:00:00.000Z',
-      },
+const _defaultDailyCreationSentinel = Object();
+
+Map<String, dynamic> createEventResponse({
+  Object? eventId = 'event-1',
+  Object? createdAt = '2026-06-14T10:00:00.000Z',
+  Object? dailyCreation = _defaultDailyCreationSentinel,
+}) =>
+    <String, dynamic>{
+      'eventId': eventId,
+      'createdAt': createdAt,
+      'dailyCreation': identical(dailyCreation, _defaultDailyCreationSentinel)
+          ? dailyCreationResponse()
+          : dailyCreation,
+    };
+
+Map<String, dynamic> dailyCreationResponse({
+  Object? dayKeyUtc = '2026-06-14',
+  Object? count = 2,
+  Object? remaining = 3,
+  Object? resetAtUtc = '2026-06-15T00:00:00.000Z',
+}) =>
+    <String, dynamic>{
+      'dayKeyUtc': dayKeyUtc,
+      'count': count,
+      'remaining': remaining,
+      'resetAtUtc': resetAtUtc,
     };
