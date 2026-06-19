@@ -95,17 +95,14 @@ void main() {
         lowerBoundUtc: lowerBoundUtc,
         upperBoundUtc: upperBoundUtc,
       );
-      final where = query.parameters['where'] as List<dynamic>;
-      final orderBy = query.parameters['orderBy'] as List<dynamic>;
 
-      expect(where, hasLength(5));
-      expectWhereCondition(where, 'status', '==', activeEventStatus);
-      expectWhereCondition(where, 'countryCode', '==', 'RU');
-      expectWhereCondition(where, 'cityKey', '==', 'moscow');
-      expectWhereCondition(where, 'startsAt', '>=', lowerBoundUtc);
-      expectWhereCondition(where, 'startsAt', '<', upperBoundUtc);
-      expect(orderBy, hasLength(1));
-      expect(orderBy.single, [FieldPath.fromString('startsAt'), false]);
+      expectActiveEventListQueryShape(
+        query,
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+      );
       expect(query.parameters['limit'], isNull);
       expect(query.parameters['startAfter'], isNull);
     });
@@ -184,10 +181,13 @@ void main() {
       expect(page.data, isEmpty);
 
       final delegatedQuery = capturedQueryBuilder!(EventsRecord.collection);
-      final delegatedWhere =
-          delegatedQuery.parameters['where'] as List<dynamic>;
-      expectWhereCondition(delegatedWhere, 'countryCode', '==', 'RU');
-      expectWhereCondition(delegatedWhere, 'cityKey', '==', 'moscow');
+      expectActiveEventListQueryShape(
+        delegatedQuery,
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+      );
     });
 
     test('connects selected city date bounds to the raw Firestore query',
@@ -215,22 +215,12 @@ void main() {
       );
 
       final query = capturedQueryBuilder!(EventsRecord.collection);
-      final where = query.parameters['where'] as List<dynamic>;
-
-      expectWhereCondition(where, 'status', '==', activeEventStatus);
-      expectWhereCondition(where, 'countryCode', '==', 'US');
-      expectWhereCondition(where, 'cityKey', '==', 'new_york');
-      expectWhereCondition(
-        where,
-        'startsAt',
-        '>=',
-        DateTime.parse('2026-03-08T05:00:00Z'),
-      );
-      expectWhereCondition(
-        where,
-        'startsAt',
-        '<',
-        DateTime.parse('2026-03-09T04:00:00Z'),
+      expectActiveEventListQueryShape(
+        query,
+        countryCode: 'US',
+        cityKey: 'new_york',
+        lowerBoundUtc: DateTime.parse('2026-03-08T05:00:00Z'),
+        upperBoundUtc: DateTime.parse('2026-03-09T04:00:00Z'),
       );
     });
 
@@ -452,9 +442,13 @@ void main() {
       expect(eventIds(page.data), ['visible']);
       final query = capturedQueryBuilder!(EventsRecord.collection);
       final where = query.parameters['where'] as List<dynamic>;
-      expect(where, hasLength(5));
-      expectWhereCondition(where, 'startsAt', '>=', lowerBoundUtc);
-      expectWhereCondition(where, 'startsAt', '<', upperBoundUtc);
+      expectActiveEventListQueryShape(
+        query,
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+      );
       expectNoWhereCondition(where, 'levelMin');
       expectNoWhereCondition(where, 'levelMax');
     });
@@ -749,22 +743,38 @@ void main() {
       expect(eventIds(page.data), ['visible']);
       final query = capturedQueryBuilder!(EventsRecord.collection);
       final where = query.parameters['where'] as List<dynamic>;
-      expectWhereCondition(
-        where,
-        'startsAt',
-        '>=',
-        DateTime.parse('2026-03-08T05:00:00Z'),
-      );
-      expectWhereCondition(
-        where,
-        'startsAt',
-        '<',
-        DateTime.parse('2026-03-09T04:00:00Z'),
+      expectActiveEventListQueryShape(
+        query,
+        countryCode: 'US',
+        cityKey: 'new_york',
+        lowerBoundUtc: DateTime.parse('2026-03-08T05:00:00Z'),
+        upperBoundUtc: DateTime.parse('2026-03-09T04:00:00Z'),
       );
       expectNoWhereCondition(where, 'levelMin');
       expectNoWhereCondition(where, 'levelMax');
     });
   });
+}
+
+void expectActiveEventListQueryShape(
+  Query query, {
+  required String countryCode,
+  required String cityKey,
+  required DateTime lowerBoundUtc,
+  required DateTime upperBoundUtc,
+}) {
+  final where = query.parameters['where'] as List<dynamic>;
+  final orderBy = query.parameters['orderBy'] as List<dynamic>;
+
+  expect(where, hasLength(5));
+  expectWhereCondition(where, 'status', '==', activeEventStatus);
+  expectWhereCondition(where, 'countryCode', '==', countryCode);
+  expectWhereCondition(where, 'cityKey', '==', cityKey);
+  expectWhereCondition(where, 'startsAt', '>=', lowerBoundUtc);
+  expectWhereCondition(where, 'startsAt', '<', upperBoundUtc);
+  expect(orderBy, [
+    [FieldPath.fromString('startsAt'), false],
+  ]);
 }
 
 void expectWhereCondition(
