@@ -866,7 +866,8 @@ test("canceled event chat message get uses frozen read access", async () => {
   const guest = testEnv.unauthenticatedContext();
   const participantAtCancel = testEnv.authenticatedContext("user-a");
   const organizer = testEnv.authenticatedContext("organizer");
-  const leftSnapshotUser = testEnv.authenticatedContext("user-left");
+  const leftBeforeCancel = testEnv.authenticatedContext("user-left");
+  const leftAfterCancelSnapshotUser = testEnv.authenticatedContext("user-left");
   const currentOnlyUser = testEnv.authenticatedContext("current-only");
   const otherUser = testEnv.authenticatedContext("other-user");
   const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
@@ -933,10 +934,11 @@ test("canceled event chat message get uses frozen read access", async () => {
   await assertSucceeds(participantAtCancel.firestore().doc(canceledMessagePath).get());
   await assertSucceeds(organizer.firestore().doc(canceledMessagePath).get());
   await assertFails(guest.firestore().doc(canceledMessagePath).get());
+  await assertFails(leftBeforeCancel.firestore().doc(canceledMessagePath).get());
   await assertFails(otherUser.firestore().doc(canceledMessagePath).get());
   await assertFails(adminClient.firestore().doc(canceledMessagePath).get());
   await assertSucceeds(
-    leftSnapshotUser.firestore().doc(leftSnapshotMessagePath).get(),
+    leftAfterCancelSnapshotUser.firestore().doc(leftSnapshotMessagePath).get(),
   );
   await assertFails(
     currentOnlyUser.firestore().doc(currentOnlyMessagePath).get(),
@@ -982,6 +984,40 @@ test("canceled event chat messages can be listed by frozen readers", async () =>
     );
   }
 });
+
+test("canceled event chat messages deny bounded list for nonparticipants and users left before cancellation",
+  async () => {
+    const guest = testEnv.unauthenticatedContext();
+    const leftBeforeCancel = testEnv.authenticatedContext("user-left");
+    const otherUser = testEnv.authenticatedContext("other-user");
+    const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+    const chatId = "canceled-editable-event";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc("events/canceled-editable-event/participants/user-left").set(
+        participantData({
+          userId: "user-left",
+          displayName: "Left User",
+          status: "left",
+          leftAt: new Date("2099-06-01T09:59:59.000Z"),
+        }),
+      );
+      await db.doc("eventChats/canceled-editable-event/messages/message-1")
+        .set(eventChatMessageData());
+    });
+
+    for (const context of [
+      guest,
+      leftBeforeCancel,
+      otherUser,
+      adminClient,
+    ]) {
+      await assertFails(
+        boundedEventChatMessagesQuery(context.firestore(), chatId).get(),
+      );
+    }
+  });
 
 test("event chat messages cannot be read through collection group queries", async () => {
   const contexts = [
