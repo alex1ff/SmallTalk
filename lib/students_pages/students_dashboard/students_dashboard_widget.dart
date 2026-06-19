@@ -63,6 +63,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   bool _isLevelMenuOpen = false;
   bool _isSearchActive = false;
   bool _isStartingSearch = false;
+  bool _ignoreStartSearchUntilNextFrame = false;
 
   bool get _showLegacyDashboard => false;
 
@@ -734,11 +735,19 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
   Future<void> _handleStartConversation() async {
     if (_isSearchActive) {
-      safeSetState(() => _isSearchActive = false);
+      safeSetState(() {
+        _isSearchActive = false;
+        _ignoreStartSearchUntilNextFrame = true;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _ignoreStartSearchUntilNextFrame = false;
+        }
+      });
       return;
     }
 
-    if (_isStartingSearch) {
+    if (_ignoreStartSearchUntilNextFrame || _isStartingSearch) {
       return;
     }
 
@@ -820,11 +829,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _buildStartSearchButton(context),
-                      _buildPartnerCountText(
-                        context: context,
-                        preferredLocation: preferredLocation,
-                        selectedPartnerLevel: selectedPartnerLevel,
-                      ),
+                      if (_isSearchActive)
+                        _buildSearchingStatusBlock(context)
+                      else
+                        _buildPartnerCountText(
+                          context: context,
+                          preferredLocation: preferredLocation,
+                          selectedPartnerLevel: selectedPartnerLevel,
+                        ),
                     ],
                   ),
                 ),
@@ -833,6 +845,72 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSearchingStatusBlock(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: ExpatlioDesign.itemSpacing),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 240.0),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: ExpatlioDesign.card,
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+            border: Border.all(
+              color: ExpatlioDesign.primary.withValues(alpha: 0.16),
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0F000000),
+                blurRadius: 16.0,
+                offset: Offset(0.0, 8.0),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: ExpatlioDesign.space12,
+              vertical: ExpatlioDesign.space8,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 16.0,
+                  height: 16.0,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.0,
+                    color: ExpatlioDesign.primary,
+                    backgroundColor:
+                        ExpatlioDesign.primary.withValues(alpha: 0.12),
+                  ),
+                ),
+                const SizedBox(width: ExpatlioDesign.space8),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      FFLocalizations.of(context).getVariableText(
+                        ruText: 'Ищем собеседника',
+                        enText: 'Looking for a partner',
+                      ),
+                      maxLines: 1,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.text,
+                        size: 14.0,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

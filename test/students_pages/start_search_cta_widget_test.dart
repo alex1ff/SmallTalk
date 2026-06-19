@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +16,15 @@ import 'package:small_talk/students_pages/students_dashboard/students_dashboard_
 
 const MethodChannel _permissionsChannel =
     MethodChannel('flutter.baseflow.com/permissions/methods');
+
+const int _permissionDenied = 0;
+const int _permissionGranted = 1;
+
+int _permissionStatus = _permissionGranted;
+int _checkPermissionStatusCallCount = 0;
+int _requestPermissionsCallCount = 0;
+Future<Map<int, int>> Function(List<int> permissions)?
+    _requestPermissionsHandler;
 
 Widget _buildDashboardTestApp(
   Widget child, {
@@ -124,17 +135,29 @@ void main() {
   });
 
   setUp(() {
+    _permissionStatus = _permissionGranted;
+    _checkPermissionStatusCallCount = 0;
+    _requestPermissionsCallCount = 0;
+    _requestPermissionsHandler = null;
+
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_permissionsChannel, (call) async {
       switch (call.method) {
         case 'requestPermissions':
+          _requestPermissionsCallCount += 1;
           final permissions = (call.arguments as List<dynamic>).cast<int>();
+          final handler = _requestPermissionsHandler;
+          if (handler != null) {
+            return handler(permissions);
+          }
           return <int, int>{
-            for (final permission in permissions) permission: 1,
+            for (final permission in permissions) permission: _permissionStatus,
           };
         case 'checkPermissionStatus':
+          _checkPermissionStatusCallCount += 1;
+          return _permissionStatus;
         case 'checkServiceStatus':
-          return 1;
+          return _permissionGranted;
         case 'openAppSettings':
           return true;
       }
@@ -148,6 +171,28 @@ void main() {
     currentUser = null;
     currentUserDocument = null;
   });
+
+  void setActiveStudent(String userId) {
+    currentUser = _TestAuthUser(
+      isLoggedIn: true,
+      userId: userId,
+    );
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        'role': 'student',
+        'display_name': 'Student',
+        'learningLanguage': {
+          'code': 'en',
+          'name': 'English',
+        },
+        'subscription': {
+          'productId': 'test',
+          'expiresAt': DateTime.now().add(const Duration(days: 1)),
+        },
+      },
+      UsersRecord.collection.doc(userId),
+    );
+  }
 
   testWidgets('student dashboard renders and handles the start search CTA',
       (tester) async {
@@ -188,31 +233,14 @@ void main() {
     expect(find.byType(NoBalanceWidget), findsOneWidget);
     expect(find.text('Нет активной подписки'), findsOneWidget);
     expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('student dashboard toggles search CTA after successful start',
       (tester) async {
-    currentUser = _TestAuthUser(
-      isLoggedIn: true,
-      userId: 'student-stop-search-test',
-    );
-    currentUserDocument = UsersRecord.getDocumentFromData(
-      {
-        'role': 'student',
-        'display_name': 'Student',
-        'learningLanguage': {
-          'code': 'en',
-          'name': 'English',
-        },
-        'subscription': {
-          'productId': 'test',
-          'expiresAt': DateTime.now().add(const Duration(days: 1)),
-        },
-      },
-      UsersRecord.collection.doc('student-stop-search-test'),
-    );
+    setActiveStudent('student-stop-search-test');
 
     await tester.pumpWidget(
       _buildDashboardTestApp(const StudentsDashboardWidget()),
@@ -232,11 +260,77 @@ void main() {
 
     final stopSearchText = find.text('Остановить поиск');
     expect(stopSearchText, findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
     expect(find.text('Начать поиск'), findsNothing);
+
+    final permissionChecksAfterStart = _checkPermissionStatusCallCount;
+    final permissionRequestsAfterStart = _requestPermissionsCallCount;
+    final stopSearchButton = find.ancestor(
+      of: stopSearchText,
+      matching: find.byType(InkWell),
+    );
+
+    await tester.tap(stopSearchButton);
+    await tester.tap(stopSearchButton);
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(_checkPermissionStatusCallCount, permissionChecksAfterStart);
+    expect(_requestPermissionsCallCount, permissionRequestsAfterStart);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('searching status fits compact dashboard layout', (tester) async {
+    tester.view.physicalSize = const Size(360.0, 520.0);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    setActiveStudent('student-searching-compact-layout-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        const StudentsDashboardWidget(),
+        textScaleFactor: 1.8,
+      ),
+    );
+    await tester.pump();
+
+    final startSearchText = find.text('Начать поиск');
+    await tester.tap(
+      find.ancestor(
+        of: startSearchText,
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard does not start search when permissions denied',
+      (tester) async {
+    _permissionStatus = _permissionDenied;
+    setActiveStudent('student-permission-denied-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    final startSearchText = find.text('Начать поиск');
+    expect(startSearchText, findsOneWidget);
 
     await tester.tap(
       find.ancestor(
-        of: stopSearchText,
+        of: startSearchText,
         matching: find.byType(InkWell),
       ),
     );
@@ -244,6 +338,50 @@ void main() {
 
     expect(find.text('Начать поиск'), findsOneWidget);
     expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard ignores double tap while search is starting',
+      (tester) async {
+    _permissionStatus = _permissionDenied;
+    final permissionRequestCompleter = Completer<void>();
+    _requestPermissionsHandler = (permissions) async {
+      await permissionRequestCompleter.future;
+      return <int, int>{
+        for (final permission in permissions) permission: _permissionGranted,
+      };
+    };
+    setActiveStudent('student-double-tap-search-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    final startSearchText = find.text('Начать поиск');
+    final startSearchButton = find.ancestor(
+      of: startSearchText,
+      matching: find.byType(InkWell),
+    );
+
+    await tester.tap(startSearchButton);
+    await tester.pump();
+    await tester.tap(startSearchButton);
+    await tester.pump();
+
+    expect(_requestPermissionsCallCount, 1);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+
+    _permissionStatus = _permissionGranted;
+    permissionRequestCompleter.complete();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

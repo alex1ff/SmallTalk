@@ -66,43 +66,36 @@ class DashboardInlineFilterButton extends StatelessWidget {
                     ),
                     const SizedBox(width: ExpatlioDesign.compactSpacing),
                     Flexible(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (hasTitle)
-                            Text(
-                              title,
-                              maxLines: 1,
-                              style: ExpatlioDesign.textStyle(
-                                context,
-                                color: selected
-                                    ? ExpatlioDesign.primary
-                                    : ExpatlioDesign.muted,
-                                size: 15.0,
-                                weight: FontWeight.w500,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            if (hasTitle)
+                              TextSpan(
+                                text: title,
+                                style: ExpatlioDesign.textStyle(
+                                  context,
+                                  color: selected
+                                      ? ExpatlioDesign.primary
+                                      : ExpatlioDesign.muted,
+                                  size: 15.0,
+                                  weight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                          if (hasTitle && hasLabel)
-                            Text(
-                              ' · ',
-                              maxLines: 1,
-                              style: ExpatlioDesign.textStyle(
-                                context,
-                                color: selected
-                                    ? ExpatlioDesign.primary
-                                    : ExpatlioDesign.muted,
-                                size: 15.0,
-                                weight: FontWeight.w500,
+                            if (hasTitle && hasLabel)
+                              TextSpan(
+                                text: ' · ',
+                                style: ExpatlioDesign.textStyle(
+                                  context,
+                                  color: selected
+                                      ? ExpatlioDesign.primary
+                                      : ExpatlioDesign.muted,
+                                  size: 15.0,
+                                  weight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                          if (hasLabel)
-                            Flexible(
-                              child: Text(
-                                label,
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                                textAlign: TextAlign.center,
+                            if (hasLabel)
+                              TextSpan(
+                                text: label,
                                 style: ExpatlioDesign.textStyle(
                                   context,
                                   color: selected
@@ -112,8 +105,11 @@ class DashboardInlineFilterButton extends StatelessWidget {
                                   weight: FontWeight.w500,
                                 ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   ],
