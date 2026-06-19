@@ -141,6 +141,10 @@ void main() {
     _requestPermissionsCallCount = 0;
     _requestPermissionsHandler = null;
     _checkPermissionStatusError = null;
+    StudentsDashboardWidget.debugUsageLimitReachedChecker = (_) async {
+      return false;
+    };
+    StudentsDashboardWidget.debugActiveSessionReader = (_) async => null;
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_permissionsChannel, (call) async {
@@ -174,6 +178,8 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_permissionsChannel, null);
+    StudentsDashboardWidget.debugUsageLimitReachedChecker = null;
+    StudentsDashboardWidget.debugActiveSessionReader = null;
     currentUser = null;
     currentUserDocument = null;
   });
@@ -191,23 +197,34 @@ void main() {
   void setActiveStudent(
     String userId, {
     String? currentSessionId,
+    bool isLoggedIn = true,
+    bool hasActiveAccess = true,
+    bool hasGiftAccess = false,
+    bool isInCall = false,
   }) {
     currentUser = _TestAuthUser(
-      isLoggedIn: true,
+      isLoggedIn: isLoggedIn,
       userId: userId,
     );
     currentUserDocument = UsersRecord.getDocumentFromData(
       {
         'role': 'student',
         'display_name': 'Student',
+        'isInCall': isInCall,
         'learningLanguage': {
           'code': 'en',
           'name': 'English',
         },
-        'subscription': {
-          'productId': 'test',
-          'expiresAt': DateTime.now().add(const Duration(days: 1)),
-        },
+        if (hasActiveAccess)
+          'subscription': {
+            'productId': 'test',
+            'expiresAt': DateTime.now().add(const Duration(days: 1)),
+          },
+        if (hasGiftAccess)
+          'giftMinutes': {
+            'minutes': 10.0,
+            'expiresAt': DateTime.now().add(const Duration(hours: 1)),
+          },
         if (currentSessionId != null) 'currentSessionId': currentSessionId,
       },
       UsersRecord.collection.doc(userId),
@@ -255,11 +272,286 @@ void main() {
     expect(find.text('Остановить поиск'), findsNothing);
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(find.text('Соединяем'), findsNothing);
+    expect(_checkPermissionStatusCallCount, 0);
+    expect(_requestPermissionsCallCount, 0);
 
     await tester.pump(const Duration(minutes: 10));
     await tester.pump();
 
     expect(find.text('Пока никого не нашли'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard requires auth before starting search',
+      (tester) async {
+    setActiveStudent(
+      'student-start-search-auth-required-test',
+      isLoggedIn: false,
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Войдите в аккаунт'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(_checkPermissionStatusCallCount, 0);
+    expect(_requestPermissionsCallCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard rejects stale auth document before search',
+      (tester) async {
+    setActiveStudent('student-start-search-stale-doc-old-test');
+    currentUser = _TestAuthUser(
+      isLoggedIn: true,
+      userId: 'student-start-search-stale-doc-new-test',
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Войдите в аккаунт'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(_checkPermissionStatusCallCount, 0);
+    expect(_requestPermissionsCallCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard blocks search during active call flag',
+      (tester) async {
+    setActiveStudent(
+      'student-start-search-in-call-test',
+      isInCall: true,
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Завершите текущий звонок'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(_checkPermissionStatusCallCount, 0);
+    expect(_requestPermissionsCallCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard blocks search during active call session',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(
+      'student-start-search-active-session-test',
+      currentSessionId: 'session-start-search-active-test',
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture('session-start-search-active-test', 'active'),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Завершите текущий звонок'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(_checkPermissionStatusCallCount, 0);
+    expect(_requestPermissionsCallCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard checks current session before first snapshot',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    const sessionId = 'session-start-search-preflight-active-test';
+    setActiveStudent(
+      'student-start-search-preflight-active-test',
+      currentSessionId: sessionId,
+    );
+    StudentsDashboardWidget.debugActiveSessionReader = (_) async {
+      return sessionFixture(sessionId, 'active');
+    };
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Завершите текущий звонок'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(_checkPermissionStatusCallCount, 0);
+    expect(_requestPermissionsCallCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard handles current session preflight errors',
+      (tester) async {
+    const sessionId = 'session-start-search-preflight-error-test';
+    setActiveStudent(
+      'student-start-search-preflight-error-test',
+      currentSessionId: sessionId,
+    );
+    StudentsDashboardWidget.debugActiveSessionReader = (_) async {
+      throw StateError('current session unavailable');
+    };
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Не удалось обновить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(_checkPermissionStatusCallCount, 0);
+    expect(_requestPermissionsCallCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard blocks search when usage limit is reached',
+      (tester) async {
+    setActiveStudent('student-start-search-usage-limit-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          usageLimitReachedChecker: (_) async => true,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Лимит звонков исчерпан'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(_checkPermissionStatusCallCount, 0);
+    expect(_requestPermissionsCallCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard allows gift minutes access without subscription',
+      (tester) async {
+    setActiveStudent(
+      'student-start-search-gift-access-test',
+      hasActiveAccess: false,
+      hasGiftAccess: true,
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.byType(NoBalanceWidget), findsNothing);
+    expect(_checkPermissionStatusCallCount, greaterThan(0));
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

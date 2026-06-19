@@ -48,20 +48,37 @@ void main() {
     expect(source, isNot(contains('people count unavailable')));
   });
 
-  test('student dashboard start search accepts subscription or gift minutes',
-      () {
+  test('student dashboard start search access checks stay ordered', () {
     final source = File(
             'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
         .readAsStringSync();
 
-    expect(
-      RegExp(r'canStartCall\(\s*currentUserDocument\s*\)').allMatches(source),
-      hasLength(2),
-    );
+    expect(source, contains('Future<bool> _ensureStartSearchAccess'));
+    expect(source, contains('currentUser?.loggedIn != true'));
+    expect(source, contains('hasCurrentUserDocumentForUid(currentUserUid)'));
+    expect(source, contains('canStartCall(user)'));
+    expect(source, contains('if (user.isInCall)'));
+    expect(source, contains('hasActiveCallSession'));
+    expect(source, contains('_hasActiveCallSessionForAccess'));
+    expect(source, contains('VideoSessionsRecord.getDocumentOnce'));
+    expect(source, contains('usageLimitReachedChecker'));
+    expect(source, contains('_hasKnownUsageLimitReached(user)'));
+    expect(source, contains("collection('usage')"));
+    expect(source, contains("'dayDurationSeconds'"));
+    expect(source, contains("'weekDurationSeconds'"));
+    expect(source, contains('ensureCameraAndMicrophonePermissions()'));
     expect(
       source,
       isNot(contains('hasActiveSubscription(currentUserDocument)')),
     );
+  });
+
+  test('student usage limit self-read is allowed by Firestore rules', () {
+    final rules = File('firebase/firestore.rules').readAsStringSync();
+
+    expect(rules, contains('match /users/{userId}/usage/{usageId}'));
+    expect(rules, contains('allow read: if isAdmin() || isSelf(userId);'));
+    expect(rules, contains('allow create, update, delete: if isAdmin();'));
   });
 
   test('active start search CTA does not navigate to legacy waiting flow', () {

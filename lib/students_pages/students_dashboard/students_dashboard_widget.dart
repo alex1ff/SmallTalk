@@ -39,6 +39,9 @@ enum StudentDashboardSearchState {
 }
 
 enum StudentDashboardSearchErrorReason {
+  authRequired,
+  activeCall,
+  usageLimitReached,
   mediaPermissionDenied,
   searchUnavailable,
   activeSessionUnavailable,
@@ -52,6 +55,7 @@ class StudentsDashboardWidget extends StatefulWidget {
     bool? topUpSuccess,
     this.initialSearchState = StudentDashboardSearchState.idle,
     this.activeSessionStream,
+    this.usageLimitReachedChecker,
   })  : this.zn = zn ?? false,
         this.topUpSuccess = topUpSuccess ?? false;
 
@@ -60,6 +64,11 @@ class StudentsDashboardWidget extends StatefulWidget {
   final bool topUpSuccess;
   final StudentDashboardSearchState initialSearchState;
   final Stream<VideoSessionsRecord?>? activeSessionStream;
+  final Future<bool> Function(UsersRecord user)? usageLimitReachedChecker;
+
+  static Future<bool> Function(UsersRecord user)? debugUsageLimitReachedChecker;
+  static Future<VideoSessionsRecord?> Function(DocumentReference sessionRef)?
+      debugActiveSessionReader;
 
   static String routeName = 'Students_Dashboard';
   static String routePath = '/studentsDashboard';
@@ -88,6 +97,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   StudentDashboardSearchErrorReason? _searchErrorReason;
   StudentDashboardSearchState _lastActiveSessionSearchState =
       StudentDashboardSearchState.idle;
+
+  static const int _subscriberDailySearchLimitSeconds = 60 * 60;
+  static const int _subscriberWeeklySearchLimitSeconds = 8 * 60 * 60;
 
   bool get _showLegacyDashboard => false;
   bool _isStopSearchState(StudentDashboardSearchState searchState) =>
@@ -159,6 +171,16 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         return StudentDashboardSearchState.connecting;
       default:
         return StudentDashboardSearchState.idle;
+    }
+  }
+
+  bool _isActiveCallSession(VideoSessionsRecord? session) {
+    switch (session?.status.trim()) {
+      case 'active':
+      case 'connected':
+        return true;
+      default:
+        return false;
     }
   }
 
@@ -902,9 +924,186 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     }
   }
 
+  String _usageDayKeyUtc(DateTime value) {
+    return value.toUtc().toIso8601String().split('T').first;
+  }
+
+  String _usageWeekKeyUtc(DateTime value) {
+    final utc = value.toUtc();
+    final day = DateTime.utc(utc.year, utc.month, utc.day);
+    final thursday = day.add(Duration(days: 4 - day.weekday));
+    final yearStart = DateTime.utc(thursday.year);
+    final weekNo = ((thursday.difference(yearStart).inDays + 1) / 7).ceil();
+    return '${thursday.year}-W${weekNo.toString().padLeft(2, '0')}';
+  }
+
+  int _usageSecondsForCurrentWindow(
+    Map<String, dynamic> data, {
+    required String keyField,
+    required String expectedKey,
+    required String secondsField,
+  }) {
+    if (data[keyField] != expectedKey) {
+      return 0;
+    }
+    return (data[secondsField] as num?)?.toInt() ?? 0;
+  }
+
+  Future<bool> _hasKnownUsageLimitReached(UsersRecord user) async {
+    if (!hasActiveSubscription(user)) {
+      return false;
+    }
+
+    final checker = widget.usageLimitReachedChecker ??
+        StudentsDashboardWidget.debugUsageLimitReachedChecker;
+    if (checker != null) {
+      return checker(user);
+    }
+
+    try {
+      final usageSnapshot =
+          await user.reference.collection('usage').doc('current').get();
+      final usageData = usageSnapshot.data();
+      if (usageData == null) {
+        return false;
+      }
+
+      final now = DateTime.now();
+      final dayDurationSeconds = _usageSecondsForCurrentWindow(
+        usageData,
+        keyField: 'dayKey',
+        expectedKey: _usageDayKeyUtc(now),
+        secondsField: 'dayDurationSeconds',
+      );
+      final weekDurationSeconds = _usageSecondsForCurrentWindow(
+        usageData,
+        keyField: 'weekKey',
+        expectedKey: _usageWeekKeyUtc(now),
+        secondsField: 'weekDurationSeconds',
+      );
+      return dayDurationSeconds >= _subscriberDailySearchLimitSeconds ||
+          weekDurationSeconds >= _subscriberWeeklySearchLimitSeconds;
+    } catch (error) {
+      debugPrint(
+        'StudentsDashboard: failed to check local usage limit: $error',
+      );
+      return false;
+    }
+  }
+
+  Future<VideoSessionsRecord?> _readActiveSessionOnce(String sessionId) {
+    final sessionRef = VideoSessionsRecord.collection.doc(sessionId);
+    final reader = StudentsDashboardWidget.debugActiveSessionReader;
+    if (reader != null) {
+      return reader(sessionRef);
+    }
+    return VideoSessionsRecord.getDocumentOnce(sessionRef);
+  }
+
+  Future<bool?> _hasActiveCallSessionForAccess(
+    UsersRecord user,
+    bool visibleActiveCallSession,
+  ) async {
+    if (visibleActiveCallSession) {
+      return true;
+    }
+
+    final sessionId = user.currentSessionId.trim();
+    if (sessionId.isEmpty) {
+      return false;
+    }
+
+    try {
+      final session = await _readActiveSessionOnce(sessionId);
+      return _isActiveCallSession(session);
+    } catch (error) {
+      debugPrint(
+        'StudentsDashboard: failed to check active session before search: '
+        '$error',
+      );
+      _setSearchError(
+        StudentDashboardSearchErrorReason.activeSessionUnavailable,
+      );
+      return null;
+    }
+  }
+
+  Future<void> _showNoSearchAccessBottomSheet() async {
+    await showModalBottomSheet(
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      context: context,
+      builder: (context) {
+        return GestureDetector(
+          onTap: () {
+            FocusScope.of(context).unfocus();
+            FocusManager.instance.primaryFocus?.unfocus();
+          },
+          child: Padding(
+            padding: MediaQuery.viewInsetsOf(context),
+            child: NoBalanceWidget(),
+          ),
+        );
+      },
+    ).then((value) => safeSetState(() {}));
+  }
+
+  Future<bool> _ensureStartSearchAccess({
+    required bool hasActiveCallSession,
+  }) async {
+    final user = currentUserDocument;
+    if (currentUser?.loggedIn != true ||
+        user == null ||
+        currentUserUid.trim().isEmpty ||
+        !hasCurrentUserDocumentForUid(currentUserUid)) {
+      _setSearchError(StudentDashboardSearchErrorReason.authRequired);
+      return false;
+    }
+
+    if (!canStartCall(user)) {
+      await _showNoSearchAccessBottomSheet();
+      return false;
+    }
+
+    if (user.isInCall) {
+      _setSearchError(StudentDashboardSearchErrorReason.activeCall);
+      return false;
+    }
+
+    final hasCurrentActiveSession = await _hasActiveCallSessionForAccess(
+      user,
+      hasActiveCallSession,
+    );
+    if (hasCurrentActiveSession == null) {
+      return false;
+    }
+
+    if (hasCurrentActiveSession) {
+      _setSearchError(StudentDashboardSearchErrorReason.activeCall);
+      return false;
+    }
+
+    if (await _hasKnownUsageLimitReached(user)) {
+      _setSearchError(StudentDashboardSearchErrorReason.usageLimitReached);
+      return false;
+    }
+
+    final hasMediaPermissions = await ensureCameraAndMicrophonePermissions();
+    if (!hasMediaPermissions) {
+      _setSearchError(
+        StudentDashboardSearchErrorReason.mediaPermissionDenied,
+      );
+      return false;
+    }
+
+    return true;
+  }
+
   Future<void> _handleStartConversation(
     StudentDashboardSearchState visibleSearchState,
     String? visibleSessionId,
+    bool hasActiveCallSession,
   ) async {
     if (_isStopSearchState(visibleSearchState)) {
       safeSetState(() {
@@ -934,33 +1133,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     _clearSearchTimeoutTimer();
 
     try {
-      if (!canStartCall(currentUserDocument)) {
-        await showModalBottomSheet(
-          useRootNavigator: true,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          context: context,
-          builder: (context) {
-            return GestureDetector(
-              onTap: () {
-                FocusScope.of(context).unfocus();
-                FocusManager.instance.primaryFocus?.unfocus();
-              },
-              child: Padding(
-                padding: MediaQuery.viewInsetsOf(context),
-                child: NoBalanceWidget(),
-              ),
-            );
-          },
-        ).then((value) => safeSetState(() {}));
-        return;
-      }
-
-      final hasMediaPermissions = await ensureCameraAndMicrophonePermissions();
-      if (!hasMediaPermissions) {
-        _setSearchError(
-          StudentDashboardSearchErrorReason.mediaPermissionDenied,
-        );
+      if (!await _ensureStartSearchAccess(
+        hasActiveCallSession: hasActiveCallSession,
+      )) {
         return;
       }
 
@@ -992,6 +1167,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     required Level? selectedPartnerLevel,
     required StudentDashboardSearchState searchState,
     required String? activeSessionId,
+    required bool hasActiveCallSession,
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1024,6 +1200,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                         context,
                         searchState,
                         activeSessionId,
+                        hasActiveCallSession,
                       ),
                       if (_showsSearchStatus(searchState))
                         _buildSearchStatusBlock(context, searchState)
@@ -1135,6 +1312,21 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
   String _searchErrorText(BuildContext context) {
     switch (_searchErrorReason) {
+      case StudentDashboardSearchErrorReason.authRequired:
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Войдите в аккаунт',
+          enText: 'Sign in to continue',
+        );
+      case StudentDashboardSearchErrorReason.activeCall:
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Завершите текущий звонок',
+          enText: 'Finish the current call',
+        );
+      case StudentDashboardSearchErrorReason.usageLimitReached:
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Лимит звонков исчерпан',
+          enText: 'Call limit reached',
+        );
       case StudentDashboardSearchErrorReason.mediaPermissionDenied:
         return FFLocalizations.of(context).getVariableText(
           ruText: 'Разрешите камеру и микрофон',
@@ -1158,10 +1350,15 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     BuildContext context,
     StudentDashboardSearchState searchState,
     String? activeSessionId,
+    bool hasActiveCallSession,
   ) {
     return StudentStartSearchButton(
       isActive: _isStopSearchState(searchState),
-      onTap: () => _handleStartConversation(searchState, activeSessionId),
+      onTap: () => _handleStartConversation(
+        searchState,
+        activeSessionId,
+        hasActiveCallSession,
+      ),
     );
   }
 
@@ -1248,6 +1445,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     BuildContext context, {
     required StudentDashboardSearchState searchState,
     required String? activeSessionId,
+    required bool hasActiveCallSession,
   }) {
     final selectedPartnerLevel =
         currentUserDocument?.preferences.preferredPartnerLevel;
@@ -1346,6 +1544,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                     selectedPartnerLevel: selectedPartnerLevel,
                     searchState: searchState,
                     activeSessionId: activeSessionId,
+                    hasActiveCallSession: hasActiveCallSession,
                   );
                 },
               ),
@@ -1452,7 +1651,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                                       activeSessionIdFromUser
                                   ? activeSessionSnapshot.data
                                   : null;
-                          if (!activeSessionSnapshot.hasError) {
+                          if (!activeSessionSnapshot.hasError &&
+                              activeSessionSnapshot.connectionState !=
+                                  ConnectionState.waiting) {
                             _rememberActiveSessionSnapshot(
                               activeSession,
                               activeSessionIdFromUser,
@@ -1488,11 +1689,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                           final activeSessionId = cachedSearchState == null
                               ? activeSession?.reference.id
                               : _lastActiveSessionId;
+                          final hasActiveCallSession =
+                              _isActiveCallSession(activeSession);
 
                           return _buildReferenceSearchHero(
                             context,
                             searchState: effectiveSearchState,
                             activeSessionId: activeSessionId,
+                            hasActiveCallSession: hasActiveCallSession,
                           );
                         },
                       ),
