@@ -80,6 +80,7 @@ test("deployment readiness fails missing critical functions", () => {
   assert.ok(missingIds.includes("joinEvent"));
   assert.ok(missingIds.includes("leaveEvent"));
   assert.ok(missingIds.includes("sendEventChatMessage"));
+  assert.ok(missingIds.includes("getEventChatAccessState"));
   assert.ok(missingIds.includes("sendCustomEmailVerification"));
   assert.ok(missingIds.includes("submitReview"));
 });
@@ -125,8 +126,14 @@ test("deployment readiness exposes no event chat message mutation callables", ()
   ];
 
   assert.ok(functionIds.has("sendEventChatMessage"));
+  assert.ok(functionIds.has("getEventChatAccessState"));
   assert.match(indexSource, /exports\.sendEventChatMessage\b/);
+  assert.match(indexSource, /exports\.getEventChatAccessState\b/);
   assert.match(deployScript, /functions:custom_cloud_functions:sendEventChatMessage\b/);
+  assert.match(
+      deployScript,
+      /functions:custom_cloud_functions:getEventChatAccessState\b/,
+  );
   for (const id of disallowedIds) {
     assert.equal(functionIds.has(id), false);
     assert.doesNotMatch(indexSource, new RegExp(`exports\\.${id}\\b`));

@@ -18,6 +18,7 @@ const cancelEventFunctionName = 'cancelEvent';
 const joinEventFunctionName = 'joinEvent';
 const leaveEventFunctionName = 'leaveEvent';
 const sendEventChatMessageFunctionName = 'sendEventChatMessage';
+const getEventChatAccessStateFunctionName = 'getEventChatAccessState';
 
 final RegExp _uuidV4Pattern = RegExp(
   r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
@@ -163,6 +164,18 @@ class SendEventChatMessageResult {
   final DateTime createdAt;
 }
 
+class EventChatAccessStateResult {
+  const EventChatAccessStateResult({
+    required this.eventId,
+    required this.status,
+    required this.readOnly,
+  });
+
+  final String eventId;
+  final String status;
+  final bool readOnly;
+}
+
 class EventActionsRepository {
   const EventActionsRepository._();
 
@@ -259,6 +272,29 @@ class EventActionsRepository {
     return SendEventChatMessageResult(
       messageId: _requiredString(data, 'messageId'),
       createdAt: _requiredIsoDateTime(data, 'createdAt'),
+    );
+  }
+
+  static Future<EventChatAccessStateResult> getEventChatAccessState({
+    required String eventId,
+    EventCallableInvoker? invoker,
+  }) async {
+    final responseData = await _callEventFunction(
+      getEventChatAccessStateFunctionName,
+      _eventIdPayload(eventId),
+      invoker: invoker,
+    );
+    final data = _responseMap(responseData);
+    final status = _requiredString(data, 'status');
+    if (status != 'active' && status != 'canceled') {
+      throw const FormatException(
+        'Expected active or canceled event chat access status.',
+      );
+    }
+    return EventChatAccessStateResult(
+      eventId: _requiredString(data, 'eventId'),
+      status: status,
+      readOnly: _requiredBool(data, 'readOnly'),
     );
   }
 }
@@ -488,6 +524,14 @@ int _requiredInt(Map<String, dynamic> data, String field) {
     return value;
   }
   throw FormatException('Expected integer field "$field".');
+}
+
+bool _requiredBool(Map<String, dynamic> data, String field) {
+  final value = data[field];
+  if (value is bool) {
+    return value;
+  }
+  throw FormatException('Expected boolean field "$field".');
 }
 
 DateTime _requiredIsoDateTime(Map<String, dynamic> data, String field) {

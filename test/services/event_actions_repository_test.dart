@@ -167,6 +167,56 @@ void main() {
       expect(result.createdAt, DateTime.parse('2026-06-14T12:03:00Z'));
     });
 
+    test('loads event chat access state through the trusted callable',
+        () async {
+      final calls = <String, Map<String, dynamic>>{};
+
+      final activeResult = await EventActionsRepository.getEventChatAccessState(
+        eventId: ' event-1 ',
+        invoker: (functionName, payload) async {
+          calls['active'] = <String, dynamic>{
+            'functionName': functionName,
+            'payload': payload,
+          };
+          return <String, dynamic>{
+            'eventId': 'event-1',
+            'status': 'active',
+            'readOnly': false,
+          };
+        },
+      );
+      final canceledResult =
+          await EventActionsRepository.getEventChatAccessState(
+        eventId: 'event-1',
+        invoker: (functionName, payload) async {
+          calls['canceled'] = <String, dynamic>{
+            'functionName': functionName,
+            'payload': payload,
+          };
+          return <String, dynamic>{
+            'eventId': 'event-1',
+            'status': 'canceled',
+            'readOnly': true,
+          };
+        },
+      );
+
+      expect(calls, <String, Map<String, dynamic>>{
+        'active': <String, dynamic>{
+          'functionName': getEventChatAccessStateFunctionName,
+          'payload': <String, dynamic>{'eventId': 'event-1'},
+        },
+        'canceled': <String, dynamic>{
+          'functionName': getEventChatAccessStateFunctionName,
+          'payload': <String, dynamic>{'eventId': 'event-1'},
+        },
+      });
+      expect(activeResult.status, 'active');
+      expect(activeResult.readOnly, false);
+      expect(canceledResult.status, 'canceled');
+      expect(canceledResult.readOnly, true);
+    });
+
     test('rejects invalid ids and create request ids before calling functions',
         () async {
       var calls = 0;
@@ -306,6 +356,28 @@ void main() {
             'participantStatus': 'left',
             'participantsCount': 6,
             'joinedAt': '2026-06-14T12:01:00.000Z',
+          },
+        ),
+        throwsA(isA<FormatException>()),
+      );
+      await expectLater(
+        EventActionsRepository.getEventChatAccessState(
+          eventId: 'event-1',
+          invoker: (_, __) async => <String, dynamic>{
+            'eventId': 'event-1',
+            'status': 'deleted',
+            'readOnly': true,
+          },
+        ),
+        throwsA(isA<FormatException>()),
+      );
+      await expectLater(
+        EventActionsRepository.getEventChatAccessState(
+          eventId: 'event-1',
+          invoker: (_, __) async => <String, dynamic>{
+            'eventId': 'event-1',
+            'status': 'canceled',
+            'readOnly': 'yes',
           },
         ),
         throwsA(isA<FormatException>()),

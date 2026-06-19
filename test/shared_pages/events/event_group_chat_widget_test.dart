@@ -36,6 +36,21 @@ EventChatMetadataStream _allowedChatStream({String eventId = 'event-123'}) =>
           _chatFixture(chatRef: chatRef, eventId: eventId),
         );
 
+EventCallableInvoker _accessStateInvoker({
+  String eventId = 'event-123',
+  String status = 'active',
+  bool readOnly = false,
+}) =>
+    (functionName, payload) async {
+      expect(functionName, getEventChatAccessStateFunctionName);
+      expect(payload, <String, dynamic>{'eventId': eventId});
+      return <String, dynamic>{
+        'eventId': eventId,
+        'status': status,
+        'readOnly': readOnly,
+      };
+    };
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -60,6 +75,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) => completer.future.asStream(),
         ),
       ),
@@ -68,7 +84,12 @@ void main() {
 
     expect(find.byKey(eventGroupChatAccessLoadingKey), findsOneWidget);
 
-    await tester.pump();
+    for (var attempt = 0;
+        attempt < 5 &&
+            find.byKey(eventGroupChatMessagesLoadingKey).evaluate().isEmpty;
+        attempt += 1) {
+      await tester.pump();
+    }
 
     expect(find.byKey(eventGroupChatMessagesLoadingKey), findsOneWidget);
     expect(find.text('Чат события'), findsOneWidget);
@@ -84,6 +105,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
         ),
@@ -147,6 +169,80 @@ void main() {
     expect(messageStreamCalls, 0);
   });
 
+  testWidgets('blocks chat content when trusted access state is denied',
+      (tester) async {
+    var messageStreamCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: (_, __) async {
+            throw StateError('permission-denied');
+          },
+          messagesStream: (_) {
+            messageStreamCalls += 1;
+            return Stream.value(const <EventChatMessagesRecord>[]);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatAccessDeniedKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
+    expect(messageStreamCalls, 0);
+  });
+
+  testWidgets('retries trusted access state after a rebuild', (tester) async {
+    var accessCalls = 0;
+    var messageStreamCalls = 0;
+    final chatStream = _allowedChatStream();
+    Future<Object?> accessStateInvoker(
+      String functionName,
+      Map<String, dynamic> payload,
+    ) async {
+      accessCalls += 1;
+      if (accessCalls == 1) {
+        throw StateError('temporary network error');
+      }
+      expect(functionName, getEventChatAccessStateFunctionName);
+      expect(payload, <String, dynamic>{'eventId': 'event-123'});
+      return <String, dynamic>{
+        'eventId': 'event-123',
+        'status': 'active',
+        'readOnly': false,
+      };
+    }
+
+    Widget buildSubject() => _buildTestApp(
+          home: EventGroupChatWidget(
+            eventId: 'event-123',
+            chatStream: chatStream,
+            accessStateInvoker: accessStateInvoker,
+            messagesStream: (_) {
+              messageStreamCalls += 1;
+              return Stream.value(const <EventChatMessagesRecord>[]);
+            },
+          ),
+        );
+
+    await tester.pumpWidget(buildSubject());
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatAccessDeniedKey), findsOneWidget);
+    expect(messageStreamCalls, 0);
+
+    await tester.pumpWidget(buildSubject());
+    await tester.pumpAndSettle();
+
+    expect(accessCalls, 2);
+    expect(find.byKey(eventGroupChatMessagesEmptyKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+    expect(messageStreamCalls, 1);
+  });
+
   testWidgets('does not reuse allowed access after event changes',
       (tester) async {
     var deniedEventMessageStreamCalls = 0;
@@ -156,6 +252,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-1',
           chatStream: _allowedChatStream(eventId: 'event-1'),
+          accessStateInvoker: _accessStateInvoker(eventId: 'event-1'),
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
         ),
@@ -200,6 +297,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: ' event-123 ',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (requestedChatRef) {
             requestedChatPath = requestedChatRef.path;
             return Stream.value(<EventChatMessagesRecord>[message]);
@@ -214,6 +312,213 @@ void main() {
     expect(find.byKey(eventGroupChatMessageBubbleKey('message-1')),
         findsOneWidget);
     expect(find.text('Всем привет!'), findsOneWidget);
+  });
+
+  testWidgets('shows canceled event chat as read-only for eligible readers',
+      (tester) async {
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final message = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'message-1',
+      text: 'До встречи!',
+    );
+    var sendCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(
+            status: 'canceled',
+            readOnly: true,
+          ),
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            message,
+          ]),
+          sendMessageInvoker: (_, __) async {
+            sendCalls += 1;
+            return <String, dynamic>{
+              'messageId': 'message-2',
+              'createdAt': '2026-06-14T12:00:00.000Z',
+            };
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('До встречи!'), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsOneWidget);
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatReadOnlySnackBarKey), findsOneWidget);
+    expect(find.text('Чат доступен только для чтения.'), findsOneWidget);
+    expect(sendCalls, 0);
+  });
+
+  testWidgets('does not use stale writable state while cancel state loads',
+      (tester) async {
+    final chatController = StreamController<EventChatsRecord?>();
+    final activeAccess = Completer<Object?>();
+    final canceledAccess = Completer<Object?>();
+    var accessCalls = 0;
+    var sendCalls = 0;
+    addTearDown(chatController.close);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: (chatRef) => chatController.stream,
+          accessStateInvoker: (functionName, payload) async {
+            accessCalls += 1;
+            expect(functionName, getEventChatAccessStateFunctionName);
+            expect(payload, <String, dynamic>{'eventId': 'event-123'});
+            if (accessCalls == 1) {
+              return activeAccess.future;
+            }
+            return canceledAccess.future;
+          },
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          sendMessageInvoker: (_, __) async {
+            sendCalls += 1;
+            return <String, dynamic>{
+              'messageId': 'message-1',
+              'createdAt': '2026-06-14T12:00:00.000Z',
+            };
+          },
+        ),
+      ),
+    );
+
+    chatController.add(
+      _chatFixture(
+        chatRef: EventChatsRecord.collection.doc('event-123'),
+        eventId: 'event-123',
+      ),
+    );
+    await tester.pump();
+    activeAccess.complete(<String, dynamic>{
+      'eventId': 'event-123',
+      'status': 'active',
+      'readOnly': false,
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+
+    chatController.add(
+      _chatFixture(
+        chatRef: EventChatsRecord.collection.doc('event-123'),
+        eventId: 'event-123',
+        updatedAt: DateTime.parse('2026-06-14T10:01:00Z'),
+      ),
+    );
+    for (var attempt = 0; attempt < 5 && accessCalls < 2; attempt += 1) {
+      await tester.pump();
+    }
+
+    expect(accessCalls, 2);
+    expect(find.byKey(eventGroupChatAccessLoadingKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
+
+    canceledAccess.complete(<String, dynamic>{
+      'eventId': 'event-123',
+      'status': 'canceled',
+      'readOnly': true,
+    });
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatReadOnlySnackBarKey), findsOneWidget);
+    expect(sendCalls, 0);
+  });
+
+  testWidgets('ignores stale writable access result after cancel metadata',
+      (tester) async {
+    final chatController = StreamController<EventChatsRecord?>();
+    final activeAccess = Completer<Object?>();
+    final canceledAccess = Completer<Object?>();
+    var accessCalls = 0;
+    addTearDown(chatController.close);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: (_) => chatController.stream,
+          accessStateInvoker: (functionName, payload) async {
+            accessCalls += 1;
+            expect(functionName, getEventChatAccessStateFunctionName);
+            expect(payload, <String, dynamic>{'eventId': 'event-123'});
+            if (accessCalls == 1) {
+              return activeAccess.future;
+            }
+            return canceledAccess.future;
+          },
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+        ),
+      ),
+    );
+
+    chatController.add(
+      _chatFixture(
+        chatRef: EventChatsRecord.collection.doc('event-123'),
+        eventId: 'event-123',
+      ),
+    );
+    for (var attempt = 0; attempt < 5 && accessCalls < 1; attempt += 1) {
+      await tester.pump();
+    }
+
+    expect(accessCalls, 1);
+    expect(find.byKey(eventGroupChatAccessLoadingKey), findsOneWidget);
+
+    chatController.add(
+      _chatFixture(
+        chatRef: EventChatsRecord.collection.doc('event-123'),
+        eventId: 'event-123',
+        updatedAt: DateTime.parse('2026-06-14T10:01:00Z'),
+      ),
+    );
+    for (var attempt = 0; attempt < 5 && accessCalls < 2; attempt += 1) {
+      await tester.pump();
+    }
+
+    expect(accessCalls, 2);
+    activeAccess.complete(<String, dynamic>{
+      'eventId': 'event-123',
+      'status': 'active',
+      'readOnly': false,
+    });
+    await tester.pump();
+
+    expect(find.byKey(eventGroupChatAccessLoadingKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
+
+    canceledAccess.complete(<String, dynamic>{
+      'eventId': 'event-123',
+      'status': 'canceled',
+      'readOnly': true,
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatReadOnlySnackBarKey), findsOneWidget);
   });
 
   testWidgets('shows sender name and avatar fallback for event chat messages',
@@ -231,6 +536,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
             message,
           ]),
@@ -271,6 +577,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
             message,
           ]),
@@ -307,6 +614,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
             message,
           ]),
@@ -340,6 +648,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
             message,
           ]),
@@ -367,6 +676,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: ' event-123 ',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
           sendMessageInvoker: (calledFunctionName, calledPayload) async {
@@ -409,6 +719,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
           sendMessageInvoker: (_, __) async {
@@ -437,6 +748,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
           sendMessageInvoker: (_, __) async {
@@ -463,6 +775,7 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) => Stream<List<EventChatMessagesRecord>>.error(
             StateError('permission-denied'),
           ),
@@ -501,13 +814,14 @@ EventChatMessagesRecord _messageFixture({
 EventChatsRecord _chatFixture({
   required DocumentReference chatRef,
   required String eventId,
+  DateTime? updatedAt,
 }) {
   return EventChatsRecord.getDocumentFromData(
     {
       'eventId': eventId,
       'readAccessUserIds': <String>['uid-1'],
       'createdAt': DateTime.parse('2026-06-14T10:00:00Z'),
-      'updatedAt': DateTime.parse('2026-06-14T10:00:00Z'),
+      'updatedAt': updatedAt ?? DateTime.parse('2026-06-14T10:00:00Z'),
     },
     chatRef,
   );

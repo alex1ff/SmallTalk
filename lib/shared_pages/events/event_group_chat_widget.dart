@@ -28,6 +28,8 @@ const ValueKey<String> eventGroupChatSendButtonKey =
     ValueKey<String>('event_group_chat_send_button');
 const ValueKey<String> eventGroupChatSendErrorSnackBarKey =
     ValueKey<String>('event_group_chat_send_error_snack_bar');
+const ValueKey<String> eventGroupChatReadOnlySnackBarKey =
+    ValueKey<String>('event_group_chat_read_only_snack_bar');
 
 ValueKey<String> eventGroupChatMessageBubbleKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_bubble_$messageId');
@@ -53,6 +55,7 @@ class EventGroupChatWidget extends StatefulWidget {
     required this.eventId,
     this.chatStream,
     this.messagesStream,
+    this.accessStateInvoker,
     this.sendMessageInvoker,
     this.messageLimit = EventGroupChatRepository.defaultMessageLimit,
   });
@@ -60,6 +63,7 @@ class EventGroupChatWidget extends StatefulWidget {
   final String eventId;
   final EventChatMetadataStream? chatStream;
   final EventChatMessagesStream? messagesStream;
+  final EventCallableInvoker? accessStateInvoker;
   final EventCallableInvoker? sendMessageInvoker;
   final int messageLimit;
 
@@ -75,6 +79,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   final FocusNode _messageFocusNode = FocusNode();
   late Stream<EventChatsRecord?> _chatAccessStream;
   Stream<List<EventChatMessagesRecord>>? _messagesStream;
+  Future<EventChatAccessStateResult>? _accessStateFuture;
+  String? _accessStateCacheKey;
   int _chatAccessRevision = 0;
   bool _isSending = false;
 
@@ -88,7 +94,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   void didUpdateWidget(covariant EventGroupChatWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     final accessChanged = oldWidget.eventId != widget.eventId ||
-        oldWidget.chatStream != widget.chatStream;
+        oldWidget.chatStream != widget.chatStream ||
+        oldWidget.accessStateInvoker != widget.accessStateInvoker;
     final messagesChanged = oldWidget.messagesStream != widget.messagesStream ||
         oldWidget.messageLimit != widget.messageLimit;
 
@@ -96,6 +103,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       _chatAccessRevision += 1;
       _chatAccessStream = _watchChatAccess();
       _messagesStream = null;
+      _accessStateFuture = null;
+      _accessStateCacheKey = null;
     } else if (messagesChanged) {
       _messagesStream = null;
     }
@@ -121,12 +130,45 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         chatStream: widget.chatStream,
       );
 
-  Future<void> _sendMessage() async {
+  String _accessStateKeyFor(EventChatsRecord chat) {
+    final updatedAtKey =
+        chat.updatedAt?.microsecondsSinceEpoch.toString() ?? 'missing';
+    return [
+      widget.eventId.trim(),
+      chat.reference.path,
+      updatedAtKey,
+    ].join('|');
+  }
+
+  Future<EventChatAccessStateResult> _loadAccessState(String cacheKey) {
+    if (_accessStateCacheKey != cacheKey || _accessStateFuture == null) {
+      _accessStateCacheKey = cacheKey;
+      _messagesStream = null;
+      _accessStateFuture = EventActionsRepository.getEventChatAccessState(
+        eventId: widget.eventId,
+        invoker: widget.accessStateInvoker,
+      );
+    }
+    return _accessStateFuture!;
+  }
+
+  void _clearAccessStateCacheIfCurrent(String cacheKey) {
+    if (_accessStateCacheKey == cacheKey) {
+      _accessStateCacheKey = null;
+      _accessStateFuture = null;
+    }
+  }
+
+  Future<void> _sendMessage({required bool isReadOnly}) async {
     if (_isSending) {
       return;
     }
     final text = _messageTextController.text.trim();
     if (text.isEmpty) {
+      return;
+    }
+    if (isReadOnly) {
+      _showReadOnlySnackBar();
       return;
     }
 
@@ -166,6 +208,20 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         });
       }
     }
+  }
+
+  void _showReadOnlySnackBar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        key: eventGroupChatReadOnlySnackBarKey,
+        content: Text(
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Чат доступен только для чтения.',
+            enText: 'This chat is read-only.',
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -213,12 +269,41 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           return _accessDeniedState();
         }
 
-        return _buildMessagesContent();
+        final accessStateKey = _accessStateKeyFor(chat);
+        return FutureBuilder<EventChatAccessStateResult>(
+          key:
+              ValueKey<String>('event_group_chat_access_state_$accessStateKey'),
+          future: _loadAccessState(accessStateKey),
+          builder: (context, accessSnapshot) {
+            if (accessSnapshot.hasError) {
+              _clearAccessStateCacheIfCurrent(accessStateKey);
+              debugPrint(
+                'EventGroupChatWidget: access state error for '
+                '${widget.eventId}: ${accessSnapshot.error}',
+              );
+              return _accessDeniedState();
+            }
+
+            if (!accessSnapshot.hasData) {
+              return const Center(
+                child: SizedBox.square(
+                  key: eventGroupChatAccessLoadingKey,
+                  dimension: 28,
+                  child: CircularProgressIndicator(strokeWidth: 2.8),
+                ),
+              );
+            }
+
+            return _buildMessagesContent(
+              isReadOnly: accessSnapshot.data!.readOnly,
+            );
+          },
+        );
       },
     );
   }
 
-  Widget _buildMessagesContent() {
+  Widget _buildMessagesContent({required bool isReadOnly}) {
     final messagesStream = _messagesStream ??= _watchMessages();
 
     return Column(
@@ -288,7 +373,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           controller: _messageTextController,
           focusNode: _messageFocusNode,
           isSending: _isSending,
-          onSendPressed: _sendMessage,
+          onSendPressed: () => _sendMessage(isReadOnly: isReadOnly),
         ),
       ],
     );
