@@ -343,6 +343,73 @@ test("normalizeEditEventPayload accepts title boundary and Unicode input", () =>
   );
 });
 
+test("normalizeEditEventPayload remaps description validation errors", () => {
+  for (const description of ["", " \t  ", "   \n \t "]) {
+    assertHttpsError(
+        () => normalizeEditEventPayload(
+            cloneValidEditRequest({description}),
+            {now: fixedNow},
+        ),
+        "invalid-argument",
+        "invalid_edit_request",
+        "description",
+        "missing",
+    );
+  }
+
+  assertHttpsError(
+      () => normalizeEditEventPayload(
+          cloneValidEditRequest({
+            description: repeatGrapheme("👍🏽", 1001),
+          }),
+          {now: fixedNow},
+      ),
+      "invalid-argument",
+      "invalid_edit_request",
+      "description",
+      "too_long",
+  );
+});
+
+test("normalizeEditEventPayload accepts description boundary and Unicode input",
+    () => {
+      const thousandGraphemeDescription = repeatGrapheme("👍🏽", 1000);
+      const boundary = normalizeEditEventPayload(
+          cloneValidEditRequest({
+            description: ` ${thousandGraphemeDescription} `,
+          }),
+          {now: fixedNow},
+      );
+      const multiline = normalizeEditEventPayload(
+          cloneValidEditRequest({
+            description:
+              " Cafe\u0301   line \r\n\r\n\r\n  разговорный\tклуб \n\n\n 東京  ",
+          }),
+          {now: fixedNow},
+      );
+
+      assert.equal(
+          Array.from(thousandGraphemeDescription).length > 1000,
+          true,
+      );
+      assert.equal(
+          boundary.normalized.description,
+          thousandGraphemeDescription,
+      );
+      assert.equal(
+          boundary.normalized.hashPayload.description,
+          thousandGraphemeDescription,
+      );
+      assert.equal(
+          multiline.normalized.description,
+          "Café line\n\nразговорный клуб\n\n東京",
+      );
+      assert.equal(
+          multiline.normalized.hashPayload.description,
+          "Café line\n\nразговорный клуб\n\n東京",
+      );
+    });
+
 test("editEvent callable validates title before transaction writes", async () => {
   const cases = [
     {title: "", reason: "missing"},
@@ -375,6 +442,40 @@ test("editEvent callable validates title before transaction writes", async () =>
     assert.deepEqual(writes, []);
   }
 });
+
+test("editEvent callable validates description before transaction writes",
+    async () => {
+      const cases = [
+        {description: "", reason: "missing"},
+        {description: " \t  ", reason: "missing"},
+        {description: "   \n \t ", reason: "missing"},
+        {description: repeatGrapheme("👍🏽", 1001), reason: "too_long"},
+      ];
+
+      for (const currentCase of cases) {
+        const {db, reads, writes} = createFakeFirestore({
+          "events/event-1": eventData(),
+        });
+
+        await withAdminFirestore(db, async () => {
+          await assertRejectsHttpsError(
+              () => editEvent.run(
+                  cloneValidEditRequest({
+                    description: currentCase.description,
+                  }),
+                  {auth: {uid: "uid"}},
+              ),
+              "invalid-argument",
+              "invalid_edit_request",
+              "description",
+              currentCase.reason,
+          );
+        });
+
+        assert.deepEqual(reads, []);
+        assert.deepEqual(writes, []);
+      }
+    });
 
 test("executeEditEventTransaction updates organizer active future event", async () => {
   const payload = normalizeEditEventPayload(

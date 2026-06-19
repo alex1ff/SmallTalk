@@ -340,7 +340,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add `eventCreateRequests` marker tests for field schema including original `dailyCreation` snapshot, lowercase UUID v4 document id, parent `userId` match, day-independent lookup, original `dailyCreation` response on retry after UTC midnight without reading/updating the new daily counter, atomic write with event/counter, no marker on failed validation, immutability after create, and direct client access denial.
 - [x] Add tests proving cancel, edit, and trusted admin delete do not decrement or increment the daily creation counter.
 - [x] Add create/edit/server validation tests for title: empty, whitespace-only, 70 grapheme clusters, 71 grapheme clusters, line breaks, and Unicode input.
-- [ ] Add create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
+- [x] Add create/edit/server validation tests for description: empty, whitespace-only, 1000 grapheme clusters, 1001 grapheme clusters, multiline input, repeated line breaks collapsing to 2, and Unicode input.
 - [ ] Add create/edit/server validation tests for `capacity`: below 2, above 50, non-integer, valid bounds, and edit below active `participantsCount`.
 - [ ] Add create/edit/server validation tests for `startsAt` and `timeZoneId`: future trusted-time validation, selected city timezone derivation, and rejected or ignored client timezone mismatch.
 - [ ] Add create tests proving `organizerDisplayName` and `organizerPhotoUrl` are derived from the authenticated organizer profile snapshot.

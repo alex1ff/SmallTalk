@@ -733,6 +733,43 @@ test("normalizeCreateEventPayload validates title text boundaries", () => {
   assert.equal(unicode.hashPayload.title, "Café разговорный клуб 東京");
 });
 
+test("normalizeCreateEventPayload validates description text boundaries", () => {
+  for (const description of ["", " \t  ", "   \n \t "]) {
+    assertInvalidCreateRequest({description}, "description", "missing");
+  }
+
+  const thousandGraphemeDescription = repeatGrapheme("👍🏽", 1000);
+  const thousandOneGraphemeDescription = repeatGrapheme("👍🏽", 1001);
+  const boundary = normalizeCreateEventPayload(
+      cloneValidRequest({description: ` ${thousandGraphemeDescription} `}),
+      {now: fixedNow},
+  );
+  assert.equal(Array.from(thousandGraphemeDescription).length > 1000, true);
+  assert.equal(boundary.description, thousandGraphemeDescription);
+  assert.equal(boundary.hashPayload.description, thousandGraphemeDescription);
+  assertInvalidCreateRequest(
+      {description: thousandOneGraphemeDescription},
+      "description",
+      "too_long",
+  );
+
+  const multiline = normalizeCreateEventPayload(
+      cloneValidRequest({
+        description:
+          " Cafe\u0301   line \r\n\r\n\r\n  разговорный\tклуб \n\n\n 東京  ",
+      }),
+      {now: fixedNow},
+  );
+  assert.equal(
+      multiline.description,
+      "Café line\n\nразговорный клуб\n\n東京",
+  );
+  assert.equal(
+      multiline.hashPayload.description,
+      "Café line\n\nразговорный клуб\n\n東京",
+  );
+});
+
 test("normalizeCreateEventPayload accepts nullable or exact geo point shape", () => {
   const nullableGeo = normalizeCreateEventPayload(
       cloneValidRequest({locationGeoPoint: null}),
@@ -1790,6 +1827,39 @@ test("createEvent callable validates title before transaction writes", async () 
     assertNoCreateDocuments(store);
   }
 });
+
+test("createEvent callable validates description before transaction writes",
+    async () => {
+      const cases = [
+        {description: "", reason: "missing"},
+        {description: " \t  ", reason: "missing"},
+        {description: "   \n \t ", reason: "missing"},
+        {description: repeatGrapheme("👍🏽", 1001), reason: "too_long"},
+      ];
+
+      for (const currentCase of cases) {
+        const {db, reads, store, writes} = createFakeFirestore({
+          "users/uid": {display_name: "Анастасия Иванова"},
+        });
+
+        await withAdminFirestore(db, async () => {
+          await assertRejectsHttpsError(
+              () => createEvent.run(
+                  cloneValidRequest({description: currentCase.description}),
+                  {auth: {uid: "uid"}},
+              ),
+              "invalid-argument",
+              "invalid_create_request",
+              "description",
+              currentCase.reason,
+          );
+        });
+
+        assert.deepEqual(reads, []);
+        assert.deepEqual(writes, []);
+        assertNoCreateDocuments(store);
+      }
+    });
 
 test("executeCreateEventTransaction rolls back buffered writes on failure", async () => {
   const {db, makeRef, store, writes} = createFakeFirestore(
