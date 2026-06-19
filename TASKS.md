@@ -356,7 +356,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add rules tests denying direct client reads, creates, updates, and deletes of `eventCreationCounters` and `eventCreateRequests`.
 - [x] Add tests for city/date/level list filtering.
 - [x] Add event list query tests for active-only discovery, canceled hidden from list, past hidden by `startsAt`, date lower/upper UTC bounds, selected city timezone boundary conversion, and exclusive upper bound.
-- [ ] Add pagination tests proving client-side level filtering can fetch additional raw pages until enough visible events are collected or the source is exhausted.
+- [x] Add pagination tests proving client-side level filtering can fetch additional raw pages until enough visible events are collected or the source is exhausted.
 - [ ] Add pagination cursor tests proving the cursor advances by the last raw Firestore document when level filtering hides trailing raw results.
 - [ ] Add same-`startsAt` ordering tests documenting that MVP has no product-visible tie guarantee unless `__name__ ASC` is added later.
 - [ ] Add repository/query-shape tests that event list queries include `status == active`, canonical city equality filters, compatible `startsAt` bounds, and `orderBy startsAt ASC`.
