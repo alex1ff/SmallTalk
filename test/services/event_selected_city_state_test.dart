@@ -106,6 +106,31 @@ void main() {
       expect(state.hasOutdatedProfileCity, isFalse);
     });
 
+    test('preferredLocation alone does not unlock the Events list', () {
+      final user = userFixture(
+        data: {
+          'uid': 'uid-preferred-location-only',
+          'preferences': {
+            'preferredLocation': {'code': 'US'},
+          },
+        },
+      );
+
+      final state = resolveEventSelectedCityState(
+        user: user,
+        catalog: catalog,
+      );
+
+      expect(state.profileStatus, EventCityResolutionStatus.missingProfileCity);
+      expect(state.countryCodeHint, isNull);
+      expect(state.selected, isNull);
+      expect(state.canLoadEvents, isFalse);
+      expect(state.needsCitySelection, isTrue);
+      expect(state.selectedFromProfile, isFalse);
+      expect(state.selectedTemporarily, isFalse);
+      expect(state.hasOutdatedProfileCity, isFalse);
+    });
+
     test('does not unlock stale invalid or unknown profile cities', () {
       for (final fixture in <({ProfileCityStruct profileCity, Object status})>[
         (

@@ -335,13 +335,16 @@ void main() {
         ),
         'RU',
       );
+      final preferredOnlySelectedCity = resolveSelectedEventCityFromUserProfile(
+        user: preferredOnlyUser,
+        catalog: catalog,
+      );
       expect(
-        resolveSelectedEventCityFromUserProfile(
-          user: preferredOnlyUser,
-          catalog: catalog,
-        ).status,
+        preferredOnlySelectedCity.status,
         EventCityResolutionStatus.missingProfileCity,
       );
+      expect(preferredOnlySelectedCity.city, isNull);
+      expect(preferredOnlySelectedCity.hasResolvedCity, isFalse);
     });
 
     test('keeps hint separate from stale or unknown profile city status', () {

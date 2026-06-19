@@ -1791,6 +1791,39 @@ void main() {
     expect(analyticsTracker.payloadsFor('city_selected'), isEmpty);
   });
 
+  testWidgets('does not select a city from preferredLocation profile data',
+      (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+    currentUserDocument = _userFixture(
+      uid: 'preferred-location-only-user',
+      data: {
+        'preferences': {
+          'preferredLocation': {'code': 'US'},
+        },
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          analyticsTracker: analyticsTracker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Выберите город'), findsOneWidget);
+    expect(find.text('Выберите город, чтобы увидеть события.'), findsOneWidget);
+    expect(_citySelectorText('Нью-Йорк · United States'), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListErrorStateKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+    expect(analyticsTracker.payloadsFor('event_list_opened'), isEmpty);
+    expect(analyticsTracker.payloadsFor('city_selected'), isEmpty);
+  });
+
   testWidgets('does not track event list opened before city is selected',
       (tester) async {
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
