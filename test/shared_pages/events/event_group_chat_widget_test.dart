@@ -374,6 +374,7 @@ void main() {
 
   testWidgets('shows canceled event chat as read-only for eligible readers',
       (tester) async {
+    final semantics = tester.ensureSemantics();
     final chatRef = EventChatsRecord.collection.doc('event-123');
     final message = _messageFixture(
       chatRef: chatRef,
@@ -422,9 +423,16 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(
+      tester
+          .getSemantics(find.byKey(eventGroupChatCanceledReadOnlyBannerKey))
+          .label,
+      'Событие отменено. Чат доступен только для чтения.',
+    );
     expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
     expect(find.byKey(eventGroupChatSendButtonKey), findsNothing);
     expect(sendCalls, 0);
+    semantics.dispose();
   });
 
   testWidgets('does not use stale writable state while cancel state loads',
