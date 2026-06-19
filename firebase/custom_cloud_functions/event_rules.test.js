@@ -33,6 +33,7 @@ const disallowedEventStatuses = [
   "archived",
   "cancelled",
   "unknown",
+  "rescheduled",
 ];
 
 function eventData(overrides = {}) {

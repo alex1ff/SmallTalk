@@ -11,6 +11,27 @@ void main() {
   });
 
   group('EventsRecord', () {
+    const rejectedMvpEventStatuses = <String>[
+      'draft',
+      'past',
+      'completed',
+      'deleted',
+      'archived',
+      'cancelled',
+      'unknown',
+      'rescheduled',
+    ];
+
+    test('defines the MVP event status allowlist', () {
+      expect(mvpEventStatuses, <String>{'active', 'canceled'});
+      expect(isMvpEventStatus('active'), isTrue);
+      expect(isMvpEventStatus('canceled'), isTrue);
+      for (final status in rejectedMvpEventStatuses) {
+        expect(isMvpEventStatus(status), isFalse, reason: status);
+      }
+      expect(isMvpEventStatus(null), isFalse);
+    });
+
     test('parses the events document contract', () {
       final startsAt = DateTime.parse('2026-06-18T15:00:00Z');
       final createdAt = DateTime.parse('2026-06-14T10:00:00Z');
@@ -131,6 +152,30 @@ void main() {
       expect((data['locationGeoPoint'] as GeoPoint).longitude, 37.6156);
       expect(data['status'], 'active');
       expect(data.containsKey('canceledAt'), isFalse);
+
+      final canceledAt = DateTime.parse('2026-06-14T12:00:00Z');
+      final canceledData = createEventsRecordData(
+        status: 'canceled',
+        canceledAt: canceledAt,
+      );
+
+      expect(canceledData['status'], 'canceled');
+      expect(canceledData['canceledAt'], canceledAt);
+    });
+
+    test('rejects non-MVP event statuses before Firestore writes', () {
+      for (final status in rejectedMvpEventStatuses) {
+        expect(
+          () => validateMvpEventStatus(status),
+          throwsA(isA<ArgumentError>()),
+          reason: status,
+        );
+        expect(
+          () => createEventsRecordData(status: status),
+          throwsA(isA<ArgumentError>()),
+          reason: status,
+        );
+      }
     });
   });
 }

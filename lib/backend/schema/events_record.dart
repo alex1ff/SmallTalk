@@ -7,6 +7,24 @@ import '/backend/schema/util/firestore_util.dart';
 import 'index.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 
+const eventStatusActive = 'active';
+const eventStatusCanceled = 'canceled';
+const mvpEventStatuses = <String>{eventStatusActive, eventStatusCanceled};
+
+bool isMvpEventStatus(String? status) =>
+    status != null && mvpEventStatuses.contains(status);
+
+String? validateMvpEventStatus(String? status) {
+  if (status == null || isMvpEventStatus(status)) {
+    return status;
+  }
+  throw ArgumentError.value(
+    status,
+    'status',
+    'Expected an MVP event status: active or canceled.',
+  );
+}
+
 class EventsRecord extends FirestoreRecord {
   EventsRecord._(
     DocumentReference reference,
@@ -259,7 +277,7 @@ Map<String, dynamic> createEventsRecordData({
       'organizerDisplayName': organizerDisplayName,
       'organizerPhotoUrl': organizerPhotoUrl,
       'chatId': chatId,
-      'status': status,
+      'status': validateMvpEventStatus(status),
       'createdAt': createdAt,
       'updatedAt': updatedAt,
       'canceledAt': canceledAt,
