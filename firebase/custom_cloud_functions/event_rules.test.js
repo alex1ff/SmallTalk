@@ -1418,10 +1418,31 @@ test("clients cannot directly read event creation counters", async () => {
 test("clients cannot directly write event creation counters", async () => {
   const guest = testEnv.unauthenticatedContext();
   const user = testEnv.authenticatedContext("user-a");
+  const otherUser = testEnv.authenticatedContext("other-user");
   const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
-  const counterRef = user.firestore()
-    .doc("eventCreationCounters/user-a/days/20260616");
+  const contexts = [guest, user, otherUser, adminClient];
+  const counterRootPath = "eventCreationCounters/user-a";
+  const counterPath = `${counterRootPath}/days/20260616`;
+  const counterRef = user.firestore().doc(counterPath);
   const adminDb = adminClient.firestore();
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc(counterRootPath).set({userId: "user-a"});
+  });
+
+  for (const context of contexts) {
+    const db = context.firestore();
+    await assertFails(
+      db.doc("eventCreationCounters/direct-root").set({userId: "user-a"}),
+    );
+    await assertFails(
+      db.doc("eventCreationCounters/user-a/days/20260619")
+        .set(eventCreationCounterData({dayKeyUtc: "2026-06-19"})),
+    );
+    await assertFails(db.doc(counterRootPath).update({userId: "changed"}));
+    await assertFails(db.doc(counterRootPath).delete());
+    await assertFails(db.doc(counterPath).delete());
+  }
 
   await assertFails(
     guest.firestore()
@@ -1520,13 +1541,34 @@ test("clients cannot directly read event create request markers", async () => {
 test("clients cannot directly write event create request markers", async () => {
   const guest = testEnv.unauthenticatedContext();
   const user = testEnv.authenticatedContext("user-a");
+  const otherUser = testEnv.authenticatedContext("other-user");
   const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+  const contexts = [guest, user, otherUser, adminClient];
+  const markerRootPath = "eventCreateRequests/user-a";
   const markerPath =
-    `eventCreateRequests/user-a/requests/${eventCreateRequestId}`;
+    `${markerRootPath}/requests/${eventCreateRequestId}`;
   const markerRef = user.firestore().doc(markerPath);
   const adminDb = adminClient.firestore();
   const nextRequestId = "650e8400-e29b-41d4-a716-446655440001";
   const adminRequestId = "750e8400-e29b-41d4-a716-446655440002";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc(markerRootPath).set({userId: "user-a"});
+  });
+
+  for (const context of contexts) {
+    const db = context.firestore();
+    await assertFails(
+      db.doc("eventCreateRequests/direct-root").set({userId: "user-a"}),
+    );
+    await assertFails(
+      db.doc(`${markerRootPath}/requests/${nextRequestId}`)
+        .set(eventCreateRequestData({createRequestId: nextRequestId})),
+    );
+    await assertFails(db.doc(markerRootPath).update({userId: "changed"}));
+    await assertFails(db.doc(markerRootPath).delete());
+    await assertFails(db.doc(markerPath).delete());
+  }
 
   await assertFails(
     guest.firestore()
