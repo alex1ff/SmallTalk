@@ -1559,10 +1559,14 @@ test("event, participant, chat, and marker builders share one timestamp", () => 
   assert.equal(eventData.status, "active");
   assert.equal(eventData.participantsCount, 1);
   assert.equal(eventData.chatId, "event-1");
+  assert.equal(eventData.organizerDisplayName, "Анастасия Иванова");
+  assert.equal(eventData.organizerPhotoUrl, null);
   assert.equal(eventData.createdAt, fixedTimestamp);
   assert.equal(eventData.updatedAt, fixedTimestamp);
   assert.equal(eventData.canceledAt, null);
   assert.equal(participantData.role, "organizer");
+  assert.equal(participantData.displayName, "Анастасия Иванова");
+  assert.equal(participantData.photoUrl, null);
   assert.equal(participantData.status, "active");
   assert.equal(participantData.joinedAt, fixedTimestamp);
   assert.equal(Object.prototype.hasOwnProperty.call(chatData, "chatId"), false);
@@ -1606,8 +1610,24 @@ test("executeCreateEventTransaction creates all event documents", async () => {
   });
   assert.equal(store.get("events/event-new").participantsCount, 1);
   assert.equal(
+      store.get("events/event-new").organizerDisplayName,
+      "Анастасия Иванова",
+  );
+  assert.equal(
+      store.get("events/event-new").organizerPhotoUrl,
+      "https://example.test/avatar.jpg",
+  );
+  assert.equal(
       store.get("events/event-new/participants/uid").role,
       "organizer",
+  );
+  assert.equal(
+      store.get("events/event-new/participants/uid").displayName,
+      "Анастасия Иванова",
+  );
+  assert.equal(
+      store.get("events/event-new/participants/uid").photoUrl,
+      "https://example.test/avatar.jpg",
   );
   assert.deepEqual(store.get("eventChats/event-new"), {
     eventId: "event-new",
@@ -1648,6 +1668,111 @@ test("executeCreateEventTransaction creates all event documents", async () => {
       ],
   );
 });
+
+test("executeCreateEventTransaction derives organizer snapshot from profile",
+    async () => {
+      const {db, makeRef, store} = createFakeFirestore({
+        "users/uid": {
+          display_name: " Cafe\u0301 Organizer ",
+          photo_url: " https://example.test/profile.jpg ",
+        },
+      });
+      const dayInfo = buildUtcDayInfo(fixedNow);
+      const {normalized, payloadHash} =
+        buildNormalizedAndHash(cloneValidRequest());
+
+      await executeCreateEventTransaction({
+        db,
+        uid: "uid",
+        creationDate: fixedNow,
+        creationTimestamp: fixedTimestamp,
+        dayInfo,
+        normalized,
+        payloadHash,
+        eventRef: makeRef("events/event-new"),
+      });
+
+      const event = store.get("events/event-new");
+      const participant = store.get("events/event-new/participants/uid");
+
+      assert.equal(event.organizerId, "uid");
+      assert.equal(event.organizerDisplayName, "Café Organizer");
+      assert.equal(event.organizerPhotoUrl, "https://example.test/profile.jpg");
+      assert.equal(participant.userId, "uid");
+      assert.equal(participant.displayName, "Café Organizer");
+      assert.equal(participant.photoUrl, "https://example.test/profile.jpg");
+    });
+
+test("executeCreateEventTransaction stores null organizer photo from blank profile",
+    async () => {
+      const {db, makeRef, store} = createFakeFirestore({
+        "users/uid": {
+          display_name: "Анастасия Иванова",
+          photo_url: "   ",
+        },
+      });
+      const dayInfo = buildUtcDayInfo(fixedNow);
+      const {normalized, payloadHash} =
+        buildNormalizedAndHash(cloneValidRequest());
+
+      await executeCreateEventTransaction({
+        db,
+        uid: "uid",
+        creationDate: fixedNow,
+        creationTimestamp: fixedTimestamp,
+        dayInfo,
+        normalized,
+        payloadHash,
+        eventRef: makeRef("events/event-new"),
+      });
+
+      assert.equal(store.get("events/event-new").organizerDisplayName,
+          "Анастасия Иванова");
+      assert.equal(store.get("events/event-new").organizerPhotoUrl, null);
+      assert.equal(
+          store.get("events/event-new/participants/uid").displayName,
+          "Анастасия Иванова",
+      );
+      assert.equal(store.get("events/event-new/participants/uid").photoUrl,
+          null);
+    });
+
+test("executeCreateEventTransaction rejects missing organizer profile snapshot",
+    async () => {
+      const cases = [
+        {seed: {}, field: "display_name"},
+        {seed: {"users/uid": {photo_url: "https://example.test/photo.jpg"}},
+          field: "display_name"},
+        {seed: {"users/uid": {display_name: "   "}}, field: "display_name"},
+      ];
+
+      for (const currentCase of cases) {
+        const {db, makeRef, store, writes} =
+          createFakeFirestore(currentCase.seed);
+        const dayInfo = buildUtcDayInfo(fixedNow);
+        const {normalized, payloadHash} =
+          buildNormalizedAndHash(cloneValidRequest());
+
+        await assertRejectsHttpsError(
+            () => executeCreateEventTransaction({
+              db,
+              uid: "uid",
+              creationDate: fixedNow,
+              creationTimestamp: fixedTimestamp,
+              dayInfo,
+              normalized,
+              payloadHash,
+              eventRef: makeRef("events/event-new"),
+            }),
+            "failed-precondition",
+            "organizer_profile_required",
+            currentCase.field,
+        );
+
+        assert.deepEqual(writes, []);
+        assertNoCreateDocuments(store);
+      }
+    });
 
 test("executeCreateEventTransaction creates exact lowercase request marker schema",
     async () => {
@@ -1763,7 +1888,10 @@ test("executeCreateEventTransaction ignores event day and city timezone for coun
 test("createEvent callable captures one trusted backend UTC instant",
     async () => {
       const {db, store} = createFakeFirestore({
-        "users/uid": {display_name: "Анастасия Иванова"},
+        "users/uid": {
+          display_name: " Анастасия Иванова ",
+          photo_url: " https://example.test/callable-avatar.jpg ",
+        },
       });
       const request = cloneValidRequest({
         countryCode: "ae",
@@ -1808,6 +1936,22 @@ test("createEvent callable captures one trusted backend UTC instant",
           );
           assert.equal(marker.createdAt.toMillis(), counter.createdAt.toMillis());
           assert.deepEqual(marker.dailyCreation, response.dailyCreation);
+          assert.equal(
+              store.get("events/event-new").organizerDisplayName,
+              "Анастасия Иванова",
+          );
+          assert.equal(
+              store.get("events/event-new").organizerPhotoUrl,
+              "https://example.test/callable-avatar.jpg",
+          );
+          assert.equal(
+              store.get("events/event-new/participants/uid").displayName,
+              "Анастасия Иванова",
+          );
+          assert.equal(
+              store.get("events/event-new/participants/uid").photoUrl,
+              "https://example.test/callable-avatar.jpg",
+          );
           assert.equal(store.has("eventCreationCounters/uid/days/20260617"),
               false);
         });
