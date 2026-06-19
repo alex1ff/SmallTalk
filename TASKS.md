@@ -351,7 +351,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add index contract test or CI check proving `firebase/firestore.indexes.json` contains the `events` collection index with `status ASC`, `countryCode ASC`, `cityKey ASC`, and `startsAt ASC`.
 - [x] Add rules/model tests that reject `draft`, `past`, `completed`, `deleted`, `archived`, `cancelled`, and unknown values as event statuses in MVP.
 - [x] Add status lifecycle tests for `active` with `canceledAt = null`, only `active -> canceled`, terminal canceled without reopen/restore, and `canceledAt` set from trusted server/request time.
-- [ ] Add rules tests that deny organizer/client hard delete of active and canceled events.
+- [x] Add rules tests that deny organizer/client hard delete of active and canceled events.
 - [ ] Add rules tests that deny client hard delete of event chat documents.
 - [ ] Add rules tests denying direct client reads, creates, updates, and deletes of `eventCreationCounters` and `eventCreateRequests`.
 - [ ] Add tests for city/date/level list filtering.
