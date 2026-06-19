@@ -541,6 +541,60 @@ void main() {
       expect(rawPageIndex, 2);
     });
 
+    test('advances cursor by last raw document hidden by level filtering',
+        () async {
+      final visibleFirstCursor = _FakeQueryDocumentSnapshot('visible-first');
+      final hiddenTrailingCursor = _FakeQueryDocumentSnapshot(
+        'hidden-trailing',
+      );
+      final receivedCursors = <DocumentSnapshot?>[];
+      final rawPages = <FFFirestorePage<EventsRecord>>[
+        FFFirestorePage<EventsRecord>(
+          [eventFixture('visible-first', levelMin: 'B1', levelMax: 'B2')],
+          null,
+          visibleFirstCursor,
+        ),
+        FFFirestorePage<EventsRecord>(
+          [
+            eventFixture('visible-second', levelMin: 'B2', levelMax: 'C1'),
+            eventFixture('hidden-trailing', levelMin: 'C2', levelMax: 'C2'),
+          ],
+          null,
+          hiddenTrailingCursor,
+        ),
+      ];
+      var rawPageIndex = 0;
+
+      final page = await EventListRepository.loadLevelFilteredActiveEventPage(
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+        pageSize: 2,
+        selectedLevel: 'B2',
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          receivedCursors.add(nextPageMarker);
+          return rawPages[rawPageIndex++];
+        },
+      );
+
+      expect(eventIds(page.data), ['visible-first', 'visible-second']);
+      expect(eventIds(page.data), isNot(contains('hidden-trailing')));
+      expect(page.nextPageMarker, same(hiddenTrailingCursor));
+      expect(page.nextPageMarker?.id, 'hidden-trailing');
+      expect(receivedCursors, hasLength(2));
+      expect(receivedCursors[0], isNull);
+      expect(receivedCursors[1], same(visibleFirstCursor));
+      expect(rawPageIndex, 2);
+    });
+
     test('keeps overfilled visible page so filtered events are not skipped',
         () async {
       final marker = _FakeQueryDocumentSnapshot();
@@ -821,8 +875,10 @@ class _FakeDocumentSnapshot implements DocumentSnapshot<Object?> {
 
 // ignore: subtype_of_sealed_class
 class _FakeQueryDocumentSnapshot implements QueryDocumentSnapshot<Object?> {
+  _FakeQueryDocumentSnapshot([this.id = 'query-cursor']);
+
   @override
-  String get id => 'query-cursor';
+  final String id;
 
   @override
   bool get exists => true;
