@@ -43,6 +43,46 @@ void main() {
       );
     });
 
+    test('matches each selected level against event ranges by rank overlap',
+        () {
+      const cases = <({
+        String selectedLevel,
+        String eventMin,
+        String eventMax,
+        bool overlaps,
+      })>[
+        (selectedLevel: 'A1', eventMin: 'A1', eventMax: 'A1', overlaps: true),
+        (selectedLevel: 'A1', eventMin: 'A2', eventMax: 'C2', overlaps: false),
+        (selectedLevel: 'A2', eventMin: 'A1', eventMax: 'A2', overlaps: true),
+        (selectedLevel: 'A2', eventMin: 'B1', eventMax: 'C2', overlaps: false),
+        (selectedLevel: 'B1', eventMin: 'A2', eventMax: 'B1', overlaps: true),
+        (selectedLevel: 'B1', eventMin: 'B2', eventMax: 'C2', overlaps: false),
+        (selectedLevel: 'B2', eventMin: 'B2', eventMax: 'B2', overlaps: true),
+        (selectedLevel: 'B2', eventMin: 'A1', eventMax: 'B1', overlaps: false),
+        (selectedLevel: 'C1', eventMin: 'B2', eventMax: 'C1', overlaps: true),
+        (selectedLevel: 'C1', eventMin: 'A1', eventMax: 'B2', overlaps: false),
+        (selectedLevel: 'C2', eventMin: 'C2', eventMax: 'C2', overlaps: true),
+        (selectedLevel: 'C2', eventMin: 'A1', eventMax: 'C1', overlaps: false),
+      ];
+
+      for (final currentCase in cases) {
+        final selectedRange = selectedEventLevelRange(
+          currentCase.selectedLevel,
+        )!;
+        final eventRange = eventLevelRange(
+          levelMin: currentCase.eventMin,
+          levelMax: currentCase.eventMax,
+        );
+
+        expect(
+          eventRange.overlaps(selectedRange),
+          currentCase.overlaps,
+          reason: '${currentCase.eventMin}-${currentCase.eventMax} against '
+              '${currentCase.selectedLevel}',
+        );
+      }
+    });
+
     test('returns null selected range for no selected level', () {
       expect(selectedEventLevelRange(null), isNull);
       expect(selectedEventLevelRange(' '), isNull);

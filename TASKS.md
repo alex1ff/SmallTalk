@@ -327,7 +327,7 @@ Deferred from active scope on 2026-06-19.
 ## Phase 14: Testing And QA
 
 - [ ] Add unit tests for date filter helper.
-- [ ] Add unit tests for level overlap helper covering all six canonical ranks, no selected level, same-level ranges, rejected invalid levels, and rejected reversed ranges.
+- [x] Add unit tests for level overlap helper covering all six canonical ranks, no selected level, same-level ranges, rejected invalid levels, and rejected reversed ranges.
 - [ ] Add repository tests for event creation validation.
 - [ ] Add `createEvent` request/response schema tests for required exact keys, unknown keys denied, invalid/missing `createRequestId`, per-field required/null/type/range validation, ISO-8601 UTC millisecond `startsAt`, nullable or `{latitude, longitude}` `locationGeoPoint`, exact success response fields/types, idempotent retry response returning original `eventId`/`createdAt`/`dailyCreation`, and normalized payload hashing inputs.
 - [ ] Add create discard tests proving leaving create form before submit creates no server event, participant, chat, counter, or request-marker documents.
