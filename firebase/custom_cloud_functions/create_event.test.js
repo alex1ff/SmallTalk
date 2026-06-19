@@ -98,6 +98,7 @@ async function assertRejectsHttpsError(promiseFactory, code, domainCode) {
 
 function createFakeFirestore(seed = {}, {
   eventId = "event-new",
+  failAfterBufferedWrites = null,
   failBeforeCommit = false,
 } = {}) {
   const store = new Map(Object.entries(seed));
@@ -155,11 +156,21 @@ function createFakeFirestore(seed = {}, {
           }
           pendingWrites.push({type: "create", path: ref.path, data});
           writes.push({type: "create", path: ref.path, data});
+          if (pendingWrites.length === failAfterBufferedWrites) {
+            throw new Error(
+                `Simulated transaction interruption after ${pendingWrites.length} writes`,
+            );
+          }
         },
         set(ref, data) {
           hasWrites = true;
           pendingWrites.push({type: "set", path: ref.path, data});
           writes.push({type: "set", path: ref.path, data});
+          if (pendingWrites.length === failAfterBufferedWrites) {
+            throw new Error(
+                `Simulated transaction interruption after ${pendingWrites.length} writes`,
+            );
+          }
         },
       };
       const result = await callback(tx);
@@ -262,6 +273,25 @@ function assertInvalidCreateRequest(overrides, field, reason) {
       "invalid_create_request",
       field,
       reason,
+  );
+}
+
+function assertNoCreateDocuments(store, {
+  eventId = "event-new",
+  uid = "uid",
+  createRequestId = validRequest.createRequestId,
+  dayKeyCompact = "20260616",
+} = {}) {
+  assert.equal(store.has(`events/${eventId}`), false);
+  assert.equal(store.has(`events/${eventId}/participants/${uid}`), false);
+  assert.equal(store.has(`eventChats/${eventId}`), false);
+  assert.equal(
+      store.has(`eventCreationCounters/${uid}/days/${dayKeyCompact}`),
+      false,
+  );
+  assert.equal(
+      store.has(`eventCreateRequests/${uid}/requests/${createRequestId}`),
+      false,
   );
 }
 
@@ -1052,6 +1082,78 @@ test("executeCreateEventTransaction rolls back buffered writes on failure", asyn
   assert.equal(store.has("events/event-new/participants/uid"), false);
   assert.equal(store.has("eventChats/event-new"), false);
   assert.equal(store.has("eventCreationCounters/uid/days/20260616"), false);
+  assert.equal(
+      store.has(
+          `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+      ),
+      false,
+  );
+});
+
+test("executeCreateEventTransaction leaves no partial docs when interrupted", async () => {
+  for (const writeCount of [1, 2, 3, 4, 5]) {
+    const {db, makeRef, store, writes} = createFakeFirestore(
+        {"users/uid": {display_name: "Анастасия Иванова"}},
+        {failAfterBufferedWrites: writeCount},
+    );
+    const dayInfo = buildUtcDayInfo(fixedNow);
+    const {normalized, payloadHash} =
+      buildNormalizedAndHash(cloneValidRequest());
+
+    await assert.rejects(
+        () => executeCreateEventTransaction({
+          db,
+          uid: "uid",
+          creationDate: fixedNow,
+          creationTimestamp: fixedTimestamp,
+          dayInfo,
+          normalized,
+          payloadHash,
+          eventRef: makeRef("events/event-new"),
+        }),
+        new RegExp(`Simulated transaction interruption after ${writeCount} writes`),
+    );
+
+    assert.equal(writes.length, writeCount);
+    assertNoCreateDocuments(store);
+  }
+});
+
+test("executeCreateEventTransaction preserves existing counter on interruption", async () => {
+  const dayInfo = buildUtcDayInfo(fixedNow);
+  const counterBefore = buildValidCounterData({dayInfo, count: 1});
+  const {db, makeRef, store, writes} = createFakeFirestore(
+      {
+        "users/uid": {display_name: "Анастасия Иванова"},
+        "eventCreationCounters/uid/days/20260616": counterBefore,
+      },
+      {failAfterBufferedWrites: 4},
+  );
+  const {normalized, payloadHash} =
+    buildNormalizedAndHash(cloneValidRequest());
+
+  await assert.rejects(
+      () => executeCreateEventTransaction({
+        db,
+        uid: "uid",
+        creationDate: fixedNow,
+        creationTimestamp: fixedTimestamp,
+        dayInfo,
+        normalized,
+        payloadHash,
+        eventRef: makeRef("events/event-new"),
+      }),
+      /Simulated transaction interruption after 4 writes/,
+  );
+
+  assert.equal(writes.length, 4);
+  assert.equal(store.has("events/event-new"), false);
+  assert.equal(store.has("events/event-new/participants/uid"), false);
+  assert.equal(store.has("eventChats/event-new"), false);
+  assert.strictEqual(
+      store.get("eventCreationCounters/uid/days/20260616"),
+      counterBefore,
+  );
   assert.equal(
       store.has(
           `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
