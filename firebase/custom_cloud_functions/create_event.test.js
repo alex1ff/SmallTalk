@@ -130,9 +130,33 @@ function assertDailyLimitError(err, {
   });
 }
 
+function assertCreateRequestConflictError(err, {
+  eventId = "event-1",
+  createRequestId = validRequest.createRequestId,
+  dayKeyUtc = "2026-06-16",
+} = {}) {
+  assert.equal(err.code, "already-exists");
+  assert.deepEqual(err.details, {
+    domainCode: "create_request_conflict",
+    eventId,
+    createRequestId,
+    dayKeyUtc,
+  });
+}
+
 async function assertRejectsDailyLimit(promiseFactory, expected = {}) {
   await assert.rejects(promiseFactory, (err) => {
     assertDailyLimitError(err, expected);
+    return true;
+  });
+}
+
+async function assertRejectsCreateRequestConflict(
+    promiseFactory,
+    expected = {},
+) {
+  await assert.rejects(promiseFactory, (err) => {
+    assertCreateRequestConflictError(err, expected);
     return true;
   });
 }
@@ -1255,7 +1279,7 @@ test("buildExistingCreateResponse returns original idempotency snapshot", () => 
 });
 
 test("buildExistingCreateResponse rejects changed-payload retry", () => {
-  assertHttpsError(
+  assert.throws(
       () => buildExistingCreateResponse({
         markerData: {
           userId: "uid",
@@ -1265,7 +1289,12 @@ test("buildExistingCreateResponse rejects changed-payload retry", () => {
           payloadHash: HASH_1,
           counterPath: "eventCreationCounters/uid/days/20260616",
           dayKeyUtc: "2026-06-16",
-          dailyCreation: {},
+          dailyCreation: {
+            dayKeyUtc: "2026-06-16",
+            count: 2,
+            remaining: 3,
+            resetAtUtc: "2026-06-17T00:00:00.000Z",
+          },
           createdAt: fixedTimestamp,
           updatedAt: fixedUpdatedTimestamp,
         },
@@ -1273,8 +1302,10 @@ test("buildExistingCreateResponse rejects changed-payload retry", () => {
         createRequestId: validRequest.createRequestId,
         payloadHash: HASH_2,
       }),
-      "already-exists",
-      "create_request_conflict",
+      (err) => {
+        assertCreateRequestConflictError(err);
+        return true;
+      },
   );
 });
 
@@ -1703,9 +1734,14 @@ test("executeCreateEventTransaction returns marker retry after startsAt", async 
     dailyCreation,
     creationTimestamp: fixedTimestamp,
   });
-  const {db, makeRef, reads, writes} = createFakeFirestore({
+  const counterBefore = buildValidCounterData({
+    dayInfo: originalDayInfo,
+    count: 1,
+  });
+  const {db, makeRef, reads, store, writes} = createFakeFirestore({
     [`eventCreateRequests/uid/requests/${validRequest.createRequestId}`]:
       marker,
+    "eventCreationCounters/uid/days/20260616": counterBefore,
   });
 
   const response = await executeCreateEventTransaction({
@@ -1728,7 +1764,66 @@ test("executeCreateEventTransaction returns marker retry after startsAt", async 
     `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
   ]);
   assert.deepEqual(writes, []);
+  assert.strictEqual(
+      store.get("eventCreationCounters/uid/days/20260616"),
+      counterBefore,
+  );
+  assert.equal(store.has("eventCreationCounters/uid/days/20260621"), false);
 });
+
+test("executeCreateEventTransaction rejects changed-payload marker retry",
+    async () => {
+      const dayInfo = buildUtcDayInfo(fixedNow);
+      const original = buildNormalizedAndHash(cloneValidRequest());
+      const changed = buildNormalizedAndHash(cloneValidRequest({
+        title: "Changed title",
+      }));
+      const marker = buildCreateRequestMarker({
+        uid: "uid",
+        createRequestId: validRequest.createRequestId,
+        eventId: "event-original",
+        payloadHash: original.payloadHash,
+        counterPath: "eventCreationCounters/uid/days/20260616",
+        dayInfo,
+        dailyCreation: buildDailyCreation(1, dayInfo),
+        creationTimestamp: fixedTimestamp,
+      });
+      const counterBefore = buildValidCounterData({dayInfo, count: 1});
+      const {db, makeRef, reads, store, writes} = createFakeFirestore({
+        [`eventCreateRequests/uid/requests/${validRequest.createRequestId}`]:
+          marker,
+        "eventCreationCounters/uid/days/20260616": counterBefore,
+      });
+
+      await assertRejectsCreateRequestConflict(
+          () => executeCreateEventTransaction({
+            db,
+            uid: "uid",
+            creationDate: fixedNow,
+            creationTimestamp: fixedTimestamp,
+            dayInfo,
+            normalized: changed.normalized,
+            payloadHash: changed.payloadHash,
+            eventRef: makeRef("events/event-new"),
+          }),
+          {
+            eventId: "event-original",
+            createRequestId: validRequest.createRequestId,
+            dayKeyUtc: "2026-06-16",
+          },
+      );
+
+      assert.deepEqual(reads, [
+        `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+      ]);
+      assert.deepEqual(writes, []);
+      assert.strictEqual(
+          store.get("eventCreationCounters/uid/days/20260616"),
+          counterBefore,
+      );
+      assert.equal(store.has("events/event-new"), false);
+      assert.equal(store.has("eventChats/event-new"), false);
+    });
 
 test("executeCreateEventTransaction keeps counter after admin event delete", async () => {
   const originalDayInfo = buildUtcDayInfo(fixedNow);
@@ -2123,6 +2218,86 @@ test("executeCreateEventTransaction concurrent creates never exceed daily limit"
           false,
       );
 });
+
+test("executeCreateEventTransaction retry increments counter once per request",
+    async () => {
+      const dayInfo = buildUtcDayInfo(fixedNow);
+      let firstAttemptCommits = 0;
+      let releaseFirstAttempts;
+      const firstAttemptsReady = new Promise((resolve) => {
+        releaseFirstAttempts = resolve;
+      });
+      const counterBefore = buildValidCounterData({dayInfo, count: 1});
+      const {db, makeRef, store} = createFakeFirestore(
+          {
+            "users/uid": {display_name: "Анастасия Иванова"},
+            "eventCreationCounters/uid/days/20260616": counterBefore,
+          },
+          {
+            retryOnConcurrentModification: true,
+            onBeforeCommit: async ({attempt}) => {
+              if (attempt !== 1) {
+                return;
+              }
+              firstAttemptCommits += 1;
+              if (firstAttemptCommits === 2) {
+                releaseFirstAttempts();
+              }
+              await firstAttemptsReady;
+            },
+          },
+      );
+
+      const create = (index) => {
+        const createRequestId = indexedRequestId(index);
+        const {normalized, payloadHash} = buildNormalizedAndHash(
+            cloneValidRequest({
+              createRequestId,
+              title: `Retried create ${index}`,
+            }),
+        );
+        return executeCreateEventTransaction({
+          db,
+          uid: "uid",
+          creationDate: fixedNow,
+          creationTimestamp: fixedTimestamp,
+          dayInfo,
+          normalized,
+          payloadHash,
+          eventRef: makeRef(`events/event-retry-${index}`),
+        });
+      };
+
+      const [first, second] = await Promise.all([create(1), create(2)]);
+
+      assert.equal(first.dailyCreation.count, 2);
+      assert.equal(second.dailyCreation.count, 3);
+      assert.equal(firstAttemptCommits, 2);
+      const counter = store.get("eventCreationCounters/uid/days/20260616");
+      assert.equal(counter.count, 3);
+      assert.deepEqual(
+          counter.eventIds.sort(),
+          ["event-1", "event-retry-1", "event-retry-2"],
+      );
+      assert.equal(new Set(counter.eventIds).size, 3);
+      for (const index of [1, 2]) {
+        const createRequestId = indexedRequestId(index);
+        assert.equal(
+            counter.requestEventIds[createRequestId],
+            `event-retry-${index}`,
+        );
+        assert.equal(
+            store.get(`eventCreateRequests/uid/requests/${createRequestId}`)
+                .eventId,
+            `event-retry-${index}`,
+        );
+        assert.equal(store.has(`events/event-retry-${index}`), true);
+      }
+      assert.equal(Object.keys(counter.requestEventIds).length, 3);
+      assert.equal(Object.keys(counter.requestPayloadHashes).length, 3);
+      assert.strictEqual(counter.createdAt, counterBefore.createdAt);
+      assert.strictEqual(counter.updatedAt, fixedTimestamp);
+    });
 
 test("create_event callable uses a Firestore transaction and no serverTimestamp", () => {
   const source = fs.readFileSync(require.resolve("./create_event"), "utf8");
