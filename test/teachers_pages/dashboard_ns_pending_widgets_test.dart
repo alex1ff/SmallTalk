@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
+import 'package:small_talk/components/availability_schedule_card.dart';
 import 'package:small_talk/components/pending_teacher_review_bottom_sheet.dart';
 import 'package:small_talk/components/pending_teacher_review_card.dart';
 import 'package:small_talk/components/teacher_availability_switch_control.dart';
@@ -202,6 +203,124 @@ void main() {
     await tester.pump();
 
     expect(nextValue, isTrue);
+  });
+
+  testWidgets('availability schedule card keeps add and remove actions',
+      (tester) async {
+    var addTapCount = 0;
+    IntervalsStruct? removedInterval;
+    final interval = IntervalsStruct(start: '09:00', end: '10:00');
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        AvailabilityScheduleCard(
+          availabilityEnabled: true,
+          intervals: [interval],
+          switchControl: const SizedBox(
+            key: ValueKey('teacher-availability-switch-slot'),
+          ),
+          onAddInterval: () async {
+            addTapCount += 1;
+          },
+          onRemoveInterval: (interval) async {
+            removedInterval = interval;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('teacher-availability-switch-slot')),
+        findsOneWidget);
+    expect(find.text('Доступен сегодня'), findsOneWidget);
+    expect(find.text('09:00 - 10:00'), findsOneWidget);
+    expect(find.text('Добавить интервал'), findsOneWidget);
+
+    await tester.tap(find.text('Добавить интервал'));
+    await tester.pump();
+
+    expect(addTapCount, 1);
+
+    await tester.tap(find.byTooltip('Удалить интервал'));
+    await tester.pump();
+
+    expect(removedInterval, same(interval));
+  });
+
+  testWidgets('disabled availability schedule card keeps switch only',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        AvailabilityScheduleCard(
+          availabilityEnabled: false,
+          intervals: [IntervalsStruct(start: '09:00', end: '10:00')],
+          switchControl: const SizedBox(
+            key: ValueKey('teacher-availability-switch-slot'),
+          ),
+          onAddInterval: () async {},
+          onRemoveInterval: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('teacher-availability-switch-slot')),
+        findsOneWidget);
+    expect(find.text('Доступен сегодня'), findsOneWidget);
+    expect(find.text('09:00 - 10:00'), findsNothing);
+    expect(find.text('Добавить интервал'), findsNothing);
+  });
+
+  testWidgets('approved dashboard keeps availability controls visible',
+      (tester) async {
+    currentUser = _TestAuthUser(
+      isLoggedIn: true,
+      userId: 'approved-dashboard-test',
+    );
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        'role': 'native_speaker',
+        'teacherAccreditationStatus': 'approved',
+        'availabilityToday': {
+          'enabled': true,
+          'intervals': [
+            {
+              'start': '09:00',
+              'end': '10:00',
+            },
+          ],
+        },
+        'isInCall': false,
+      },
+      UsersRecord.collection.doc('approved-dashboard-test'),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        DashboardNSWidget(
+          statsStreamOverride: Stream<List<StatsRecord>>.value(
+            const <StatsRecord>[],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AvailabilityScheduleCard), findsOneWidget);
+    expect(find.byType(AvailabilitySwitchControl), findsOneWidget);
+    expect(find.text('Доступен сегодня'), findsOneWidget);
+    expect(find.text('09:00 - 10:00'), findsOneWidget);
+    expect(find.text('Добавить интервал'), findsOneWidget);
+    expect(find.text('Заявка на проверке'), findsNothing);
+    expect(find.text('Заявка ещё на проверке'), findsNothing);
+    expect(
+      tester
+          .widget<AvailabilitySwitchControl>(
+            find.byType(AvailabilitySwitchControl),
+          )
+          .value,
+      isTrue,
+    );
   });
 
   testWidgets('pending dashboard switch stays off and opens blocker sheet',
