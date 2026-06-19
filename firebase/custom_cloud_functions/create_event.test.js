@@ -51,6 +51,18 @@ const EXPECTED_CREATE_EVENT_KEYS = Object.freeze([
   "startsAt",
   "capacity",
 ]);
+const EXPECTED_DAILY_COUNTER_KEYS = Object.freeze([
+  "count",
+  "createdAt",
+  "dayKeyUtc",
+  "eventIds",
+  "requestEventIds",
+  "requestPayloadHashes",
+  "updatedAt",
+  "userId",
+  "windowEndAt",
+  "windowStartAt",
+]);
 const validRequest = Object.freeze({
   createRequestId: "550e8400-e29b-41d4-a716-446655440000",
   title: " Разговорный  клуб: кофе и английский ",
@@ -216,6 +228,34 @@ function buildValidCounterData({
     createdAt: fixedTimestamp,
     updatedAt: fixedUpdatedTimestamp,
   };
+}
+
+function cloneCounterData(counterData, overrides = {}) {
+  return {
+    ...counterData,
+    eventIds: [...counterData.eventIds],
+    requestEventIds: {...counterData.requestEventIds},
+    requestPayloadHashes: {...counterData.requestPayloadHashes},
+    ...overrides,
+  };
+}
+
+function assertCounterInconsistent(counterData, message) {
+  assert.throws(
+      () => validateExistingCounter(counterData, {
+        uid: "uid",
+        dayInfo: buildUtcDayInfo(fixedNow),
+      }),
+      (err) => {
+        assert.equal(err.code, "failed-precondition");
+        assert.equal(
+            err.details?.domainCode,
+            "event_creation_counter_inconsistent",
+        );
+        return true;
+      },
+      message,
+  );
 }
 
 function buildNormalizedAndHash(request, options = {}) {
@@ -772,6 +812,61 @@ test("buildNextCounterState appends atomically counted create request", () => {
   assert.equal(next.updatedAt, fixedTimestamp);
 });
 
+test("buildNextCounterState preserves createdAt and refreshes updatedAt", () => {
+  const dayInfo = buildUtcDayInfo(fixedNow);
+  const counterData = buildValidCounterData({dayInfo, count: 1});
+  const next = buildNextCounterState({
+    counterExists: true,
+    counterData,
+    uid: "uid",
+    createRequestId: validRequest.createRequestId,
+    eventId: "event-2",
+    payloadHash: HASH_2,
+    dayInfo,
+    creationTimestamp: fixedUpdatedTimestamp,
+  });
+
+  assert.equal(next.count, 2);
+  assert.deepEqual(next.eventIds, ["event-1", "event-2"]);
+  assert.strictEqual(next.createdAt, counterData.createdAt);
+  assert.strictEqual(next.updatedAt, fixedUpdatedTimestamp);
+});
+
+test("buildNextCounterState creates exact daily counter schema", () => {
+  const dayInfo = buildUtcDayInfo(fixedNow);
+  const next = buildNextCounterState({
+    counterExists: false,
+    uid: "uid",
+    createRequestId: validRequest.createRequestId,
+    eventId: "event-new",
+    payloadHash: HASH_2,
+    dayInfo,
+    creationTimestamp: fixedTimestamp,
+  });
+
+  assert.deepEqual(Object.keys(next).sort(), EXPECTED_DAILY_COUNTER_KEYS);
+  assert.equal(next.userId, "uid");
+  assert.equal(next.dayKeyUtc, "2026-06-16");
+  assert.equal(next.count, 1);
+  assert.deepEqual(next.eventIds, ["event-new"]);
+  assert.deepEqual(next.requestEventIds, {
+    [validRequest.createRequestId]: "event-new",
+  });
+  assert.deepEqual(next.requestPayloadHashes, {
+    [validRequest.createRequestId]: HASH_2,
+  });
+  assert.equal(next.windowStartAt.toMillis(), Date.parse("2026-06-16Z"));
+  assert.equal(next.windowEndAt.toMillis(), Date.parse("2026-06-17Z"));
+  assert.strictEqual(next.createdAt, fixedTimestamp);
+  assert.strictEqual(next.updatedAt, fixedTimestamp);
+  assert.deepEqual(validateExistingCounter(next, {uid: "uid", dayInfo}), {
+    count: 1,
+    eventIds: ["event-new"],
+    requestEventIds: {[validRequest.createRequestId]: "event-new"},
+    requestPayloadHashes: {[validRequest.createRequestId]: HASH_2},
+  });
+});
+
 test("buildNextCounterState rejects daily limit before writing", () => {
   const dayInfo = buildUtcDayInfo(fixedNow);
   assertHttpsError(
@@ -792,6 +887,148 @@ test("buildNextCounterState rejects daily limit before writing", () => {
       }),
       "resource-exhausted",
       "daily_limit_reached",
+  );
+});
+
+test("validateExistingCounter requires the full daily counter schema", () => {
+  const validCounter = buildValidCounterData({count: 2});
+  const requiredFields = [
+    "userId",
+    "dayKeyUtc",
+    "count",
+    "eventIds",
+    "requestEventIds",
+    "requestPayloadHashes",
+    "windowStartAt",
+    "windowEndAt",
+    "createdAt",
+    "updatedAt",
+  ];
+
+  for (const field of requiredFields) {
+    const counter = cloneCounterData(validCounter);
+    delete counter[field];
+
+    assertCounterInconsistent(counter, `missing ${field}`);
+  }
+});
+
+test("validateExistingCounter rejects identity and timestamp mismatches", () => {
+  const validCounter = buildValidCounterData({count: 2});
+
+  for (const {name, overrides} of [
+    {name: "wrong userId", overrides: {userId: "another-user"}},
+    {name: "wrong dayKeyUtc", overrides: {dayKeyUtc: "2026-06-17"}},
+    {name: "wrong windowStartAt", overrides: {windowStartAt: fixedUpdatedTimestamp}},
+    {name: "wrong windowEndAt", overrides: {windowEndAt: fixedTimestamp}},
+    {name: "invalid createdAt", overrides: {createdAt: fixedNow}},
+    {name: "invalid updatedAt", overrides: {updatedAt: fixedNow}},
+  ]) {
+    assertCounterInconsistent(
+        cloneCounterData(validCounter, overrides),
+        name,
+    );
+  }
+});
+
+test("validateExistingCounter rejects count and request map invariants", () => {
+  const validCounter = buildValidCounterData({count: 2});
+  const requestIds = Object.keys(validCounter.requestEventIds).sort();
+  const firstRequestId = requestIds[0];
+
+  const cases = [
+    {
+      name: "count below eventIds length",
+      mutate(counter) {
+        counter.count = 1;
+      },
+    },
+    {
+      name: "count above eventIds length",
+      mutate(counter) {
+        counter.count = 3;
+      },
+    },
+    {
+      name: "requestEventIds missing counted request",
+      mutate(counter) {
+        delete counter.requestEventIds[firstRequestId];
+      },
+    },
+    {
+      name: "requestPayloadHashes missing counted request",
+      mutate(counter) {
+        delete counter.requestPayloadHashes[firstRequestId];
+      },
+    },
+    {
+      name: "request maps use different request ids",
+      mutate(counter) {
+        delete counter.requestPayloadHashes[firstRequestId];
+        counter.requestPayloadHashes[validRequest.createRequestId] = HASH_1;
+      },
+    },
+    {
+      name: "duplicate eventIds",
+      mutate(counter) {
+        counter.eventIds = ["event-1", "event-1"];
+      },
+    },
+    {
+      name: "eventId contains a path separator",
+      mutate(counter) {
+        counter.eventIds[0] = "events/event-1";
+        counter.requestEventIds[firstRequestId] = "events/event-1";
+      },
+    },
+    {
+      name: "request id is not UUID v4",
+      mutate(counter) {
+        const eventId = counter.requestEventIds[firstRequestId];
+        const payloadHash = counter.requestPayloadHashes[firstRequestId];
+        delete counter.requestEventIds[firstRequestId];
+        delete counter.requestPayloadHashes[firstRequestId];
+        counter.requestEventIds["not-a-uuid"] = eventId;
+        counter.requestPayloadHashes["not-a-uuid"] = payloadHash;
+      },
+    },
+    {
+      name: "requestEventIds value is empty",
+      mutate(counter) {
+        counter.requestEventIds[firstRequestId] = "";
+      },
+    },
+    {
+      name: "requestPayloadHashes value is not sha256 hex",
+      mutate(counter) {
+        counter.requestPayloadHashes[firstRequestId] = "not-a-sha";
+      },
+    },
+    {
+      name: "requestEventIds points outside eventIds",
+      mutate(counter) {
+        counter.requestEventIds[firstRequestId] = "event-missing";
+      },
+    },
+    {
+      name: "requestEventIds values do not cover every eventId",
+      mutate(counter) {
+        const secondRequestId = requestIds[1];
+        counter.requestEventIds[secondRequestId] = "event-1";
+      },
+    },
+  ];
+
+  for (const {name, mutate} of cases) {
+    const counter = cloneCounterData(validCounter);
+    mutate(counter);
+
+    assertCounterInconsistent(counter, name);
+  }
+
+  assertCounterInconsistent(
+      buildValidCounterData({count: DAILY_CREATE_LIMIT + 1}),
+      "count above daily limit",
   );
 });
 
@@ -1032,10 +1269,22 @@ test("executeCreateEventTransaction creates all event documents", async () => {
     createdAt: fixedTimestamp,
     updatedAt: fixedTimestamp,
   });
-  assert.equal(
-      store.get("eventCreationCounters/uid/days/20260616").count,
-      1,
-  );
+  const counter = store.get("eventCreationCounters/uid/days/20260616");
+  assert.deepEqual(Object.keys(counter).sort(), EXPECTED_DAILY_COUNTER_KEYS);
+  assert.equal(counter.userId, "uid");
+  assert.equal(counter.dayKeyUtc, "2026-06-16");
+  assert.equal(counter.count, 1);
+  assert.deepEqual(counter.eventIds, ["event-new"]);
+  assert.deepEqual(counter.requestEventIds, {
+    [validRequest.createRequestId]: "event-new",
+  });
+  assert.deepEqual(counter.requestPayloadHashes, {
+    [validRequest.createRequestId]: payloadHash,
+  });
+  assert.equal(counter.windowStartAt.toMillis(), Date.parse("2026-06-16Z"));
+  assert.equal(counter.windowEndAt.toMillis(), Date.parse("2026-06-17Z"));
+  assert.strictEqual(counter.createdAt, fixedTimestamp);
+  assert.strictEqual(counter.updatedAt, fixedTimestamp);
   assert.equal(
       store.get(
           `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,

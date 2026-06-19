@@ -659,6 +659,10 @@ function validateExistingCounter(counterData = {}, {
   const hashRequestIds = hasPlainObject(requestPayloadHashes) ?
     Object.keys(requestPayloadHashes).sort() :
     [];
+  const requestEventIdValues = hasPlainObject(requestEventIds) ?
+    Object.values(requestEventIds).sort() :
+    [];
+  const sortedEventIds = Array.isArray(eventIds) ? [...eventIds].sort() : [];
 
   if (
     (!allowMissing && !hasRequiredFields) ||
@@ -671,6 +675,7 @@ function validateExistingCounter(counterData = {}, {
     count !== eventIds.length ||
     count !== requestIds.length ||
     requestIds.join("\n") !== hashRequestIds.join("\n") ||
+    requestEventIdValues.join("\n") !== sortedEventIds.join("\n") ||
     new Set(eventIds).size !== eventIds.length
   ) {
     failCounterInconsistent();
