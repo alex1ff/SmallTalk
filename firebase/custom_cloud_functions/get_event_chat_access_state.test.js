@@ -334,6 +334,66 @@ test("getEventChatAccessState fails closed for missing or mismatched metadata", 
       "failed-precondition",
       "event_chat_metadata_invalid",
     ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": eventChat({status: "active"}),
+      },
+      "failed-precondition",
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": eventChat({canceledAt: null}),
+      },
+      "failed-precondition",
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": (() => {
+          const chatData = eventChat();
+          delete chatData.createdAt;
+          return chatData;
+        })(),
+      },
+      "failed-precondition",
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": (() => {
+          const chatData = eventChat();
+          delete chatData.updatedAt;
+          return chatData;
+        })(),
+      },
+      "failed-precondition",
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": eventChat({
+          createdAt: "2026-06-16T10:00:00.000Z",
+        }),
+      },
+      "failed-precondition",
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": eventChat({
+          updatedAt: "2026-06-16T10:00:00.000Z",
+        }),
+      },
+      "failed-precondition",
+      "event_chat_metadata_invalid",
+    ],
   ]) {
     await assertRejectsHttpsError(
         () => getEventChatAccessState({

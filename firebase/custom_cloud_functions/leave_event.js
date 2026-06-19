@@ -10,6 +10,13 @@ const PARTICIPANT_ROLE_PARTICIPANT = "participant";
 const EVENT_CHAT_COLLECTION = "eventChats";
 const LEAVE_EVENT_KEYS = Object.freeze(["eventId"]);
 const LEAVE_EVENT_KEY_SET = new Set(LEAVE_EVENT_KEYS);
+const EVENT_CHAT_METADATA_KEYS = Object.freeze([
+  "eventId",
+  "readAccessUserIds",
+  "createdAt",
+  "updatedAt",
+]);
+const EVENT_CHAT_METADATA_KEY_SET = new Set(EVENT_CHAT_METADATA_KEYS);
 
 function throwLeaveError(code, message, details) {
   throw new functions.https.HttpsError(code, message, details);
@@ -64,6 +71,17 @@ function timestampMillis(value) {
     return date instanceof Date ? date.getTime() : NaN;
   }
   return NaN;
+}
+
+function hasTimestampValue(value) {
+  if (!value || typeof value.toMillis !== "function") {
+    return false;
+  }
+  try {
+    return Number.isFinite(Number(value.toMillis()));
+  } catch (_) {
+    return false;
+  }
 }
 
 function isValidPathSegment(value) {
@@ -220,6 +238,26 @@ function assertChatMetadata({chatExists, chatData, eventId}) {
         "failed-precondition",
         "Event chat metadata is missing",
         {domainCode: "event_chat_metadata_invalid", reason: "missing"},
+    );
+  }
+  const keys = chatData && typeof chatData === "object" ?
+    Object.keys(chatData) :
+    [];
+  const hasExactKeys = keys.length === EVENT_CHAT_METADATA_KEYS.length &&
+    EVENT_CHAT_METADATA_KEYS.every((key) =>
+      Object.prototype.hasOwnProperty.call(chatData, key),
+    ) &&
+    keys.every((key) => EVENT_CHAT_METADATA_KEY_SET.has(key));
+  if (
+    !hasExactKeys ||
+    !Array.isArray(chatData.readAccessUserIds) ||
+    !hasTimestampValue(chatData.createdAt) ||
+    !hasTimestampValue(chatData.updatedAt)
+  ) {
+    throwLeaveError(
+        "failed-precondition",
+        "Event chat metadata is invalid",
+        {domainCode: "event_chat_metadata_invalid", reason: "invalid_shape"},
     );
   }
   if (chatData.eventId !== eventId) {

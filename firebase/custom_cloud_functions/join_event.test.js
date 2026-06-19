@@ -399,6 +399,10 @@ test("executeJoinEventTransaction creates active participant", async () => {
         "update:eventChats/event-1",
       ],
   );
+  assert.deepEqual(writes[2].data, {
+    readAccessUserIds: ["organizer", "uid"],
+    updatedAt: fixedTimestamp,
+  });
 });
 
 test("executeJoinEventTransaction allows join into last available seat",
@@ -448,6 +452,10 @@ test("executeJoinEventTransaction allows join into last available seat",
             "update:eventChats/event-1",
           ],
       );
+      assert.deepEqual(writes[2].data, {
+        readAccessUserIds: ["organizer", "user-a", "uid"],
+        updatedAt: fixedTimestamp,
+      });
     });
 
 test("executeJoinEventTransaction rejoins left participant", async () => {
@@ -493,6 +501,10 @@ test("executeJoinEventTransaction rejoins left participant", async () => {
         "update:eventChats/event-1",
       ],
   );
+  assert.deepEqual(writes[2].data, {
+    readAccessUserIds: ["organizer", "uid"],
+    updatedAt: fixedTimestamp,
+  });
   assert.deepEqual(writes[1].data, {
     displayName: "Марко",
     photoUrl: null,
@@ -838,6 +850,7 @@ test("executeJoinEventTransaction blocks missing, canceled, past, and full event
     [activeEvent({startsAt: pastStartsAt}), "event_not_joinable"],
     [activeEvent({participantsCount: 3, capacity: 3}), "event_full"],
     [activeEvent({capacity: 100}), "event_participant_state_inconsistent"],
+    [activeEvent({chatId: "other-chat"}), "event_chat_metadata_invalid"],
   ]) {
     const {db, writes} = createFakeFirestore({
       "events/event-1": eventData,
@@ -1014,6 +1027,20 @@ test("executeJoinEventTransaction fails closed on invalid chat metadata", async 
   for (const chatSeed of [
     null,
     eventChat({eventId: "other-event"}),
+    eventChat({status: "active"}),
+    eventChat({canceledAt: null}),
+    (() => {
+      const chatData = eventChat();
+      delete chatData.createdAt;
+      return chatData;
+    })(),
+    (() => {
+      const chatData = eventChat();
+      delete chatData.updatedAt;
+      return chatData;
+    })(),
+    eventChat({createdAt: "2026-06-16T10:00:00.000Z"}),
+    eventChat({updatedAt: "2026-06-16T10:00:00.000Z"}),
     eventChat({readAccessUserIds: ["uid"]}),
     eventChat({readAccessUserIds: ["organizer", "organizer"]}),
   ]) {

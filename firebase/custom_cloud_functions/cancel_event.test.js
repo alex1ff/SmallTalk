@@ -431,6 +431,22 @@ test("executeCancelEventTransaction cancels active event without counter writes"
     readAccessUserIds: ["uid", "alex", "olga"],
     updatedAt: fixedTimestamp,
   });
+  assert.equal(store.get("eventChats/event-1").eventId, "event-1");
+  assert.equal(store.get("eventChats/event-1").createdAt, fixedTimestamp);
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(
+          store.get("eventChats/event-1"),
+          "status",
+      ),
+      false,
+  );
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(
+          store.get("eventChats/event-1"),
+          "canceledAt",
+      ),
+      false,
+  );
   assert.deepEqual(
       store.get("eventChats/event-1").readAccessUserIds,
       ["uid", "alex", "olga"],
@@ -552,23 +568,41 @@ test("executeCancelEventTransaction fails closed on invalid chat metadata", asyn
       "event_chat_metadata_invalid",
   );
 
-  const {db, writes} = createFakeFirestore({
-    "events/event-1": activeEvent(),
-    "eventChats/event-1": eventChat({eventId: "other-event"}),
-  });
+  for (const chatSeed of [
+    eventChat({eventId: "other-event"}),
+    eventChat({status: "active"}),
+    eventChat({canceledAt: null}),
+    (() => {
+      const chatData = eventChat();
+      delete chatData.createdAt;
+      return chatData;
+    })(),
+    (() => {
+      const chatData = eventChat();
+      delete chatData.updatedAt;
+      return chatData;
+    })(),
+    eventChat({createdAt: "2026-06-16T10:00:00.000Z"}),
+    eventChat({updatedAt: "2026-06-16T10:00:00.000Z"}),
+  ]) {
+    const {db, writes} = createFakeFirestore({
+      "events/event-1": activeEvent(),
+      "eventChats/event-1": chatSeed,
+    });
 
-  await assertRejectsHttpsError(
-      () => executeCancelEventTransaction({
-        db,
-        uid: "uid",
-        cancelDate: fixedNow,
-        cancelTimestamp: fixedTimestamp,
-        payload: {eventId: "event-1"},
-      }),
-      "failed-precondition",
-      "event_chat_metadata_invalid",
-  );
-  assert.deepEqual(writes, []);
+    await assertRejectsHttpsError(
+        () => executeCancelEventTransaction({
+          db,
+          uid: "uid",
+          cancelDate: fixedNow,
+          cancelTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "event_chat_metadata_invalid",
+    );
+    assert.deepEqual(writes, []);
+  }
 });
 
 test("executeCancelEventTransaction fails closed on event chat id mismatch", async () => {

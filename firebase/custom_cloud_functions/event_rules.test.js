@@ -1363,6 +1363,50 @@ test("active event chat metadata reads fail closed for invalid state", async () 
     await db.doc("eventChats/no-participant-chat").set(eventChatData({
       eventId: "no-participant-chat",
     }));
+
+    await db.doc("events/noncanonical-event-chat").set(eventData({
+      chatId: "noncanonical-chat",
+    }));
+    await db.doc("events/noncanonical-event-chat/participants/user-a").set(
+      participantData(),
+    );
+    await db.doc("eventChats/noncanonical-chat").set(eventChatData({
+      eventId: "noncanonical-event-chat",
+    }));
+
+    const invalidMetadataCases = [
+      {
+        chatId: "chat-extra-status",
+        chatOverrides: {status: "active"},
+      },
+      {
+        chatId: "chat-extra-canceled-at",
+        chatOverrides: {canceledAt: null},
+      },
+      {
+        chatId: "chat-missing-updated-at",
+        removeFields: ["updatedAt"],
+      },
+      {
+        chatId: "chat-wrong-updated-at-type",
+        chatOverrides: {updatedAt: "2026-06-14T10:00:00.000Z"},
+      },
+    ];
+    for (const {
+      chatId,
+      chatOverrides = {},
+      removeFields = [],
+    } of invalidMetadataCases) {
+      await db.doc(`events/${chatId}`).set(eventData({chatId}));
+      await db.doc(`events/${chatId}/participants/user-a`).set(
+        participantData(),
+      );
+      const chatData = eventChatData({eventId: chatId, ...chatOverrides});
+      for (const field of removeFields) {
+        delete chatData[field];
+      }
+      await db.doc(`eventChats/${chatId}`).set(chatData);
+    }
   });
 
   await assertFails(user.firestore().doc("eventChats/missing-chat-event").get());
@@ -1376,6 +1420,15 @@ test("active event chat metadata reads fail closed for invalid state", async () 
   await assertFails(
     user.firestore().doc("eventChats/no-participant-chat").get(),
   );
+  await assertFails(user.firestore().doc("eventChats/noncanonical-chat").get());
+  for (const chatId of [
+    "chat-extra-status",
+    "chat-extra-canceled-at",
+    "chat-missing-updated-at",
+    "chat-wrong-updated-at-type",
+  ]) {
+    await assertFails(user.firestore().doc(`eventChats/${chatId}`).get());
+  }
 });
 
 test("canceled event chat metadata reads fail closed for invalid state", async () => {
@@ -1463,6 +1516,57 @@ test("canceled event chat metadata reads fail closed for invalid state", async (
       canceledAt: new Date("2099-06-01T10:00:00.000Z"),
       chatId: "canceled-missing-chat-event",
     }));
+
+    await db.doc("events/canceled-noncanonical-event-chat").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      chatId: "canceled-noncanonical-chat",
+    }));
+    await db.doc("eventChats/canceled-noncanonical-chat").set(eventChatData({
+      eventId: "canceled-noncanonical-event-chat",
+      readAccessUserIds: ["user-a"],
+    }));
+
+    const invalidMetadataCases = [
+      {
+        chatId: "canceled-chat-extra-status",
+        chatOverrides: {status: "canceled"},
+      },
+      {
+        chatId: "canceled-chat-extra-canceled-at",
+        chatOverrides: {
+          canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+        },
+      },
+      {
+        chatId: "canceled-chat-missing-updated-at",
+        removeFields: ["updatedAt"],
+      },
+      {
+        chatId: "canceled-chat-wrong-updated-at-type",
+        chatOverrides: {updatedAt: "2026-06-14T10:00:00.000Z"},
+      },
+    ];
+    for (const {
+      chatId,
+      chatOverrides = {},
+      removeFields = [],
+    } of invalidMetadataCases) {
+      await db.doc(`events/${chatId}`).set(eventData({
+        status: "canceled",
+        canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+        chatId,
+      }));
+      const chatData = eventChatData({
+        eventId: chatId,
+        readAccessUserIds: ["user-a"],
+        ...chatOverrides,
+      });
+      for (const field of removeFields) {
+        delete chatData[field];
+      }
+      await db.doc(`eventChats/${chatId}`).set(chatData);
+    }
   });
 
   await assertFails(
@@ -1487,6 +1591,17 @@ test("canceled event chat metadata reads fail closed for invalid state", async (
   await assertFails(
     user.firestore().doc("eventChats/canceled-missing-chat-event").get(),
   );
+  await assertFails(
+    user.firestore().doc("eventChats/canceled-noncanonical-chat").get(),
+  );
+  for (const chatId of [
+    "canceled-chat-extra-status",
+    "canceled-chat-extra-canceled-at",
+    "canceled-chat-missing-updated-at",
+    "canceled-chat-wrong-updated-at-type",
+  ]) {
+    await assertFails(user.firestore().doc(`eventChats/${chatId}`).get());
+  }
 });
 
 test("clients cannot directly create event participant documents", async () => {
@@ -2323,15 +2438,25 @@ test("clients cannot directly write event chat metadata documents", async () => 
   for (const {name, context} of actors) {
     const db = context.firestore();
     const createPath = `eventChats/direct-create-chat-${name}`;
+    const existingChatRef = db.doc("eventChats/editable-event");
 
     await assertFails(db.doc(createPath).set(eventChatData({
       eventId: `direct-create-chat-${name}`,
     })));
-    await assertFails(db.doc("eventChats/editable-event").update({
+    await assertFails(existingChatRef.set(eventChatData({
+      eventId: "editable-event",
+    })));
+    await assertFails(existingChatRef.set({
+      updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }, {merge: true}));
+    await assertFails(existingChatRef.update({
+      updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }));
+    await assertFails(existingChatRef.update({
       readAccessUserIds: ["organizer", "user-a", "other-user"],
       updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
     }));
-    await assertFails(db.doc("eventChats/editable-event").delete());
+    await assertFails(existingChatRef.delete());
   }
 });
 

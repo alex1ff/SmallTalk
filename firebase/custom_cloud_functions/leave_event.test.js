@@ -413,6 +413,10 @@ test("executeLeaveEventTransaction marks participant left", async () => {
         "update:eventChats/event-1",
       ],
   );
+  assert.deepEqual(writes[2].data, {
+    readAccessUserIds: ["organizer"],
+    updatedAt: fixedTimestamp,
+  });
   assert.deepEqual(writes[1].data, {
     status: "left",
     leftAt: fixedTimestamp,
@@ -858,6 +862,20 @@ test("executeLeaveEventTransaction fails closed on invalid chat metadata", async
   for (const chatSeed of [
     null,
     eventChat({eventId: "other-event"}),
+    eventChat({status: "active"}),
+    eventChat({canceledAt: null}),
+    (() => {
+      const chatData = eventChat();
+      delete chatData.createdAt;
+      return chatData;
+    })(),
+    (() => {
+      const chatData = eventChat();
+      delete chatData.updatedAt;
+      return chatData;
+    })(),
+    eventChat({createdAt: "2026-06-16T10:00:00.000Z"}),
+    eventChat({updatedAt: "2026-06-16T10:00:00.000Z"}),
     eventChat({readAccessUserIds: ["uid"]}),
     eventChat({readAccessUserIds: ["organizer"]}),
     eventChat({readAccessUserIds: ["organizer", "uid", "extra"]}),

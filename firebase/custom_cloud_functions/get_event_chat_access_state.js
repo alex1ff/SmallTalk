@@ -9,6 +9,13 @@ const EVENT_CHAT_COLLECTION = "eventChats";
 const GET_EVENT_CHAT_ACCESS_STATE_KEYS = Object.freeze(["eventId"]);
 const GET_EVENT_CHAT_ACCESS_STATE_KEY_SET =
   new Set(GET_EVENT_CHAT_ACCESS_STATE_KEYS);
+const EVENT_CHAT_METADATA_KEYS = Object.freeze([
+  "eventId",
+  "readAccessUserIds",
+  "createdAt",
+  "updatedAt",
+]);
+const EVENT_CHAT_METADATA_KEY_SET = new Set(EVENT_CHAT_METADATA_KEYS);
 
 function throwAccessError(code, message, details) {
   throw new functions.https.HttpsError(code, message, details);
@@ -112,13 +119,26 @@ function assertEventAndChatMetadata({
         },
     );
   }
-  if (!Array.isArray(chatData.readAccessUserIds)) {
+  const keys = chatData && typeof chatData === "object" ?
+    Object.keys(chatData) :
+    [];
+  const hasExactKeys = keys.length === EVENT_CHAT_METADATA_KEYS.length &&
+    EVENT_CHAT_METADATA_KEYS.every((key) =>
+      Object.prototype.hasOwnProperty.call(chatData, key),
+    ) &&
+    keys.every((key) => EVENT_CHAT_METADATA_KEY_SET.has(key));
+  if (
+    !hasExactKeys ||
+    !Array.isArray(chatData.readAccessUserIds) ||
+    !hasTimestampValue(chatData.createdAt) ||
+    !hasTimestampValue(chatData.updatedAt)
+  ) {
     throwAccessError(
         "failed-precondition",
-        "Event chat read access is invalid",
+        "Event chat metadata is invalid",
         {
           domainCode: "event_chat_metadata_invalid",
-          reason: "read_access_invalid",
+          reason: "invalid_shape",
         },
     );
   }

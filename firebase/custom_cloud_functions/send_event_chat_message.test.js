@@ -328,6 +328,7 @@ test("executeSendEventChatMessageTransaction creates message for active particip
     "text",
   ]);
   assert.equal(store.get("events/event-1").updatedAt, oldTimestamp);
+  assert.deepEqual(store.get("eventChats/event-1"), eventChat());
   assert.equal(store.get("eventChats/event-1").updatedAt, oldTimestamp);
 });
 
@@ -417,6 +418,60 @@ test("executeSendEventChatMessageTransaction fails closed on event and chat drif
       {
         ...validSeed(),
         "eventChats/event-1": eventChat({eventId: "other-event"}),
+      },
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": eventChat({status: "active"}),
+      },
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": eventChat({canceledAt: null}),
+      },
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": (() => {
+          const chatData = eventChat();
+          delete chatData.createdAt;
+          return chatData;
+        })(),
+      },
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": (() => {
+          const chatData = eventChat();
+          delete chatData.updatedAt;
+          return chatData;
+        })(),
+      },
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": eventChat({
+          createdAt: "2026-06-16T10:00:00.000Z",
+        }),
+      },
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": eventChat({
+          updatedAt: "2026-06-16T10:00:00.000Z",
+        }),
       },
       "event_chat_metadata_invalid",
     ],

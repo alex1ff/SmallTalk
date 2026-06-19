@@ -79,6 +79,12 @@ const EXPECTED_EVENT_CREATE_REQUEST_MARKER_KEYS = Object.freeze([
   "updatedAt",
   "userId",
 ]);
+const EXPECTED_EVENT_CHAT_KEYS = Object.freeze([
+  "createdAt",
+  "eventId",
+  "readAccessUserIds",
+  "updatedAt",
+]);
 const validRequest = Object.freeze({
   createRequestId: "550e8400-e29b-41d4-a716-446655440000",
   title: " Разговорный  клуб: кофе и английский ",
@@ -1772,7 +1778,14 @@ test("event, participant, chat, and marker builders share one timestamp", () => 
   assert.equal(participantData.photoUrl, null);
   assert.equal(participantData.status, "active");
   assert.equal(participantData.joinedAt, fixedTimestamp);
+  assert.deepEqual(Object.keys(chatData).sort(), EXPECTED_EVENT_CHAT_KEYS);
+  assert.equal(chatData.eventId, "event-1");
   assert.equal(Object.prototype.hasOwnProperty.call(chatData, "chatId"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(chatData, "status"), false);
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(chatData, "canceledAt"),
+      false,
+  );
   assert.deepEqual(chatData.readAccessUserIds, ["uid"]);
   assert.equal(marker.status, "created");
   assert.equal(marker.dailyCreation, dailyCreation);
