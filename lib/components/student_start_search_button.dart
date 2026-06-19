@@ -6,12 +6,22 @@ class StudentStartSearchButton extends StatelessWidget {
   const StudentStartSearchButton({
     super.key,
     required this.onTap,
+    this.isSearching = false,
   });
 
   final VoidCallback onTap;
+  final bool isSearching;
 
   @override
   Widget build(BuildContext context) {
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: isSearching ? 'Остановить поиск' : 'Начать поиск',
+      enText: isSearching ? 'Stop search' : 'Start search',
+    );
+    final icon = isSearching ? Icons.stop_rounded : Icons.auto_awesome_rounded;
+    final shadowColor =
+        isSearching ? const Color(0x26FF383C) : const Color(0x267430E8);
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -21,11 +31,12 @@ class StudentStartSearchButton extends StatelessWidget {
           width: 240.0,
           height: 60.0,
           decoration: BoxDecoration(
-            gradient: ExpatlioDesign.primaryGradient,
+            color: isSearching ? ExpatlioDesign.danger : null,
+            gradient: isSearching ? null : ExpatlioDesign.primaryGradient,
             borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
-            boxShadow: const [
+            boxShadow: [
               BoxShadow(
-                color: Color(0x267430E8),
+                color: shadowColor,
                 blurRadius: 22.0,
                 offset: Offset(0.0, 10.0),
               ),
@@ -34,8 +45,8 @@ class StudentStartSearchButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.auto_awesome_rounded,
+              Icon(
+                icon,
                 color: Colors.white,
                 size: 22.0,
               ),
@@ -44,10 +55,7 @@ class StudentStartSearchButton extends StatelessWidget {
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
-                    FFLocalizations.of(context).getVariableText(
-                      ruText: 'Начать поиск',
-                      enText: 'Start search',
-                    ),
+                    label,
                     maxLines: 1,
                     style: ExpatlioDesign.textStyle(
                       context,

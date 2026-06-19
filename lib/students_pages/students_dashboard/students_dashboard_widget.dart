@@ -61,6 +61,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   Future<List<OrbitingAvatarData>>? _partnerPreviewFuture;
   bool _isLocationMenuOpen = false;
   bool _isLevelMenuOpen = false;
+  bool _isSearchActive = false;
+  bool _isStartingSearch = false;
 
   bool get _showLegacyDashboard => false;
 
@@ -731,6 +733,17 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   }
 
   Future<void> _handleStartConversation() async {
+    if (_isSearchActive) {
+      safeSetState(() => _isSearchActive = false);
+      return;
+    }
+
+    if (_isStartingSearch) {
+      return;
+    }
+
+    safeSetState(() => _isStartingSearch = true);
+
     if (!canStartCall(currentUserDocument)) {
       await showModalBottomSheet(
         useRootNavigator: true,
@@ -750,17 +763,27 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
           );
         },
       ).then((value) => safeSetState(() {}));
+      if (mounted) {
+        safeSetState(() => _isStartingSearch = false);
+      }
       return;
     }
 
     if (!(await ensureCameraAndMicrophonePermissions())) {
+      if (mounted) {
+        safeSetState(() => _isStartingSearch = false);
+      }
       return;
     }
 
     if (!mounted) {
       return;
     }
-    context.pushNamed(WaitingForTeacherPageWidget.routeName);
+
+    safeSetState(() {
+      _isSearchActive = true;
+      _isStartingSearch = false;
+    });
   }
 
   Widget _buildSearchCtaContent({
@@ -814,7 +837,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   }
 
   Widget _buildStartSearchButton(BuildContext context) {
-    return StudentStartSearchButton(onTap: _handleStartConversation);
+    return StudentStartSearchButton(
+      isSearching: _isSearchActive,
+      onTap: _handleStartConversation,
+    );
   }
 
   Widget _buildPartnerCountText({
