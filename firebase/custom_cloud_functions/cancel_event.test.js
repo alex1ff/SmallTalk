@@ -351,6 +351,35 @@ test("cancelEvent callable lets organizer cancel active event", async () => {
   );
 });
 
+test("cancelEvent callable rejects non-organizer without writes", async () => {
+  const eventBefore = activeEvent({organizerId: "other"});
+  const chatBefore = eventChat({
+    readAccessUserIds: ["other", "uid"],
+  });
+  const {db, reads, store, writes} = createFakeFirestore({
+    "events/event-1": eventBefore,
+    "eventChats/event-1": chatBefore,
+    "events/event-1/participants/other": participant("active"),
+    "events/event-1/participants/uid": participant("active"),
+  });
+
+  await withAdminFirestore(db, async () => {
+    await assertRejectsHttpsError(
+        () => cancelEvent.run(
+            {eventId: " event-1 "},
+            {auth: {uid: "uid"}},
+        ),
+        "permission-denied",
+        "not_event_organizer",
+    );
+  });
+
+  assert.strictEqual(store.get("events/event-1"), eventBefore);
+  assert.strictEqual(store.get("eventChats/event-1"), chatBefore);
+  assert.deepEqual(reads, ["events/event-1", "eventChats/event-1"]);
+  assert.deepEqual(writes, []);
+});
+
 test("executeCancelEventTransaction cancels active event without counter writes", async () => {
   const counterBefore = counterData();
   const eventBefore = activeEvent({startsAt: fixedTimestamp});
@@ -488,7 +517,7 @@ test("executeCancelEventTransaction rejects participant count drift", async () =
 });
 
 test("executeCancelEventTransaction rejects non-organizer without writes", async () => {
-  const {db, writes} = createFakeFirestore({
+  const {db, reads, writes} = createFakeFirestore({
     "events/event-1": activeEvent({organizerId: "other"}),
     "eventChats/event-1": eventChat(),
   });
@@ -504,6 +533,7 @@ test("executeCancelEventTransaction rejects non-organizer without writes", async
       "permission-denied",
       "not_event_organizer",
   );
+  assert.deepEqual(reads, ["events/event-1", "eventChats/event-1"]);
   assert.deepEqual(writes, []);
 });
 

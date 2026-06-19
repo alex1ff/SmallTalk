@@ -1045,6 +1045,30 @@ test("editEvent callable lets organizer edit active future event", async () => {
   );
 });
 
+test("editEvent callable rejects non-organizer without writes", async () => {
+  const eventBefore = eventData({organizerId: "other"});
+  const {db, reads, store, writes} = createFakeFirestore({
+    "events/event-1": eventBefore,
+    "events/event-1/participants/other": participant(),
+    "events/event-1/participants/uid": participant(),
+  });
+
+  await withAdminFirestore(db, async () => {
+    await assertRejectsHttpsError(
+        () => editEvent.run(
+            cloneValidEditRequest({title: " Non organizer update "}),
+            {auth: {uid: "uid"}},
+        ),
+        "permission-denied",
+        "not_event_organizer",
+    );
+  });
+
+  assert.strictEqual(store.get("events/event-1"), eventBefore);
+  assert.deepEqual(reads, ["events/event-1"]);
+  assert.deepEqual(writes, []);
+});
+
 test("executeEditEventTransaction updates organizer active future event", async () => {
   const payload = normalizeEditEventPayload(
       cloneValidEditRequest({
@@ -1185,7 +1209,7 @@ test("executeEditEventTransaction rejects non-organizer edit", async () => {
       cloneValidEditRequest(),
       {now: fixedNow},
   );
-  const {db, writes} = createFakeFirestore({
+  const {db, reads, writes} = createFakeFirestore({
     "events/event-1": eventData({organizerId: "other"}),
   });
 
@@ -1200,6 +1224,7 @@ test("executeEditEventTransaction rejects non-organizer edit", async () => {
       "permission-denied",
       "not_event_organizer",
   );
+  assert.deepEqual(reads, ["events/event-1"]);
   assert.deepEqual(writes, []);
 });
 
