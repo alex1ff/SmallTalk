@@ -219,6 +219,12 @@ test.beforeEach(async () => {
       capacity: 8,
       chatId: "editable-event",
     }));
+    await db.doc("events/capacity-bounds-event").set(eventData({
+      startsAt: farFutureStartsAt,
+      participantsCount: 2,
+      capacity: 8,
+      chatId: "capacity-bounds-event",
+    }));
     await db.doc("events/canceled-editable-event").set(eventData({
       status: "canceled",
       canceledAt: new Date("2099-06-01T10:00:00.000Z"),
@@ -1692,6 +1698,21 @@ test("direct organizer edit enforces capacity and server updatedAt", async () =>
   await assertFails(eventRef.update(directEditPatch({capacity: 2})));
   await assertFails(eventRef.update(directEditPatch({
     updatedAt: new Date("2099-06-20T10:00:00.000Z"),
+  })));
+});
+
+test("direct organizer edit validates capacity bounds and type", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const eventRef = organizer.firestore().doc("events/capacity-bounds-event");
+
+  await assertSucceeds(eventRef.update(directEditPatch({capacity: 2})));
+  await assertSucceeds(eventRef.update(directEditPatch({capacity: 50})));
+  await assertFails(eventRef.update(directEditPatch({capacity: 1})));
+  await assertFails(eventRef.update(directEditPatch({capacity: 51})));
+  await assertFails(eventRef.update(directEditPatch({capacity: 3.5})));
+  await assertFails(eventRef.update(directEditPatch({
+    capacity: 2,
+    participantsCount: 3,
   })));
 });
 

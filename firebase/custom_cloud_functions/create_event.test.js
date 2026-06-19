@@ -1861,6 +1861,38 @@ test("createEvent callable validates description before transaction writes",
       }
     });
 
+test("createEvent callable validates capacity before transaction writes",
+    async () => {
+      const cases = [
+        {capacity: 1, reason: "out_of_range"},
+        {capacity: 51, reason: "out_of_range"},
+        {capacity: 10.5, reason: "invalid_type"},
+      ];
+
+      for (const currentCase of cases) {
+        const {db, reads, store, writes} = createFakeFirestore({
+          "users/uid": {display_name: "Анастасия Иванова"},
+        });
+
+        await withAdminFirestore(db, async () => {
+          await assertRejectsHttpsError(
+              () => createEvent.run(
+                  cloneValidRequest({capacity: currentCase.capacity}),
+                  {auth: {uid: "uid"}},
+              ),
+              "invalid-argument",
+              "invalid_create_request",
+              "capacity",
+              currentCase.reason,
+          );
+        });
+
+        assert.deepEqual(reads, []);
+        assert.deepEqual(writes, []);
+        assertNoCreateDocuments(store);
+      }
+    });
+
 test("executeCreateEventTransaction rolls back buffered writes on failure", async () => {
   const {db, makeRef, store, writes} = createFakeFirestore(
       {"users/uid": {display_name: "Анастасия Иванова"}},

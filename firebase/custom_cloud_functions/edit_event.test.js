@@ -410,6 +410,41 @@ test("normalizeEditEventPayload accepts description boundary and Unicode input",
       );
     });
 
+test("normalizeEditEventPayload remaps capacity validation errors", () => {
+  for (const currentCase of [
+    {capacity: 1, reason: "out_of_range"},
+    {capacity: 51, reason: "out_of_range"},
+    {capacity: 10.5, reason: "invalid_type"},
+  ]) {
+    assertHttpsError(
+        () => normalizeEditEventPayload(
+            cloneValidEditRequest({capacity: currentCase.capacity}),
+            {now: fixedNow},
+        ),
+        "invalid-argument",
+        "invalid_edit_request",
+        "capacity",
+        currentCase.reason,
+    );
+  }
+});
+
+test("normalizeEditEventPayload accepts capacity bounds", () => {
+  const minCapacity = normalizeEditEventPayload(
+      cloneValidEditRequest({capacity: 2}),
+      {now: fixedNow},
+  );
+  const maxCapacity = normalizeEditEventPayload(
+      cloneValidEditRequest({capacity: 50}),
+      {now: fixedNow},
+  );
+
+  assert.equal(minCapacity.normalized.capacity, 2);
+  assert.equal(minCapacity.normalized.hashPayload.capacity, 2);
+  assert.equal(maxCapacity.normalized.capacity, 50);
+  assert.equal(maxCapacity.normalized.hashPayload.capacity, 50);
+});
+
 test("editEvent callable validates title before transaction writes", async () => {
   const cases = [
     {title: "", reason: "missing"},
@@ -468,6 +503,37 @@ test("editEvent callable validates description before transaction writes",
               "invalid-argument",
               "invalid_edit_request",
               "description",
+              currentCase.reason,
+          );
+        });
+
+        assert.deepEqual(reads, []);
+        assert.deepEqual(writes, []);
+      }
+    });
+
+test("editEvent callable validates capacity before transaction writes",
+    async () => {
+      const cases = [
+        {capacity: 1, reason: "out_of_range"},
+        {capacity: 51, reason: "out_of_range"},
+        {capacity: 10.5, reason: "invalid_type"},
+      ];
+
+      for (const currentCase of cases) {
+        const {db, reads, writes} = createFakeFirestore({
+          "events/event-1": eventData(),
+        });
+
+        await withAdminFirestore(db, async () => {
+          await assertRejectsHttpsError(
+              () => editEvent.run(
+                  cloneValidEditRequest({capacity: currentCase.capacity}),
+                  {auth: {uid: "uid"}},
+              ),
+              "invalid-argument",
+              "invalid_edit_request",
+              "capacity",
               currentCase.reason,
           );
         });
