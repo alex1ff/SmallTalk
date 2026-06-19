@@ -1759,6 +1759,7 @@ void main() {
 
   testWidgets('does not select a city from country-only profile data',
       (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     currentUserDocument = _userFixture(
       uid: 'country-only-user',
       data: {
@@ -1768,7 +1769,10 @@ void main() {
 
     await tester.pumpWidget(
       _buildTestApp(
-        home: EventListWidget(cityCatalogOverride: _catalog),
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          analyticsTracker: analyticsTracker,
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -1779,6 +1783,12 @@ void main() {
     expect(find.textContaining('Сохранённый город больше недоступен'),
         findsNothing);
     expect(_citySelectorText('Москва · Россия'), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListErrorStateKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+    expect(analyticsTracker.payloadsFor('event_list_opened'), isEmpty);
+    expect(analyticsTracker.payloadsFor('city_selected'), isEmpty);
   });
 
   testWidgets('does not track event list opened before city is selected',

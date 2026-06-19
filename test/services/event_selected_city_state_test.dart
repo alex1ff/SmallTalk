@@ -83,6 +83,29 @@ void main() {
       expect(state.selectedFromProfile, isFalse);
     });
 
+    test('Country_NS alone does not unlock the Events list', () {
+      final user = userFixture(
+        data: {
+          'uid': 'uid-country-only',
+          'Country_NS': {'code': ' RU '},
+        },
+      );
+
+      final state = resolveEventSelectedCityState(
+        user: user,
+        catalog: catalog,
+      );
+
+      expect(state.profileStatus, EventCityResolutionStatus.missingProfileCity);
+      expect(state.countryCodeHint, 'RU');
+      expect(state.selected, isNull);
+      expect(state.canLoadEvents, isFalse);
+      expect(state.needsCitySelection, isTrue);
+      expect(state.selectedFromProfile, isFalse);
+      expect(state.selectedTemporarily, isFalse);
+      expect(state.hasOutdatedProfileCity, isFalse);
+    });
+
     test('does not unlock stale invalid or unknown profile cities', () {
       for (final fixture in <({ProfileCityStruct profileCity, Object status})>[
         (
