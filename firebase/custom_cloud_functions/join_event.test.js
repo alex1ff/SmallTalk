@@ -459,6 +459,84 @@ test("executeJoinEventTransaction blocks duplicate active join without writes", 
   }
 });
 
+test("executeJoinEventTransaction concurrent duplicate joins create one membership",
+    async () => {
+      let firstAttemptCommits = 0;
+      let releaseFirstAttempts;
+      const firstAttemptsReady = new Promise((resolve) => {
+        releaseFirstAttempts = resolve;
+      });
+      const firstAttemptBarrierTimeout = setTimeout(() => {
+        releaseFirstAttempts();
+      }, 1000);
+      const {db, store, writes} = createFakeFirestore(
+          {
+            "events/event-1": activeEvent({participantsCount: 1, capacity: 3}),
+            "eventChats/event-1": eventChat({
+              readAccessUserIds: ["organizer"],
+            }),
+            "events/event-1/participants/organizer": organizerParticipant(),
+            "users/uid": userProfile(),
+          },
+          {
+            retryOnConcurrentModification: true,
+            onBeforeCommit: async ({attempt}) => {
+              if (attempt !== 1) {
+                return;
+              }
+              firstAttemptCommits += 1;
+              if (firstAttemptCommits === 2) {
+                releaseFirstAttempts();
+              }
+              await firstAttemptsReady;
+            },
+          },
+      );
+
+      const join = () => executeJoinEventTransaction({
+        db,
+        uid: "uid",
+        joinDate: fixedNow,
+        joinTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      });
+
+      const results = await Promise.allSettled([join(), join()]);
+      clearTimeout(firstAttemptBarrierTimeout);
+      const fulfilled = results.filter((result) =>
+        result.status === "fulfilled");
+      const rejected = results.filter((result) =>
+        result.status === "rejected");
+
+      assert.equal(fulfilled.length, 1);
+      assert.equal(rejected.length, 1);
+      assert.equal(firstAttemptCommits, 2);
+      assert.deepEqual(fulfilled[0].value, {
+        eventId: "event-1",
+        participantStatus: "active",
+        participantsCount: 2,
+        joinedAt: "2026-06-16T10:00:00.000Z",
+      });
+      assert.equal(rejected[0].reason.code, "failed-precondition");
+      assert.deepEqual(rejected[0].reason.details, {
+        domainCode: "already_joined",
+      });
+      assert.equal(store.get("events/event-1").participantsCount, 2);
+      assert.deepEqual(activeParticipantIds(store), ["organizer", "uid"]);
+      assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+        "organizer",
+        "uid",
+      ]);
+      assert.deepEqual(
+          writes.map((write) => `${write.type}:${write.path}`),
+          [
+            "update:events/event-1",
+            "create:events/event-1/participants/uid",
+            "update:eventChats/event-1",
+          ],
+      );
+    });
+
 test("executeJoinEventTransaction blocks organizer self-join drift", async () => {
   const missingOrganizerMembership = createFakeFirestore({
     "events/event-1": activeEvent(),
