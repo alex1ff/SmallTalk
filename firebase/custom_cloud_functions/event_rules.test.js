@@ -1649,6 +1649,69 @@ test("clients cannot directly create event documents", async () => {
   );
 });
 
+test("clients cannot directly create complete event graph in a batch", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+  const db = user.firestore();
+  const batch = db.batch();
+  const eventId = "direct-create-full-graph";
+  const requestId = "00000000-0000-4000-8000-000000000001";
+  const payloadHash = "a".repeat(64);
+  const counterPath = "eventCreationCounters/user-a/days/20260618";
+  const dailyCreation = {
+    count: 1,
+    dayKeyUtc: "2026-06-18",
+    remaining: 4,
+    resetAtUtc: "2026-06-19T00:00:00.000Z",
+  };
+
+  batch.set(db.doc(`events/${eventId}`), eventData({
+    organizerId: "user-a",
+    organizerDisplayName: "User A",
+    organizerPhotoUrl: "https://cdn.example.com/user-a.jpg",
+    chatId: eventId,
+    participantsCount: 1,
+  }));
+  batch.set(
+    db.doc(`events/${eventId}/participants/user-a`),
+    participantData({
+      userId: "user-a",
+      role: "organizer",
+    }),
+  );
+  batch.set(db.doc(`eventChats/${eventId}`), eventChatData({
+    eventId,
+    readAccessUserIds: ["user-a"],
+  }));
+  batch.set(
+    db.doc(counterPath),
+    eventCreationCounterData({
+      dayKeyUtc: "2026-06-18",
+      eventIds: [eventId],
+      requestEventIds: {
+        [requestId]: eventId,
+      },
+      requestPayloadHashes: {
+        [requestId]: payloadHash,
+      },
+      windowStartAt: new Date("2026-06-18T00:00:00.000Z"),
+      windowEndAt: new Date("2026-06-19T00:00:00.000Z"),
+    }),
+  );
+  batch.set(
+    db.doc(`eventCreateRequests/user-a/requests/${requestId}`),
+    eventCreateRequestData({
+      createRequestId: requestId,
+      eventId,
+      payloadHash,
+      counterPath,
+      dayKeyUtc: "2026-06-18",
+      dailyCreation,
+    }),
+  );
+
+  await assertFails(batch.commit());
+});
+
 test("organizer can directly edit validated safe event fields", async () => {
   const organizer = testEnv.authenticatedContext("organizer");
 

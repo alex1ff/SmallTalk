@@ -347,7 +347,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add create/edit/server validation tests for language: primary code accepted, alternate code normalized, trim/case input normalized, unknown code rejected, mismatched client-provided names rejected or ignored, and full `LanguageStruct` persistence blocked.
 - [x] Add language catalog sync tests that backend allowlist matches the app catalog and `alternateCodes` resolve uniquely.
 - [x] Add language display tests for current locale name, denormalized fallback names, unknown legacy code fallback, and missing catalog load fallback.
-- [ ] Add rules tests that block direct client writes bypassing validated event create/edit paths.
+- [x] Add rules tests that block direct client writes bypassing validated event create/edit paths.
 - [ ] Add index contract test or CI check proving `firebase/firestore.indexes.json` contains the `events` collection index with `status ASC`, `countryCode ASC`, `cityKey ASC`, and `startsAt ASC`.
 - [ ] Add rules/model tests that reject `draft`, `past`, `completed`, `deleted`, `archived`, `cancelled`, and unknown values as event statuses in MVP.
 - [ ] Add status lifecycle tests for `active` with `canceledAt = null`, only `active -> canceled`, terminal canceled without reopen/restore, and `canceledAt` set from trusted server/request time.
