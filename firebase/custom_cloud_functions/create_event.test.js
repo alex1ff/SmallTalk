@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const admin = require("firebase-admin");
@@ -8,6 +9,7 @@ const {
   __private__: {
     CREATE_EVENT_KEYS,
     DAILY_CREATE_LIMIT,
+    EVENT_LANGUAGE_CATALOG,
     buildCreateRequestMarker,
     buildDailyCreation,
     buildEventChatData,
@@ -495,6 +497,27 @@ function assertNoLanguageStructFields(data) {
   }
 }
 
+function readAppEventLanguageAllowlist() {
+  const source = JSON.parse(fs.readFileSync(
+      path.join(
+          __dirname,
+          "..",
+          "..",
+          "assets",
+          "jsons",
+          "languages_catalog.json",
+      ),
+      "utf8",
+  ));
+  assert.equal(Array.isArray(source), true);
+  return source.map((language) => ({
+    code: language.code,
+    alternateCodes: language.alternateCodes,
+    nameEn: language.nameEn,
+    nameRu: language.nameRu,
+  }));
+}
+
 function assertNoCreateDocuments(store, {
   eventId = "event-new",
   uid = "uid",
@@ -889,6 +912,41 @@ test("normalizeCreateEventPayload normalizes language codes", () => {
     assert.equal(normalized.language.nameRu, currentCase.nameRu);
     assert.equal(normalized.hashPayload.languageCode, currentCase.code);
   }
+});
+
+test("backend event language catalog matches app asset allowlist", () => {
+  assert.deepEqual(EVENT_LANGUAGE_CATALOG, readAppEventLanguageAllowlist());
+});
+
+test("backend resolves every app language alternate code uniquely", () => {
+  const aliasOwners = new Map();
+  let aliasCount = 0;
+  const appCatalog = readAppEventLanguageAllowlist();
+
+  for (const language of appCatalog) {
+    for (const alias of language.alternateCodes) {
+      aliasCount += 1;
+      const aliasKey = alias.trim().toLowerCase();
+      const previousOwner = aliasOwners.get(aliasKey);
+      assert.equal(
+          previousOwner,
+          undefined,
+          `${alias} resolves to both ${previousOwner} and ${language.code}`,
+      );
+      aliasOwners.set(aliasKey, language.code);
+
+      const normalized = normalizeCreateEventPayload(
+          cloneValidRequest({languageCode: ` ${alias.toUpperCase()} `}),
+          {now: fixedNow},
+      );
+
+      assert.equal(normalized.language.code, language.code);
+      assert.equal(normalized.language.nameEn, language.nameEn);
+      assert.equal(normalized.language.nameRu, language.nameRu);
+      assert.equal(normalized.hashPayload.languageCode, language.code);
+    }
+  }
+  assert.equal(aliasOwners.size, aliasCount);
 });
 
 test("normalizeCreateEventPayload rejects client language display payloads", () => {

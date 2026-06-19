@@ -112,7 +112,7 @@ void main() {
         languageCode: 'ZH-tw',
         localeCode: 'ru_RU',
       ),
-      'Китайский (традиционный)',
+      'Китайский (Традиционный)',
     );
     expect(
       catalog.localizedDisplayName(
