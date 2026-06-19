@@ -34,6 +34,7 @@ enum StudentDashboardSearchState {
   idle,
   searching,
   connecting,
+  noMatchFound,
 }
 
 class StudentsDashboardWidget extends StatefulWidget {
@@ -75,8 +76,34 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   bool _isStartingSearch = false;
   bool _ignoreStartSearchUntilNextFrame = false;
   String? _suppressedActiveSessionId;
+  Timer? _searchTimeoutTimer;
 
   bool get _showLegacyDashboard => false;
+  bool _isStopSearchState(StudentDashboardSearchState searchState) =>
+      searchState == StudentDashboardSearchState.searching ||
+      searchState == StudentDashboardSearchState.connecting;
+
+  bool _showsSearchStatus(StudentDashboardSearchState searchState) =>
+      searchState != StudentDashboardSearchState.idle;
+
+  void _clearSearchTimeoutTimer() {
+    _searchTimeoutTimer?.cancel();
+    _searchTimeoutTimer = null;
+  }
+
+  void _startSearchTimeoutTimer() {
+    _clearSearchTimeoutTimer();
+    _searchTimeoutTimer = Timer(const Duration(minutes: 10), () {
+      if (!mounted || _searchState != StudentDashboardSearchState.searching) {
+        return;
+      }
+
+      safeSetState(() {
+        _searchState = StudentDashboardSearchState.noMatchFound;
+      });
+    });
+  }
+
   Stream<VideoSessionsRecord?> _activeSessionStreamFor(UsersRecord user) {
     final override = widget.activeSessionStream;
     if (override != null) {
@@ -99,6 +126,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     switch (session?.status.trim()) {
       case 'searching':
         return StudentDashboardSearchState.searching;
+      case 'no_tutors_available':
+        return StudentDashboardSearchState.noMatchFound;
       case 'pending_confirmation':
       case 'connecting':
         return StudentDashboardSearchState.connecting;
@@ -115,6 +144,20 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     if (sessionSearchState != StudentDashboardSearchState.idle &&
         sessionId != null &&
         sessionId != _suppressedActiveSessionId) {
+      if (sessionSearchState == StudentDashboardSearchState.searching &&
+          _searchState == StudentDashboardSearchState.noMatchFound) {
+        return _searchState;
+      }
+
+      final pairFound =
+          sessionSearchState == StudentDashboardSearchState.connecting;
+      final staleLocalResult =
+          _searchState == StudentDashboardSearchState.searching ||
+              _searchState == StudentDashboardSearchState.noMatchFound;
+      if (pairFound && staleLocalResult) {
+        _clearSearchTimeoutTimer();
+        _searchState = StudentDashboardSearchState.idle;
+      }
       return sessionSearchState;
     }
 
@@ -791,12 +834,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     StudentDashboardSearchState visibleSearchState,
     String? visibleSessionId,
   ) async {
-    if (visibleSearchState != StudentDashboardSearchState.idle) {
+    if (_isStopSearchState(visibleSearchState)) {
       safeSetState(() {
         _searchState = StudentDashboardSearchState.idle;
         _suppressedActiveSessionId = visibleSessionId;
         _ignoreStartSearchUntilNextFrame = true;
       });
+      _clearSearchTimeoutTimer();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _ignoreStartSearchUntilNextFrame = false;
@@ -813,6 +857,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       _isStartingSearch = true;
       _suppressedActiveSessionId = null;
     });
+    _clearSearchTimeoutTimer();
 
     try {
       if (!canStartCall(currentUserDocument)) {
@@ -849,6 +894,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         _searchState = StudentDashboardSearchState.searching;
         _suppressedActiveSessionId = null;
       });
+      _startSearchTimeoutTimer();
     } finally {
       if (mounted) {
         safeSetState(() => _isStartingSearch = false);
@@ -896,7 +942,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                         searchState,
                         activeSessionId,
                       ),
-                      if (searchState != StudentDashboardSearchState.idle)
+                      if (_showsSearchStatus(searchState))
                         _buildSearchStatusBlock(context, searchState)
                       else
                         _buildPartnerCountText(
@@ -925,6 +971,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
           ruText: 'Соединяем',
           enText: 'Connecting',
         ),
+      StudentDashboardSearchState.noMatchFound =>
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Пока никого не нашли',
+          enText: 'No one found yet',
+        ),
       StudentDashboardSearchState.searching =>
         FFLocalizations.of(context).getVariableText(
           ruText: 'Ищем собеседника',
@@ -932,6 +983,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         ),
       StudentDashboardSearchState.idle => '',
     };
+    final showProgress = _isStopSearchState(searchState);
 
     return Padding(
       padding: const EdgeInsets.only(top: ExpatlioDesign.itemSpacing),
@@ -961,17 +1013,19 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SizedBox(
-                  width: 16.0,
-                  height: 16.0,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.0,
-                    color: ExpatlioDesign.primary,
-                    backgroundColor:
-                        ExpatlioDesign.primary.withValues(alpha: 0.12),
+                if (showProgress) ...[
+                  SizedBox(
+                    width: 16.0,
+                    height: 16.0,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.0,
+                      color: ExpatlioDesign.primary,
+                      backgroundColor:
+                          ExpatlioDesign.primary.withValues(alpha: 0.12),
+                    ),
                   ),
-                ),
-                const SizedBox(width: ExpatlioDesign.space8),
+                  const SizedBox(width: ExpatlioDesign.space8),
+                ],
                 Flexible(
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
@@ -1001,7 +1055,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     String? activeSessionId,
   ) {
     return StudentStartSearchButton(
-      isActive: searchState != StudentDashboardSearchState.idle,
+      isActive: _isStopSearchState(searchState),
       onTap: () => _handleStartConversation(searchState, activeSessionId),
     );
   }
@@ -1252,6 +1306,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
   @override
   void dispose() {
+    _clearSearchTimeoutTimer();
     _model.dispose();
 
     super.dispose();

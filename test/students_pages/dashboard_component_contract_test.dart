@@ -89,6 +89,9 @@ void main() {
     expect(source, contains('VideoSessionsRecord.getDocument'));
     expect(source, contains("'pending_confirmation'"));
     expect(source, contains("'connecting'"));
+    expect(source, contains("'no_tutors_available'"));
+    expect(source, contains('StudentDashboardSearchState.noMatchFound'));
+    expect(source, contains('Duration(minutes: 10)'));
     expect(
       source,
       contains('StudentDashboardSearchState.connecting'),

@@ -250,6 +250,11 @@ void main() {
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(find.text('Соединяем'), findsNothing);
 
+    await tester.pump(const Duration(minutes: 10));
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsNothing);
+
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -292,6 +297,84 @@ void main() {
     expect(find.text('Начать поиск'), findsOneWidget);
     expect(find.text('Остановить поиск'), findsNothing);
     expect(find.text('Ищем собеседника'), findsNothing);
+    expect(_checkPermissionStatusCallCount, permissionChecksAfterStart);
+    expect(_requestPermissionsCallCount, permissionRequestsAfterStart);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard shows no match state after ten minutes',
+      (tester) async {
+    setActiveStudent('student-no-match-timeout-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+
+    await tester.pump(const Duration(minutes: 10));
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Пока никого не нашли'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard stop cancels no match timeout',
+      (tester) async {
+    setActiveStudent('student-stop-before-timeout-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    final permissionChecksAfterStart = _checkPermissionStatusCallCount;
+    final permissionRequestsAfterStart = _requestPermissionsCallCount;
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(minutes: 10));
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsNothing);
+    expect(find.text('Начать поиск'), findsOneWidget);
     expect(_checkPermissionStatusCallCount, permissionChecksAfterStart);
     expect(_requestPermissionsCallCount, permissionRequestsAfterStart);
 
@@ -389,6 +472,77 @@ void main() {
     expect(find.text('Ищем собеседника'), findsOneWidget);
     expect(find.text('Соединяем'), findsNothing);
 
+    activeSessionController.add(
+      sessionFixture(
+          'session-pending-confirmation-test', 'no_tutors_available'),
+    );
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('pair session stream clears stale no match timeout',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(
+      'student-stream-prevents-timeout-test',
+      currentSessionId: 'session-prevents-timeout-test',
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(minutes: 9, seconds: 59));
+
+    activeSessionController.add(
+      sessionFixture('session-prevents-timeout-test', 'searching'),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsOneWidget);
+
+    activeSessionController.add(
+      sessionFixture('session-prevents-timeout-test', 'pending_confirmation'),
+    );
+    await tester.pump();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Пока никого не нашли'), findsNothing);
+
+    activeSessionController.add(
+      sessionFixture('session-prevents-timeout-test', 'ended'),
+    );
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsNothing);
+    expect(find.text('Начать поиск'), findsOneWidget);
+
+    activeSessionController.add(null);
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsNothing);
+    expect(find.text('Начать поиск'), findsOneWidget);
+
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -450,6 +604,33 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('no match status fits compact dashboard layout', (tester) async {
+    tester.view.physicalSize = const Size(360.0, 520.0);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    setActiveStudent('student-no-match-compact-layout-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        const StudentsDashboardWidget(
+          initialSearchState: StudentDashboardSearchState.noMatchFound,
+        ),
+        textScaleFactor: 1.8,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student dashboard does not start search when permissions denied',
       (tester) async {
     _permissionStatus = _permissionDenied;
@@ -475,6 +656,11 @@ void main() {
     expect(find.text('Остановить поиск'), findsNothing);
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(find.text('Соединяем'), findsNothing);
+
+    await tester.pump(const Duration(minutes: 10));
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
