@@ -6,6 +6,7 @@ import '/backend/schema/enums/enums.dart';
 import '/components/dashboard_inline_filter_button.dart';
 import '/components/orbiting_avatars_cta.dart';
 import '/components/profile_dropdown_menu_item.dart';
+import '/components/student_start_search_button.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -813,51 +814,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   }
 
   Widget _buildStartSearchButton(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
-        onTap: _handleStartConversation,
-        child: Container(
-          width: 240.0,
-          height: 60.0,
-          decoration: BoxDecoration(
-            gradient: ExpatlioDesign.primaryGradient,
-            borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x267430E8),
-                blurRadius: 22.0,
-                offset: Offset(0.0, 10.0),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.auto_awesome_rounded,
-                color: Colors.white,
-                size: 22.0,
-              ),
-              const SizedBox(width: ExpatlioDesign.itemSpacing),
-              Text(
-                FFLocalizations.of(context).getVariableText(
-                  ruText: 'Начать поиск',
-                  enText: 'Start search',
-                ),
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: Colors.white,
-                  size: 18.0,
-                  weight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return StudentStartSearchButton(onTap: _handleStartConversation);
   }
 
   Widget _buildPartnerCountText({
