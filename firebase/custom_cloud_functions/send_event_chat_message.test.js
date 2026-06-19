@@ -167,6 +167,10 @@ function userProfile(overrides = {}) {
   };
 }
 
+function repeatGrapheme(value, count) {
+  return Array.from({length: count}, () => value).join("");
+}
+
 function validSeed(overrides = {}) {
   return {
     "events/event-1": activeEvent(overrides.event),
@@ -196,6 +200,13 @@ test("normalizeSendEventChatMessagePayload rejects unknown and missing keys", ()
       "invalid_event_chat_message_request",
       "senderId",
       "unknown_key",
+  );
+  assertHttpsError(
+      () => normalizeSendEventChatMessagePayload({text: "Hello"}),
+      "invalid-argument",
+      "invalid_event_chat_message_request",
+      "eventId",
+      "missing",
   );
   for (const key of [
     "createdAt",
@@ -233,7 +244,14 @@ test("normalizeSendEventChatMessagePayload rejects unknown and missing keys", ()
 });
 
 test("normalizeSendEventChatMessagePayload validates event id and text", () => {
-  for (const eventId of ["events/event-1", ".", "..", "x".repeat(1501)]) {
+  for (const eventId of [
+    "",
+    " ",
+    "events/event-1",
+    ".",
+    "..",
+    "x".repeat(1501),
+  ]) {
     assertHttpsError(
         () => normalizeSendEventChatMessagePayload({
           eventId,
@@ -247,6 +265,26 @@ test("normalizeSendEventChatMessagePayload validates event id and text", () => {
   }
   assertHttpsError(
       () => normalizeSendEventChatMessagePayload({
+        eventId: 123,
+        text: "Hello",
+      }),
+      "invalid-argument",
+      "invalid_event_chat_message_request",
+      "eventId",
+      "invalid_type",
+  );
+  assertHttpsError(
+      () => normalizeSendEventChatMessagePayload({
+        eventId: "event-1",
+        text: 123,
+      }),
+      "invalid-argument",
+      "invalid_event_chat_message_request",
+      "text",
+      "invalid_type",
+  );
+  assertHttpsError(
+      () => normalizeSendEventChatMessagePayload({
         eventId: "event-1",
         text: " \n\t ",
       }),
@@ -258,7 +296,7 @@ test("normalizeSendEventChatMessagePayload validates event id and text", () => {
   assertHttpsError(
       () => normalizeSendEventChatMessagePayload({
         eventId: "event-1",
-        text: "a".repeat(1001),
+        text: repeatGrapheme("👍🏽", 1001),
       }),
       "invalid-argument",
       "invalid_event_chat_message_request",
@@ -279,9 +317,9 @@ test("normalizeSendEventChatMessagePayload validates event id and text", () => {
   assert.equal(
       normalizeSendEventChatMessagePayload({
         eventId: "event-1",
-        text: "a".repeat(1000),
-      }).text.length,
-      1000,
+        text: repeatGrapheme("👍🏽", 1000),
+      }).text,
+      repeatGrapheme("👍🏽", 1000),
   );
 });
 
@@ -424,6 +462,17 @@ test("executeSendEventChatMessageTransaction fails closed on event and chat drif
     [
       {
         ...validSeed(),
+        "eventChats/event-1": (() => {
+          const chatData = eventChat();
+          delete chatData.eventId;
+          return chatData;
+        })(),
+      },
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
         "eventChats/event-1": eventChat({status: "active"}),
       },
       "event_chat_metadata_invalid",
@@ -432,6 +481,24 @@ test("executeSendEventChatMessageTransaction fails closed on event and chat drif
       {
         ...validSeed(),
         "eventChats/event-1": eventChat({canceledAt: null}),
+      },
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": (() => {
+          const chatData = eventChat();
+          delete chatData.readAccessUserIds;
+          return chatData;
+        })(),
+      },
+      "event_chat_metadata_invalid",
+    ],
+    [
+      {
+        ...validSeed(),
+        "eventChats/event-1": eventChat({readAccessUserIds: "uid"}),
       },
       "event_chat_metadata_invalid",
     ],
@@ -561,11 +628,32 @@ test("executeSendEventChatMessageTransaction falls back to user sender snapshot"
   );
 });
 
+test("executeSendEventChatMessageTransaction stores null sender photo",
+    async () => {
+      const {db, store} = createFakeFirestore(validSeed({
+        participant: {photoUrl: " "},
+        user: {photo_url: " "},
+      }));
+
+      await executeSendEventChatMessageTransaction({
+        db,
+        uid: "uid",
+        messageDate: fixedNow,
+        messageTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1", text: "No photo"},
+      });
+
+      assert.equal(
+          store.get("eventChats/event-1/messages/message-1").senderPhotoUrl,
+          null,
+      );
+    });
+
 test("executeSendEventChatMessageTransaction accepts sender snapshot boundaries", async () => {
   const photoUrl = "x".repeat(2048);
   const {db, store} = createFakeFirestore(validSeed({
     participant: {
-      displayName: "a".repeat(70),
+      displayName: repeatGrapheme("👍🏽", 70),
       photoUrl: "",
     },
     user: {photo_url: photoUrl},
@@ -580,14 +668,14 @@ test("executeSendEventChatMessageTransaction accepts sender snapshot boundaries"
   });
 
   const message = store.get("eventChats/event-1/messages/message-1");
-  assert.equal(message.senderDisplayName, "a".repeat(70));
+  assert.equal(message.senderDisplayName, repeatGrapheme("👍🏽", 70));
   assert.equal(message.senderPhotoUrl, photoUrl);
 });
 
 test("executeSendEventChatMessageTransaction rejects invalid sender snapshot", async () => {
   for (const overrides of [
     {participant: {displayName: " "}, user: {display_name: " "}},
-    {participant: {displayName: "a".repeat(71)}},
+    {participant: {displayName: repeatGrapheme("👍🏽", 71)}},
     {participant: {photoUrl: "x".repeat(2049)}},
   ]) {
     const {db, writes} = createFakeFirestore(validSeed(overrides));
