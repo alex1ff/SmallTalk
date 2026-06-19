@@ -354,7 +354,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add rules tests that deny organizer/client hard delete of active and canceled events.
 - [x] Add rules tests that deny client hard delete of event chat documents.
 - [x] Add rules tests denying direct client reads, creates, updates, and deletes of `eventCreationCounters` and `eventCreateRequests`.
-- [ ] Add tests for city/date/level list filtering.
+- [x] Add tests for city/date/level list filtering.
 - [ ] Add event list query tests for active-only discovery, canceled hidden from list, past hidden by `startsAt`, date lower/upper UTC bounds, selected city timezone boundary conversion, and exclusive upper bound.
 - [ ] Add pagination tests proving client-side level filtering can fetch additional raw pages until enough visible events are collected or the source is exhausted.
 - [ ] Add pagination cursor tests proving the cursor advances by the last raw Firestore document when level filtering hides trailing raw results.
