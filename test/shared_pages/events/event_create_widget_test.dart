@@ -2236,6 +2236,60 @@ void main() {
     expect(generatedRequestIds, <String>[_requestId(0)]);
   });
 
+  testWidgets('retryable create failure succeeds with same UUID v4 request id',
+      (tester) async {
+    final requestIds = <String>[];
+    final generatedRequestIds = <String>[];
+    var nextId = 0;
+    var submitCount = 0;
+    final router = _buildEventCreateRouter(
+      initialSelectedCity: const EventSelectedCity(
+        city: _romeCity,
+        source: EventCitySelectionSource.manual,
+      ),
+      initialDate: DateTime(2026, 6, 20),
+      initialTime: const TimeOfDay(hour: 18, minute: 0),
+      currentUtcProvider: () => DateTime.parse('2026-06-18T12:00:00Z'),
+      createRequestIdGenerator: () {
+        final id = _requestId(nextId);
+        nextId += 1;
+        generatedRequestIds.add(id);
+        return id;
+      },
+      createEventInvoker: (_, payload) async {
+        submitCount += 1;
+        requestIds.add(payload['createRequestId']! as String);
+        if (submitCount == 1) {
+          throw _unavailableError();
+        }
+        return _createEventResponse();
+      },
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await _fillRequiredCreateFields(tester);
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateSubmitErrorKey), findsOneWidget);
+    expect(submitCount, 1);
+    expect(requestIds, <String>[_requestId(0)]);
+    expect(generatedRequestIds, <String>[_requestId(0)]);
+    expect(normalizeEventCreateRequestId(generatedRequestIds.single),
+        generatedRequestIds.single);
+
+    await tester.tap(find.byKey(eventCreateSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(submitCount, 2);
+    expect(requestIds, <String>[_requestId(0), _requestId(0)]);
+    expect(generatedRequestIds, <String>[_requestId(0)]);
+    expect(router.getCurrentLocation(), '/events/event-1');
+    expect(find.byType(EventDetailWidget), findsOneWidget);
+  });
+
   testWidgets('changed create payload uses a new createRequestId',
       (tester) async {
     final requestIds = <String>[];
@@ -3911,6 +3965,12 @@ FirebaseFunctionsException _createRequestConflictError() =>
         'createRequestId': _requestId(0),
         'dayKeyUtc': '2026-06-14',
       },
+    );
+
+FirebaseFunctionsException _unavailableError() =>
+    _TestFirebaseFunctionsException(
+      code: 'unavailable',
+      message: 'Raw backend message',
     );
 
 class _TestFirebaseFunctionsException extends FirebaseFunctionsException {
