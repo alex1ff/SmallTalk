@@ -1,8 +1,10 @@
 const fs = require("node:fs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const admin = require("firebase-admin");
 
 const {
+  cancelEvent,
   __private__: {
     executeCancelEventTransaction,
     normalizeCancelEventPayload,
@@ -138,6 +140,60 @@ function createFakeFirestore(seed = {}) {
   return {db, reads, store, writes};
 }
 
+async function withAdminFirestore(db, callback) {
+  const originalFirestore = Object.getOwnPropertyDescriptor(admin, "firestore");
+  const timestamp = admin.firestore.Timestamp;
+  const geoPoint = admin.firestore.GeoPoint;
+  const firestore = () => db;
+  firestore.Timestamp = timestamp;
+  firestore.GeoPoint = geoPoint;
+
+  Object.defineProperty(admin, "firestore", {
+    configurable: true,
+    value: firestore,
+  });
+
+  try {
+    return await callback();
+  } finally {
+    if (originalFirestore) {
+      Object.defineProperty(admin, "firestore", originalFirestore);
+    } else {
+      delete admin.firestore;
+    }
+  }
+}
+
+async function withSequencedDate(isoValues, callback) {
+  const RealDate = Date;
+  const millisValues = isoValues.map((isoValue) => RealDate.parse(isoValue));
+  let noArgDateCalls = 0;
+
+  class SequencedDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) {
+        const index = Math.min(noArgDateCalls, millisValues.length - 1);
+        noArgDateCalls += 1;
+        super(millisValues[index]);
+        return;
+      }
+      super(...args);
+    }
+
+    static now() {
+      return millisValues[Math.min(noArgDateCalls, millisValues.length - 1)];
+    }
+  }
+
+  Object.setPrototypeOf(SequencedDate, RealDate);
+  global.Date = SequencedDate;
+  try {
+    return await callback(() => noArgDateCalls);
+  } finally {
+    global.Date = RealDate;
+  }
+}
+
 function activeEvent(overrides = {}) {
   return {
     organizerId: "uid",
@@ -236,8 +292,7 @@ test("cancelEvent callable captures trusted backend timestamp", () => {
   assert.doesNotMatch(source, /serverTimestamp/);
 });
 
-test("executeCancelEventTransaction cancels active event without counter writes", async () => {
-  const counterBefore = counterData();
+test("cancelEvent callable lets organizer cancel active event", async () => {
   const {db, reads, store, writes} = createFakeFirestore({
     "events/event-1": activeEvent(),
     "eventChats/event-1": eventChat({
@@ -247,8 +302,76 @@ test("executeCancelEventTransaction cancels active event without counter writes"
     "events/event-1/participants/alex": participant("active"),
     "events/event-1/participants/olga": participant("active"),
     "events/event-1/participants/left-before-cancel": participant("left"),
+  });
+
+  await withAdminFirestore(db, async () => {
+    await withSequencedDate(["2026-06-16T10:00:00.000Z"], async () => {
+      const response = await cancelEvent.run(
+          {eventId: " event-1 "},
+          {auth: {uid: "uid"}},
+      );
+
+      assert.deepEqual(response, {
+        eventId: "event-1",
+        status: "canceled",
+        canceledAt: "2026-06-16T10:00:00.000Z",
+      });
+    });
+  });
+
+  assert.equal(store.get("events/event-1").status, "canceled");
+  assert.equal(
+      store.get("events/event-1").canceledAt.toMillis(),
+      fixedNow.getTime(),
+  );
+  assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+    "uid",
+    "alex",
+    "olga",
+  ]);
+  assert.equal(
+      store.get("eventChats/event-1").updatedAt.toMillis(),
+      fixedNow.getTime(),
+  );
+  assert.deepEqual(reads, [
+    "events/event-1",
+    "eventChats/event-1",
+    "events/event-1/participants?status==active",
+  ]);
+  assert.deepEqual(
+      writes.map((write) => `${write.type}:${write.path}`),
+      ["update:events/event-1", "update:eventChats/event-1"],
+  );
+  assert.equal(
+      writes.some((write) => (
+        write.path.includes("eventCreationCounters") ||
+        write.path.includes("participants")
+      )),
+      false,
+  );
+});
+
+test("executeCancelEventTransaction cancels active event without counter writes", async () => {
+  const counterBefore = counterData();
+  const eventBefore = activeEvent({startsAt: fixedTimestamp});
+  const {db, reads, store, writes} = createFakeFirestore({
+    "events/event-1": eventBefore,
+    "eventChats/event-1": eventChat({
+      readAccessUserIds: ["uid", "left-before-cancel"],
+    }),
+    "events/event-1/participants/uid": participant("active"),
+    "events/event-1/participants/alex": participant("active"),
+    "events/event-1/participants/olga": participant("active"),
+    "events/event-1/participants/left-before-cancel": participant("left"),
     "eventCreationCounters/uid/days/20260616": counterBefore,
   });
+  const organizerParticipantBefore = store.get(
+      "events/event-1/participants/uid",
+  );
+  const participantBefore = store.get("events/event-1/participants/alex");
+  const leftParticipantBefore = store.get(
+      "events/event-1/participants/left-before-cancel",
+  );
 
   const response = await executeCancelEventTransaction({
     db,
@@ -266,15 +389,34 @@ test("executeCancelEventTransaction cancels active event without counter writes"
   assert.equal(store.get("events/event-1").status, "canceled");
   assert.equal(store.get("events/event-1").canceledAt, fixedTimestamp);
   assert.equal(store.get("events/event-1").participantsCount, 3);
+  assert.equal(store.get("events/event-1").organizerId, eventBefore.organizerId);
+  assert.equal(store.get("events/event-1").chatId, eventBefore.chatId);
+  assert.equal(store.get("events/event-1").capacity, eventBefore.capacity);
+  assert.equal(store.get("events/event-1").startsAt, eventBefore.startsAt);
   assert.deepEqual(writes[0].data, {
     status: "canceled",
     canceledAt: fixedTimestamp,
     updatedAt: fixedTimestamp,
   });
-  assert.equal(writes[1].data.updatedAt, fixedTimestamp);
+  assert.deepEqual(writes[1].data, {
+    readAccessUserIds: ["uid", "alex", "olga"],
+    updatedAt: fixedTimestamp,
+  });
   assert.deepEqual(
       store.get("eventChats/event-1").readAccessUserIds,
       ["uid", "alex", "olga"],
+  );
+  assert.strictEqual(
+      store.get("events/event-1/participants/uid"),
+      organizerParticipantBefore,
+  );
+  assert.strictEqual(
+      store.get("events/event-1/participants/alex"),
+      participantBefore,
+  );
+  assert.strictEqual(
+      store.get("events/event-1/participants/left-before-cancel"),
+      leftParticipantBefore,
   );
   assert.strictEqual(
       store.get("eventCreationCounters/uid/days/20260616"),

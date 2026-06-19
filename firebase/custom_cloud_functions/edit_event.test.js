@@ -1000,6 +1000,51 @@ test("editEvent callable validates startsAt against trusted backend time",
       }
     });
 
+test("editEvent callable lets organizer edit active future event", async () => {
+  const {db, reads, store, writes} = createFakeFirestore({
+    "events/event-1": eventData(),
+    "events/event-1/participants/uid": participant(),
+    "events/event-1/participants/alex": participant(),
+    "events/event-1/participants/olga": participant(),
+  });
+
+  await withAdminFirestore(db, async () => {
+    await withSequencedDate(["2026-06-16T10:00:00.000Z"], async () => {
+      const response = await editEvent.run(
+          cloneValidEditRequest({title: " Organizer update "}),
+          {auth: {uid: "uid"}},
+      );
+
+      assert.deepEqual(response, {
+        eventId: "event-1",
+        updatedAt: "2026-06-16T10:00:00.000Z",
+      });
+    });
+  });
+
+  assert.equal(store.get("events/event-1").title, "Organizer update");
+  assert.equal(
+      store.get("events/event-1").updatedAt.toMillis(),
+      fixedNow.getTime(),
+  );
+  assert.deepEqual(reads, [
+    "events/event-1",
+    "events/event-1/participants?status==active",
+  ]);
+  assert.deepEqual(
+      writes.map((write) => `${write.type}:${write.path}`),
+      ["update:events/event-1"],
+  );
+  assert.equal(
+      writes.some((write) => (
+        write.path.includes("eventCreationCounters") ||
+        write.path.includes("participants") ||
+        write.path.startsWith("eventChats/")
+      )),
+      false,
+  );
+});
+
 test("executeEditEventTransaction updates organizer active future event", async () => {
   const payload = normalizeEditEventPayload(
       cloneValidEditRequest({
@@ -1010,13 +1055,23 @@ test("executeEditEventTransaction updates organizer active future event", async 
       {now: fixedNow},
   );
   const counterBefore = counterData();
-  const {db, store, writes} = createFakeFirestore({
-    "events/event-1": eventData(),
+  const eventBefore = eventData({
+    chatId: "event-1",
+    organizerDisplayName: "Organizer Name",
+    organizerPhotoUrl: "https://example.com/organizer.png",
+    createdAt: fixedTimestamp,
+  });
+  const {db, reads, store, writes} = createFakeFirestore({
+    "events/event-1": eventBefore,
     "events/event-1/participants/uid": participant(),
     "events/event-1/participants/alex": participant(),
     "events/event-1/participants/olga": participant(),
     "eventCreationCounters/uid/days/20260616": counterBefore,
   });
+  const organizerParticipantBefore = store.get(
+      "events/event-1/participants/uid",
+  );
+  const participantBefore = store.get("events/event-1/participants/alex");
 
   const response = await executeEditEventTransaction({
     db,
@@ -1032,10 +1087,13 @@ test("executeEditEventTransaction updates organizer active future event", async 
     updatedAt: "2026-06-16T10:00:00.000Z",
   });
   assert.equal(event.title, "Updated event");
+  assert.equal(event.description, "Updated description");
   assert.equal(event.languageCode, "en");
   assert.equal(event.languageNameEn, "English");
   assert.equal(event.languageNameRu, "Английский");
   assertNoLanguageStructFields(event);
+  assert.equal(event.levelMin, "B1");
+  assert.equal(event.levelMax, "C1");
   assert.equal(event.countryCode, "US");
   assert.equal(event.cityKey, "new_york");
   assert.equal(event.cityNameRu, "Нью-Йорк");
@@ -1043,15 +1101,31 @@ test("executeEditEventTransaction updates organizer active future event", async 
   assert.equal(event.cityDisplayContext, "United States");
   assert.equal(event.timeZoneId, "America/New_York");
   assertNoCityStructFields(event);
+  assert.equal(event.locationName, "Starbucks, ул. Арбат, 5");
+  assert.equal(event.locationGeoPoint, null);
+  assert.equal(event.startsAt.toMillis(), Date.parse(validEditRequest.startsAt));
   assert.equal(event.capacity, 5);
+  assert.equal(event.organizerId, eventBefore.organizerId);
+  assert.equal(event.organizerDisplayName, eventBefore.organizerDisplayName);
+  assert.equal(event.organizerPhotoUrl, eventBefore.organizerPhotoUrl);
+  assert.equal(event.chatId, eventBefore.chatId);
+  assert.equal(event.participantsCount, eventBefore.participantsCount);
+  assert.equal(event.createdAt, eventBefore.createdAt);
   assert.equal(event.status, "active");
   assert.equal(event.canceledAt, null);
   assert.equal(event.updatedAt, fixedTimestamp);
+  assert.deepEqual(reads, [
+    "events/event-1",
+    "events/event-1/participants?status==active",
+  ]);
   assert.deepEqual(writes.map((write) => write.path), ["events/event-1"]);
+  assert.equal(writes[0].data.description, "Updated description");
   assert.equal(writes[0].data.languageCode, "en");
   assert.equal(writes[0].data.languageNameEn, "English");
   assert.equal(writes[0].data.languageNameRu, "Английский");
   assertNoLanguageStructFields(writes[0].data);
+  assert.equal(writes[0].data.levelMin, "B1");
+  assert.equal(writes[0].data.levelMax, "C1");
   assert.equal(writes[0].data.countryCode, "US");
   assert.equal(writes[0].data.cityKey, "new_york");
   assert.equal(writes[0].data.cityNameRu, "Нью-Йорк");
@@ -1059,13 +1133,35 @@ test("executeEditEventTransaction updates organizer active future event", async 
   assert.equal(writes[0].data.cityDisplayContext, "United States");
   assert.equal(writes[0].data.timeZoneId, "America/New_York");
   assertNoCityStructFields(writes[0].data);
+  assert.equal(writes[0].data.locationName, "Starbucks, ул. Арбат, 5");
+  assert.equal(writes[0].data.locationGeoPoint, null);
   assert.equal(
-      Object.prototype.hasOwnProperty.call(writes[0].data, "status"),
-      false,
+      writes[0].data.startsAt.toMillis(),
+      Date.parse(validEditRequest.startsAt),
   );
-  assert.equal(
-      Object.prototype.hasOwnProperty.call(writes[0].data, "canceledAt"),
-      false,
+  for (const protectedField of [
+    "organizerId",
+    "organizerDisplayName",
+    "organizerPhotoUrl",
+    "chatId",
+    "participantsCount",
+    "createdAt",
+    "status",
+    "canceledAt",
+  ]) {
+    assert.equal(
+        Object.prototype.hasOwnProperty.call(writes[0].data, protectedField),
+        false,
+        protectedField,
+    );
+  }
+  assert.strictEqual(
+      store.get("events/event-1/participants/uid"),
+      organizerParticipantBefore,
+  );
+  assert.strictEqual(
+      store.get("events/event-1/participants/alex"),
+      participantBefore,
   );
   assert.strictEqual(
       store.get("eventCreationCounters/uid/days/20260616"),
