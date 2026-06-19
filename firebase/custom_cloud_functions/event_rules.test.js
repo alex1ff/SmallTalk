@@ -121,6 +121,37 @@ function boundedEventChatMessagesQuery(db, chatId = "editable-event") {
     .limit(50);
 }
 
+function eventChatWriteActors() {
+  return [
+    {name: "guest", context: testEnv.unauthenticatedContext()},
+    {name: "participant", context: testEnv.authenticatedContext("user-a")},
+    {name: "organizer", context: testEnv.authenticatedContext("organizer")},
+    {
+      name: "left-before-cancel",
+      context: testEnv.authenticatedContext("user-left"),
+    },
+    {
+      name: "nonparticipant",
+      context: testEnv.authenticatedContext("other-user"),
+    },
+    {
+      name: "admin",
+      context: testEnv.authenticatedContext("admin-user", {admin: true}),
+    },
+  ];
+}
+
+async function seedLeftBeforeCancelParticipant(db, eventId) {
+  await db.doc(`events/${eventId}/participants/user-left`).set(
+    participantData({
+      userId: "user-left",
+      displayName: "Left User",
+      status: "left",
+      leftAt: new Date("2099-06-01T09:59:59.000Z"),
+    }),
+  );
+}
+
 function participantData(overrides = {}) {
   return {
     userId: "user-a",
@@ -1218,52 +1249,48 @@ test("canceled event chat message reads fail closed for invalid parent state", a
   }
 });
 
-test("clients cannot directly write event chat message documents", async () => {
-  const contexts = [
-    testEnv.unauthenticatedContext(),
-    testEnv.authenticatedContext("user-a"),
-    testEnv.authenticatedContext("organizer"),
-    testEnv.authenticatedContext("other-user"),
-    testEnv.authenticatedContext("admin-user", {admin: true}),
-  ];
-  const chatIds = [
-    "editable-event",
-    "canceled-editable-event",
-  ];
+test("clients cannot directly write active or canceled event chat message documents",
+  async () => {
+    const actors = eventChatWriteActors();
+    const chatIds = [
+      "editable-event",
+      "canceled-editable-event",
+    ];
 
-  await testEnv.withSecurityRulesDisabled(async (context) => {
-    const db = context.firestore();
-    for (const chatId of chatIds) {
-      await db.doc(`eventChats/${chatId}/messages/existing`)
-        .set(eventChatMessageData());
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await seedLeftBeforeCancelParticipant(db, "canceled-editable-event");
+      for (const chatId of chatIds) {
+        await db.doc(`eventChats/${chatId}/messages/existing`)
+          .set(eventChatMessageData());
+      }
+    });
+
+    for (const [index, {context}] of actors.entries()) {
+      const db = context.firestore();
+      for (const chatId of chatIds) {
+        const existingMessagePath = `eventChats/${chatId}/messages/existing`;
+        await assertFails(
+          db.doc(`eventChats/${chatId}/messages/direct-create-${index}`)
+            .set(eventChatMessageData()),
+        );
+        await assertFails(
+          db.doc(existingMessagePath).set(eventChatMessageData({
+            text: "Replaced",
+          })),
+        );
+        await assertFails(
+          db.doc(existingMessagePath).set({
+            text: "Merged",
+          }, {merge: true}),
+        );
+        await assertFails(db.doc(existingMessagePath).update({
+          text: "Edited",
+        }));
+        await assertFails(db.doc(existingMessagePath).delete());
+      }
     }
   });
-
-  for (const [index, context] of contexts.entries()) {
-    const db = context.firestore();
-    for (const chatId of chatIds) {
-      const existingMessagePath = `eventChats/${chatId}/messages/existing`;
-      await assertFails(
-        db.doc(`eventChats/${chatId}/messages/direct-create-${index}`)
-          .set(eventChatMessageData()),
-      );
-      await assertFails(
-        db.doc(existingMessagePath).set(eventChatMessageData({
-          text: "Replaced",
-        })),
-      );
-      await assertFails(
-        db.doc(existingMessagePath).set({
-          text: "Merged",
-        }, {merge: true}),
-      );
-      await assertFails(db.doc(existingMessagePath).update({
-        text: "Edited",
-      }));
-      await assertFails(db.doc(existingMessagePath).delete());
-    }
-  }
-});
 
 test("event chat message writes fail inside otherwise allowed batches", async () => {
   const organizer = testEnv.authenticatedContext("organizer");
@@ -2307,6 +2334,61 @@ test("clients cannot directly write event chat metadata documents", async () => 
     await assertFails(db.doc("eventChats/editable-event").delete());
   }
 });
+
+test("clients cannot directly write canceled event chat metadata documents",
+  async () => {
+    const actors = eventChatWriteActors();
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      for (const {name} of actors) {
+        const chatId = `canceled-direct-create-chat-${name}`;
+        await db.doc(`events/${chatId}`).set(eventData({
+          status: "canceled",
+          canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+          chatId,
+        }));
+        await db.doc(`events/${chatId}/participants/organizer`).set(
+          participantData({
+            userId: "organizer",
+            displayName: "Organizer",
+            role: "organizer",
+          }),
+        );
+        await db.doc(`events/${chatId}/participants/user-a`).set(
+          participantData(),
+        );
+        await seedLeftBeforeCancelParticipant(db, chatId);
+      }
+      await seedLeftBeforeCancelParticipant(db, "canceled-editable-event");
+    });
+
+    for (const {name, context} of actors) {
+      const db = context.firestore();
+      const createChatId = `canceled-direct-create-chat-${name}`;
+      const existingChatRef = db.doc("eventChats/canceled-editable-event");
+
+      await assertFails(db.doc(`eventChats/${createChatId}`).set(
+        eventChatData({
+          eventId: createChatId,
+          readAccessUserIds: ["organizer", "user-a"],
+        }),
+      ));
+      await assertFails(existingChatRef.set(eventChatData({
+        eventId: "canceled-editable-event",
+        readAccessUserIds: ["organizer", "user-a"],
+      })));
+      await assertFails(existingChatRef.set({
+        readAccessUserIds: ["organizer", "user-a", "other-user"],
+        updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true}));
+      await assertFails(existingChatRef.update({
+        readAccessUserIds: ["organizer", "user-a", "other-user"],
+        updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+      }));
+      await assertFails(existingChatRef.delete());
+    }
+  });
 
 test("clients cannot hard delete active or canceled event chat documents", async () => {
   const contexts = [
