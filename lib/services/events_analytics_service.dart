@@ -33,6 +33,8 @@ abstract interface class EventsAnalyticsTracker {
     required String cityKey,
     String? citySource,
   });
+
+  Future<void> trackEventCanceled(EventsRecord event, {String? citySource});
 }
 
 class EventsAnalyticsService implements EventsAnalyticsTracker {
@@ -50,6 +52,7 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
   static const String eventDetailOpenedEventName = 'event_detail_opened';
   static const String eventCreatedEventName = 'event_created';
   static const String eventEditedEventName = 'event_edited';
+  static const String eventCanceledEventName = 'event_canceled';
 
   final EventsAnalyticsLogEvent _logEvent;
 
@@ -144,6 +147,25 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
     }
     return _logEvent(
       name: eventEditedEventName,
+      parameters: payload,
+    );
+  }
+
+  @override
+  Future<void> trackEventCanceled(
+    EventsRecord event, {
+    String? citySource,
+  }) {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: event.countryCode,
+      cityKey: event.cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return Future<void>.value();
+    }
+    return _logEvent(
+      name: eventCanceledEventName,
       parameters: payload,
     );
   }

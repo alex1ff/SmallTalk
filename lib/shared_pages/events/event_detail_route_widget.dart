@@ -70,6 +70,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   int? _locallyLeftParticipantsCount;
   int _participantActionGeneration = 0;
   String? _lastTrackedEventDetailOpenKey;
+  String? _lastTrackedCanceledEventId;
 
   @override
   void initState() {
@@ -92,6 +93,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _locallyLeftEventId = null;
       _locallyLeftParticipantsCount = null;
       _lastTrackedEventDetailOpenKey = null;
+      _lastTrackedCanceledEventId = null;
       _participantActionGeneration += 1;
       _isLeaving = false;
       _isJoining = false;
@@ -109,22 +111,30 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         snapshotStream: widget.snapshotStream,
       );
 
-  Future<void> _handleOrganizerCancel() async {
+  Future<void> _handleOrganizerCancel(EventsRecord event) async {
     if (_isCanceling) {
       return;
     }
 
+    final eventId = event.reference.id;
+    final tracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
     setState(() {
       _isCanceling = true;
     });
     try {
       final result = await EventActionsRepository.cancelEvent(
-        eventId: widget.eventId,
+        eventId: eventId,
         invoker: widget.cancelEventInvoker,
       );
       if (!mounted) {
         return;
       }
+      _trackEventCanceledIfNeeded(
+        eventId: result.eventId,
+        event: event,
+        tracker: tracker,
+      );
       setState(() {
         _locallyCanceledEventId = result.eventId;
       });
@@ -382,8 +392,9 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                         pathParameters: <String, String>{'eventId': eventId},
                       );
                     },
-              onOrganizerCancelPressed:
-                  _isCanceling || isCanceled ? null : _handleOrganizerCancel,
+              onOrganizerCancelPressed: _isCanceling || isCanceled
+                  ? null
+                  : () => _handleOrganizerCancel(event),
               startsAt: event.startsAt,
               timeZoneId: event.timeZoneId,
               locationName: event.locationName,
@@ -527,6 +538,24 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       tracker.trackEventDetailOpened(event).catchError(
             (Object error, StackTrace stackTrace) {},
           ),
+    );
+  }
+
+  void _trackEventCanceledIfNeeded({
+    required String eventId,
+    required EventsRecord event,
+    required EventsAnalyticsTracker tracker,
+  }) {
+    if (_lastTrackedCanceledEventId == eventId) {
+      return;
+    }
+    _lastTrackedCanceledEventId = eventId;
+    unawaited(
+      Future<void>.sync(
+        () => tracker.trackEventCanceled(event),
+      ).catchError(
+        (Object error, StackTrace stackTrace) {},
+      ),
     );
   }
 }

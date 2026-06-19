@@ -84,6 +84,7 @@ void main() {
     var cancelCalls = 0;
     String? functionName;
     Map<String, dynamic>? payload;
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -104,6 +105,7 @@ void main() {
             payload = calledPayload;
             return _cancelEventResponse();
           },
+          analyticsTracker: analyticsTracker,
         ),
       ),
     );
@@ -121,6 +123,22 @@ void main() {
     expect(cancelCalls, 1);
     expect(functionName, cancelEventFunctionName);
     expect(payload, <String, dynamic>{'eventId': 'event-1'});
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventCanceledEventName),
+      [
+        <String, String>{
+          'countryCode': 'RU',
+          'cityKey': 'moscow',
+        },
+      ],
+    );
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventCanceledEventName)
+          .single,
+      isNot(contains('citySource')),
+    );
     expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
     expect(find.text('Событие отменено'), findsOneWidget);
     expect(find.byKey(eventDetailOrganizerControlsKey), findsNothing);
@@ -130,6 +148,7 @@ void main() {
       (tester) async {
     currentUser = _TestAuthUser('guest-1');
     var cancelCalls = 0;
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -145,6 +164,7 @@ void main() {
             cancelCalls += 1;
             return _cancelEventResponse();
           },
+          analyticsTracker: analyticsTracker,
         ),
       ),
     );
@@ -153,11 +173,17 @@ void main() {
     expect(find.byKey(eventDetailOrganizerControlsKey), findsNothing);
     expect(find.byKey(eventDetailOrganizerCancelButtonKey), findsNothing);
     expect(cancelCalls, 0);
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventCanceledEventName),
+      isEmpty,
+    );
   });
 
   testWidgets('already canceled event renders canceled state without actions',
       (tester) async {
     var cancelCalls = 0;
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -173,6 +199,7 @@ void main() {
             cancelCalls += 1;
             return _cancelEventResponse();
           },
+          analyticsTracker: analyticsTracker,
         ),
       ),
     );
@@ -181,11 +208,17 @@ void main() {
     expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
     expect(find.byKey(eventDetailOrganizerControlsKey), findsNothing);
     expect(cancelCalls, 0);
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventCanceledEventName),
+      isEmpty,
+    );
   });
 
   testWidgets('cancel failure shows mapped error and re-enables action',
       (tester) async {
     var cancelCalls = 0;
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -207,6 +240,7 @@ void main() {
               },
             );
           },
+          analyticsTracker: analyticsTracker,
         ),
       ),
     );
@@ -218,6 +252,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(cancelCalls, 1);
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventCanceledEventName),
+      isEmpty,
+    );
     expect(find.byKey(eventDetailCancelErrorSnackBarKey), findsOneWidget);
     expect(find.text('Событие больше нельзя отменить.'), findsOneWidget);
     expect(find.byKey(eventDetailCanceledBannerKey), findsNothing);
@@ -228,6 +267,7 @@ void main() {
       (tester) async {
     final completer = Completer<Object?>();
     var cancelCalls = 0;
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -243,6 +283,7 @@ void main() {
             cancelCalls += 1;
             return completer.future;
           },
+          analyticsTracker: analyticsTracker,
         ),
       ),
     );
@@ -260,6 +301,44 @@ void main() {
     expect(cancelCalls, 1);
 
     completer.complete(_cancelEventResponse());
+    await tester.pumpAndSettle();
+
+    expect(cancelCalls, 1);
+    expect(
+      analyticsTracker
+          .payloadsFor(EventsAnalyticsService.eventCanceledEventName),
+      hasLength(1),
+    );
+    expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
+  });
+
+  testWidgets('event canceled analytics failure does not block cancel success',
+      (tester) async {
+    var cancelCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(),
+            ),
+          ),
+          cancelEventInvoker: (_, __) async {
+            cancelCalls += 1;
+            return _cancelEventResponse();
+          },
+          analyticsTracker: const _ThrowingEventCanceledAnalyticsTracker(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapVisible(tester, find.byKey(eventDetailOrganizerCancelButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailCancelDialogConfirmButtonKey));
     await tester.pumpAndSettle();
 
     expect(cancelCalls, 1);
@@ -1857,6 +1936,27 @@ class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
     required String cityKey,
     String? citySource,
   }) async {}
+
+  @override
+  Future<void> trackEventCanceled(
+    EventsRecord event, {
+    String? citySource,
+  }) async {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: event.countryCode,
+      cityKey: event.cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return;
+    }
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.eventCanceledEventName,
+        payload: payload.cast<String, String>(),
+      ),
+    );
+  }
 }
 
 class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
@@ -1893,6 +1993,25 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
     required String cityKey,
     String? citySource,
   }) async {}
+
+  @override
+  Future<void> trackEventCanceled(
+    EventsRecord event, {
+    String? citySource,
+  }) async {}
+}
+
+class _ThrowingEventCanceledAnalyticsTracker
+    extends _NoopEventsAnalyticsTracker {
+  const _ThrowingEventCanceledAnalyticsTracker();
+
+  @override
+  Future<void> trackEventCanceled(
+    EventsRecord event, {
+    String? citySource,
+  }) {
+    throw StateError('analytics failed');
+  }
 }
 
 class _RecordedAnalyticsEvent {

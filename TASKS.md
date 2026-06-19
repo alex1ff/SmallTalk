@@ -316,7 +316,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Track event detail opened with canonical city payload and optional `citySource` only when known.
 - [x] Track event created with canonical city payload and optional `citySource` only when known.
 - [x] Track event edited with canonical city payload and optional `citySource` only when known.
-- [ ] Track event canceled with canonical city payload and optional `citySource` only when known.
+- [x] Track event canceled with canonical city payload and optional `citySource` only when known.
 - [ ] Track event joined with canonical city payload and optional `citySource` only when known.
 - [ ] Track event left with canonical city payload and optional `citySource` only when known.
 - [ ] Track event chat opened with canonical city payload and optional `citySource` only when known.

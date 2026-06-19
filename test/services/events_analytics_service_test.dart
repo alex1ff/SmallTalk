@@ -248,4 +248,59 @@ void main() {
       },
     );
   });
+
+  test('tracks event canceled with canonical city payload only', () async {
+    final loggedEvents = <String, Map<String, Object>>{};
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        loggedEvents[name] = parameters;
+      },
+    );
+    final event = EventsRecord.getDocumentFromData(
+      {
+        'countryCode': ' ru ',
+        'cityKey': ' moscow ',
+        'cityNameRu': 'Москва',
+        'locationName': 'Cafe',
+        'status': 'active',
+      },
+      EventsRecord.collection.doc('event-1'),
+    );
+
+    await service.trackEventCanceled(event, citySource: ' profile ');
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventCanceledEventName],
+      <String, Object>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+        'citySource': 'profile',
+      },
+    );
+
+    await service.trackEventCanceled(event, citySource: '   ');
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventCanceledEventName],
+      <String, Object>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+      },
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventCanceledEventName],
+      isNot(contains('cityNameRu')),
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventCanceledEventName],
+      isNot(contains('locationName')),
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventCanceledEventName],
+      isNot(contains('status')),
+    );
+  });
 }
