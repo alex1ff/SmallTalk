@@ -3,8 +3,10 @@ const assert = require("node:assert/strict");
 
 const {
   __private__: {
+    EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT,
     executeSendEventChatMessageTransaction,
     normalizeSendEventChatMessagePayload,
+    tombstoneEventChatMessage,
   },
 } = require("./send_event_chat_message");
 
@@ -97,6 +99,10 @@ function createFakeFirestore(seed = {}, options = {}) {
             }
             pendingWrites.push({type: "create", path: ref.path, data});
           },
+          set(ref, data) {
+            hasWrites = true;
+            pendingWrites.push({type: "set", path: ref.path, data});
+          },
         };
         attempts += 1;
         const result = await callback(tx);
@@ -140,6 +146,18 @@ function eventChat(overrides = {}) {
     readAccessUserIds: ["organizer", "uid"],
     createdAt: oldTimestamp,
     updatedAt: oldTimestamp,
+    ...overrides,
+  };
+}
+
+function eventChatMessage(overrides = {}) {
+  return {
+    senderId: "uid",
+    senderDisplayName: "Marco",
+    senderPhotoUrl: "https://example.com/member.png",
+    text: "Hello",
+    createdAt: oldTimestamp,
+    deletedAt: null,
     ...overrides,
   };
 }
@@ -698,3 +716,83 @@ test("executeSendEventChatMessageTransaction rejects invalid sender snapshot", a
     assert.deepEqual(writes, []);
   }
 });
+
+test("tombstoneEventChatMessage replaces readable text with a fixed placeholder",
+    async () => {
+      const originalText = "Скрытый исходный пользовательский текст";
+      const extraOriginalContent = "original content copy";
+      const deletedAt = {
+        toMillis: () => Date.parse("2026-06-16T11:00:00.000Z"),
+        toDate: () => new Date("2026-06-16T11:00:00.000Z"),
+      };
+      const {db, store, writes} = createFakeFirestore({
+        "eventChats/event-1/messages/message-1": eventChatMessage({
+          text: originalText,
+          originalText: extraOriginalContent,
+        }),
+      });
+
+      const response = await tombstoneEventChatMessage({
+        db,
+        eventId: "event-1",
+        messageId: "message-1",
+        deletedTimestamp: deletedAt,
+      });
+
+      assert.deepEqual(response, {
+        eventId: "event-1",
+        messageId: "message-1",
+        deletedAt: "2026-06-16T11:00:00.000Z",
+      });
+      assert.deepEqual(
+          writes.map((write) => `${write.type}:${write.path}`),
+          ["set:eventChats/event-1/messages/message-1"],
+      );
+      assert.deepEqual(
+          store.get("eventChats/event-1/messages/message-1"),
+          {
+            senderId: "uid",
+            senderDisplayName: "Marco",
+            senderPhotoUrl: "https://example.com/member.png",
+            text: EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT,
+            createdAt: oldTimestamp,
+            deletedAt,
+          },
+      );
+      const readableData = JSON.stringify({
+        response,
+        write: writes[0].data,
+        stored: store.get("eventChats/event-1/messages/message-1"),
+      });
+      assert.equal(readableData.includes(originalText), false);
+      assert.equal(readableData.includes(extraOriginalContent), false);
+    });
+
+test("tombstoneEventChatMessage preserves existing tombstone timestamp",
+    async () => {
+      const originalDeletedAt = {
+        toMillis: () => Date.parse("2026-06-15T11:00:00.000Z"),
+        toDate: () => new Date("2026-06-15T11:00:00.000Z"),
+      };
+      const retryDeletedAt = {
+        toMillis: () => Date.parse("2026-06-16T11:00:00.000Z"),
+        toDate: () => new Date("2026-06-16T11:00:00.000Z"),
+      };
+      const {db, store} = createFakeFirestore({
+        "eventChats/event-1/messages/message-1": eventChatMessage({
+          text: "Stale readable content",
+          deletedAt: originalDeletedAt,
+        }),
+      });
+
+      await tombstoneEventChatMessage({
+        db,
+        eventId: " event-1 ",
+        messageId: " message-1 ",
+        deletedTimestamp: retryDeletedAt,
+      });
+
+      const message = store.get("eventChats/event-1/messages/message-1");
+      assert.equal(message.text, EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT);
+      assert.equal(message.deletedAt, originalDeletedAt);
+    });

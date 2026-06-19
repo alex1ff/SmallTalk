@@ -15,6 +15,15 @@ const EVENT_CHAT_METADATA_KEYS = Object.freeze([
   "updatedAt",
 ]);
 const EVENT_CHAT_METADATA_KEY_SET = new Set(EVENT_CHAT_METADATA_KEYS);
+const EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT = "Message removed";
+const EVENT_CHAT_MESSAGE_KEYS = Object.freeze([
+  "senderId",
+  "senderDisplayName",
+  "senderPhotoUrl",
+  "text",
+  "createdAt",
+  "deletedAt",
+]);
 const GRAPHEME_SEGMENTER = typeof Intl !== "undefined" && Intl.Segmenter ?
   new Intl.Segmenter("und", {granularity: "grapheme"}) :
   null;
@@ -273,6 +282,126 @@ function buildMessageData({
   };
 }
 
+function throwInvalidTombstoneRequest(field, reason) {
+  throwSendError(
+      "invalid-argument",
+      "Invalid event chat message tombstone request",
+      {
+        domainCode: "invalid_event_chat_message_tombstone_request",
+        field,
+        reason,
+      },
+  );
+}
+
+function normalizeTombstonePathSegment(value, field) {
+  const normalized = typeof value === "string" ? value.trim() : value;
+  if (
+    !isValidPathSegment(normalized) ||
+    normalized === "." ||
+    normalized === ".."
+  ) {
+    throwInvalidTombstoneRequest(field, "invalid_format");
+  }
+  return normalized;
+}
+
+function validateTombstoneTimestamp(value) {
+  if (!hasTimestampValue(value) || typeof value.toDate !== "function") {
+    throwInvalidTombstoneRequest("deletedAt", "invalid_type");
+  }
+  return value;
+}
+
+function assertTombstoneMessageData({messageExists, messageData}) {
+  if (!messageExists) {
+    throwSendError(
+        "not-found",
+        "Event chat message not found",
+        {domainCode: "event_chat_message_not_found"},
+    );
+  }
+  for (const key of EVENT_CHAT_MESSAGE_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(messageData, key)) {
+      throwSendError(
+          "failed-precondition",
+          "Event chat message is invalid",
+          {domainCode: "event_chat_message_invalid", reason: "invalid_shape"},
+      );
+    }
+  }
+  if (
+    typeof messageData.senderId !== "string" ||
+    typeof messageData.senderDisplayName !== "string" ||
+    !(
+      messageData.senderPhotoUrl === null ||
+      typeof messageData.senderPhotoUrl === "string"
+    ) ||
+    typeof messageData.text !== "string" ||
+    !hasTimestampValue(messageData.createdAt) ||
+    !(
+      messageData.deletedAt === null ||
+      hasTimestampValue(messageData.deletedAt)
+    )
+  ) {
+    throwSendError(
+        "failed-precondition",
+        "Event chat message is invalid",
+        {domainCode: "event_chat_message_invalid", reason: "invalid_shape"},
+    );
+  }
+}
+
+function buildTombstonedMessageData(messageData, deletedTimestamp) {
+  return {
+    senderId: messageData.senderId,
+    senderDisplayName: messageData.senderDisplayName,
+    senderPhotoUrl: messageData.senderPhotoUrl,
+    text: EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT,
+    createdAt: messageData.createdAt,
+    deletedAt: messageData.deletedAt || deletedTimestamp,
+  };
+}
+
+async function tombstoneEventChatMessage({
+  db,
+  eventId,
+  messageId,
+  deletedTimestamp,
+}) {
+  const normalizedEventId = normalizeTombstonePathSegment(eventId, "eventId");
+  const normalizedMessageId = normalizeTombstonePathSegment(
+      messageId,
+      "messageId",
+  );
+  const normalizedDeletedTimestamp =
+    validateTombstoneTimestamp(deletedTimestamp);
+  const messageRef = db
+      .collection(EVENT_CHAT_COLLECTION)
+      .doc(normalizedEventId)
+      .collection("messages")
+      .doc(normalizedMessageId);
+
+  return await db.runTransaction(async (tx) => {
+    const messageDoc = await tx.get(messageRef);
+    const messageData = messageDoc.exists ? messageDoc.data() || {} : {};
+    assertTombstoneMessageData({
+      messageExists: messageDoc.exists,
+      messageData,
+    });
+    const tombstonedData = buildTombstonedMessageData(
+        messageData,
+        normalizedDeletedTimestamp,
+    );
+    tx.set(messageRef, tombstonedData);
+    return {
+      eventId: normalizedEventId,
+      messageId: normalizedMessageId,
+      deletedAt: tombstonedData.deletedAt.toDate().toISOString(),
+    };
+  });
+}
+
 async function executeSendEventChatMessageTransaction({
   db,
   uid,
@@ -340,12 +469,14 @@ async function executeSendEventChatMessageTransaction({
 }
 
 exports.__private__ = {
+  EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT,
   SEND_EVENT_CHAT_MESSAGE_KEYS,
   buildMessageData,
   buildSenderSnapshot,
   executeSendEventChatMessageTransaction,
   normalizeMessageText,
   normalizeSendEventChatMessagePayload,
+  tombstoneEventChatMessage,
 };
 
 exports.sendEventChatMessage = functions

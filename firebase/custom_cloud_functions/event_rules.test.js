@@ -11,6 +11,13 @@ const firebaseCompat = require("firebase/compat/app");
 
 require("firebase/compat/firestore");
 
+const {
+  __private__: {
+    EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT,
+    tombstoneEventChatMessage,
+  },
+} = require("./send_event_chat_message");
+
 const projectId = process.env.GCLOUD_PROJECT || "demo-smalltalk";
 const firestoreHostRaw = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
 const [firestoreHost, firestorePortStr] = firestoreHostRaw.split(":");
@@ -1132,6 +1139,85 @@ test("event chat messages cannot be read through collection group queries", asyn
     );
   }
 });
+
+test("event chat message tombstones expose only the fixed placeholder",
+  async () => {
+    const participant = testEnv.authenticatedContext("user-a");
+    const organizer = testEnv.authenticatedContext("organizer");
+    const activeMessagePath =
+      "eventChats/editable-event/messages/tombstone-active";
+    const canceledMessagePath =
+      "eventChats/canceled-editable-event/messages/tombstone-canceled";
+    const activeOriginalText = "Active original user text";
+    const canceledOriginalText = "Canceled original user text";
+    const deletedTimestamp = firebaseCompat.firestore.Timestamp.fromDate(
+      new Date("2026-06-16T11:00:00.000Z"),
+    );
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc(activeMessagePath).set(eventChatMessageData({
+        text: activeOriginalText,
+        originalText: activeOriginalText,
+      }));
+      await tombstoneEventChatMessage({
+        db,
+        eventId: "editable-event",
+        messageId: "tombstone-active",
+        deletedTimestamp,
+      });
+      await db.doc(canceledMessagePath).set(eventChatMessageData({
+        text: canceledOriginalText,
+        originalText: canceledOriginalText,
+      }));
+      await tombstoneEventChatMessage({
+        db,
+        eventId: "canceled-editable-event",
+        messageId: "tombstone-canceled",
+        deletedTimestamp,
+      });
+    });
+
+    const activeSnapshot = await assertSucceeds(
+      participant.firestore().doc(activeMessagePath).get(),
+    );
+    assert.equal(activeSnapshot.data().text, EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT);
+    assert.equal(activeSnapshot.data().originalText, undefined);
+    assert.notEqual(activeSnapshot.data().text, activeOriginalText);
+
+    const activeList = await assertSucceeds(
+      boundedEventChatMessagesQuery(
+        participant.firestore(),
+        "editable-event",
+      ).get(),
+    );
+    const activeListed = activeList.docs
+      .find((doc) => doc.id === "tombstone-active");
+    assert.ok(activeListed);
+    assert.equal(activeListed.data().text, EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT);
+    assert.equal(activeListed.data().originalText, undefined);
+
+    const canceledSnapshot = await assertSucceeds(
+      organizer.firestore().doc(canceledMessagePath).get(),
+    );
+    assert.equal(canceledSnapshot.data().text,
+      EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT);
+    assert.equal(canceledSnapshot.data().originalText, undefined);
+    assert.notEqual(canceledSnapshot.data().text, canceledOriginalText);
+
+    const canceledList = await assertSucceeds(
+      boundedEventChatMessagesQuery(
+        organizer.firestore(),
+        "canceled-editable-event",
+      ).get(),
+    );
+    const canceledListed = canceledList.docs
+      .find((doc) => doc.id === "tombstone-canceled");
+    assert.ok(canceledListed);
+    assert.equal(canceledListed.data().text,
+      EVENT_CHAT_MESSAGE_TOMBSTONE_TEXT);
+    assert.equal(canceledListed.data().originalText, undefined);
+  });
 
 test("canceled event chat message reads fail closed for invalid parent state", async () => {
   const user = testEnv.authenticatedContext("user-a");
