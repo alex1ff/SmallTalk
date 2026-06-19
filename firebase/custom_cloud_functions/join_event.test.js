@@ -430,6 +430,91 @@ test("executeJoinEventTransaction rejoins left participant", async () => {
   );
 });
 
+test("executeJoinEventTransaction concurrent rejoins reuse one membership",
+    async () => {
+      let firstAttemptCommits = 0;
+      let releaseFirstAttempts;
+      const firstAttemptsReady = new Promise((resolve) => {
+        releaseFirstAttempts = resolve;
+      });
+      const firstAttemptBarrierTimeout = setTimeout(() => {
+        releaseFirstAttempts();
+      }, 1000);
+      const {db, store, writes} = createFakeFirestore(
+          {
+            "events/event-1": activeEvent({participantsCount: 1, capacity: 3}),
+            "eventChats/event-1": eventChat({
+              readAccessUserIds: ["organizer"],
+            }),
+            "events/event-1/participants/organizer": organizerParticipant(),
+            "events/event-1/participants/uid": participant({
+              status: "left",
+              leftAt: oldTimestamp,
+              createdAt: oldTimestamp,
+              updatedAt: oldTimestamp,
+            }),
+            "users/uid": userProfile({display_name: "Марко Обновленный"}),
+          },
+          {
+            retryOnConcurrentModification: true,
+            onBeforeCommit: async ({attempt}) => {
+              if (attempt !== 1) {
+                return;
+              }
+              firstAttemptCommits += 1;
+              if (firstAttemptCommits === 2) {
+                releaseFirstAttempts();
+              }
+              await firstAttemptsReady;
+            },
+          },
+      );
+
+      const join = () => executeJoinEventTransaction({
+        db,
+        uid: "uid",
+        joinDate: fixedNow,
+        joinTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      });
+
+      const results = await Promise.allSettled([join(), join()]);
+      clearTimeout(firstAttemptBarrierTimeout);
+      const fulfilled = results.filter((result) =>
+        result.status === "fulfilled");
+      const rejected = results.filter((result) =>
+        result.status === "rejected");
+      const membership = store.get("events/event-1/participants/uid");
+
+      assert.equal(fulfilled.length, 1);
+      assert.equal(rejected.length, 1);
+      assert.equal(firstAttemptCommits, 2);
+      assert.equal(rejected[0].reason.code, "failed-precondition");
+      assert.deepEqual(rejected[0].reason.details, {
+        domainCode: "already_joined",
+      });
+      assert.equal(store.get("events/event-1").participantsCount, 2);
+      assert.deepEqual(activeParticipantIds(store), ["organizer", "uid"]);
+      assert.equal(membership.status, "active");
+      assert.equal(membership.leftAt, null);
+      assert.equal(membership.createdAt, oldTimestamp);
+      assert.equal(membership.joinedAt, fixedTimestamp);
+      assert.equal(membership.updatedAt, fixedTimestamp);
+      assert.equal(membership.displayName, "Марко Обновленный");
+      assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+        "organizer",
+        "uid",
+      ]);
+      assert.deepEqual(
+          writes.map((write) => `${write.type}:${write.path}`),
+          [
+            "update:events/event-1",
+            "update:events/event-1/participants/uid",
+            "update:eventChats/event-1",
+          ],
+      );
+    });
+
 test("executeJoinEventTransaction blocks duplicate active join without writes", async () => {
   for (const eventData of [
     activeEvent({participantsCount: 2}),
