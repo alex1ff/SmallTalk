@@ -348,9 +348,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                             children: [
                               _EventDateChips(
                                 selectedFilter: _selectedDateFilter,
-                                onChanged: (filter) => setState(() {
-                                  _selectedDateFilter = filter;
-                                }),
+                                onChanged: _selectDateFilter,
                               ),
                               const SizedBox(height: ExpatlioDesign.space12),
                               _EventLevelChips(
@@ -493,6 +491,22 @@ class _EventListWidgetState extends State<EventListWidget> {
       _cityChipsFuture = null;
       _cityChipsCatalog = null;
     });
+  }
+
+  void _selectDateFilter(EventListDateFilter filter) {
+    if (filter == _selectedDateFilter) {
+      return;
+    }
+    setState(() {
+      _selectedDateFilter = filter;
+    });
+    final tracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
+    unawaited(
+      tracker.trackDateFilterSelected(filter).catchError(
+            (Object error, StackTrace stackTrace) {},
+          ),
+    );
   }
 
   Future<List<EventCityChip>> _loadCityChips({

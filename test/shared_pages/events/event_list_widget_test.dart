@@ -182,6 +182,38 @@ void main() {
         isTrue);
   });
 
+  testWidgets('tracks date filter selection only on user changes',
+      (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          analyticsTracker: analyticsTracker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(analyticsTracker.payloadsFor('date_filter_selected'), isEmpty);
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.tomorrow));
+    await tester.pumpAndSettle();
+    await tester.tap(_dateFilterFinder(EventListDateFilter.currentMonth));
+    await tester.pumpAndSettle();
+    await tester.tap(_dateFilterFinder(EventListDateFilter.currentMonth));
+    await tester.pumpAndSettle();
+    await tester.tap(_dateFilterFinder(EventListDateFilter.today));
+    await tester.pumpAndSettle();
+
+    expect(analyticsTracker.payloadsFor('date_filter_selected'), [
+      <String, String>{'dateFilter': 'tomorrow'},
+      <String, String>{'dateFilter': 'current_month'},
+      <String, String>{'dateFilter': 'today'},
+    ]);
+  });
+
   testWidgets('shows level filter chips with no level selected by default',
       (tester) async {
     await tester.pumpWidget(_buildTestApp());
@@ -2315,6 +2347,18 @@ class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
       ),
     );
   }
+
+  @override
+  Future<void> trackDateFilterSelected(EventListDateFilter dateFilter) async {
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.dateFilterSelectedEventName,
+        payload: <String, String>{
+          'dateFilter': dateFilter.analyticsValue,
+        },
+      ),
+    );
+  }
 }
 
 class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
@@ -2325,6 +2369,9 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
 
   @override
   Future<void> trackCitySelected(EventSelectedCity selectedCity) async {}
+
+  @override
+  Future<void> trackDateFilterSelected(EventListDateFilter dateFilter) async {}
 }
 
 class _RecordedAnalyticsEvent {

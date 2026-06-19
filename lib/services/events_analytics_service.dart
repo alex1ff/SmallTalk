@@ -1,5 +1,6 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 
+import 'event_list_date_bounds.dart';
 import 'event_selected_city_state.dart';
 
 typedef EventsAnalyticsLogEvent = Future<void> Function({
@@ -11,6 +12,8 @@ abstract interface class EventsAnalyticsTracker {
   Future<void> trackEventListOpened(EventSelectedCity selectedCity);
 
   Future<void> trackCitySelected(EventSelectedCity selectedCity);
+
+  Future<void> trackDateFilterSelected(EventListDateFilter dateFilter);
 }
 
 class EventsAnalyticsService implements EventsAnalyticsTracker {
@@ -23,6 +26,7 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
 
   static const String eventListOpenedEventName = 'event_list_opened';
   static const String citySelectedEventName = 'city_selected';
+  static const String dateFilterSelectedEventName = 'date_filter_selected';
 
   final EventsAnalyticsLogEvent _logEvent;
 
@@ -39,6 +43,16 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
     return _trackSelectedCityEvent(
       eventName: citySelectedEventName,
       selectedCity: selectedCity,
+    );
+  }
+
+  @override
+  Future<void> trackDateFilterSelected(EventListDateFilter dateFilter) {
+    return _logEvent(
+      name: dateFilterSelectedEventName,
+      parameters: <String, Object>{
+        'dateFilter': dateFilter.analyticsValue,
+      },
     );
   }
 
@@ -63,5 +77,16 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
       name: name,
       parameters: parameters,
     );
+  }
+}
+
+extension EventListDateFilterAnalytics on EventListDateFilter {
+  String get analyticsValue {
+    return switch (this) {
+      EventListDateFilter.today => 'today',
+      EventListDateFilter.tomorrow => 'tomorrow',
+      EventListDateFilter.currentWeek => 'current_week',
+      EventListDateFilter.currentMonth => 'current_month',
+    };
   }
 }

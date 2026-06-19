@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
+import 'package:small_talk/services/event_list_date_bounds.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
 import 'package:small_talk/services/events_analytics_service.dart';
 
@@ -36,6 +37,15 @@ void main() {
 
     await service.trackEventListOpened(selectedCity);
     await service.trackCitySelected(selectedCity);
+    for (final filter in EventListDateFilter.values) {
+      await service.trackDateFilterSelected(filter);
+      expect(
+        loggedEvents[EventsAnalyticsService.dateFilterSelectedEventName],
+        <String, Object>{
+          'dateFilter': filter.analyticsValue,
+        },
+      );
+    }
 
     for (final eventName in [
       EventsAnalyticsService.eventListOpenedEventName,
