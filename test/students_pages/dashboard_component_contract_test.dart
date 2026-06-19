@@ -24,6 +24,9 @@ void main() {
     expect(source, isNot(contains('AddInterWidget()')));
     expect(source, isNot(contains('_buildAvailabilitySection')));
     expect(source, isNot(contains('_buildAnimatedAvailabilitySection')));
+    expect(source, contains('_studentUserUpdate'));
+    expect(source, contains("'availabilityToday': FieldValue.delete()"));
+    expect(source, isNot(contains('createAvailabilityTodayStruct')));
     expect(source, isNot(contains('class _StudentAvailabilitySwitchControl')));
     expect(source, isNot(contains('class _DashboardInlineFilterButton')));
     expect(source, isNot(contains('class _OrbitingAvatarsCta')));

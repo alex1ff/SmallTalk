@@ -53,6 +53,33 @@ test.beforeEach(async () => {
       teacherAccreditationStatus: "approved",
       balance_NS: 120,
     });
+    await db.doc("users/legacy-teacher-a").set({
+      display_name: "Legacy Teacher A",
+      uid: "legacy-teacher-a",
+      role: "teacher",
+      availabilityToday: {
+        enabled: false,
+        intervals: [],
+      },
+    });
+    await db.doc("users/downgrade-teacher-a").set({
+      display_name: "Downgrade Teacher A",
+      uid: "downgrade-teacher-a",
+      role: "native_speaker",
+      availabilityToday: {
+        enabled: true,
+        intervals: [],
+      },
+    });
+    await db.doc("users/downgrade-teacher-b").set({
+      display_name: "Downgrade Teacher B",
+      uid: "downgrade-teacher-b",
+      role: "native_speaker",
+      availabilityToday: {
+        enabled: true,
+        intervals: [],
+      },
+    });
     await db.doc("users/legacy-student-profile").set({
       display_name: "Legacy Student A",
       uid: "student-a",
@@ -105,7 +132,10 @@ test("users collection reads are scoped to self, admin, or legacy uid lookup", a
 
 test("user create requires own uid and blocks client lifecycle fields", async () => {
   const validUser = testEnv.authenticatedContext("student-b");
+  const availabilityStudentUser =
+    testEnv.authenticatedContext("student-b-availability");
   const spoofedUidUser = testEnv.authenticatedContext("student-c");
+  const nativeSpeakerUser = testEnv.authenticatedContext("teacher-b");
 
   await assertSucceeds(
     validUser.firestore().doc("users/student-b").set({
@@ -115,11 +145,49 @@ test("user create requires own uid and blocks client lifecycle fields", async ()
     }),
   );
 
+  await assertSucceeds(
+    testEnv
+      .authenticatedContext("roleless-user")
+      .firestore()
+      .doc("users/roleless-user")
+      .set({
+        display_name: "Roleless User",
+        uid: "roleless-user",
+      }),
+  );
+
   await assertFails(
     spoofedUidUser.firestore().doc("users/student-c").set({
       display_name: "Student C",
       uid: "teacher-a",
       role: "student",
+    }),
+  );
+
+  await assertFails(
+    availabilityStudentUser
+      .firestore()
+      .doc("users/student-b-availability")
+      .set({
+        display_name: "Student B Availability",
+        uid: "student-b-availability",
+        role: "student",
+        availabilityToday: {
+          enabled: true,
+          intervals: [],
+        },
+      }),
+  );
+
+  await assertSucceeds(
+    nativeSpeakerUser.firestore().doc("users/teacher-b").set({
+      display_name: "Teacher B",
+      uid: "teacher-b",
+      role: "native_speaker",
+      availabilityToday: {
+        enabled: false,
+        intervals: [],
+      },
     }),
   );
 
@@ -173,16 +241,65 @@ test("user cannot directly mutate role outside allowed onboarding paths", async 
   );
 });
 
-test("user cannot directly mutate live lifecycle fields", async () => {
+test("user cannot directly mutate live lifecycle fields or student availability", async () => {
   const user = testEnv.authenticatedContext("student-a");
+  const teacher = testEnv.authenticatedContext("teacher-a");
+  const legacyTeacher = testEnv.authenticatedContext("legacy-teacher-a");
+  const downgradeTeacherA =
+    testEnv.authenticatedContext("downgrade-teacher-a");
+  const downgradeTeacherB =
+    testEnv.authenticatedContext("downgrade-teacher-b");
   const db = user.firestore();
 
-  await assertSucceeds(
+  await assertFails(
     db.doc("users/student-a").update({
       availabilityToday: {
         enabled: true,
         intervals: [],
       },
+    }),
+  );
+
+  await assertSucceeds(
+    teacher.firestore().doc("users/teacher-a").update({
+      availabilityToday: {
+        enabled: true,
+        intervals: [],
+      },
+    }),
+  );
+
+  await assertSucceeds(
+    legacyTeacher.firestore().doc("users/legacy-teacher-a").update({
+      availabilityToday: {
+        enabled: true,
+        intervals: [],
+      },
+    }),
+  );
+
+  await assertSucceeds(
+    db.doc("users/student-a").update({
+      role: "native_speaker",
+      teacherAccreditationStatus: "pending",
+      verif_NS: false,
+      availabilityToday: {
+        enabled: false,
+        intervals: [],
+      },
+    }),
+  );
+
+  await assertFails(
+    downgradeTeacherA.firestore().doc("users/downgrade-teacher-a").update({
+      role: "student",
+    }),
+  );
+
+  await assertSucceeds(
+    downgradeTeacherB.firestore().doc("users/downgrade-teacher-b").update({
+      role: "student",
+      availabilityToday: firebaseCompat.firestore.FieldValue.delete(),
     }),
   );
 

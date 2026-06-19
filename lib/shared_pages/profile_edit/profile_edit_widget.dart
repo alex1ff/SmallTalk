@@ -178,6 +178,17 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     return isStudent ? _model.nameTextController1 : _model.nameTextController2;
   }
 
+  Map<String, dynamic> _profileUserUpdate(Map<String, dynamic> data) {
+    if (currentUserDocument?.role != UserRole.student) {
+      return data;
+    }
+
+    return {
+      ...data,
+      'availabilityToday': FieldValue.delete(),
+    };
+  }
+
   Future<bool> _saveNameIfNeeded({bool showError = true}) async {
     final name = _currentNameController()?.text.trim() ?? '';
     if (name == _lastSavedNameText || currentUserReference == null) {
@@ -204,8 +215,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     }
 
     try {
-      await currentUserReference!.update(createUsersRecordData(
-        displayName: name,
+      await currentUserReference!.update(_profileUserUpdate(
+        createUsersRecordData(
+          displayName: name,
+        ),
       ));
       _lastSavedNameText = name;
       return true;
@@ -252,7 +265,9 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     }
 
     try {
-      await currentUserReference!.update(createUsersRecordData(aboutMe: about));
+      await currentUserReference!.update(_profileUserUpdate(
+        createUsersRecordData(aboutMe: about),
+      ));
       _lastSavedAboutText = about;
       return true;
     } catch (error) {
@@ -398,7 +413,11 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
 
     if (_model.uploadedFileUrl_uploadData4bs.isNotEmpty) {
       await currentUserReference!.update(
-        createUsersRecordData(photoUrl: _model.uploadedFileUrl_uploadData4bs),
+        _profileUserUpdate(
+          createUsersRecordData(
+            photoUrl: _model.uploadedFileUrl_uploadData4bs,
+          ),
+        ),
       );
     }
   }
@@ -605,8 +624,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     }
 
     if (selected != currentUserDocument?.gender) {
-      await currentUserReference!.update(createUsersRecordData(
-        gender: selected,
+      await currentUserReference!.update(_profileUserUpdate(
+        createUsersRecordData(
+          gender: selected,
+        ),
       ));
     }
     if (!mounted) {
@@ -659,10 +680,12 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         if (_sameCountry(selected, currentUserDocument?.countryNS)) {
           return;
         }
-        await currentUserReference!.update(createUsersRecordData(
-          countryNS: updateCountryStruct(
-            selected,
-            clearUnsetFields: false,
+        await currentUserReference!.update(_profileUserUpdate(
+          createUsersRecordData(
+            countryNS: updateCountryStruct(
+              selected,
+              clearUnsetFields: false,
+            ),
           ),
         ));
       },
@@ -706,10 +729,12 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         if (_sameLanguage(selected, currentUserDocument?.learningLanguage)) {
           return;
         }
-        await currentUserReference!.update(createUsersRecordData(
-          learningLanguage: updateLanguageStruct(
-            selected,
-            clearUnsetFields: false,
+        await currentUserReference!.update(_profileUserUpdate(
+          createUsersRecordData(
+            learningLanguage: updateLanguageStruct(
+              selected,
+              clearUnsetFields: false,
+            ),
           ),
         ));
       },
@@ -740,8 +765,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     }
 
     if (selected != currentUserDocument?.level) {
-      await currentUserReference!.update(createUsersRecordData(
-        level: selected,
+      await currentUserReference!.update(_profileUserUpdate(
+        createUsersRecordData(
+          level: selected,
+        ),
       ));
     }
     if (!mounted) {
@@ -795,9 +822,9 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       return;
     }
 
-    await currentUserReference!.update({
+    await currentUserReference!.update(_profileUserUpdate({
       ...mapToFirestore({'purpose': nextPurpose}),
-    });
+    }));
     if (!mounted) {
       return;
     }
@@ -844,10 +871,12 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
             selected, currentUserDocument?.languageInstructionNS)) {
           return;
         }
-        await currentUserReference!.update(createUsersRecordData(
-          languageInstructionNS: updateLanguageStruct(
-            selected,
-            clearUnsetFields: false,
+        await currentUserReference!.update(_profileUserUpdate(
+          createUsersRecordData(
+            languageInstructionNS: updateLanguageStruct(
+              selected,
+              clearUnsetFields: false,
+            ),
           ),
         ));
       },
@@ -892,10 +921,12 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         if (_sameLanguage(selected, currentUserDocument?.nativeLanguageNS)) {
           return;
         }
-        await currentUserReference!.update(createUsersRecordData(
-          nativeLanguageNS: updateLanguageStruct(
-            selected,
-            clearUnsetFields: false,
+        await currentUserReference!.update(_profileUserUpdate(
+          createUsersRecordData(
+            nativeLanguageNS: updateLanguageStruct(
+              selected,
+              clearUnsetFields: false,
+            ),
           ),
         ));
       },

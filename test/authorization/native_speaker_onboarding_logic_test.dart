@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -137,6 +138,20 @@ void main() {
   });
 
   group('native speaker accreditation helpers', () {
+    test('native speaker onboarding resets legacy availabilityToday', () {
+      final source = File(
+        'lib/authorization/acquaintance_n_s/native_speaker_onboarding_logic.dart',
+      ).readAsStringSync();
+      final updateDataBody = RegExp(
+        r'Map<String, dynamic> buildNativeSpeakerOnboardingUpdateData\([\s\S]*?\n}',
+      ).firstMatch(source)!.group(0)!;
+
+      expect(updateDataBody, contains('availabilityToday:'));
+      expect(updateDataBody, contains('createAvailabilityTodayStruct'));
+      expect(updateDataBody, contains('enabled: false'));
+      expect(updateDataBody, contains("'intervals': []"));
+    });
+
     test('builds trimmed payload with only remaining accreditation keys', () {
       final draft = buildNativeSpeakerOnboardingDraft(
         displayName: 'Alice',

@@ -80,7 +80,19 @@ function pad2(value) {
   return String(value).padStart(2, "0");
 }
 
+function normalizeAvailabilityRole(rawRole) {
+  return typeof rawRole === "string" ? rawRole.trim().toLowerCase() : "";
+}
+
 function evaluateTutorAvailabilityWindow(tutorData, now = new Date()) {
+  if (normalizeAvailabilityRole(tutorData?.role) === "student") {
+    return {
+      isAvailable: true,
+      reason: "student_availability_ignored",
+      intervalCount: 0,
+    };
+  }
+
   const availabilityToday =
     tutorData && typeof tutorData.availabilityToday === "object"
       ? tutorData.availabilityToday

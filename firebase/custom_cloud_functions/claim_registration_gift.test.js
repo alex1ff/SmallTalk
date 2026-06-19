@@ -89,6 +89,23 @@ test("registration gift grants a deterministic 24 hour student trial and role", 
   });
 });
 
+test("registration gift removes stale student availability", () => {
+  const decision = buildClaimRegistrationGiftDecision({
+    userExists: true,
+    userData: {
+      availabilityToday: {
+        enabled: true,
+        intervals: [],
+      },
+    },
+    now: fixedNow,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.userUpdate.role, "student");
+  assert.equal(typeof decision.userUpdate.availabilityToday, "object");
+});
+
 test("registration gift rejects old accounts even with student role", () => {
   const decision = buildClaimRegistrationGiftDecision({
     userExists: true,

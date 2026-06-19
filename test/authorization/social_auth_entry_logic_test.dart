@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/authorization/shared/social_auth_entry_logic.dart';
@@ -64,6 +66,30 @@ void main() {
   });
 
   group('inferRoleFromProfileShape', () {
+    test('student role persistence deletes legacy availabilityToday', () {
+      final source = File(
+        'lib/authorization/shared/social_auth_entry_logic.dart',
+      ).readAsStringSync();
+      final persistRoleBody = RegExp(
+        r'Future<UsersRecord\?> persistCanonicalUserRole\([\s\S]*?\n}',
+      ).firstMatch(source)!.group(0)!;
+
+      expect(persistRoleBody, contains('role == UserRole.student'));
+      expect(persistRoleBody, contains("updateData['availabilityToday']"));
+      expect(persistRoleBody, contains('FieldValue.delete()'));
+    });
+
+    test('does not treat availabilityToday as a teacher role signal', () {
+      final source = File(
+        'lib/authorization/shared/social_auth_entry_logic.dart',
+      ).readAsStringSync();
+      final teacherSignalsBody = RegExp(
+        r'bool _hasTeacherRoleSignals\([\s\S]*?\n}',
+      ).firstMatch(source)!.group(0)!;
+
+      expect(teacherSignalsBody, isNot(contains('hasAvailabilityToday')));
+    });
+
     test('infers native speaker when only teacher signals are present', () {
       expect(
         inferRoleFromProfileShape(

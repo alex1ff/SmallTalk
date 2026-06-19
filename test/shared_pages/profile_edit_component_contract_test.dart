@@ -15,6 +15,8 @@ void main() {
     expect(source, contains('ProfileReadOnlyField('));
     expect(source, contains('_nameSaveDebounce = Timer('));
     expect(source, contains('_saveNameIfNeeded('));
+    expect(source, contains('_profileUserUpdate'));
+    expect(source, contains("'availabilityToday': FieldValue.delete()"));
     expect(source, isNot(contains("'/components/profile_save_bar.dart'")));
     expect(source, isNot(contains('ProfileSaveBar(')));
     expect(source, isNot(contains('class _ProfileAvatar')));

@@ -38,6 +38,10 @@ function isWithinRegistrationGiftWindow({
   return ageMs >= 0 && ageMs <= REGISTRATION_GIFT_MAX_ACCOUNT_AGE_MS;
 }
 
+function hasOwnField(data, fieldName) {
+  return Object.prototype.hasOwnProperty.call(data || {}, fieldName);
+}
+
 function buildClaimRegistrationGiftDecision({
   userExists,
   claimExists = false,
@@ -70,6 +74,9 @@ function buildClaimRegistrationGiftDecision({
   }
 
   const userUpdate = userData.role === "student" ? {} : {role: "student"};
+  if (hasOwnField(userData, "availabilityToday")) {
+    userUpdate.availabilityToday = admin.firestore.FieldValue.delete();
+  }
   const existingGift = userData.giftMinutes;
   if (claimExists || hasMapValue(existingGift)) {
     return {

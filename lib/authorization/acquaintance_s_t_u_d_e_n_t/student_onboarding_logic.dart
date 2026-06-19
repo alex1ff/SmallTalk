@@ -2,6 +2,7 @@ import '/backend/schema/enums/enums.dart';
 import '/backend/schema/structs/index.dart';
 import '/backend/schema/users_record.dart';
 import '/authorization/shared/onboarding_selection_utils.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 const Object _studentOnboardingNoChange = Object();
 const List<String> allowedStudentLearningLanguageCodes = <String>['en', 'ru'];
@@ -191,7 +192,7 @@ Map<String, dynamic> buildStudentOnboardingUpdateData({
 }) {
   final learningLanguage = cloneLanguageSelection(payload.learningLanguage);
   final country = cloneCountrySelection(payload.country);
-  return createUsersRecordData(
+  final updateData = createUsersRecordData(
     displayName: payload.displayName,
     gender: payload.gender,
     level: payload.level,
@@ -210,6 +211,8 @@ Map<String, dynamic> buildStudentOnboardingUpdateData({
           )
         : null,
   );
+  updateData['availabilityToday'] = FieldValue.delete();
+  return updateData;
 }
 
 Map<String, dynamic> buildStudentProfileUpdateData({

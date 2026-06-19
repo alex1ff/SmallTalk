@@ -151,9 +151,11 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
         return;
       }
 
-      await UsersRecord.collection.doc(user.uid).update(createUsersRecordData(
-            role: UserRole.student,
-          ));
+      final studentRoleUpdate = createUsersRecordData(
+        role: UserRole.student,
+      );
+      studentRoleUpdate['availabilityToday'] = FieldValue.delete();
+      await UsersRecord.collection.doc(user.uid).update(studentRoleUpdate);
       try {
         await FirebaseFunctions.instance
             .httpsCallable('claimRegistrationGift')

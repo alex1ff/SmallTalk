@@ -616,6 +616,7 @@ service cloud.firestore {
       return isSelf(userId) &&
         ownUserUidIsValid(userId) &&
         ownUserRoleCreateIsValid() &&
+        ownUserAvailabilityTodayCreateIsValid() &&
         ownUserLastSeenAtCreateIsValid() &&
         !request.resource.data.keys().hasAny(protectedTeacherAccreditationFields()) &&
         !request.resource.data.keys().hasAny(privateUserTokenFields()) &&
@@ -628,6 +629,7 @@ service cloud.firestore {
       return isSelf(userId) &&
         ownUserUidUpdateIsValid(userId) &&
         ownUserRoleUpdateIsValid() &&
+        ownUserAvailabilityTodayUpdateIsValid(changedKeys) &&
         ownUserLastSeenAtUpdateIsValid(changedKeys) &&
         !changedKeys.hasAny(privateUserTokenFields()) &&
         !changedKeys.hasAny(privateUserLifecycleFields()) &&
@@ -680,6 +682,20 @@ service cloud.firestore {
           canSetInitialOwnRole() ||
           canSetOwnNativeSpeakerRole()
         );
+    }
+
+    function ownUserAvailabilityTodayCreateIsValid() {
+      return !request.resource.data.keys().hasAny(['availabilityToday']) ||
+        userRoleCanOwnAvailabilityToday(request.resource.data);
+    }
+
+    function ownUserAvailabilityTodayUpdateIsValid(changedKeys) {
+      return userRoleCanOwnAvailabilityToday(request.resource.data) ||
+        !request.resource.data.keys().hasAny(['availabilityToday']);
+    }
+
+    function userRoleCanOwnAvailabilityToday(data) {
+      return data.get('role', '') in ['native_speaker', 'teacher', 'tutor'];
     }
 
     function canSetInitialOwnRole() {

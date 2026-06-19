@@ -1896,9 +1896,11 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               if (currentUserReference == null) {
                 return;
               }
-              await currentUserReference!.update(
-                createUsersRecordData(role: UserRole.student),
+              final studentTrackUpdate = createUsersRecordData(
+                role: UserRole.student,
               );
+              studentTrackUpdate['availabilityToday'] = FieldValue.delete();
+              await currentUserReference!.update(studentTrackUpdate);
               safeSetState(() {});
             }
           },
@@ -3005,10 +3007,15 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                           hoverColor: Colors.transparent,
                                           highlightColor: Colors.transparent,
                                           onTap: () async {
-                                            await currentUserReference!
-                                                .update(createUsersRecordData(
+                                            final studentTrackUpdate =
+                                                createUsersRecordData(
                                               role: UserRole.student,
-                                            ));
+                                            );
+                                            studentTrackUpdate[
+                                                    'availabilityToday'] =
+                                                FieldValue.delete();
+                                            await currentUserReference!
+                                                .update(studentTrackUpdate);
                                             safeSetState(() {});
                                           },
                                           child: Container(

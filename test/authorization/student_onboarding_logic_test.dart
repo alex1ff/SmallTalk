@@ -174,6 +174,7 @@ void main() {
       expect(updateData['learningLanguage.code'], 'ja');
       expect(updateData['learningLanguage.alternateCodes'], <String>['jpn']);
       expect(updateData['Country_NS.code'], 'JP');
+      expect(updateData.containsKey('availabilityToday'), isTrue);
       expect(updateData.containsKey('photo_url'), isFalse);
     });
 

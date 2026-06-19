@@ -333,6 +333,11 @@ void main() {
         profile,
         contains('role: UserRole.native_speaker'),
       );
+      expect(
+        profile,
+        contains("studentTrackUpdate['availabilityToday']"),
+      );
+      expect(profile, contains('FieldValue.delete()'));
       expect(profile, isNot(contains('isInCall: false')));
       expect(profile, contains('Подать заявку снова'));
       expect(celebration, contains('ваша заявка отправлена'));
@@ -427,6 +432,9 @@ void main() {
       expect(studentDashboard,
           isNot(contains('_buildAnimatedAvailabilitySection')));
       expect(studentDashboard, isNot(contains('availabilityToday:')));
+      expect(studentDashboard, contains('_studentUserUpdate'));
+      expect(studentDashboard,
+          contains("'availabilityToday': FieldValue.delete()"));
       expect(
           studentDashboard, isNot(contains('createAvailabilityTodayStruct')));
       expect(studentDashboard, isNot(contains('getIntervalsFirestoreData')));

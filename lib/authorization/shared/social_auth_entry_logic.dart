@@ -210,7 +210,6 @@ bool _hasTeacherRoleSignals(UsersRecord? user) {
       user.hasNativeLanguageNS() ||
       user.hasCountryNS() ||
       user.hasVerifNS() ||
-      user.hasAvailabilityToday() ||
       user.hasEarnings() ||
       user.hasBalanceNS();
 }
@@ -262,6 +261,9 @@ Future<UsersRecord?> persistCanonicalUserRole({
       role: role,
     ),
   };
+  if (role == UserRole.student) {
+    updateData['availabilityToday'] = FieldValue.delete();
+  }
 
   await userRef.set(updateData, SetOptions(merge: true));
 

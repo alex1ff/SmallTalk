@@ -193,10 +193,17 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     }
 
     try {
-      await userRef.update(_buildTimezoneMetadataUpdate());
+      await userRef.update(_studentUserUpdate(_buildTimezoneMetadataUpdate()));
     } catch (error) {
       debugPrint('StudentsDashboard: failed to sync timezone metadata: $error');
     }
+  }
+
+  Map<String, dynamic> _studentUserUpdate(Map<String, dynamic> data) {
+    return {
+      ...data,
+      'availabilityToday': FieldValue.delete(),
+    };
   }
 
   String _localizedText({
@@ -283,14 +290,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     }
 
     await userRef.update(
-      createUsersRecordData(
+      _studentUserUpdate(createUsersRecordData(
         preferences: createPreferencesStruct(
           fieldValues: {
             'preferredLocation': FieldValue.delete(),
           },
           clearUnsetFields: false,
         ),
-      ),
+      )),
     );
   }
 
@@ -301,7 +308,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     }
 
     await userRef.update(
-      createUsersRecordData(
+      _studentUserUpdate(createUsersRecordData(
         preferences: level == null
             ? createPreferencesStruct(
                 fieldValues: {
@@ -313,7 +320,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                 preferredPartnerLevel: level,
                 clearUnsetFields: false,
               ),
-      ),
+      )),
     );
   }
 
@@ -452,7 +459,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     );
 
     await currentUserReference!.update(
-      createUsersRecordData(
+      _studentUserUpdate(createUsersRecordData(
         preferences: createPreferencesStruct(
           preferredLocation: updateCountryStruct(
             selectedCountry,
@@ -460,7 +467,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
           ),
           clearUnsetFields: false,
         ),
-      ),
+      )),
     );
 
     safeSetState(() {});

@@ -448,6 +448,16 @@ Map<String, dynamic> buildNativeSpeakerOnboardingUpdateData({
     role: switchToNativeSpeakerRole || shouldMirrorPendingTeacherStatus
         ? UserRole.native_speaker
         : null,
+    availabilityToday:
+        switchToNativeSpeakerRole || shouldMirrorPendingTeacherStatus
+            ? createAvailabilityTodayStruct(
+                enabled: false,
+                fieldValues: const {
+                  'intervals': [],
+                },
+                clearUnsetFields: false,
+              )
+            : null,
     teacherAccreditationStatus: shouldMirrorPendingTeacherStatus
         ? TeacherAccreditationStatus.pending
         : null,
