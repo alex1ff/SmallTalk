@@ -172,7 +172,20 @@ void main() {
     currentUserDocument = null;
   });
 
-  void setActiveStudent(String userId) {
+  VideoSessionsRecord sessionFixture(String sessionId, String status) {
+    return VideoSessionsRecord.getDocumentFromData(
+      {
+        'status': status,
+        'participantIds': [currentUserUid],
+      },
+      VideoSessionsRecord.collection.doc(sessionId),
+    );
+  }
+
+  void setActiveStudent(
+    String userId, {
+    String? currentSessionId,
+  }) {
     currentUser = _TestAuthUser(
       isLoggedIn: true,
       userId: userId,
@@ -189,6 +202,7 @@ void main() {
           'productId': 'test',
           'expiresAt': DateTime.now().add(const Duration(days: 1)),
         },
+        if (currentSessionId != null) 'currentSessionId': currentSessionId,
       },
       UsersRecord.collection.doc(userId),
     );
@@ -234,6 +248,7 @@ void main() {
     expect(find.text('Нет активной подписки'), findsOneWidget);
     expect(find.text('Остановить поиск'), findsNothing);
     expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Соединяем'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -283,6 +298,100 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('student dashboard renders connecting state and stops locally',
+      (tester) async {
+    currentUser = _TestAuthUser(
+      isLoggedIn: true,
+      userId: 'student-connecting-state-test',
+    );
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        'role': 'student',
+        'display_name': 'Student',
+        'learningLanguage': {
+          'code': 'en',
+          'name': 'English',
+        },
+      },
+      UsersRecord.collection.doc('student-connecting-state-test'),
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        const StudentsDashboardWidget(
+          initialSearchState: StudentDashboardSearchState.connecting,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final stopSearchText = find.text('Остановить поиск');
+    expect(stopSearchText, findsOneWidget);
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('считаем людей рядом'), findsNothing);
+    expect(find.textContaining('рядом с вами'), findsNothing);
+
+    await tester.tap(
+      find.ancestor(
+        of: stopSearchText,
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.byType(NoBalanceWidget), findsNothing);
+    expect(_checkPermissionStatusCallCount, 0);
+    expect(_requestPermissionsCallCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard maps active session stream to connecting',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(
+      'student-active-session-stream-test',
+      currentSessionId: 'session-pending-confirmation-test',
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+
+    activeSessionController.add(
+      sessionFixture(
+          'session-pending-confirmation-test', 'pending_confirmation'),
+    );
+    await tester.pump();
+
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+
+    activeSessionController.add(
+      sessionFixture('session-pending-confirmation-test', 'searching'),
+    );
+    await tester.pump();
+
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('searching status fits compact dashboard layout', (tester) async {
     tester.view.physicalSize = const Size(360.0, 520.0);
     tester.view.devicePixelRatio = 1.0;
@@ -315,6 +424,32 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('connecting status fits compact dashboard layout',
+      (tester) async {
+    tester.view.physicalSize = const Size(360.0, 520.0);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    setActiveStudent('student-connecting-compact-layout-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        const StudentsDashboardWidget(
+          initialSearchState: StudentDashboardSearchState.connecting,
+        ),
+        textScaleFactor: 1.8,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student dashboard does not start search when permissions denied',
       (tester) async {
     _permissionStatus = _permissionDenied;
@@ -339,6 +474,7 @@ void main() {
     expect(find.text('Начать поиск'), findsOneWidget);
     expect(find.text('Остановить поиск'), findsNothing);
     expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Соединяем'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -420,7 +556,7 @@ void main() {
       _buildDashboardTestApp(
         Center(
           child: StudentStartSearchButton(
-            isSearching: true,
+            isActive: true,
             onTap: () {
               tapped = true;
             },

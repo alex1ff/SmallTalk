@@ -64,6 +64,37 @@ void main() {
     );
   });
 
+  test('active start search CTA does not navigate to legacy waiting flow', () {
+    final source = File(
+            'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
+        .readAsStringSync();
+    final handlerStart =
+        source.indexOf('Future<void> _handleStartConversation');
+    final activeCtaEnd = source.indexOf('Widget _buildSearchCtaContent');
+
+    expect(handlerStart, isNot(-1));
+    expect(activeCtaEnd, greaterThan(handlerStart));
+    expect(
+      source.substring(handlerStart, activeCtaEnd),
+      isNot(contains('WaitingForTeacherPageWidget.routeName')),
+    );
+  });
+
+  test('student dashboard maps active video session status to search UI', () {
+    final source = File(
+            'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
+        .readAsStringSync();
+
+    expect(source, contains('currentSessionId'));
+    expect(source, contains('VideoSessionsRecord.getDocument'));
+    expect(source, contains("'pending_confirmation'"));
+    expect(source, contains("'connecting'"));
+    expect(
+      source,
+      contains('StudentDashboardSearchState.connecting'),
+    );
+  });
+
   test('student dashboard filters use design control radius', () {
     final source = File('lib/components/dashboard_inline_filter_button.dart')
         .readAsStringSync();

@@ -6,21 +6,21 @@ class StudentStartSearchButton extends StatelessWidget {
   const StudentStartSearchButton({
     super.key,
     required this.onTap,
-    this.isSearching = false,
+    this.isActive = false,
   });
 
   final VoidCallback onTap;
-  final bool isSearching;
+  final bool isActive;
 
   @override
   Widget build(BuildContext context) {
     final label = FFLocalizations.of(context).getVariableText(
-      ruText: isSearching ? 'Остановить поиск' : 'Начать поиск',
-      enText: isSearching ? 'Stop search' : 'Start search',
+      ruText: isActive ? 'Остановить поиск' : 'Начать поиск',
+      enText: isActive ? 'Stop search' : 'Start search',
     );
-    final icon = isSearching ? Icons.stop_rounded : Icons.auto_awesome_rounded;
+    final icon = isActive ? Icons.stop_rounded : Icons.auto_awesome_rounded;
     final shadowColor =
-        isSearching ? const Color(0x26FF383C) : const Color(0x267430E8);
+        isActive ? const Color(0x26FF383C) : const Color(0x267430E8);
 
     return Material(
       color: Colors.transparent,
@@ -31,8 +31,8 @@ class StudentStartSearchButton extends StatelessWidget {
           width: 240.0,
           height: 60.0,
           decoration: BoxDecoration(
-            color: isSearching ? ExpatlioDesign.danger : null,
-            gradient: isSearching ? null : ExpatlioDesign.primaryGradient,
+            color: isActive ? ExpatlioDesign.danger : null,
+            gradient: isActive ? null : ExpatlioDesign.primaryGradient,
             borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
             boxShadow: [
               BoxShadow(

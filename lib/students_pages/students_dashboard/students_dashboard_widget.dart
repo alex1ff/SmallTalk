@@ -30,18 +30,28 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'students_dashboard_model.dart';
 export 'students_dashboard_model.dart';
 
+enum StudentDashboardSearchState {
+  idle,
+  searching,
+  connecting,
+}
+
 class StudentsDashboardWidget extends StatefulWidget {
   const StudentsDashboardWidget({
     super.key,
     bool? zn,
     this.done,
     bool? topUpSuccess,
+    this.initialSearchState = StudentDashboardSearchState.idle,
+    this.activeSessionStream,
   })  : this.zn = zn ?? false,
         this.topUpSuccess = topUpSuccess ?? false;
 
   final bool zn;
   final bool? done;
   final bool topUpSuccess;
+  final StudentDashboardSearchState initialSearchState;
+  final Stream<VideoSessionsRecord?>? activeSessionStream;
 
   static String routeName = 'Students_Dashboard';
   static String routePath = '/studentsDashboard';
@@ -61,11 +71,55 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   Future<List<OrbitingAvatarData>>? _partnerPreviewFuture;
   bool _isLocationMenuOpen = false;
   bool _isLevelMenuOpen = false;
-  bool _isSearchActive = false;
+  StudentDashboardSearchState _searchState = StudentDashboardSearchState.idle;
   bool _isStartingSearch = false;
   bool _ignoreStartSearchUntilNextFrame = false;
+  String? _suppressedActiveSessionId;
 
   bool get _showLegacyDashboard => false;
+  Stream<VideoSessionsRecord?> _activeSessionStreamFor(UsersRecord user) {
+    final override = widget.activeSessionStream;
+    if (override != null) {
+      return override;
+    }
+
+    final sessionId = user.currentSessionId.trim();
+    if (sessionId.isEmpty) {
+      return Stream<VideoSessionsRecord?>.value(null);
+    }
+
+    return VideoSessionsRecord.getDocument(
+      VideoSessionsRecord.collection.doc(sessionId),
+    );
+  }
+
+  StudentDashboardSearchState _searchStateForSession(
+    VideoSessionsRecord? session,
+  ) {
+    switch (session?.status.trim()) {
+      case 'searching':
+        return StudentDashboardSearchState.searching;
+      case 'pending_confirmation':
+      case 'connecting':
+        return StudentDashboardSearchState.connecting;
+      default:
+        return StudentDashboardSearchState.idle;
+    }
+  }
+
+  StudentDashboardSearchState _effectiveSearchStateFor(
+    VideoSessionsRecord? session,
+  ) {
+    final sessionSearchState = _searchStateForSession(session);
+    final sessionId = session?.reference.id;
+    if (sessionSearchState != StudentDashboardSearchState.idle &&
+        sessionId != null &&
+        sessionId != _suppressedActiveSessionId) {
+      return sessionSearchState;
+    }
+
+    return _searchState;
+  }
 
   static const _searchAvatarMotion0 = OrbitingAvatarMotionSpec(
     radiusX: 122.0,
@@ -733,10 +787,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     }
   }
 
-  Future<void> _handleStartConversation() async {
-    if (_isSearchActive) {
+  Future<void> _handleStartConversation(
+    StudentDashboardSearchState visibleSearchState,
+    String? visibleSessionId,
+  ) async {
+    if (visibleSearchState != StudentDashboardSearchState.idle) {
       safeSetState(() {
-        _isSearchActive = false;
+        _searchState = StudentDashboardSearchState.idle;
+        _suppressedActiveSessionId = visibleSessionId;
         _ignoreStartSearchUntilNextFrame = true;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -751,48 +809,51 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       return;
     }
 
-    safeSetState(() => _isStartingSearch = true);
-
-    if (!canStartCall(currentUserDocument)) {
-      await showModalBottomSheet(
-        useRootNavigator: true,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        context: context,
-        builder: (context) {
-          return GestureDetector(
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              FocusManager.instance.primaryFocus?.unfocus();
-            },
-            child: Padding(
-              padding: MediaQuery.viewInsetsOf(context),
-              child: NoBalanceWidget(),
-            ),
-          );
-        },
-      ).then((value) => safeSetState(() {}));
-      if (mounted) {
-        safeSetState(() => _isStartingSearch = false);
-      }
-      return;
-    }
-
-    if (!(await ensureCameraAndMicrophonePermissions())) {
-      if (mounted) {
-        safeSetState(() => _isStartingSearch = false);
-      }
-      return;
-    }
-
-    if (!mounted) {
-      return;
-    }
-
     safeSetState(() {
-      _isSearchActive = true;
-      _isStartingSearch = false;
+      _isStartingSearch = true;
+      _suppressedActiveSessionId = null;
     });
+
+    try {
+      if (!canStartCall(currentUserDocument)) {
+        await showModalBottomSheet(
+          useRootNavigator: true,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          context: context,
+          builder: (context) {
+            return GestureDetector(
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                FocusManager.instance.primaryFocus?.unfocus();
+              },
+              child: Padding(
+                padding: MediaQuery.viewInsetsOf(context),
+                child: NoBalanceWidget(),
+              ),
+            );
+          },
+        ).then((value) => safeSetState(() {}));
+        return;
+      }
+
+      if (!(await ensureCameraAndMicrophonePermissions())) {
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      safeSetState(() {
+        _searchState = StudentDashboardSearchState.searching;
+        _suppressedActiveSessionId = null;
+      });
+    } finally {
+      if (mounted) {
+        safeSetState(() => _isStartingSearch = false);
+      }
+    }
   }
 
   Widget _buildSearchCtaContent({
@@ -800,6 +861,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     required List<OrbitingAvatarData> avatars,
     required CountryStruct? preferredLocation,
     required Level? selectedPartnerLevel,
+    required StudentDashboardSearchState searchState,
+    required String? activeSessionId,
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -828,9 +891,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                   action: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _buildStartSearchButton(context),
-                      if (_isSearchActive)
-                        _buildSearchingStatusBlock(context)
+                      _buildStartSearchButton(
+                        context,
+                        searchState,
+                        activeSessionId,
+                      ),
+                      if (searchState != StudentDashboardSearchState.idle)
+                        _buildSearchStatusBlock(context, searchState)
                       else
                         _buildPartnerCountText(
                           context: context,
@@ -848,7 +915,24 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     );
   }
 
-  Widget _buildSearchingStatusBlock(BuildContext context) {
+  Widget _buildSearchStatusBlock(
+    BuildContext context,
+    StudentDashboardSearchState searchState,
+  ) {
+    final label = switch (searchState) {
+      StudentDashboardSearchState.connecting =>
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Соединяем',
+          enText: 'Connecting',
+        ),
+      StudentDashboardSearchState.searching =>
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Ищем собеседника',
+          enText: 'Looking for a partner',
+        ),
+      StudentDashboardSearchState.idle => '',
+    };
+
     return Padding(
       padding: const EdgeInsets.only(top: ExpatlioDesign.itemSpacing),
       child: ConstrainedBox(
@@ -892,10 +976,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
-                      FFLocalizations.of(context).getVariableText(
-                        ruText: 'Ищем собеседника',
-                        enText: 'Looking for a partner',
-                      ),
+                      label,
                       maxLines: 1,
                       style: ExpatlioDesign.textStyle(
                         context,
@@ -914,10 +995,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     );
   }
 
-  Widget _buildStartSearchButton(BuildContext context) {
+  Widget _buildStartSearchButton(
+    BuildContext context,
+    StudentDashboardSearchState searchState,
+    String? activeSessionId,
+  ) {
     return StudentStartSearchButton(
-      isSearching: _isSearchActive,
-      onTap: _handleStartConversation,
+      isActive: searchState != StudentDashboardSearchState.idle,
+      onTap: () => _handleStartConversation(searchState, activeSessionId),
     );
   }
 
@@ -1000,7 +1085,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     );
   }
 
-  Widget _buildReferenceSearchHero(BuildContext context) {
+  Widget _buildReferenceSearchHero(
+    BuildContext context, {
+    required StudentDashboardSearchState searchState,
+    required String? activeSessionId,
+  }) {
     final selectedPartnerLevel =
         currentUserDocument?.preferences.preferredPartnerLevel;
     final preferredLocation = _preferredLocation(currentUserDocument);
@@ -1096,6 +1185,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                     avatars: avatars,
                     preferredLocation: preferredLocation,
                     selectedPartnerLevel: selectedPartnerLevel,
+                    searchState: searchState,
+                    activeSessionId: activeSessionId,
                   );
                 },
               ),
@@ -1109,6 +1200,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   @override
   void initState() {
     super.initState();
+    _searchState = widget.initialSearchState;
     _model = createModel(context, () => StudentsDashboardModel());
 
     // On page load action.
@@ -1181,6 +1273,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
               return _buildLoadingState(context);
             }
 
+            final user = currentUserDocument!;
             return Stack(
               children: [
                 SingleChildScrollView(
@@ -1189,7 +1282,21 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
                     mainAxisSize: MainAxisSize.max,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildReferenceSearchHero(context),
+                      StreamBuilder<VideoSessionsRecord?>(
+                        stream: _activeSessionStreamFor(user),
+                        builder: (context, activeSessionSnapshot) {
+                          final activeSession = activeSessionSnapshot.data;
+                          final effectiveSearchState =
+                              _effectiveSearchStateFor(activeSession);
+                          final activeSessionId = activeSession?.reference.id;
+
+                          return _buildReferenceSearchHero(
+                            context,
+                            searchState: effectiveSearchState,
+                            activeSessionId: activeSessionId,
+                          );
+                        },
+                      ),
                       if (_showLegacyDashboard) ...[
                         Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
