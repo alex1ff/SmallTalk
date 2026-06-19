@@ -371,8 +371,9 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                 ),
                 itemCount: messages.length,
                 itemBuilder: (context, index) {
+                  final message = messages[messages.length - 1 - index];
                   return _EventGroupChatMessageBubble(
-                    message: messages[index],
+                    message: message,
                   );
                 },
               );

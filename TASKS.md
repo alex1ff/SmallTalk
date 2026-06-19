@@ -388,7 +388,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add event chat message backend send tests for valid send, exact `{eventId, text}` request schema, unknown request keys denied, malformed/empty/slash-containing `eventId` denied, active participant requirement, nonparticipant denied, user who left denied, canceled send denied, spoofed `senderId` denied or ignored, server-derived sender snapshots, blank display name after fallback denied, 70/71 grapheme sender display name bounds, nullable sender photo, 2048/2049 character sender photo URL bounds, missing/mismatched chat metadata fail-closed behavior, allowed-fields-only writes, invalid `text` denied, text normalization, 1000/1001 grapheme text length bounds, multiline text, trusted `createdAt`, and `deletedAt = null`.
 - [x] Add moderation tombstone tests proving trusted deletion replaces readable `text` with a fixed non-user-content placeholder and does not expose original removed content through event chat message reads.
 - [x] Add event chat message rules tests for active participant read, left/nonparticipant read denial while active, canceled read for frozen `readAccessUserIds`, canceled read denial for users outside the snapshot, missing/mismatched chat metadata fail-closed behavior, and direct client create/update/delete denied.
-- [ ] Add event chat message repository/UI tests for stable ordering and pagination by `createdAt` plus `__name__` / document id.
+- [x] Add event chat message repository/UI tests for stable ordering and pagination by `createdAt` plus `__name__` / document id.
 - [ ] Add widget tests for canceled chat read-only banner/status and hidden or disabled composer.
 - [ ] Add widget tests for list empty/loading/error states.
 - [ ] Add widget tests for create form validation.

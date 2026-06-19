@@ -38,6 +38,113 @@ void main() {
       expect(chats.single?.eventId, 'event-1');
     });
 
+    test('builds stable chronological message query with document id tie break',
+        () {
+      final chatRef = EventChatsRecord.collection.doc('event-1');
+      final query = EventGroupChatRepository.buildMessagesQuery(
+        EventChatMessagesRecord.collection(chatRef),
+      );
+
+      expect(query.parameters['orderBy'], [
+        [FieldPath.fromString('createdAt'), false],
+        [FieldPath.documentId, false],
+      ]);
+      expect(query.parameters['limit'], isNull);
+      expect(query.parameters['startAfter'], isNull);
+    });
+
+    test('uses document snapshot cursor after createdAt and document id order',
+        () {
+      final chatRef = EventChatsRecord.collection.doc('event-1');
+      final markerCreatedAt = DateTime.parse('2026-06-14T10:00:00Z');
+      final marker = _FakeDocumentSnapshot(
+        reference: EventChatMessagesRecord.createDoc(
+          chatRef,
+          id: 'same-time-a',
+        ),
+        id: 'same-time-a',
+        data: <Object, Object?>{
+          FieldPath.fromString('createdAt'): markerCreatedAt,
+          'createdAt': markerCreatedAt,
+        },
+      );
+
+      final query = EventGroupChatRepository.buildMessagesQuery(
+        EventChatMessagesRecord.collection(chatRef),
+      ).startAfterDocument(marker);
+
+      expect(query.parameters['orderBy'], [
+        [FieldPath.fromString('createdAt'), false],
+        [FieldPath.documentId, false],
+      ]);
+      expect(query.parameters['startAfter'], isNotNull);
+      expect(query.parameters['startAfter'], contains('same-time-a'));
+    });
+
+    test('delegates paged message loading with stable order and cursor',
+        () async {
+      Query? capturedCollection;
+      RecordBuilder<EventChatMessagesRecord>? capturedRecordBuilder;
+      Query Function(Query)? capturedQueryBuilder;
+      DocumentSnapshot? capturedNextPageMarker;
+      int? capturedPageSize;
+      bool? capturedIsStream;
+      final marker = _FakeDocumentSnapshot(
+        reference: EventChatMessagesRecord.createDoc(
+          EventChatsRecord.collection.doc('event-1'),
+          id: 'same-time-a',
+        ),
+      );
+
+      final page = await EventGroupChatRepository.loadMessagesPage(
+        eventId: ' event-1 ',
+        pageSize: EventGroupChatRepository.maxMessageLimit + 1,
+        nextPageMarker: marker,
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          capturedCollection = collection;
+          capturedRecordBuilder = recordBuilder;
+          capturedQueryBuilder = queryBuilder;
+          capturedNextPageMarker = nextPageMarker;
+          capturedPageSize = pageSize;
+          capturedIsStream = isStream;
+
+          return FFFirestorePage<EventChatMessagesRecord>(
+            const [],
+            null,
+            null,
+          );
+        },
+      );
+
+      expect(
+        (capturedCollection as CollectionReference).path,
+        'eventChats/event-1/messages',
+      );
+      expect(capturedRecordBuilder, isNotNull);
+      expect(capturedQueryBuilder, isNotNull);
+      expect(capturedNextPageMarker, same(marker));
+      expect(capturedPageSize, EventGroupChatRepository.maxMessageLimit);
+      expect(capturedIsStream, isFalse);
+      expect(page.data, isEmpty);
+
+      final delegatedQuery = capturedQueryBuilder!(
+        EventChatMessagesRecord.collection(
+          EventChatsRecord.collection.doc('event-1'),
+        ),
+      );
+      expect(delegatedQuery.parameters['orderBy'], [
+        [FieldPath.fromString('createdAt'), false],
+        [FieldPath.documentId, false],
+      ]);
+    });
+
     test('rejects invalid chat event ids before subscribing', () {
       for (final eventId in <String>[
         '',
@@ -65,4 +172,49 @@ void main() {
       }
     });
   });
+}
+
+// Test-only cursor token used to verify that the injected page loader receives
+// the exact marker instance. It is never passed to the real Firestore SDK.
+// ignore: subtype_of_sealed_class
+class _FakeDocumentSnapshot implements DocumentSnapshot<Object?> {
+  const _FakeDocumentSnapshot({
+    required this.reference,
+    this.id = 'cursor',
+    Map<Object, Object?> data = const <Object, Object?>{},
+  }) : _data = data;
+
+  @override
+  final String id;
+
+  @override
+  bool get exists => true;
+
+  @override
+  SnapshotMetadata get metadata => throw UnimplementedError();
+
+  @override
+  final DocumentReference<Object?> reference;
+
+  final Map<Object, Object?> _data;
+
+  @override
+  Object? data() => _data;
+
+  @override
+  Object? get(Object field) {
+    if (_data.containsKey(field)) {
+      return _data[field];
+    }
+    if (field is FieldPath && field == FieldPath.documentId) {
+      return id;
+    }
+    if (field is FieldPath) {
+      return _data[field.toString()];
+    }
+    return _data[field];
+  }
+
+  @override
+  Object? operator [](Object field) => get(field);
 }

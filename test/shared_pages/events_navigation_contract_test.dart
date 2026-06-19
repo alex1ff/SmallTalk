@@ -402,7 +402,10 @@ void main() {
     expect(chat, contains('EventChatMessagesRecord'));
     expect(repository, contains('EventChatsRecord.collection.doc'));
     expect(repository, contains('queryEventChatMessagesRecord'));
-    expect(repository, contains("orderBy('createdAt', descending: true)"));
+    expect(repository, contains("orderBy('createdAt', descending: false)"));
+    expect(repository, contains('orderBy(FieldPath.documentId'));
+    expect(
+        repository, contains('queryCollectionPage<EventChatMessagesRecord>'));
     expect(actionsRepository, contains('sendEventChatMessageFunctionName'));
     expect(actionsRepository, contains("'eventId': normalizeEventActionId"));
     expect(actionsRepository, contains("'text': text"));

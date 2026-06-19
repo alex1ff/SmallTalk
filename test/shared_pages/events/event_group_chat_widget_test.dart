@@ -315,6 +315,63 @@ void main() {
     expect(find.text('Всем привет!'), findsOneWidget);
   });
 
+  testWidgets('renders chronological repository messages with newest at bottom',
+      (tester) async {
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final sameTimestamp = DateTime.parse('2026-06-14T10:00:00Z');
+    final olderTimestamp = DateTime.parse('2026-06-14T09:59:00Z');
+    final newestTieMessage = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'same-time-b',
+      text: 'Same timestamp B',
+      createdAt: sameTimestamp,
+    );
+    final olderTieMessage = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'same-time-a',
+      text: 'Same timestamp A',
+      createdAt: sameTimestamp,
+    );
+    final olderMessage = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'older-message',
+      text: 'Older message',
+      createdAt: olderTimestamp,
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            olderMessage,
+            olderTieMessage,
+            newestTieMessage,
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final olderTop = tester
+        .getTopLeft(find.byKey(eventGroupChatMessageBubbleKey('older-message')))
+        .dy;
+    final sameATop = tester
+        .getTopLeft(find.byKey(eventGroupChatMessageBubbleKey('same-time-a')))
+        .dy;
+    final sameBTop = tester
+        .getTopLeft(find.byKey(eventGroupChatMessageBubbleKey('same-time-b')))
+        .dy;
+
+    expect(olderTop, lessThan(sameATop));
+    expect(sameATop, lessThan(sameBTop));
+    expect(find.text('Older message'), findsOneWidget);
+    expect(find.text('Same timestamp A'), findsOneWidget);
+    expect(find.text('Same timestamp B'), findsOneWidget);
+  });
+
   testWidgets('shows canceled event chat as read-only for eligible readers',
       (tester) async {
     final chatRef = EventChatsRecord.collection.doc('event-123');
@@ -805,6 +862,7 @@ EventChatMessagesRecord _messageFixture({
   String senderDisplayName = 'Marco',
   String? senderPhotoUrl,
   DateTime? deletedAt,
+  DateTime? createdAt,
 }) {
   return EventChatMessagesRecord.getDocumentFromData(
     {
@@ -812,7 +870,7 @@ EventChatMessagesRecord _messageFixture({
       'senderDisplayName': senderDisplayName,
       'senderPhotoUrl': senderPhotoUrl,
       'text': text,
-      'createdAt': DateTime.parse('2026-06-14T10:00:00Z'),
+      'createdAt': createdAt ?? DateTime.parse('2026-06-14T10:00:00Z'),
       'deletedAt': deletedAt,
     },
     EventChatMessagesRecord.createDoc(chatRef, id: messageId),
