@@ -1,3 +1,4 @@
+const fs = require("node:fs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
@@ -194,13 +195,18 @@ function counterData() {
 }
 
 test("normalizeCancelEventPayload rejects unknown and missing keys", () => {
-  assertHttpsError(
-      () => normalizeCancelEventPayload({eventId: "event-1", status: "canceled"}),
-      "invalid-argument",
-      "invalid_cancel_request",
-      "status",
-      "unknown_key",
-  );
+  for (const field of ["status", "canceledAt", "updatedAt"]) {
+    assertHttpsError(
+        () => normalizeCancelEventPayload({
+          eventId: "event-1",
+          [field]: field === "status" ? "canceled" : fixedNow.toISOString(),
+        }),
+        "invalid-argument",
+        "invalid_cancel_request",
+        field,
+        "unknown_key",
+    );
+  }
   assertHttpsError(
       () => normalizeCancelEventPayload({}),
       "invalid-argument",
@@ -215,6 +221,19 @@ test("normalizeCancelEventPayload rejects unknown and missing keys", () => {
       "eventId",
       "invalid_format",
   );
+});
+
+test("cancelEvent callable captures trusted backend timestamp", () => {
+  const source = fs.readFileSync(require.resolve("./cancel_event"), "utf8");
+
+  assert.match(source, /const cancelDate = new Date\(\);/);
+  assert.match(
+      source,
+      /const cancelTimestamp = admin\.firestore\.Timestamp\.fromDate\(cancelDate\);/,
+  );
+  assert.match(source, /executeCancelEventTransaction\(\{[\s\S]*cancelDate,/);
+  assert.match(source, /executeCancelEventTransaction\(\{[\s\S]*cancelTimestamp,/);
+  assert.doesNotMatch(source, /serverTimestamp/);
 });
 
 test("executeCancelEventTransaction cancels active event without counter writes", async () => {
@@ -247,6 +266,12 @@ test("executeCancelEventTransaction cancels active event without counter writes"
   assert.equal(store.get("events/event-1").status, "canceled");
   assert.equal(store.get("events/event-1").canceledAt, fixedTimestamp);
   assert.equal(store.get("events/event-1").participantsCount, 3);
+  assert.deepEqual(writes[0].data, {
+    status: "canceled",
+    canceledAt: fixedTimestamp,
+    updatedAt: fixedTimestamp,
+  });
+  assert.equal(writes[1].data.updatedAt, fixedTimestamp);
   assert.deepEqual(
       store.get("eventChats/event-1").readAccessUserIds,
       ["uid", "alex", "olga"],
@@ -383,6 +408,8 @@ test("executeCancelEventTransaction returns idempotent canceled response", async
     status: "canceled",
     canceledAt: "2026-06-15T10:00:00.000Z",
   });
+  assert.equal(store.get("events/event-1").status, "canceled");
+  assert.equal(store.get("events/event-1").canceledAt, originalCanceledAt);
   assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
     "uid",
     "alex",
@@ -405,6 +432,28 @@ test("executeCancelEventTransaction returns idempotent canceled response", async
   );
   assert.deepEqual(reads, ["events/event-1", "eventChats/event-1"]);
   assert.deepEqual(writes, []);
+});
+
+test("executeCancelEventTransaction rejects non-active statuses without writes", async () => {
+  for (const status of ["draft", "completed", "deleted", "archived"]) {
+    const {db, writes} = createFakeFirestore({
+      "events/event-1": activeEvent({status}),
+      "eventChats/event-1": eventChat(),
+    });
+
+    await assertRejectsHttpsError(
+        () => executeCancelEventTransaction({
+          db,
+          uid: "uid",
+          cancelDate: fixedNow,
+          cancelTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "event_not_cancelable",
+    );
+    assert.deepEqual(writes, [], status);
+  }
 });
 
 test("executeCancelEventTransaction fails closed on corrupt canceled event", async () => {

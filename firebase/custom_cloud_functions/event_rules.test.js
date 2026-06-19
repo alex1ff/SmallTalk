@@ -1754,6 +1754,26 @@ test("organizer cannot directly edit canceled or past events", async () => {
   );
 });
 
+test("organizer cannot directly edit active events with canceledAt set", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("events/active-with-canceled-at").set(
+      eventData({
+        startsAt: farFutureStartsAt,
+        chatId: "active-with-canceled-at",
+        canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      }),
+    );
+  });
+
+  await assertFails(
+    organizer.firestore()
+      .doc("events/active-with-canceled-at")
+      .update(directEditPatch()),
+  );
+});
+
 test("direct organizer edit enforces capacity and server updatedAt", async () => {
   const organizer = testEnv.authenticatedContext("organizer");
   const eventRef = organizer.firestore().doc("events/editable-event");
@@ -2106,12 +2126,28 @@ test("client updates cannot set event status outside MVP allowlist", async () =>
 
 test("client updates cannot restore canceled events to active", async () => {
   const organizer = testEnv.authenticatedContext("organizer");
+  const eventRef = organizer.firestore().doc("events/canceled-editable-event");
 
   await assertFails(
-    organizer.firestore().doc("events/canceled-editable-event").update({
+    eventRef.update({
       status: "active",
       canceledAt: null,
       updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
     }),
+  );
+  await assertFails(
+    eventRef.update({
+      status: "active",
+      updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    eventRef.update({
+      canceledAt: null,
+      updatedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    eventRef.update(directCancelPatch()),
   );
 });
