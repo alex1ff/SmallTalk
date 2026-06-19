@@ -528,6 +528,7 @@ void main() {
   testWidgets('joined participant can open chat from detail CTA',
       (tester) async {
     currentUser = _TestAuthUser('guest-1');
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     final router = GoRouter(
       initialLocation: '/events/event-1',
       routes: [
@@ -536,6 +537,7 @@ void main() {
           path: EventDetailWidget.routePath,
           builder: (context, state) => EventDetailRouteWidget(
             eventId: state.pathParameters['eventId']!,
+            analyticsTracker: analyticsTracker,
             snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
               _FakeEventDocumentSnapshot(
                 reference: eventRef,
@@ -571,6 +573,12 @@ void main() {
     );
     expect(find.text('Сначала присоединитесь к событию'), findsOneWidget);
     expect(find.byType(EventGroupChatWidget), findsNothing);
+    expect(
+      analyticsTracker.payloadsFor(
+        EventsAnalyticsService.eventChatOpenedEventName,
+      ),
+      isEmpty,
+    );
 
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
     await tester.pumpAndSettle();
@@ -582,9 +590,141 @@ void main() {
     expect(router.getCurrentLocation(), '/events/event-1/chat');
     expect(find.byType(EventGroupChatWidget), findsOneWidget);
     expect(find.text('Чат события'), findsOneWidget);
+    expect(
+      analyticsTracker.payloadsFor(
+        EventsAnalyticsService.eventChatOpenedEventName,
+      ),
+      [
+        <String, String>{
+          'countryCode': 'RU',
+          'cityKey': 'moscow',
+        },
+      ],
+    );
   });
 
   testWidgets('active participant can open chat from direct detail',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+    final router = GoRouter(
+      initialLocation: '/events/event-1',
+      routes: [
+        GoRoute(
+          name: EventDetailWidget.routeName,
+          path: EventDetailWidget.routePath,
+          builder: (context, state) => EventDetailRouteWidget(
+            eventId: state.pathParameters['eventId']!,
+            analyticsTracker: analyticsTracker,
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(organizerId: 'organizer-1'),
+              ),
+            ),
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                data: _participantData(
+                  userId: 'uid-1',
+                  status: 'active',
+                ),
+              ),
+            ),
+          ),
+        ),
+        GoRoute(
+          name: EventGroupChatWidget.routeName,
+          path: EventGroupChatWidget.routePath,
+          builder: (context, state) => EventGroupChatWidget(
+            eventId: state.pathParameters['eventId']!,
+            messagesStream: (_) =>
+                Stream.value(const <EventChatMessagesRecord>[]),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailChatCtaKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(router.getCurrentLocation(), '/events/event-1/chat');
+    expect(find.byType(EventGroupChatWidget), findsOneWidget);
+    expect(
+      analyticsTracker.payloadsFor(
+        EventsAnalyticsService.eventChatOpenedEventName,
+      ),
+      [
+        <String, String>{
+          'countryCode': 'RU',
+          'cityKey': 'moscow',
+        },
+      ],
+    );
+  });
+
+  testWidgets('organizer can open chat from detail and logs analytics',
+      (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+    final router = GoRouter(
+      initialLocation: '/events/event-1',
+      routes: [
+        GoRoute(
+          name: EventDetailWidget.routeName,
+          path: EventDetailWidget.routePath,
+          builder: (context, state) => EventDetailRouteWidget(
+            eventId: state.pathParameters['eventId']!,
+            analyticsTracker: analyticsTracker,
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(
+                  countryCode: ' it ',
+                  cityKey: ' rome ',
+                ),
+              ),
+            ),
+          ),
+        ),
+        GoRoute(
+          name: EventGroupChatWidget.routeName,
+          path: EventGroupChatWidget.routePath,
+          builder: (context, state) => EventGroupChatWidget(
+            eventId: state.pathParameters['eventId']!,
+            messagesStream: (_) =>
+                Stream.value(const <EventChatMessagesRecord>[]),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailChatCtaKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(router.getCurrentLocation(), '/events/event-1/chat');
+    expect(
+      analyticsTracker.payloadsFor(
+        EventsAnalyticsService.eventChatOpenedEventName,
+      ),
+      [
+        <String, String>{
+          'countryCode': 'IT',
+          'cityKey': 'rome',
+        },
+      ],
+    );
+  });
+
+  testWidgets('chat opened analytics failure does not block navigation',
       (tester) async {
     currentUser = _TestAuthUser('uid-1');
     final router = GoRouter(
@@ -595,6 +735,7 @@ void main() {
           path: EventDetailWidget.routePath,
           builder: (context, state) => EventDetailRouteWidget(
             eventId: state.pathParameters['eventId']!,
+            analyticsTracker: const _ThrowingEventChatOpenedAnalyticsTracker(),
             snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
               _FakeEventDocumentSnapshot(
                 reference: eventRef,
@@ -639,6 +780,7 @@ void main() {
   testWidgets('left participant cannot open chat from direct detail',
       (tester) async {
     currentUser = _TestAuthUser('uid-1');
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     final router = GoRouter(
       initialLocation: '/events/event-1',
       routes: [
@@ -647,6 +789,7 @@ void main() {
           path: EventDetailWidget.routePath,
           builder: (context, state) => EventDetailRouteWidget(
             eventId: state.pathParameters['eventId']!,
+            analyticsTracker: analyticsTracker,
             snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
               _FakeEventDocumentSnapshot(
                 reference: eventRef,
@@ -690,6 +833,12 @@ void main() {
     );
     expect(find.text('Сначала присоединитесь к событию'), findsOneWidget);
     expect(find.byType(EventGroupChatWidget), findsNothing);
+    expect(
+      analyticsTracker.payloadsFor(
+        EventsAnalyticsService.eventChatOpenedEventName,
+      ),
+      isEmpty,
+    );
   });
 
   testWidgets('joined participant can leave through primary CTA',
@@ -2197,6 +2346,28 @@ class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
   }
 
   @override
+  Future<void> trackEventChatOpened({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) async {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: countryCode,
+      cityKey: cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return;
+    }
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.eventChatOpenedEventName,
+        payload: payload.cast<String, String>(),
+      ),
+    );
+  }
+
+  @override
   Future<void> trackEventCanceled(
     EventsRecord event, {
     String? citySource,
@@ -2266,6 +2437,13 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
   }) async {}
 
   @override
+  Future<void> trackEventChatOpened({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) async {}
+
+  @override
   Future<void> trackEventCanceled(
     EventsRecord event, {
     String? citySource,
@@ -2290,6 +2468,20 @@ class _ThrowingEventLeftAnalyticsTracker extends _NoopEventsAnalyticsTracker {
   @override
   Future<void> trackEventLeft(
     EventsRecord event, {
+    String? citySource,
+  }) {
+    throw StateError('analytics failed');
+  }
+}
+
+class _ThrowingEventChatOpenedAnalyticsTracker
+    extends _NoopEventsAnalyticsTracker {
+  const _ThrowingEventChatOpenedAnalyticsTracker();
+
+  @override
+  Future<void> trackEventChatOpened({
+    required String countryCode,
+    required String cityKey,
     String? citySource,
   }) {
     throw StateError('analytics failed');

@@ -427,10 +427,13 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
               capacity: event.hasCapacity() ? event.capacity : null,
               joinCtaState: joinCtaState,
               onChatPressed: canOpenChat
-                  ? () => context.pushNamed(
+                  ? () {
+                      _trackEventChatOpened(event);
+                      context.pushNamed(
                         EventGroupChatWidget.routeName,
                         pathParameters: <String, String>{'eventId': eventId},
-                      )
+                      );
+                    }
                   : null,
               onChatParticipantRequiredPressed:
                   canOpenChat ? null : _showChatParticipantRequiredSnackBar,
@@ -611,6 +614,21 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     unawaited(
       Future<void>.sync(
         () => tracker.trackEventLeft(event),
+      ).catchError(
+        (Object error, StackTrace stackTrace) {},
+      ),
+    );
+  }
+
+  void _trackEventChatOpened(EventsRecord event) {
+    final tracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
+    unawaited(
+      Future<void>.sync(
+        () => tracker.trackEventChatOpened(
+          countryCode: event.countryCode,
+          cityKey: event.cityKey,
+        ),
       ).catchError(
         (Object error, StackTrace stackTrace) {},
       ),

@@ -459,4 +459,65 @@ void main() {
 
     expect(logCalls, 0);
   });
+
+  test('tracks event chat opened with canonical city payload only', () async {
+    final loggedEvents = <String, Map<String, Object>>{};
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        loggedEvents[name] = parameters;
+      },
+    );
+
+    await service.trackEventChatOpened(
+      countryCode: ' es ',
+      cityKey: ' madrid ',
+      citySource: ' profile ',
+    );
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventChatOpenedEventName],
+      <String, Object>{
+        'countryCode': 'ES',
+        'cityKey': 'madrid',
+        'citySource': 'profile',
+      },
+    );
+
+    await service.trackEventChatOpened(
+      countryCode: 'ES',
+      cityKey: 'madrid',
+      citySource: '   ',
+    );
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventChatOpenedEventName],
+      <String, Object>{
+        'countryCode': 'ES',
+        'cityKey': 'madrid',
+      },
+    );
+  });
+
+  test('skips event chat opened analytics when city identity is missing',
+      () async {
+    var logCalls = 0;
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        logCalls += 1;
+      },
+    );
+
+    await service.trackEventChatOpened(
+      countryCode: '',
+      cityKey: '   ',
+    );
+
+    expect(logCalls, 0);
+  });
 }

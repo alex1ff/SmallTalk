@@ -1403,6 +1403,7 @@ void main() {
   });
 
   testWidgets('opens event chat from participant card CTA', (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     final router = GoRouter(
       initialLocation: EventListWidget.routePath,
       routes: [
@@ -1413,9 +1414,12 @@ void main() {
             cityCatalogOverride: _catalog,
             languageCatalogOverride: _languageCatalog,
             initialSelectedCity: _selectedCityFixture(),
+            analyticsTracker: analyticsTracker,
             eventCardsOverride: [
               _eventCardFixture(
                 eventId: 'event-123',
+                countryCode: ' ru ',
+                cityKey: ' moscow ',
                 chatCtaState: EventListChatCtaState.enabled,
               ),
             ],
@@ -1449,10 +1453,23 @@ void main() {
     expect(router.getCurrentLocation(), '/events/event-123/chat');
     expect(find.byType(EventGroupChatWidget), findsOneWidget);
     expect(find.text('Чат события'), findsOneWidget);
+    expect(
+      analyticsTracker.payloadsFor(
+        EventsAnalyticsService.eventChatOpenedEventName,
+      ),
+      [
+        <String, String>{
+          'countryCode': 'RU',
+          'cityKey': 'moscow',
+          'citySource': 'manual',
+        },
+      ],
+    );
   });
 
   testWidgets('does not open event chat from non-participant card CTA',
       (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     final router = GoRouter(
       initialLocation: EventListWidget.routePath,
       routes: [
@@ -1463,6 +1480,7 @@ void main() {
             cityCatalogOverride: _catalog,
             languageCatalogOverride: _languageCatalog,
             initialSelectedCity: _selectedCityFixture(),
+            analyticsTracker: analyticsTracker,
             eventCardsOverride: [
               _eventCardFixture(eventId: 'event-123'),
             ],
@@ -1500,6 +1518,62 @@ void main() {
     expect(find.text('Сначала присоединитесь к событию'), findsOneWidget);
     expect(find.byType(EventListWidget), findsOneWidget);
     expect(find.byType(EventGroupChatWidget), findsNothing);
+    expect(
+      analyticsTracker.payloadsFor(
+        EventsAnalyticsService.eventChatOpenedEventName,
+      ),
+      isEmpty,
+    );
+  });
+
+  testWidgets('event list chat analytics failure does not block navigation',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: EventListWidget.routePath,
+      routes: [
+        GoRoute(
+          name: EventListWidget.routeName,
+          path: EventListWidget.routePath,
+          builder: (context, state) => EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            analyticsTracker: const _ThrowingEventChatOpenedAnalyticsTracker(),
+            eventCardsOverride: [
+              _eventCardFixture(
+                eventId: 'event-123',
+                chatCtaState: EventListChatCtaState.enabled,
+              ),
+            ],
+          ),
+        ),
+        GoRoute(
+          name: EventGroupChatWidget.routeName,
+          path: EventGroupChatWidget.routePath,
+          builder: (context, state) => EventGroupChatWidget(
+            eventId: state.pathParameters['eventId']!,
+            messagesStream: (_) =>
+                Stream.value(const <EventChatMessagesRecord>[]),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await Scrollable.ensureVisible(
+      tester.element(find.byKey(eventListCardChatCtaKey)),
+      alignment: 0.5,
+      duration: Duration.zero,
+    );
+    await tester.pump();
+    await tester.tap(find.text('Чат'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(router.getCurrentLocation(), '/events/event-123/chat');
+    expect(find.byType(EventGroupChatWidget), findsOneWidget);
   });
 
   testWidgets('hides participant avatar stack for empty participants',
@@ -2257,6 +2331,8 @@ EventSelectedCity _selectedCityFixture() {
 
 EventListCardViewModel _eventCardFixture({
   String eventId = 'event-1',
+  String countryCode = 'RU',
+  String cityKey = 'moscow',
   String organizerDisplayName = 'Анастасия Иванова',
   String? organizerPhotoUrl = '',
   String languageCode = 'en',
@@ -2279,6 +2355,8 @@ EventListCardViewModel _eventCardFixture({
 }) {
   return EventListCardViewModel(
     eventId: eventId,
+    countryCode: countryCode,
+    cityKey: cityKey,
     organizerDisplayName: organizerDisplayName,
     organizerPhotoUrl: organizerPhotoUrl,
     participants: participants,
@@ -2435,6 +2513,28 @@ class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
   }) async {}
 
   @override
+  Future<void> trackEventChatOpened({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) async {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: countryCode,
+      cityKey: cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return;
+    }
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.eventChatOpenedEventName,
+        payload: payload.cast<String, String>(),
+      ),
+    );
+  }
+
+  @override
   Future<void> trackEventCanceled(
     EventsRecord event, {
     String? citySource,
@@ -2489,10 +2589,31 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
   }) async {}
 
   @override
+  Future<void> trackEventChatOpened({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) async {}
+
+  @override
   Future<void> trackEventCanceled(
     EventsRecord event, {
     String? citySource,
   }) async {}
+}
+
+class _ThrowingEventChatOpenedAnalyticsTracker
+    extends _NoopEventsAnalyticsTracker {
+  const _ThrowingEventChatOpenedAnalyticsTracker();
+
+  @override
+  Future<void> trackEventChatOpened({
+    required String countryCode,
+    required String cityKey,
+    String? citySource,
+  }) {
+    throw StateError('analytics failed');
+  }
 }
 
 class _RecordedAnalyticsEvent {

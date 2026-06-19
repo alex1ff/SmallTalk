@@ -319,7 +319,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Track event canceled with canonical city payload and optional `citySource` only when known.
 - [x] Track event joined with canonical city payload and optional `citySource` only when known.
 - [x] Track event left with canonical city payload and optional `citySource` only when known.
-- [ ] Track event chat opened with canonical city payload and optional `citySource` only when known.
+- [x] Track event chat opened with canonical city payload and optional `citySource` only when known.
 - Deferred: Track event shared with canonical city payload and optional `citySource` only when known.
 - [ ] Ensure analytics never sends localized city names, aliases, or display context as city identity fields.
 - [ ] Add dashboard notes for PRD success metrics.

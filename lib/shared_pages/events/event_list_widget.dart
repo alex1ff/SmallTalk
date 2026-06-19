@@ -105,6 +105,8 @@ enum EventListChatCtaState {
 class EventListCardViewModel {
   const EventListCardViewModel({
     this.eventId = '',
+    this.countryCode = '',
+    this.cityKey = '',
     required this.organizerDisplayName,
     required this.languageCode,
     required this.title,
@@ -126,6 +128,8 @@ class EventListCardViewModel {
 
   final String organizerDisplayName;
   final String eventId;
+  final String countryCode;
+  final String cityKey;
   final String? organizerPhotoUrl;
   final List<EventListParticipantViewModel> participants;
   final int? participantsCount;
@@ -409,6 +413,27 @@ class _EventListWidgetState extends State<EventListWidget> {
                                             _EventCardShell(
                                               card: eventCard,
                                               languageCatalog: languageCatalog,
+                                              onChatPressed:
+                                                  _canOpenEventCardChat(
+                                                eventCard,
+                                              )
+                                                      ? () =>
+                                                          _openEventCardChat(
+                                                            event: eventCard,
+                                                            selectedCity:
+                                                                selectedState
+                                                                    ?.selected,
+                                                          )
+                                                      : null,
+                                              onChatParticipantRequiredPressed:
+                                                  eventCard.chatCtaState ==
+                                                          EventListChatCtaState
+                                                              .participantOnly
+                                                      ? () =>
+                                                          _showEventListChatParticipantRequiredSnackBar(
+                                                            context,
+                                                          )
+                                                      : null,
                                             ),
                                             if (eventCard != eventCards.last)
                                               const SizedBox(
@@ -627,6 +652,38 @@ class _EventListWidgetState extends State<EventListWidget> {
       tracker.trackCitySelected(selected).catchError(
             (Object error, StackTrace stackTrace) {},
           ),
+    );
+  }
+
+  bool _canOpenEventCardChat(EventListCardViewModel event) {
+    return event.chatCtaState == EventListChatCtaState.enabled &&
+        event.eventId.trim().isNotEmpty;
+  }
+
+  void _openEventCardChat({
+    required EventListCardViewModel event,
+    required EventSelectedCity? selectedCity,
+  }) {
+    final eventId = event.eventId.trim();
+    if (eventId.isEmpty) {
+      return;
+    }
+    final tracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
+    unawaited(
+      Future<void>.sync(
+        () => tracker.trackEventChatOpened(
+          countryCode: event.countryCode,
+          cityKey: event.cityKey,
+          citySource: selectedCity?.source.analyticsValue,
+        ),
+      ).catchError(
+        (Object error, StackTrace stackTrace) {},
+      ),
+    );
+    context.pushNamed(
+      EventGroupChatWidget.routeName,
+      pathParameters: <String, String>{'eventId': eventId},
     );
   }
 }
@@ -889,10 +946,14 @@ class _EventCardShell extends StatelessWidget {
   const _EventCardShell({
     required this.card,
     required this.languageCatalog,
+    this.onChatPressed,
+    this.onChatParticipantRequiredPressed,
   });
 
   final EventListCardViewModel? card;
   final EventLanguageCatalog? languageCatalog;
+  final VoidCallback? onChatPressed;
+  final VoidCallback? onChatParticipantRequiredPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -918,7 +979,11 @@ class _EventCardShell extends StatelessWidget {
             _EventCardFooterShell(card: card),
           ],
           const SizedBox(height: ExpatlioDesign.space16),
-          _EventCardActionsShell(card: card),
+          _EventCardActionsShell(
+            card: card,
+            onChatPressed: onChatPressed,
+            onChatParticipantRequiredPressed: onChatParticipantRequiredPressed,
+          ),
         ],
       ),
     );
@@ -1774,9 +1839,13 @@ class _EventParticipantOverflowBadge extends StatelessWidget {
 class _EventCardActionsShell extends StatelessWidget {
   const _EventCardActionsShell({
     required this.card,
+    this.onChatPressed,
+    this.onChatParticipantRequiredPressed,
   });
 
   final EventListCardViewModel? card;
+  final VoidCallback? onChatPressed;
+  final VoidCallback? onChatParticipantRequiredPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -1794,11 +1863,11 @@ class _EventCardActionsShell extends StatelessWidget {
       );
     }
 
-    final eventId = event.eventId.trim();
     final canOpenChat = event.chatCtaState == EventListChatCtaState.enabled &&
-        eventId.isNotEmpty;
+        onChatPressed != null;
     final canShowParticipantRequiredHint =
-        event.chatCtaState == EventListChatCtaState.participantOnly;
+        event.chatCtaState == EventListChatCtaState.participantOnly &&
+            onChatParticipantRequiredPressed != null;
 
     return Row(
       key: eventListCardActionsKey,
@@ -1809,14 +1878,9 @@ class _EventCardActionsShell extends StatelessWidget {
         const SizedBox(width: ExpatlioDesign.space12),
         _EventCardChatCta(
           state: event.chatCtaState,
-          onPressed: canOpenChat
-              ? () => context.pushNamed(
-                    EventGroupChatWidget.routeName,
-                    pathParameters: <String, String>{'eventId': eventId},
-                  )
-              : null,
+          onPressed: canOpenChat ? onChatPressed : null,
           onParticipantRequiredPressed: canShowParticipantRequiredHint
-              ? () => _showEventListChatParticipantRequiredSnackBar(context)
+              ? onChatParticipantRequiredPressed
               : null,
         ),
       ],
