@@ -110,6 +110,22 @@ void main() {
       expect(query.parameters['startAfter'], isNull);
     });
 
+    test('documents no product-visible tie order for same startsAt', () {
+      final query = EventListRepository.buildActiveEventListQuery(
+        EventsRecord.collection,
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+      );
+      final orderBy = query.parameters['orderBy'] as List<dynamic>;
+
+      expect(orderBy, [
+        [FieldPath.fromString('startsAt'), false],
+      ]);
+      expect(orderBy, isNot(contains([FieldPath.documentId, false])));
+    });
+
     test('hides canceled events by querying only active status', () {
       final query = EventListRepository.buildActiveEventListQuery(
         EventsRecord.collection,
