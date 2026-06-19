@@ -13,7 +13,7 @@ Date: 2026-06-14
 - User can join events without organizer approval and leave only before event `startsAt`.
 - Organizer can edit and cancel own events.
 - Event chat is available to active participants; canceled event chats remain read-only for organizer and participants active at cancellation time.
-- Event can be shared through native share sheet with deep link.
+- Sharing and deep links are deferred from the active MVP scope.
 - Firebase rules prevent unauthorized reads/writes.
 - `flutter analyze` passes.
 - Relevant tests pass.
@@ -285,29 +285,31 @@ Date: 2026-06-14
 - [x] Show read-only status/banner for canceled event chats.
 - [x] Hide or disable message composer/send for canceled event chats.
 
-## Phase 12: Sharing And Deep Links
+## Deferred: Sharing And Deep Links
 
-- [ ] Add native share sheet integration.
-- [ ] Generate event deep link.
-- [ ] Share title, date/time, place, and link.
-- [ ] Add route handling for event deep links.
-- [ ] Open event detail from link.
-- [ ] Handle missing/admin-deleted/canceled/past/full event link states without auto-join.
-- [ ] Preserve target `eventId` through auth redirect before opening event detail.
-- [ ] Configure HTTPS App Links / Universal Links for `https://smalltalk-2109b.firebaseapp.com/events/{eventId}`.
-- [ ] Add Android App Links config: `/.well-known/assetlinks.json` and Android manifest intent filter with `autoVerify`.
-- [ ] Add iOS Universal Links config: `/.well-known/apple-app-site-association` and Associated Domains entitlement.
-- [ ] Add Firebase Hosting fallback landing for `/events/{eventId}` when app is not installed or browser handles the link.
-- [ ] Add Firebase Hosting rewrites/fallback for `/events/**`.
-- [ ] Add App Store and Google Play actions to fallback landing.
-- [ ] Confirm final App Store and Google Play URLs for fallback landing.
-- [ ] Ensure fallback landing does not auto-redirect to stores.
-- [ ] Ensure fallback landing does not read Firestore, render event-specific OG/meta tags, or expose participant lists, chat data, or private event metadata.
-- [ ] Ensure Firebase Hosting config does not use Firebase Dynamic Links or `dynamicLinks: true`.
+Deferred from active scope on 2026-06-19.
+
+- Deferred: Add native share sheet integration.
+- Deferred: Generate event deep link.
+- Deferred: Share title, date/time, place, and link.
+- Deferred: Add route handling for event deep links.
+- Deferred: Open event detail from link.
+- Deferred: Handle missing/admin-deleted/canceled/past/full event link states without auto-join.
+- Deferred: Preserve target `eventId` through auth redirect before opening event detail.
+- Deferred: Configure HTTPS App Links / Universal Links for `https://smalltalk-2109b.firebaseapp.com/events/{eventId}`.
+- Deferred: Add Android App Links config: `/.well-known/assetlinks.json` and Android manifest intent filter with `autoVerify`.
+- Deferred: Add iOS Universal Links config: `/.well-known/apple-app-site-association` and Associated Domains entitlement.
+- Deferred: Add Firebase Hosting fallback landing for `/events/{eventId}` when app is not installed or browser handles the link.
+- Deferred: Add Firebase Hosting rewrites/fallback for `/events/**`.
+- Deferred: Add App Store and Google Play actions to fallback landing.
+- Deferred: Confirm final App Store and Google Play URLs for fallback landing.
+- Deferred: Ensure fallback landing does not auto-redirect to stores.
+- Deferred: Ensure fallback landing does not read Firestore, render event-specific OG/meta tags, or expose participant lists, chat data, or private event metadata.
+- Deferred: Ensure Firebase Hosting config does not use Firebase Dynamic Links or `dynamicLinks: true`.
 
 ## Phase 13: Analytics
 
-- [ ] Track event list opened with canonical city payload and `citySource` when list city came from selection/default state.
+- [x] Track event list opened with canonical city payload and `citySource` when list city came from selection/default state.
 - [ ] Track city selected with canonical payload: `countryCode`, `cityKey`, `citySource` (`profile|recent|static|manual`), without localized city name.
 - [ ] Track date filter selected.
 - [ ] Track level filter selected.
@@ -318,7 +320,7 @@ Date: 2026-06-14
 - [ ] Track event joined with canonical city payload and optional `citySource` only when known.
 - [ ] Track event left with canonical city payload and optional `citySource` only when known.
 - [ ] Track event chat opened with canonical city payload and optional `citySource` only when known.
-- [ ] Track event shared with canonical city payload and optional `citySource` only when known.
+- Deferred: Track event shared with canonical city payload and optional `citySource` only when known.
 - [ ] Ensure analytics never sends localized city names, aliases, or display context as city identity fields.
 - [ ] Add dashboard notes for PRD success metrics.
 
@@ -391,11 +393,11 @@ Date: 2026-06-14
 - [ ] Add widget tests for list empty/loading/error states.
 - [ ] Add widget tests for create form validation.
 - [ ] Add widget tests for detail CTA states.
-- [ ] Add deep link test for opening event detail.
-- [ ] Add deep link test for preserving target `eventId` through auth redirect.
-- [ ] Add deep link tests for missing, admin-deleted, canceled, past, and full event link states without auto-join.
-- [ ] Add fallback landing tests for no auto-redirect, no Firestore reads, no event-specific OG/meta tags, no private event/participant/chat data, and generic missing/admin-deleted response.
-- [ ] Add hosting verification for `/.well-known/assetlinks.json`, `/.well-known/apple-app-site-association`, `/events/**` fallback, and absence of Dynamic Links config.
+- Deferred: Add deep link test for opening event detail.
+- Deferred: Add deep link test for preserving target `eventId` through auth redirect.
+- Deferred: Add deep link tests for missing, admin-deleted, canceled, past, and full event link states without auto-join.
+- Deferred: Add fallback landing tests for no auto-redirect, no Firestore reads, no event-specific OG/meta tags, no private event/participant/chat data, and generic missing/admin-deleted response.
+- Deferred: Add hosting verification for `/.well-known/assetlinks.json`, `/.well-known/apple-app-site-association`, `/events/**` fallback, and absence of Dynamic Links config.
 - [ ] Run `flutter analyze`.
 - [ ] Run relevant `flutter test`.
 
@@ -409,11 +411,11 @@ Date: 2026-06-14
 - [ ] Smoke test create, edit, cancel.
 - [ ] Smoke test join, leave, full event.
 - [ ] Smoke test participant-only chat.
-- [ ] Smoke test share link.
-- [ ] Smoke test installed app opens shared event detail.
-- [ ] Smoke test unauthenticated deep link preserves target `eventId` through login.
-- [ ] Smoke test no-app/browser opens install landing.
-- [ ] Verify production `assetlinks.json` and `apple-app-site-association` are reachable without redirects and have correct content type and app identifiers.
+- Deferred: Smoke test share link.
+- Deferred: Smoke test installed app opens shared event detail.
+- Deferred: Smoke test unauthenticated deep link preserves target `eventId` through login.
+- Deferred: Smoke test no-app/browser opens install landing.
+- Deferred: Verify production `assetlinks.json` and `apple-app-site-association` are reachable without redirects and have correct content type and app identifiers.
 - [ ] Confirm no regression in existing bottom navigation.
 
 ## Post-MVP Backlog

@@ -20,6 +20,7 @@ import '/services/event_temporary_city_selection.dart';
 import '/services/event_list_date_bounds.dart';
 import '/services/event_level_helper.dart';
 import '/services/event_language_catalog.dart';
+import '/services/events_analytics_service.dart';
 
 const ValueKey<String> eventListCreateButtonKey =
     ValueKey<String>('event_list_create_button');
@@ -169,6 +170,7 @@ class EventListWidget extends StatefulWidget {
     this.isLoadingEvents = false,
     this.eventListErrorMessage,
     this.onRetryEventsPressed,
+    this.analyticsTracker,
   });
 
   static String routeName = 'events';
@@ -182,6 +184,7 @@ class EventListWidget extends StatefulWidget {
   final bool isLoadingEvents;
   final String? eventListErrorMessage;
   final VoidCallback? onRetryEventsPressed;
+  final EventsAnalyticsTracker? analyticsTracker;
 
   @override
   State<EventListWidget> createState() => _EventListWidgetState();
@@ -197,6 +200,7 @@ class _EventListWidgetState extends State<EventListWidget> {
   EventCityCatalog? _cityChipsCatalog;
   String? _cityChipsCountryCodeHint;
   String? _cityChipsSelectedIdentity;
+  String? _lastTrackedEventListOpenKey;
 
   @override
   void initState() {
@@ -274,6 +278,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                 (widget.eventCardsOverride == null && !hasEventListError);
             final eventCards =
                 widget.eventCardsOverride ?? const <EventListCardViewModel>[];
+            _trackEventListOpenedIfNeeded(selectedState);
             final onCitySelectorPressed = widget.onCitySelectorPressed ??
                 (catalog == null
                     ? null
@@ -548,6 +553,28 @@ class _EventListWidgetState extends State<EventListWidget> {
     return resolveEventSelectedCityState(
       user: currentUserDocument,
       catalog: catalog,
+    );
+  }
+
+  void _trackEventListOpenedIfNeeded(
+    EventSelectedCityState? selectedState,
+  ) {
+    final selected = selectedState?.selected;
+    if (selected == null) {
+      return;
+    }
+    final trackingKey =
+        '${selected.city.identity}|${selected.source.analyticsValue}';
+    if (_lastTrackedEventListOpenKey == trackingKey) {
+      return;
+    }
+    _lastTrackedEventListOpenKey = trackingKey;
+    final tracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
+    unawaited(
+      tracker.trackEventListOpened(selected).catchError(
+            (Object error, StackTrace stackTrace) {},
+          ),
     );
   }
 }
