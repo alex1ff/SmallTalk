@@ -118,10 +118,22 @@ function assertHttpsError(fn, code, domainCode, field, reason) {
   });
 }
 
-async function assertRejectsHttpsError(promiseFactory, code, domainCode) {
+async function assertRejectsHttpsError(
+    promiseFactory,
+    code,
+    domainCode,
+    field,
+    reason,
+) {
   await assert.rejects(promiseFactory, (err) => {
     assert.equal(err.code, code);
     assert.equal(err.details?.domainCode, domainCode);
+    if (field) {
+      assert.equal(err.details?.field, field);
+    }
+    if (reason) {
+      assert.equal(err.details?.reason, reason);
+    }
     return true;
   });
 }
@@ -463,6 +475,10 @@ function assertInvalidCreateRequest(overrides, field, reason) {
   );
 }
 
+function repeatGrapheme(value, count) {
+  return Array.from({length: count}, () => value).join("");
+}
+
 function assertNoCreateDocuments(store, {
   eventId = "event-new",
   uid = "uid",
@@ -675,6 +691,46 @@ test("normalizeCreateEventPayload rejects invalid schema field values", () => {
         currentCase.reason,
     );
   }
+});
+
+test("normalizeCreateEventPayload validates title text boundaries", () => {
+  for (const title of ["", " \t  "]) {
+    assertInvalidCreateRequest({title}, "title", "missing");
+  }
+
+  for (const title of [
+    "Title\nwith newline",
+    "Title\rwith carriage return",
+    "Title\r\nwith CRLF",
+  ]) {
+    assertInvalidCreateRequest(
+        {title},
+        "title",
+        "line_breaks_not_allowed",
+    );
+  }
+
+  const seventyGraphemeTitle = repeatGrapheme("👍🏽", 70);
+  const seventyOneGraphemeTitle = repeatGrapheme("👍🏽", 71);
+  const boundary = normalizeCreateEventPayload(
+      cloneValidRequest({title: ` ${seventyGraphemeTitle} `}),
+      {now: fixedNow},
+  );
+  assert.equal(Array.from(seventyGraphemeTitle).length > 70, true);
+  assert.equal(boundary.title, seventyGraphemeTitle);
+  assert.equal(boundary.hashPayload.title, seventyGraphemeTitle);
+  assertInvalidCreateRequest(
+      {title: seventyOneGraphemeTitle},
+      "title",
+      "too_long",
+  );
+
+  const unicode = normalizeCreateEventPayload(
+      cloneValidRequest({title: " Cafe\u0301  разговорный  клуб  東京  "}),
+      {now: fixedNow},
+  );
+  assert.equal(unicode.title, "Café разговорный клуб 東京");
+  assert.equal(unicode.hashPayload.title, "Café разговорный клуб 東京");
 });
 
 test("normalizeCreateEventPayload accepts nullable or exact geo point shape", () => {
@@ -1683,6 +1739,8 @@ test("createEvent callable invalid schema writes no marker", async () => {
         }),
         "invalid-argument",
         "invalid_create_request",
+        "title",
+        "missing",
     );
   });
 
@@ -1697,6 +1755,40 @@ test("createEvent callable invalid schema writes no marker", async () => {
       ),
       false,
   );
+});
+
+test("createEvent callable validates title before transaction writes", async () => {
+  const cases = [
+    {title: "", reason: "missing"},
+    {title: " \t  ", reason: "missing"},
+    {title: "Title\nwith newline", reason: "line_breaks_not_allowed"},
+    {title: "Title\rwith carriage return", reason: "line_breaks_not_allowed"},
+    {title: "Title\r\nwith CRLF", reason: "line_breaks_not_allowed"},
+    {title: repeatGrapheme("👍🏽", 71), reason: "too_long"},
+  ];
+
+  for (const currentCase of cases) {
+    const {db, reads, store, writes} = createFakeFirestore({
+      "users/uid": {display_name: "Анастасия Иванова"},
+    });
+
+    await withAdminFirestore(db, async () => {
+      await assertRejectsHttpsError(
+          () => createEvent.run(
+              cloneValidRequest({title: currentCase.title}),
+              {auth: {uid: "uid"}},
+          ),
+          "invalid-argument",
+          "invalid_create_request",
+          "title",
+          currentCase.reason,
+      );
+    });
+
+    assert.deepEqual(reads, []);
+    assert.deepEqual(writes, []);
+    assertNoCreateDocuments(store);
+  }
 });
 
 test("executeCreateEventTransaction rolls back buffered writes on failure", async () => {

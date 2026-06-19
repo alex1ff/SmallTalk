@@ -1,7 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const admin = require("firebase-admin");
 
 const {
+  editEvent,
   __private__: {
     executeEditEventTransaction,
     normalizeEditEventPayload,
@@ -73,12 +75,28 @@ function assertHttpsError(fn, code, domainCode, field, reason) {
   });
 }
 
-async function assertRejectsHttpsError(promiseFactory, code, domainCode) {
+async function assertRejectsHttpsError(
+    promiseFactory,
+    code,
+    domainCode,
+    field,
+    reason,
+) {
   await assert.rejects(promiseFactory, (err) => {
     assert.equal(err.code, code);
     assert.equal(err.details?.domainCode, domainCode);
+    if (field) {
+      assert.equal(err.details?.field, field);
+    }
+    if (reason) {
+      assert.equal(err.details?.reason, reason);
+    }
     return true;
   });
+}
+
+function repeatGrapheme(value, count) {
+  return Array.from({length: count}, () => value).join("");
 }
 
 function createFakeFirestore(seed = {}) {
@@ -135,6 +153,30 @@ function createFakeFirestore(seed = {}) {
   };
 
   return {db, reads, store, writes};
+}
+
+async function withAdminFirestore(db, callback) {
+  const originalFirestore = Object.getOwnPropertyDescriptor(admin, "firestore");
+  const timestamp = admin.firestore.Timestamp;
+  const geoPoint = admin.firestore.GeoPoint;
+  const firestore = () => db;
+  firestore.Timestamp = timestamp;
+  firestore.GeoPoint = geoPoint;
+
+  Object.defineProperty(admin, "firestore", {
+    configurable: true,
+    value: firestore,
+  });
+
+  try {
+    return await callback();
+  } finally {
+    if (originalFirestore) {
+      Object.defineProperty(admin, "firestore", originalFirestore);
+    } else {
+      delete admin.firestore;
+    }
+  }
 }
 
 function eventData(overrides = {}) {
@@ -232,6 +274,106 @@ test("normalizeEditEventPayload remaps create validation errors", () => {
       "startsAt",
       "past_starts_at",
   );
+});
+
+test("normalizeEditEventPayload remaps title validation errors", () => {
+  for (const title of ["", " \t  "]) {
+    assertHttpsError(
+        () => normalizeEditEventPayload(
+            cloneValidEditRequest({title}),
+            {now: fixedNow},
+        ),
+        "invalid-argument",
+        "invalid_edit_request",
+        "title",
+        "missing",
+    );
+  }
+
+  for (const title of [
+    "Title\nwith newline",
+    "Title\rwith carriage return",
+    "Title\r\nwith CRLF",
+  ]) {
+    assertHttpsError(
+        () => normalizeEditEventPayload(
+            cloneValidEditRequest({title}),
+            {now: fixedNow},
+        ),
+        "invalid-argument",
+        "invalid_edit_request",
+        "title",
+        "line_breaks_not_allowed",
+    );
+  }
+
+  assertHttpsError(
+      () => normalizeEditEventPayload(
+          cloneValidEditRequest({title: repeatGrapheme("👍🏽", 71)}),
+          {now: fixedNow},
+      ),
+      "invalid-argument",
+      "invalid_edit_request",
+      "title",
+      "too_long",
+  );
+});
+
+test("normalizeEditEventPayload accepts title boundary and Unicode input", () => {
+  const seventyGraphemeTitle = repeatGrapheme("👍🏽", 70);
+  const boundary = normalizeEditEventPayload(
+      cloneValidEditRequest({title: ` ${seventyGraphemeTitle} `}),
+      {now: fixedNow},
+  );
+  const unicode = normalizeEditEventPayload(
+      cloneValidEditRequest({title: " Cafe\u0301  разговорный  клуб  東京  "}),
+      {now: fixedNow},
+  );
+
+  assert.equal(Array.from(seventyGraphemeTitle).length > 70, true);
+  assert.equal(boundary.normalized.title, seventyGraphemeTitle);
+  assert.equal(
+      boundary.normalized.hashPayload.title,
+      seventyGraphemeTitle,
+  );
+  assert.equal(unicode.normalized.title, "Café разговорный клуб 東京");
+  assert.equal(
+      unicode.normalized.hashPayload.title,
+      "Café разговорный клуб 東京",
+  );
+});
+
+test("editEvent callable validates title before transaction writes", async () => {
+  const cases = [
+    {title: "", reason: "missing"},
+    {title: " \t  ", reason: "missing"},
+    {title: "Title\nwith newline", reason: "line_breaks_not_allowed"},
+    {title: "Title\rwith carriage return", reason: "line_breaks_not_allowed"},
+    {title: "Title\r\nwith CRLF", reason: "line_breaks_not_allowed"},
+    {title: repeatGrapheme("👍🏽", 71), reason: "too_long"},
+  ];
+
+  for (const currentCase of cases) {
+    const {db, reads, writes} = createFakeFirestore({
+      "events/event-1": eventData(),
+    });
+
+    await withAdminFirestore(db, async () => {
+      await assertRejectsHttpsError(
+          () => editEvent.run(
+              cloneValidEditRequest({title: currentCase.title}),
+              {auth: {uid: "uid"}},
+          ),
+          "invalid-argument",
+          "invalid_edit_request",
+          "title",
+          currentCase.reason,
+      );
+    });
+
+    assert.deepEqual(reads, []);
+    assert.deepEqual(writes, []);
+  }
 });
 
 test("executeEditEventTransaction updates organizer active future event", async () => {
