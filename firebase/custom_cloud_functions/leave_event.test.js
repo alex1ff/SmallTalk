@@ -53,8 +53,14 @@ async function assertRejectsHttpsError(promiseFactory, code, domainCode) {
   });
 }
 
-function createFakeFirestore(seed = {}, options = {}) {
+function createFakeFirestore(seed = {}, {
+  maxTransactionAttempts = 5,
+  onBeforeCommit = null,
+  retryBeforeCommitCount = 0,
+  retryOnConcurrentModification = false,
+} = {}) {
   const store = new Map(Object.entries(seed));
+  const versions = new Map(Array.from(store.keys(), (path) => [path, 0]));
   const reads = [];
   const writes = [];
   let attempts = 0;
@@ -121,16 +127,27 @@ function createFakeFirestore(seed = {}, options = {}) {
       return makeCollection(name);
     },
     async runTransaction(callback) {
-      while (true) {
+      for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
         let hasWrites = false;
         const pendingWrites = [];
+        const readVersions = new Map();
         const tx = {
           async get(refOrQuery) {
             if (hasWrites) {
               throw new Error("Firestore transactions require reads first");
             }
             reads.push(refOrQuery.path);
-            return refOrQuery.get();
+            const snapshot = await refOrQuery.get();
+            if (Array.isArray(snapshot.docs)) {
+              for (const doc of snapshot.docs) {
+                if (!readVersions.has(doc.ref.path)) {
+                  readVersions.set(doc.ref.path, versions.get(doc.ref.path) || 0);
+                }
+              }
+            } else if (!readVersions.has(refOrQuery.path)) {
+              readVersions.set(refOrQuery.path, versions.get(refOrQuery.path) || 0);
+            }
+            return snapshot;
           },
           update(ref, data) {
             hasWrites = true;
@@ -142,15 +159,28 @@ function createFakeFirestore(seed = {}, options = {}) {
         };
         attempts += 1;
         const result = await callback(tx);
-        if (attempts <= (options.retryBeforeCommitCount || 0)) {
+        if (attempts <= retryBeforeCommitCount) {
           continue;
+        }
+        if (onBeforeCommit) {
+          await onBeforeCommit({attempt, pendingWrites, store});
+        }
+        if (retryOnConcurrentModification) {
+          const staleRead = Array.from(readVersions).some(
+              ([path, version]) => (versions.get(path) || 0) !== version,
+          );
+          if (staleRead) {
+            continue;
+          }
         }
         for (const write of pendingWrites) {
           writes.push(write);
           store.set(write.path, {...store.get(write.path), ...write.data});
+          versions.set(write.path, (versions.get(write.path) || 0) + 1);
         }
         return result;
       }
+      throw new Error("Simulated transaction retry limit exceeded");
     },
   };
 
@@ -253,6 +283,36 @@ function executeLeave(params) {
   });
 }
 
+function createFirstAttemptBarrier(expectedCommits = 2) {
+  let firstAttemptCommits = 0;
+  let releaseFirstAttempts;
+  const firstAttemptsReady = new Promise((resolve) => {
+    releaseFirstAttempts = resolve;
+  });
+  const timeout = setTimeout(() => {
+    releaseFirstAttempts();
+  }, 1000);
+
+  return {
+    async onBeforeCommit({attempt}) {
+      if (attempt !== 1) {
+        return;
+      }
+      firstAttemptCommits += 1;
+      if (firstAttemptCommits === expectedCommits) {
+        releaseFirstAttempts();
+      }
+      await firstAttemptsReady;
+    },
+    clear() {
+      clearTimeout(timeout);
+    },
+    get count() {
+      return firstAttemptCommits;
+    },
+  };
+}
+
 test("normalizeLeaveEventPayload rejects unknown and missing keys", () => {
   assertHttpsError(
       () => normalizeLeaveEventPayload({eventId: "event-1", leftAt: "now"}),
@@ -330,6 +390,139 @@ test("executeLeaveEventTransaction marks participant left", async () => {
       ],
   );
 });
+
+test("executeLeaveEventTransaction concurrent duplicate leaves decrement once",
+    async () => {
+      const firstAttemptBarrier = createFirstAttemptBarrier();
+      const {db, store, writes} = createFakeFirestore(
+          validLeaveSeed(),
+          {
+            retryOnConcurrentModification: true,
+            onBeforeCommit: firstAttemptBarrier.onBeforeCommit,
+          },
+      );
+      const leave = () => executeLeave({
+        db,
+        uid: "uid",
+        payload: {eventId: "event-1"},
+      });
+
+      let results;
+      try {
+        results = await Promise.allSettled([leave(), leave()]);
+      } finally {
+        firstAttemptBarrier.clear();
+      }
+      const fulfilled = results.filter((result) =>
+        result.status === "fulfilled");
+      const rejected = results.filter((result) =>
+        result.status === "rejected");
+      const membership = store.get("events/event-1/participants/uid");
+
+      assert.equal(fulfilled.length, 1);
+      assert.equal(rejected.length, 1);
+      assert.equal(firstAttemptBarrier.count, 2);
+      assert.deepEqual(fulfilled[0].value, {
+        eventId: "event-1",
+        participantStatus: "left",
+        participantsCount: 1,
+        leftAt: "2026-06-16T10:00:00.000Z",
+      });
+      assert.equal(rejected[0].reason.code, "failed-precondition");
+      assert.deepEqual(rejected[0].reason.details, {
+        domainCode: "not_active_participant",
+      });
+      assert.equal(store.get("events/event-1").participantsCount, 1);
+      assert.equal(membership.status, "left");
+      assert.equal(membership.leftAt, fixedTimestamp);
+      assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+        "organizer",
+      ]);
+      assert.deepEqual(
+          writes.map((write) => `${write.type}:${write.path}`),
+          [
+            "update:events/event-1",
+            "update:events/event-1/participants/uid",
+            "update:eventChats/event-1",
+          ],
+      );
+    });
+
+test("executeLeaveEventTransaction concurrent leaves recompute occupancy and chat",
+    async () => {
+      const firstAttemptBarrier = createFirstAttemptBarrier();
+      const {db, store, writes} = createFakeFirestore(
+          {
+            "events/event-1": activeEvent({
+              participantsCount: 3,
+              capacity: 3,
+            }),
+            "eventChats/event-1": eventChat({
+              readAccessUserIds: ["organizer", "uid-a", "uid-b"],
+            }),
+            "events/event-1/participants/organizer": organizerParticipant(),
+            "events/event-1/participants/uid-a": participant({
+              userId: "uid-a",
+            }),
+            "events/event-1/participants/uid-b": participant({
+              userId: "uid-b",
+            }),
+          },
+          {
+            retryOnConcurrentModification: true,
+            onBeforeCommit: firstAttemptBarrier.onBeforeCommit,
+          },
+      );
+      const leave = (uid) => executeLeave({
+        db,
+        uid,
+        payload: {eventId: "event-1"},
+      });
+
+      let results;
+      try {
+        results = await Promise.allSettled([leave("uid-a"), leave("uid-b")]);
+      } finally {
+        firstAttemptBarrier.clear();
+      }
+      const fulfilled = results.filter((result) =>
+        result.status === "fulfilled");
+
+      assert.equal(fulfilled.length, 2);
+      assert.equal(firstAttemptBarrier.count, 2);
+      assert.deepEqual(
+          fulfilled
+              .map((result) => result.value.participantsCount)
+              .sort((left, right) => left - right),
+          [1, 2],
+      );
+      assert.equal(store.get("events/event-1").participantsCount, 1);
+      for (const uid of ["uid-a", "uid-b"]) {
+        const membership = store.get(`events/event-1/participants/${uid}`);
+        assert.equal(membership.status, "left");
+        assert.equal(membership.leftAt, fixedTimestamp);
+      }
+      assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+        "organizer",
+      ]);
+
+      const writePaths = writes.map((write) => `${write.type}:${write.path}`);
+      assert.equal(writePaths.filter((path) =>
+        path === "update:events/event-1").length, 2);
+      assert.deepEqual(
+          writePaths
+              .filter((path) => path.startsWith(
+                  "update:events/event-1/participants/",
+              ))
+              .sort(),
+          [
+            "update:events/event-1/participants/uid-a",
+            "update:events/event-1/participants/uid-b",
+          ],
+      );
+      assert.equal(writePaths.filter((path) =>
+        path === "update:eventChats/event-1").length, 2);
+    });
 
 test("executeLeaveEventTransaction blocks leave at or after startsAt", async () => {
   for (const startsAt of [pastStartsAt, equalStartsAt]) {
