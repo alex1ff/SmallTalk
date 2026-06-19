@@ -520,4 +520,246 @@ void main() {
 
     expect(logCalls, 0);
   });
+
+  test('all city analytics events use canonical city identity keys only',
+      () async {
+    final loggedEvents = <String, Map<String, Object>>{};
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        loggedEvents[name] = parameters;
+      },
+    );
+    final selectedCity = _selectedCityFixture(
+      countryCode: 'RU',
+      cityKey: 'moscow',
+    );
+    final event = _analyticsEventFixture(
+      countryCode: ' ru ',
+      cityKey: 'moscow',
+    );
+    final cases = <_CityAnalyticsCase>[
+      _CityAnalyticsCase(
+        eventName: EventsAnalyticsService.eventListOpenedEventName,
+        track: () => service.trackEventListOpened(selectedCity),
+        expectedSource: 'profile',
+      ),
+      _CityAnalyticsCase(
+        eventName: EventsAnalyticsService.citySelectedEventName,
+        track: () => service.trackCitySelected(selectedCity),
+        expectedSource: 'profile',
+      ),
+      _CityAnalyticsCase(
+        eventName: EventsAnalyticsService.eventDetailOpenedEventName,
+        track: () => service.trackEventDetailOpened(event),
+      ),
+      _CityAnalyticsCase(
+        eventName: EventsAnalyticsService.eventCreatedEventName,
+        track: () => service.trackEventCreated(
+          countryCode: ' ru ',
+          cityKey: 'moscow',
+          citySource: 'manual',
+        ),
+        expectedSource: 'manual',
+      ),
+      _CityAnalyticsCase(
+        eventName: EventsAnalyticsService.eventEditedEventName,
+        track: () => service.trackEventEdited(
+          countryCode: ' ru ',
+          cityKey: 'moscow',
+          citySource: 'static',
+        ),
+        expectedSource: 'static',
+      ),
+      _CityAnalyticsCase(
+        eventName: EventsAnalyticsService.eventCanceledEventName,
+        track: () => service.trackEventCanceled(event),
+      ),
+      _CityAnalyticsCase(
+        eventName: EventsAnalyticsService.eventJoinedEventName,
+        track: () => service.trackEventJoined(event),
+      ),
+      _CityAnalyticsCase(
+        eventName: EventsAnalyticsService.eventLeftEventName,
+        track: () => service.trackEventLeft(event),
+      ),
+      _CityAnalyticsCase(
+        eventName: EventsAnalyticsService.eventChatOpenedEventName,
+        track: () => service.trackEventChatOpened(
+          countryCode: ' ru ',
+          cityKey: 'moscow',
+          citySource: 'recent',
+        ),
+        expectedSource: 'recent',
+      ),
+    ];
+
+    for (final cityCase in cases) {
+      await cityCase.track();
+      final expected = <String, Object>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+        if (cityCase.expectedSource != null)
+          'citySource': cityCase.expectedSource!,
+      };
+      expect(
+        loggedEvents[cityCase.eventName],
+        expected,
+        reason: cityCase.eventName,
+      );
+      expect(
+        loggedEvents[cityCase.eventName]!.keys,
+        everyElement(
+          isNot(
+            isIn(<String>{
+              'cityNameRu',
+              'cityNameEn',
+              'cityDisplayContext',
+              'displayContext',
+              'aliases',
+              'transliterations',
+              'regionNameRu',
+              'regionNameEn',
+            }),
+          ),
+        ),
+        reason: cityCase.eventName,
+      );
+      expect(
+        loggedEvents[cityCase.eventName]!.values,
+        isNot(
+          contains(
+            anyOf('Москва', 'Moscow', 'Россия', 'мск', 'moskva'),
+          ),
+        ),
+        reason: cityCase.eventName,
+      );
+    }
+  });
+
+  test('city analytics skips localized or display city identity values',
+      () async {
+    final loggedEvents = <String, Map<String, Object>>{};
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        loggedEvents[name] = parameters;
+      },
+    );
+    final localizedCity = _selectedCityFixture(
+      countryCode: 'RU',
+      cityKey: 'Москва',
+    );
+    final transliteratedAliasCity = _selectedCityFixture(
+      countryCode: 'RU',
+      cityKey: 'moskva',
+    );
+    final displayCityEvent = _analyticsEventFixture(
+      countryCode: 'RU',
+      cityKey: 'Moscow · Россия',
+    );
+    final regexValidAliasEvent = _analyticsEventFixture(
+      countryCode: 'US',
+      cityKey: 'nyc',
+    );
+
+    await service.trackEventListOpened(localizedCity);
+    await service.trackCitySelected(localizedCity);
+    await service.trackEventListOpened(transliteratedAliasCity);
+    await service.trackCitySelected(transliteratedAliasCity);
+    await service.trackEventDetailOpened(displayCityEvent);
+    await service.trackEventDetailOpened(regexValidAliasEvent);
+    await service.trackEventCreated(
+      countryCode: 'RU',
+      cityKey: 'Moscow · Россия',
+    );
+    await service.trackEventCreated(
+      countryCode: 'US',
+      cityKey: 'nyc',
+    );
+    await service.trackEventEdited(
+      countryCode: 'RU',
+      cityKey: 'Москва',
+    );
+    await service.trackEventEdited(
+      countryCode: 'RU',
+      cityKey: 'moskva',
+    );
+    await service.trackEventCanceled(displayCityEvent);
+    await service.trackEventCanceled(regexValidAliasEvent);
+    await service.trackEventJoined(displayCityEvent);
+    await service.trackEventJoined(regexValidAliasEvent);
+    await service.trackEventLeft(displayCityEvent);
+    await service.trackEventLeft(regexValidAliasEvent);
+    await service.trackEventChatOpened(
+      countryCode: 'RU',
+      cityKey: 'Moscow · Россия',
+    );
+    await service.trackEventChatOpened(
+      countryCode: 'RU',
+      cityKey: 'moskva',
+    );
+
+    expect(loggedEvents, isEmpty);
+  });
 }
+
+typedef _TrackCityAnalytics = Future<void> Function();
+
+class _CityAnalyticsCase {
+  const _CityAnalyticsCase({
+    required this.eventName,
+    required this.track,
+    this.expectedSource,
+  });
+
+  final String eventName;
+  final _TrackCityAnalytics track;
+  final String? expectedSource;
+}
+
+EventSelectedCity _selectedCityFixture({
+  required String countryCode,
+  required String cityKey,
+}) =>
+    EventSelectedCity(
+      city: EventCity(
+        countryCode: countryCode,
+        cityKey: cityKey,
+        cityNameRu: 'Москва',
+        cityNameEn: 'Moscow',
+        regionCode: null,
+        regionNameRu: null,
+        regionNameEn: null,
+        timeZoneId: 'Europe/Moscow',
+        cityDisplayContext: 'Россия',
+        aliases: const ['мск'],
+        transliterations: const ['moskva'],
+        priority: 100,
+      ),
+      source: EventCitySelectionSource.profile,
+    );
+
+EventsRecord _analyticsEventFixture({
+  required String countryCode,
+  required String cityKey,
+}) =>
+    EventsRecord.getDocumentFromData(
+      {
+        'countryCode': countryCode,
+        'cityKey': cityKey,
+        'cityNameRu': 'Москва',
+        'cityNameEn': 'Moscow',
+        'cityDisplayContext': 'Россия',
+        'aliases': ['мск'],
+        'transliterations': ['moskva'],
+        'locationName': 'Cafe',
+        'participantsCount': 5,
+        'status': 'active',
+      },
+      EventsRecord.collection.doc('event-1'),
+    );
