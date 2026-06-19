@@ -2401,6 +2401,12 @@ class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
       ),
     );
   }
+
+  @override
+  Future<void> trackEventDetailOpened(
+    EventsRecord event, {
+    String? citySource,
+  }) async {}
 }
 
 class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
@@ -2417,6 +2423,12 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
 
   @override
   Future<void> trackLevelFilterSelected(String? selectedLevel) async {}
+
+  @override
+  Future<void> trackEventDetailOpened(
+    EventsRecord event, {
+    String? citySource,
+  }) async {}
 }
 
 class _RecordedAnalyticsEvent {

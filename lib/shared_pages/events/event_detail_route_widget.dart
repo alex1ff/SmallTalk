@@ -12,6 +12,7 @@ import '/shared_pages/events/event_group_chat_widget.dart';
 import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
 import '/services/event_detail_repository.dart';
+import '/services/events_analytics_service.dart';
 
 const ValueKey<String> eventDetailRouteLoadingKey =
     ValueKey<String>('event_detail_route_loading');
@@ -37,6 +38,7 @@ class EventDetailRouteWidget extends StatefulWidget {
     this.joinEventInvoker,
     this.leaveEventInvoker,
     this.participantSnapshotStream,
+    this.analyticsTracker,
   });
 
   final String eventId;
@@ -45,6 +47,7 @@ class EventDetailRouteWidget extends StatefulWidget {
   final EventCallableInvoker? joinEventInvoker;
   final EventCallableInvoker? leaveEventInvoker;
   final EventParticipantSnapshotStream? participantSnapshotStream;
+  final EventsAnalyticsTracker? analyticsTracker;
 
   @override
   State<EventDetailRouteWidget> createState() => _EventDetailRouteWidgetState();
@@ -66,6 +69,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   String? _locallyLeftEventId;
   int? _locallyLeftParticipantsCount;
   int _participantActionGeneration = 0;
+  String? _lastTrackedEventDetailOpenKey;
 
   @override
   void initState() {
@@ -87,6 +91,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _locallyJoinedParticipantsCount = null;
       _locallyLeftEventId = null;
       _locallyLeftParticipantsCount = null;
+      _lastTrackedEventDetailOpenKey = null;
       _participantActionGeneration += 1;
       _isLeaving = false;
       _isJoining = false;
@@ -296,6 +301,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         }
 
         final eventId = event.reference.id;
+        _trackEventDetailOpenedIfNeeded(event);
         final isLocallyCanceled = _locallyCanceledEventId == eventId;
         final isLocallyJoined = _locallyJoinedEventId == eventId;
         final isLocallyLeft = _locallyLeftEventId == eventId;
@@ -499,6 +505,29 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         }
       });
     });
+  }
+
+  void _trackEventDetailOpenedIfNeeded(EventsRecord event) {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: event.countryCode,
+      cityKey: event.cityKey,
+    );
+    if (payload == null) {
+      return;
+    }
+    final trackingKey =
+        '${event.reference.id}|${payload['countryCode']}|${payload['cityKey']}';
+    if (_lastTrackedEventDetailOpenKey == trackingKey) {
+      return;
+    }
+    _lastTrackedEventDetailOpenKey = trackingKey;
+    final tracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
+    unawaited(
+      tracker.trackEventDetailOpened(event).catchError(
+            (Object error, StackTrace stackTrace) {},
+          ),
+    );
   }
 }
 

@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:firebase_core_platform_interface/test.dart';
+import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
@@ -6,6 +8,13 @@ import 'package:small_talk/services/event_selected_city_state.dart';
 import 'package:small_talk/services/events_analytics_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    setupFirebaseCoreMocks();
+    await Firebase.initializeApp();
+  });
+
   test('tracks selected-city analytics events with canonical payload only',
       () async {
     final loggedEvents = <String, Map<String, Object>>{};
@@ -34,9 +43,19 @@ void main() {
       ),
       source: EventCitySelectionSource.profile,
     );
+    final event = EventsRecord.getDocumentFromData(
+      {
+        'countryCode': ' ru ',
+        'cityKey': 'moscow',
+        'cityNameRu': 'Москва',
+        'cityDisplayContext': 'Россия',
+      },
+      EventsRecord.collection.doc('event-1'),
+    );
 
     await service.trackEventListOpened(selectedCity);
     await service.trackCitySelected(selectedCity);
+    await service.trackEventDetailOpened(event);
     for (final filter in EventListDateFilter.values) {
       await service.trackDateFilterSelected(filter);
       expect(
@@ -91,5 +110,60 @@ void main() {
       expect(loggedEvents[eventName], isNot(contains('cityDisplayContext')));
       expect(loggedEvents[eventName], isNot(contains('aliases')));
     }
+    expect(
+      loggedEvents[EventsAnalyticsService.eventDetailOpenedEventName],
+      <String, Object>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+      },
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventDetailOpenedEventName],
+      isNot(contains('citySource')),
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventDetailOpenedEventName],
+      isNot(contains('cityDisplayContext')),
+    );
+  });
+
+  test('tracks event detail city source only when known', () async {
+    final loggedEvents = <String, Map<String, Object>>{};
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        loggedEvents[name] = parameters;
+      },
+    );
+    final event = EventsRecord.getDocumentFromData(
+      {
+        'countryCode': ' ru ',
+        'cityKey': ' moscow ',
+      },
+      EventsRecord.collection.doc('event-1'),
+    );
+
+    await service.trackEventDetailOpened(event, citySource: ' profile ');
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventDetailOpenedEventName],
+      <String, Object>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+        'citySource': 'profile',
+      },
+    );
+
+    await service.trackEventDetailOpened(event, citySource: '   ');
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventDetailOpenedEventName],
+      <String, Object>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+      },
+    );
   });
 }

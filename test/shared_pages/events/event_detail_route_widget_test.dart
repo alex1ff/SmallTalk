@@ -16,6 +16,8 @@ import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
 import 'package:small_talk/services/event_actions_repository.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
+import 'package:small_talk/services/event_selected_city_state.dart';
+import 'package:small_talk/services/events_analytics_service.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -68,9 +70,11 @@ void main() {
 
   setUp(() {
     currentUser = _TestAuthUser('organizer-1');
+    EventsAnalyticsService.defaultTracker = const _NoopEventsAnalyticsTracker();
   });
 
   tearDown(() {
+    EventsAnalyticsService.defaultTracker = EventsAnalyticsService.instance;
     currentUser = null;
   });
 
@@ -429,7 +433,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(eventDetailChatCtaKey));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(router.getCurrentLocation(), '/events/event-1');
     expect(
@@ -443,7 +448,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(eventDetailChatCtaKey));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(router.getCurrentLocation(), '/events/event-1/chat');
     expect(find.byType(EventGroupChatWidget), findsOneWidget);
@@ -495,7 +501,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(eventDetailChatCtaKey));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(router.getCurrentLocation(), '/events/event-1/chat');
     expect(find.byType(EventGroupChatWidget), findsOneWidget);
@@ -1099,6 +1106,119 @@ void main() {
     expect(find.text('6/10 мест'), findsOneWidget);
   });
 
+  testWidgets('tracks event detail opened once with canonical city payload',
+      (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+    final controller = StreamController<DocumentSnapshot>();
+    addTearDown(controller.close);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          analyticsTracker: analyticsTracker,
+          snapshotStream: (eventRef) => controller.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(analyticsTracker.payloadsFor('event_detail_opened'), isEmpty);
+
+    controller.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(countryCode: ' ru ', cityKey: 'moscow'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    controller.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(
+          title: 'Updated title',
+          countryCode: 'RU',
+          cityKey: 'moscow',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(analyticsTracker.payloadsFor('event_detail_opened'), [
+      <String, String>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+      },
+    ]);
+  });
+
+  testWidgets('does not track event detail opened for missing city identity',
+      (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          analyticsTracker: analyticsTracker,
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(countryCode: '', cityKey: ''),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(analyticsTracker.eventDetailOpenedCallCount, 0);
+    expect(analyticsTracker.payloadsFor('event_detail_opened'), isEmpty);
+  });
+
+  testWidgets('tracks event detail opened again when route event changes',
+      (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          analyticsTracker: analyticsTracker,
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(countryCode: 'RU', cityKey: 'moscow'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-2',
+          analyticsTracker: analyticsTracker,
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(countryCode: 'US', cityKey: 'new_york'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(analyticsTracker.payloadsFor('event_detail_opened'), [
+      <String, String>{'countryCode': 'RU', 'cityKey': 'moscow'},
+      <String, String>{'countryCode': 'US', 'cityKey': 'new_york'},
+    ]);
+  });
+
   testWidgets('event change ignores stale in-flight leave completion',
       (tester) async {
     final leaveCompleter = Completer<Object?>();
@@ -1493,6 +1613,8 @@ Map<String, dynamic> _eventData({
   String status = 'active',
   String organizerId = 'organizer-1',
   int participantsCount = 5,
+  String countryCode = 'RU',
+  String cityKey = 'moscow',
   DateTime? startsAt,
 }) =>
     <String, dynamic>{
@@ -1504,6 +1626,8 @@ Map<String, dynamic> _eventData({
       'levelMin': 'B1',
       'levelMax': 'C1',
       'locationName': 'Cafe on Arbat',
+      'countryCode': countryCode,
+      'cityKey': cityKey,
       'startsAt': startsAt ?? DateTime.utc(2099, 6, 18, 15),
       'timeZoneId': 'Europe/Moscow',
       'capacity': 10,
@@ -1675,6 +1799,82 @@ class _TestAuthUser extends BaseAuthUser {
 
   @override
   Future<void> sendEmailVerification() async {}
+}
+
+class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
+  final List<_RecordedAnalyticsEvent> events = <_RecordedAnalyticsEvent>[];
+  int eventDetailOpenedCallCount = 0;
+
+  List<Map<String, String>> payloadsFor(String name) => events
+      .where((event) => event.name == name)
+      .map((event) => event.payload)
+      .toList(growable: false);
+
+  @override
+  Future<void> trackEventListOpened(EventSelectedCity selectedCity) async {}
+
+  @override
+  Future<void> trackCitySelected(EventSelectedCity selectedCity) async {}
+
+  @override
+  Future<void> trackDateFilterSelected(EventListDateFilter dateFilter) async {}
+
+  @override
+  Future<void> trackLevelFilterSelected(String? selectedLevel) async {}
+
+  @override
+  Future<void> trackEventDetailOpened(
+    EventsRecord event, {
+    String? citySource,
+  }) async {
+    eventDetailOpenedCallCount += 1;
+    final payload = eventCityAnalyticsPayload(
+      countryCode: event.countryCode,
+      cityKey: event.cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return;
+    }
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.eventDetailOpenedEventName,
+        payload: payload.cast<String, String>(),
+      ),
+    );
+  }
+}
+
+class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
+  const _NoopEventsAnalyticsTracker();
+
+  @override
+  Future<void> trackEventListOpened(EventSelectedCity selectedCity) async {}
+
+  @override
+  Future<void> trackCitySelected(EventSelectedCity selectedCity) async {}
+
+  @override
+  Future<void> trackDateFilterSelected(EventListDateFilter dateFilter) async {}
+
+  @override
+  Future<void> trackLevelFilterSelected(String? selectedLevel) async {}
+
+  @override
+  Future<void> trackEventDetailOpened(
+    EventsRecord event, {
+    String? citySource,
+  }) async {}
+}
+
+class _RecordedAnalyticsEvent {
+  const _RecordedAnalyticsEvent({
+    required this.name,
+    required this.payload,
+  });
+
+  final String name;
+  final Map<String, String> payload;
 }
 
 class _TestFirebaseFunctionsException extends FirebaseFunctionsException {

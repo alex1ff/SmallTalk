@@ -1,5 +1,7 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 
+import '/backend/backend.dart';
+
 import 'event_level_helper.dart';
 import 'event_list_date_bounds.dart';
 import 'event_selected_city_state.dart';
@@ -17,6 +19,8 @@ abstract interface class EventsAnalyticsTracker {
   Future<void> trackDateFilterSelected(EventListDateFilter dateFilter);
 
   Future<void> trackLevelFilterSelected(String? selectedLevel);
+
+  Future<void> trackEventDetailOpened(EventsRecord event, {String? citySource});
 }
 
 class EventsAnalyticsService implements EventsAnalyticsTracker {
@@ -31,6 +35,7 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
   static const String citySelectedEventName = 'city_selected';
   static const String dateFilterSelectedEventName = 'date_filter_selected';
   static const String levelFilterSelectedEventName = 'level_filter_selected';
+  static const String eventDetailOpenedEventName = 'event_detail_opened';
 
   final EventsAnalyticsLogEvent _logEvent;
 
@@ -70,6 +75,25 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
     );
   }
 
+  @override
+  Future<void> trackEventDetailOpened(
+    EventsRecord event, {
+    String? citySource,
+  }) {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: event.countryCode,
+      cityKey: event.cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return Future<void>.value();
+    }
+    return _logEvent(
+      name: eventDetailOpenedEventName,
+      parameters: payload,
+    );
+  }
+
   Future<void> _trackSelectedCityEvent({
     required String eventName,
     required EventSelectedCity selectedCity,
@@ -92,6 +116,25 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
       parameters: parameters,
     );
   }
+}
+
+Map<String, Object>? eventCityAnalyticsPayload({
+  required String countryCode,
+  required String cityKey,
+  String? citySource,
+}) {
+  final normalizedCountryCode = countryCode.trim().toUpperCase();
+  final normalizedCityKey = cityKey.trim();
+  if (normalizedCountryCode.isEmpty || normalizedCityKey.isEmpty) {
+    return null;
+  }
+  final normalizedCitySource = citySource?.trim();
+  return <String, Object>{
+    'countryCode': normalizedCountryCode,
+    'cityKey': normalizedCityKey,
+    if (normalizedCitySource != null && normalizedCitySource.isNotEmpty)
+      'citySource': normalizedCitySource,
+  };
 }
 
 String eventLevelFilterAnalyticsValue(String? selectedLevel) {

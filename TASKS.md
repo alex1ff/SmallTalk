@@ -313,7 +313,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Track city selected with canonical payload: `countryCode`, `cityKey`, `citySource` (`profile|recent|static|manual`), without localized city name.
 - [x] Track date filter selected.
 - [x] Track level filter selected.
-- [ ] Track event detail opened with canonical city payload and optional `citySource` only when known.
+- [x] Track event detail opened with canonical city payload and optional `citySource` only when known.
 - [ ] Track event created with canonical city payload and optional `citySource` only when known.
 - [ ] Track event edited with canonical city payload and optional `citySource` only when known.
 - [ ] Track event canceled with canonical city payload and optional `citySource` only when known.
