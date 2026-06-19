@@ -114,6 +114,13 @@ function eventChatMessageData(overrides = {}) {
   };
 }
 
+function boundedEventChatMessagesQuery(db, chatId = "editable-event") {
+  return db.collection(`eventChats/${chatId}/messages`)
+    .orderBy("createdAt", "desc")
+    .orderBy(firebaseCompat.firestore.FieldPath.documentId(), "desc")
+    .limit(50);
+}
+
 function participantData(overrides = {}) {
   return {
     userId: "user-a",
@@ -634,17 +641,14 @@ test("active event chat messages can be listed by active participants", async ()
   for (const context of [participant, organizer]) {
     const db = context.firestore();
     await assertSucceeds(
-      db.collection("eventChats/editable-event/messages")
-        .orderBy("createdAt", "desc")
-        .orderBy(firebaseCompat.firestore.FieldPath.documentId(), "desc")
-        .limit(50)
-        .get(),
+      boundedEventChatMessagesQuery(db).get(),
     );
     await assertFails(db.collection("eventChats/editable-event/messages").get());
   }
 
   for (const context of [guest, leftUser, nonparticipant, adminClient]) {
     const db = context.firestore();
+    await assertFails(boundedEventChatMessagesQuery(db).get());
     await assertFails(db.collection("eventChats/editable-event/messages").get());
     await assertFails(
       db.collection("eventChats/editable-event/messages")
@@ -653,6 +657,38 @@ test("active event chat messages can be listed by active participants", async ()
     );
   }
 });
+
+test("active event chat access is not granted by readAccessUserIds alone",
+  async () => {
+    const snapshotOnlyUser = testEnv.authenticatedContext("snapshot-only");
+    const chatId = "snapshot-only-active-chat";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc(`events/${chatId}`).set(eventData({chatId}));
+      await db.doc(`events/${chatId}/participants/organizer`).set(
+        participantData({
+          userId: "organizer",
+          displayName: "Organizer",
+          role: "organizer",
+        }),
+      );
+      await db.doc(`eventChats/${chatId}`).set(eventChatData({
+        eventId: chatId,
+        readAccessUserIds: ["snapshot-only"],
+      }));
+      await db.doc(`eventChats/${chatId}/messages/message-1`).set(
+        eventChatMessageData(),
+      );
+    });
+
+    const db = snapshotOnlyUser.firestore();
+    await assertFails(db.doc(`eventChats/${chatId}`).get());
+    await assertFails(
+      db.doc(`eventChats/${chatId}/messages/message-1`).get(),
+    );
+    await assertFails(boundedEventChatMessagesQuery(db, chatId).get());
+  });
 
 test("active event chat message reads fail closed for invalid parent state", async () => {
   const user = testEnv.authenticatedContext("user-a");
@@ -2056,6 +2092,10 @@ test("clients cannot directly write event chat metadata documents", async () => 
     {name: "guest", context: testEnv.unauthenticatedContext()},
     {name: "participant", context: testEnv.authenticatedContext("user-a")},
     {name: "organizer", context: testEnv.authenticatedContext("organizer")},
+    {
+      name: "nonparticipant",
+      context: testEnv.authenticatedContext("other-user"),
+    },
     {
       name: "admin",
       context: testEnv.authenticatedContext("admin-user", {admin: true}),

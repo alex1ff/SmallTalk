@@ -378,7 +378,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add tests that organizer cannot leave as participant.
 - [x] Add tests that organizer can edit/cancel.
 - [x] Add tests that non-organizer cannot edit/cancel.
-- [ ] Add rules tests for participant-only chat access on active events.
+- [x] Add rules tests for participant-only chat access on active events.
 - [ ] Add rules tests that canceled event chat stays readable for organizer and active participants at cancellation time.
 - [ ] Add rules tests that canceled event chat denies reads for nonparticipants and users who left before cancellation.
 - [ ] Add rules tests that canceled event chat does not gain new readers after cancellation.
