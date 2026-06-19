@@ -27,6 +27,17 @@ void main() {
       expect(bounds.upperBoundUtc, DateTime.parse('2026-06-18T21:00:00Z'));
     });
 
+    test('allows now exactly at the selected range start', () {
+      final bounds = computeEventListDateBounds(
+        timeZoneId: 'Europe/Moscow',
+        localDateRange: eventListSingleLocalDateRange(DateTime(2026, 6, 18)),
+        nowUtc: DateTime.parse('2026-06-17T21:00:00Z'),
+      );
+
+      expect(bounds.lowerBoundUtc, DateTime.parse('2026-06-17T21:00:00Z'));
+      expect(bounds.upperBoundUtc, DateTime.parse('2026-06-18T21:00:00Z'));
+    });
+
     test('uses an exclusive upper bound at the next local midnight', () {
       final bounds = computeEventListDateBounds(
         timeZoneId: 'Asia/Dubai',
@@ -130,6 +141,25 @@ void main() {
         DateTime(2026, 6, 17),
       );
     });
+
+    test('uses the selected city timezone instead of the UTC date', () {
+      final instant = DateTime.parse('2026-01-01T10:30:00Z');
+
+      expect(
+        eventListCityLocalDate(
+          timeZoneId: 'Pacific/Kiritimati',
+          utcInstant: instant,
+        ),
+        DateTime(2026, 1, 2),
+      );
+      expect(
+        eventListCityLocalDate(
+          timeZoneId: 'Pacific/Honolulu',
+          utcInstant: instant,
+        ),
+        DateTime(2026, 1, 1),
+      );
+    });
   });
 
   group('eventListDateFilterLocalDateRange', () {
@@ -151,6 +181,49 @@ void main() {
       expect(tomorrow.exclusiveEndDate, DateTime(2026, 6, 20));
     });
 
+    test('builds tomorrow across a year boundary', () {
+      final tomorrow = eventListDateFilterLocalDateRange(
+        dateFilter: EventListDateFilter.tomorrow,
+        timeZoneId: 'Europe/Moscow',
+        nowUtc: DateTime.parse('2026-12-31T12:00:00Z'),
+      );
+
+      expect(tomorrow.startDate, DateTime(2027, 1, 1));
+      expect(tomorrow.exclusiveEndDate, DateTime(2027, 1, 2));
+    });
+
+    test('builds all expected date filters from a city local date', () {
+      final expectedRanges = <EventListDateFilter, (DateTime, DateTime)>{
+        EventListDateFilter.today: (
+          DateTime(2026, 6, 18),
+          DateTime(2026, 6, 19),
+        ),
+        EventListDateFilter.tomorrow: (
+          DateTime(2026, 6, 19),
+          DateTime(2026, 6, 20),
+        ),
+        EventListDateFilter.currentWeek: (
+          DateTime(2026, 6, 15),
+          DateTime(2026, 6, 22),
+        ),
+        EventListDateFilter.currentMonth: (
+          DateTime(2026, 6),
+          DateTime(2026, 7),
+        ),
+      };
+
+      for (final entry in expectedRanges.entries) {
+        final range = eventListDateFilterLocalDateRange(
+          dateFilter: entry.key,
+          timeZoneId: 'Europe/Moscow',
+          nowUtc: DateTime.parse('2026-06-17T21:30:00Z'),
+        );
+
+        expect(range.startDate, entry.value.$1);
+        expect(range.exclusiveEndDate, entry.value.$2);
+      }
+    });
+
     test('builds the current Monday-start calendar week', () {
       final range = eventListDateFilterLocalDateRange(
         dateFilter: EventListDateFilter.currentWeek,
@@ -160,6 +233,28 @@ void main() {
 
       expect(range.startDate, DateTime(2026, 6, 15));
       expect(range.exclusiveEndDate, DateTime(2026, 6, 22));
+    });
+
+    test('keeps Monday as the start of the current week', () {
+      final range = eventListDateFilterLocalDateRange(
+        dateFilter: EventListDateFilter.currentWeek,
+        timeZoneId: 'Europe/Moscow',
+        nowUtc: DateTime.parse('2026-06-15T12:00:00Z'),
+      );
+
+      expect(range.startDate, DateTime(2026, 6, 15));
+      expect(range.exclusiveEndDate, DateTime(2026, 6, 22));
+    });
+
+    test('builds the current week across a year boundary', () {
+      final range = eventListDateFilterLocalDateRange(
+        dateFilter: EventListDateFilter.currentWeek,
+        timeZoneId: 'Europe/Moscow',
+        nowUtc: DateTime.parse('2026-01-01T12:00:00Z'),
+      );
+
+      expect(range.startDate, DateTime(2025, 12, 29));
+      expect(range.exclusiveEndDate, DateTime(2026, 1, 5));
     });
 
     test('keeps Sunday in the current week ending the next Monday', () {
@@ -182,6 +277,17 @@ void main() {
 
       expect(range.startDate, DateTime(2026, 12));
       expect(range.exclusiveEndDate, DateTime(2027, 1));
+    });
+
+    test('builds current month range for leap-year February', () {
+      final range = eventListDateFilterLocalDateRange(
+        dateFilter: EventListDateFilter.currentMonth,
+        timeZoneId: 'Europe/Moscow',
+        nowUtc: DateTime.parse('2028-02-15T12:00:00Z'),
+      );
+
+      expect(range.startDate, DateTime(2028, 2));
+      expect(range.exclusiveEndDate, DateTime(2028, 3));
     });
 
     test('lets UTC bounds clamp week and month ranges to now', () {
