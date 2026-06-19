@@ -65,6 +65,18 @@ const EXPECTED_DAILY_COUNTER_KEYS = Object.freeze([
   "windowEndAt",
   "windowStartAt",
 ]);
+const EXPECTED_EVENT_CREATE_REQUEST_MARKER_KEYS = Object.freeze([
+  "counterPath",
+  "createRequestId",
+  "createdAt",
+  "dailyCreation",
+  "dayKeyUtc",
+  "eventId",
+  "payloadHash",
+  "status",
+  "updatedAt",
+  "userId",
+]);
 const validRequest = Object.freeze({
   createRequestId: "550e8400-e29b-41d4-a716-446655440000",
   title: " Разговорный  клуб: кофе и английский ",
@@ -1494,6 +1506,62 @@ test("executeCreateEventTransaction creates all event documents", async () => {
   );
 });
 
+test("executeCreateEventTransaction creates exact lowercase request marker schema",
+    async () => {
+      const uppercaseRequestId = "550E8400-E29B-41D4-A716-446655440000";
+      const lowercaseRequestId = uppercaseRequestId.toLowerCase();
+      const request = cloneValidRequest({createRequestId: uppercaseRequestId});
+      const {normalized, payloadHash} = buildNormalizedAndHash(request);
+      const dayInfo = buildUtcDayInfo(fixedNow);
+      const {db, makeRef, store} = createFakeFirestore({
+        "users/uid": {display_name: "Анастасия Иванова"},
+      });
+
+      const response = await executeCreateEventTransaction({
+        db,
+        uid: "uid",
+        creationDate: fixedNow,
+        creationTimestamp: fixedTimestamp,
+        dayInfo,
+        normalized,
+        payloadHash,
+        eventRef: makeRef("events/event-new"),
+      });
+
+      const markerPath =
+        `eventCreateRequests/uid/requests/${lowercaseRequestId}`;
+      const uppercaseMarkerPath =
+        `eventCreateRequests/uid/requests/${uppercaseRequestId}`;
+      const marker = store.get(markerPath);
+
+      assert.equal(normalized.createRequestId, lowercaseRequestId);
+      assert.equal(store.has(uppercaseMarkerPath), false);
+      assert.deepEqual(
+          Object.keys(marker).sort(),
+          EXPECTED_EVENT_CREATE_REQUEST_MARKER_KEYS,
+      );
+      assert.equal(markerPath.split("/")[1], marker.userId);
+      assert.equal(marker.userId, "uid");
+      assert.equal(marker.createRequestId, lowercaseRequestId);
+      assert.equal(marker.eventId, "event-new");
+      assert.equal(marker.payloadHash, payloadHash);
+      assert.equal(
+          marker.counterPath,
+          "eventCreationCounters/uid/days/20260616",
+      );
+      assert.equal(marker.dayKeyUtc, "2026-06-16");
+      assert.equal(marker.status, "created");
+      assert.strictEqual(marker.createdAt, fixedTimestamp);
+      assert.strictEqual(marker.updatedAt, fixedTimestamp);
+      assert.deepEqual(marker.dailyCreation, response.dailyCreation);
+      assert.deepEqual(marker.dailyCreation, {
+        dayKeyUtc: "2026-06-16",
+        count: 1,
+        remaining: 4,
+        resetAtUtc: "2026-06-17T00:00:00.000Z",
+      });
+    });
+
 test("executeCreateEventTransaction ignores event day and city timezone for counter",
     async () => {
       const creationDate = new Date("2026-06-16T23:59:59.999Z");
@@ -1602,6 +1670,34 @@ test("createEvent callable captures one trusted backend UTC instant",
         });
       });
     });
+
+test("createEvent callable invalid schema writes no marker", async () => {
+  const {db, reads, store, writes} = createFakeFirestore({
+    "users/uid": {display_name: "Анастасия Иванова"},
+  });
+
+  await withAdminFirestore(db, async () => {
+    await assertRejectsHttpsError(
+        () => createEvent.run(cloneValidRequest({title: "   "}), {
+          auth: {uid: "uid"},
+        }),
+        "invalid-argument",
+        "invalid_create_request",
+    );
+  });
+
+  assert.deepEqual(reads, []);
+  assert.deepEqual(writes, []);
+  assert.equal(store.has("events/event-new"), false);
+  assert.equal(store.has("eventChats/event-new"), false);
+  assert.equal(store.has("eventCreationCounters/uid/days/20260616"), false);
+  assert.equal(
+      store.has(
+          `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+      ),
+      false,
+  );
+});
 
 test("executeCreateEventTransaction rolls back buffered writes on failure", async () => {
   const {db, makeRef, store, writes} = createFakeFirestore(
@@ -1738,10 +1834,16 @@ test("executeCreateEventTransaction returns marker retry after startsAt", async 
     dayInfo: originalDayInfo,
     count: 1,
   });
+  const retryDayCounterBefore = buildValidCounterData({
+    dayInfo: retryDayInfo,
+    count: 1,
+  });
+  const markerPath =
+    `eventCreateRequests/uid/requests/${validRequest.createRequestId}`;
   const {db, makeRef, reads, store, writes} = createFakeFirestore({
-    [`eventCreateRequests/uid/requests/${validRequest.createRequestId}`]:
-      marker,
+    [markerPath]: marker,
     "eventCreationCounters/uid/days/20260616": counterBefore,
+    "eventCreationCounters/uid/days/20260621": retryDayCounterBefore,
   });
 
   const response = await executeCreateEventTransaction({
@@ -1768,7 +1870,11 @@ test("executeCreateEventTransaction returns marker retry after startsAt", async 
       store.get("eventCreationCounters/uid/days/20260616"),
       counterBefore,
   );
-  assert.equal(store.has("eventCreationCounters/uid/days/20260621"), false);
+  assert.strictEqual(
+      store.get("eventCreationCounters/uid/days/20260621"),
+      retryDayCounterBefore,
+  );
+  assert.strictEqual(store.get(markerPath), marker);
 });
 
 test("executeCreateEventTransaction rejects changed-payload marker retry",
