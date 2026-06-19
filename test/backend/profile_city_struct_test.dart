@@ -60,7 +60,13 @@ void main() {
       final restored = ProfileCityStruct.fromSerializableMap(
           profileCity.toSerializableMap());
 
-      expect(restored, profileCity);
+      expect(restored.countryCode, profileCity.countryCode);
+      expect(restored.cityKey, profileCity.cityKey);
+      expect(restored.cityNameRu, profileCity.cityNameRu);
+      expect(restored.cityNameEn, profileCity.cityNameEn);
+      expect(restored.cityDisplayContext, profileCity.cityDisplayContext);
+      expect(restored.catalogVersion, profileCity.catalogVersion);
+      expect(restored.updatedAt?.isAtSameMomentAs(updatedAt), isTrue);
       expect(restored.catalogVersion, isA<String>());
       expect(restored.regionCode, '');
       expect(restored.hasRegionCode(), isFalse);

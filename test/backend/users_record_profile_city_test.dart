@@ -33,6 +33,31 @@ void main() {
       expect(user.preferences.preferredLocation.code, 'US');
     });
 
+    test('treats null profileCity as unset without legacy migration', () {
+      final user = UsersRecord.getDocumentFromData(
+        {
+          'uid': 'uid-null-profile-city',
+          'display_name': 'User',
+          'Country_NS': {'code': 'RU'},
+          'preferences': {
+            'preferredLocation': {'code': 'US'},
+          },
+          'countryCode': 'IT',
+          'cityKey': 'rome',
+          'profileCity': null,
+        },
+        UsersRecord.collection.doc('uid-null-profile-city'),
+      );
+
+      expect(user.hasProfileCity(), isFalse);
+      expect(user.profileCity.countryCode, '');
+      expect(user.profileCity.cityKey, '');
+      expect(user.countryNS.code, 'RU');
+      expect(user.preferences.preferredLocation.code, 'US');
+      expect(user.snapshotData['countryCode'], 'IT');
+      expect(user.snapshotData['cityKey'], 'rome');
+    });
+
     test('parses profileCity independently from legacy country fields', () {
       final updatedAt = DateTime.parse('2026-06-16T12:00:00Z');
       final user = UsersRecord.getDocumentFromData(

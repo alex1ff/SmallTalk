@@ -190,6 +190,33 @@ void main() {
       expect(result.city, isNull);
     });
 
+    test('treats null profile city field as missing without legacy migration',
+        () {
+      final user = userFixture(
+        data: {
+          'uid': 'uid-null-profile-city',
+          'Country_NS': {'code': 'RU'},
+          'preferences': {
+            'preferredLocation': {'code': 'US'},
+          },
+          'countryCode': 'IT',
+          'cityKey': 'rome',
+          'profileCity': null,
+        },
+      );
+
+      final result = resolveSelectedEventCityFromUserProfile(
+        user: user,
+        catalog: catalog,
+      );
+
+      expect(user.hasProfileCity(), isFalse);
+      expect(result.status, EventCityResolutionStatus.missingProfileCity);
+      expect(result.city, isNull);
+      expect(result.hasResolvedCity, isFalse);
+      expect(resolveEventCityCountryCodeHintFromUserProfile(user: user), 'RU');
+    });
+
     test('uses profile city even when legacy fields conflict', () {
       final user = userFixture(
         data: {
