@@ -99,6 +99,22 @@ function repeatGrapheme(value, count) {
   return Array.from({length: count}, () => value).join("");
 }
 
+function assertNoLanguageStructFields(data) {
+  for (const field of [
+    "language",
+    "LanguageStruct",
+    "alternateCodes",
+    "model",
+    "isPopular",
+    "ss",
+  ]) {
+    assert.equal(
+        Object.prototype.hasOwnProperty.call(data, field),
+        false,
+    );
+  }
+}
+
 function createFakeFirestore(seed = {}) {
   const store = new Map(Object.entries(seed));
   const reads = [];
@@ -301,6 +317,87 @@ test("normalizeEditEventPayload normalizes city and editable fields", () => {
   assert.equal(payload.normalized.locationGeoPoint, null);
 });
 
+test("normalizeEditEventPayload normalizes language codes", () => {
+  const cases = [
+    {
+      languageCode: "it",
+      code: "it",
+      nameEn: "Italian",
+      nameRu: "Итальянский",
+    },
+    {
+      languageCode: " EN-us ",
+      code: "en",
+      nameEn: "English",
+      nameRu: "Английский",
+    },
+    {
+      languageCode: " ZH-HANT ",
+      code: "zh-TW",
+      nameEn: "Chinese (Traditional)",
+      nameRu: "Китайский (Традиционный)",
+    },
+    {
+      languageCode: " de-CH ",
+      code: "de-CH",
+      nameEn: "German (Switzerland)",
+      nameRu: "Немецкий (Швейцария)",
+    },
+  ];
+
+  for (const currentCase of cases) {
+    const payload = normalizeEditEventPayload(
+        cloneValidEditRequest({languageCode: currentCase.languageCode}),
+        {now: fixedNow},
+    );
+
+    assert.equal(payload.normalized.language.code, currentCase.code);
+    assert.equal(payload.normalized.language.nameEn, currentCase.nameEn);
+    assert.equal(payload.normalized.language.nameRu, currentCase.nameRu);
+    assert.equal(payload.normalized.hashPayload.languageCode,
+        currentCase.code);
+  }
+});
+
+test("normalizeEditEventPayload rejects client language display payloads", () => {
+  const languageStruct = {
+    code: "en",
+    alternateCodes: ["en", "en-US"],
+    nameEn: "Stale English",
+    nameRu: "Stale Russian",
+    isPopular: true,
+    ss: "client-ui-state",
+  };
+
+  for (const [key, value] of Object.entries({
+    languageNameEn: "Stale English",
+    languageNameRu: "Stale Russian",
+    language: languageStruct,
+    LanguageStruct: languageStruct,
+  })) {
+    assertHttpsError(
+        () => normalizeEditEventPayload(
+            cloneValidEditRequest({[key]: value}),
+            {now: fixedNow},
+        ),
+        "invalid-argument",
+        "invalid_edit_request",
+        key,
+        "unknown_key",
+    );
+  }
+  assertHttpsError(
+      () => normalizeEditEventPayload(
+          cloneValidEditRequest({languageCode: languageStruct}),
+          {now: fixedNow},
+      ),
+      "invalid-argument",
+      "invalid_edit_request",
+      "languageCode",
+      "invalid_type",
+  );
+});
+
 test("normalizeEditEventPayload derives timezone from selected city", () => {
   const payload = normalizeEditEventPayload(
       cloneValidEditRequest({
@@ -348,6 +445,16 @@ test("normalizeEditEventPayload remaps create validation errors", () => {
       "invalid_edit_request",
       "startsAt",
       "past_starts_at",
+  );
+  assertHttpsError(
+      () => normalizeEditEventPayload(
+          cloneValidEditRequest({languageCode: "zz"}),
+          {now: fixedNow},
+      ),
+      "invalid-argument",
+      "invalid_edit_request",
+      "languageCode",
+      "invalid_format",
   );
   assertHttpsError(
       () => normalizeEditEventPayload(
@@ -628,6 +735,72 @@ test("editEvent callable validates capacity before transaction writes",
       }
     });
 
+test("editEvent callable validates language before transaction writes",
+    async () => {
+      const languageStruct = {
+        code: "en",
+        alternateCodes: ["en", "en-US"],
+        nameEn: "Stale English",
+        nameRu: "Stale Russian",
+        isPopular: true,
+        ss: "client-ui-state",
+      };
+      const cases = [
+        {
+          overrides: {languageCode: "zz"},
+          field: "languageCode",
+          reason: "invalid_format",
+        },
+        {
+          overrides: {languageCode: languageStruct},
+          field: "languageCode",
+          reason: "invalid_type",
+        },
+        {
+          overrides: {languageNameEn: "Stale English"},
+          field: "languageNameEn",
+          reason: "unknown_key",
+        },
+        {
+          overrides: {languageNameRu: "Stale Russian"},
+          field: "languageNameRu",
+          reason: "unknown_key",
+        },
+        {
+          overrides: {language: languageStruct},
+          field: "language",
+          reason: "unknown_key",
+        },
+        {
+          overrides: {LanguageStruct: languageStruct},
+          field: "LanguageStruct",
+          reason: "unknown_key",
+        },
+      ];
+
+      for (const currentCase of cases) {
+        const {db, reads, writes} = createFakeFirestore({
+          "events/event-1": eventData(),
+        });
+
+        await withAdminFirestore(db, async () => {
+          await assertRejectsHttpsError(
+              () => editEvent.run(
+                  cloneValidEditRequest(currentCase.overrides),
+                  {auth: {uid: "uid"}},
+              ),
+              "invalid-argument",
+              "invalid_edit_request",
+              currentCase.field,
+              currentCase.reason,
+          );
+        });
+
+        assert.deepEqual(reads, []);
+        assert.deepEqual(writes, []);
+      }
+    });
+
 test("editEvent callable validates startsAt against trusted backend time",
     async () => {
       for (const startsAt of [
@@ -688,6 +861,10 @@ test("executeEditEventTransaction updates organizer active future event", async 
     updatedAt: "2026-06-16T10:00:00.000Z",
   });
   assert.equal(event.title, "Updated event");
+  assert.equal(event.languageCode, "en");
+  assert.equal(event.languageNameEn, "English");
+  assert.equal(event.languageNameRu, "Английский");
+  assertNoLanguageStructFields(event);
   assert.equal(event.countryCode, "US");
   assert.equal(event.cityKey, "new_york");
   assert.equal(event.cityNameRu, "Нью-Йорк");
@@ -697,6 +874,10 @@ test("executeEditEventTransaction updates organizer active future event", async 
   assert.equal(event.canceledAt, null);
   assert.equal(event.updatedAt, fixedTimestamp);
   assert.deepEqual(writes.map((write) => write.path), ["events/event-1"]);
+  assert.equal(writes[0].data.languageCode, "en");
+  assert.equal(writes[0].data.languageNameEn, "English");
+  assert.equal(writes[0].data.languageNameRu, "Английский");
+  assertNoLanguageStructFields(writes[0].data);
   assert.equal(
       Object.prototype.hasOwnProperty.call(writes[0].data, "status"),
       false,

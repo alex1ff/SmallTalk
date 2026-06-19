@@ -479,6 +479,22 @@ function repeatGrapheme(value, count) {
   return Array.from({length: count}, () => value).join("");
 }
 
+function assertNoLanguageStructFields(data) {
+  for (const field of [
+    "language",
+    "LanguageStruct",
+    "alternateCodes",
+    "model",
+    "isPopular",
+    "ss",
+  ]) {
+    assert.equal(
+        Object.prototype.hasOwnProperty.call(data, field),
+        false,
+    );
+  }
+}
+
 function assertNoCreateDocuments(store, {
   eventId = "event-new",
   uid = "uid",
@@ -832,6 +848,72 @@ test("normalizeCreateEventPayload normalizes trusted create fields", () => {
   assert.equal(normalized.startsAtIso, "2026-06-20T15:00:00.000Z");
   assert.equal(normalized.startsAtDate.toISOString(), normalized.startsAtIso);
   assert.equal(normalized.capacity, 10);
+});
+
+test("normalizeCreateEventPayload normalizes language codes", () => {
+  const cases = [
+    {
+      languageCode: "it",
+      code: "it",
+      nameEn: "Italian",
+      nameRu: "Итальянский",
+    },
+    {
+      languageCode: " EN-us ",
+      code: "en",
+      nameEn: "English",
+      nameRu: "Английский",
+    },
+    {
+      languageCode: " ZH-HANT ",
+      code: "zh-TW",
+      nameEn: "Chinese (Traditional)",
+      nameRu: "Китайский (Традиционный)",
+    },
+    {
+      languageCode: " de-CH ",
+      code: "de-CH",
+      nameEn: "German (Switzerland)",
+      nameRu: "Немецкий (Швейцария)",
+    },
+  ];
+
+  for (const currentCase of cases) {
+    const normalized = normalizeCreateEventPayload(
+        cloneValidRequest({languageCode: currentCase.languageCode}),
+        {now: fixedNow},
+    );
+
+    assert.equal(normalized.language.code, currentCase.code);
+    assert.equal(normalized.language.nameEn, currentCase.nameEn);
+    assert.equal(normalized.language.nameRu, currentCase.nameRu);
+    assert.equal(normalized.hashPayload.languageCode, currentCase.code);
+  }
+});
+
+test("normalizeCreateEventPayload rejects client language display payloads", () => {
+  const languageStruct = {
+    code: "en",
+    alternateCodes: ["en", "en-US"],
+    nameEn: "Stale English",
+    nameRu: "Stale Russian",
+    isPopular: true,
+    ss: "client-ui-state",
+  };
+
+  for (const [key, value] of Object.entries({
+    languageNameEn: "Stale English",
+    languageNameRu: "Stale Russian",
+    language: languageStruct,
+    LanguageStruct: languageStruct,
+  })) {
+    assertInvalidCreateRequest({[key]: value}, key, "unknown_key");
+  }
+  assertInvalidCreateRequest(
+      {languageCode: languageStruct},
+      "languageCode",
+      "invalid_type",
+  );
 });
 
 test("normalizeCreateEventPayload derives timezone from selected city", () => {
@@ -1561,6 +1643,10 @@ test("event, participant, chat, and marker builders share one timestamp", () => 
   assert.equal(eventData.chatId, "event-1");
   assert.equal(eventData.organizerDisplayName, "Анастасия Иванова");
   assert.equal(eventData.organizerPhotoUrl, null);
+  assert.equal(eventData.languageCode, "en");
+  assert.equal(eventData.languageNameEn, "English");
+  assert.equal(eventData.languageNameRu, "Английский");
+  assertNoLanguageStructFields(eventData);
   assert.equal(eventData.createdAt, fixedTimestamp);
   assert.equal(eventData.updatedAt, fixedTimestamp);
   assert.equal(eventData.canceledAt, null);
@@ -1629,6 +1715,10 @@ test("executeCreateEventTransaction creates all event documents", async () => {
       store.get("events/event-new/participants/uid").photoUrl,
       "https://example.test/avatar.jpg",
   );
+  assert.equal(store.get("events/event-new").languageCode, "en");
+  assert.equal(store.get("events/event-new").languageNameEn, "English");
+  assert.equal(store.get("events/event-new").languageNameRu, "Английский");
+  assertNoLanguageStructFields(store.get("events/event-new"));
   assert.deepEqual(store.get("eventChats/event-new"), {
     eventId: "event-new",
     readAccessUserIds: ["uid"],
@@ -2077,6 +2167,73 @@ test("createEvent callable validates capacity before transaction writes",
               "invalid-argument",
               "invalid_create_request",
               "capacity",
+              currentCase.reason,
+          );
+        });
+
+        assert.deepEqual(reads, []);
+        assert.deepEqual(writes, []);
+        assertNoCreateDocuments(store);
+      }
+    });
+
+test("createEvent callable validates language before transaction writes",
+    async () => {
+      const languageStruct = {
+        code: "en",
+        alternateCodes: ["en", "en-US"],
+        nameEn: "Stale English",
+        nameRu: "Stale Russian",
+        isPopular: true,
+        ss: "client-ui-state",
+      };
+      const cases = [
+        {
+          overrides: {languageCode: "zz"},
+          field: "languageCode",
+          reason: "invalid_format",
+        },
+        {
+          overrides: {languageCode: languageStruct},
+          field: "languageCode",
+          reason: "invalid_type",
+        },
+        {
+          overrides: {languageNameEn: "Stale English"},
+          field: "languageNameEn",
+          reason: "unknown_key",
+        },
+        {
+          overrides: {languageNameRu: "Stale Russian"},
+          field: "languageNameRu",
+          reason: "unknown_key",
+        },
+        {
+          overrides: {language: languageStruct},
+          field: "language",
+          reason: "unknown_key",
+        },
+        {
+          overrides: {LanguageStruct: languageStruct},
+          field: "LanguageStruct",
+          reason: "unknown_key",
+        },
+      ];
+
+      for (const currentCase of cases) {
+        const {db, reads, store, writes} = createFakeFirestore({
+          "users/uid": {display_name: "Анастасия Иванова"},
+        });
+
+        await withAdminFirestore(db, async () => {
+          await assertRejectsHttpsError(
+              () => createEvent.run(
+                  cloneValidRequest(currentCase.overrides),
+                  {auth: {uid: "uid"}},
+              ),
+              "invalid-argument",
+              "invalid_create_request",
+              currentCase.field,
               currentCase.reason,
           );
         });

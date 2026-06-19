@@ -344,7 +344,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add create/edit/server validation tests for `capacity`: below 2, above 50, non-integer, valid bounds, and edit below active `participantsCount`.
 - [x] Add create/edit/server validation tests for `startsAt` and `timeZoneId`: future trusted-time validation, selected city timezone derivation, and rejected or ignored client timezone mismatch.
 - [x] Add create tests proving `organizerDisplayName` and `organizerPhotoUrl` are derived from the authenticated organizer profile snapshot.
-- [ ] Add create/edit/server validation tests for language: primary code accepted, alternate code normalized, trim/case input normalized, unknown code rejected, mismatched client-provided names rejected or ignored, and full `LanguageStruct` persistence blocked.
+- [x] Add create/edit/server validation tests for language: primary code accepted, alternate code normalized, trim/case input normalized, unknown code rejected, mismatched client-provided names rejected or ignored, and full `LanguageStruct` persistence blocked.
 - [ ] Add language catalog sync tests that backend allowlist matches the app catalog and `alternateCodes` resolve uniquely.
 - [ ] Add language display tests for current locale name, denormalized fallback names, unknown legacy code fallback, and missing catalog load fallback.
 - [ ] Add rules tests that block direct client writes bypassing validated event create/edit paths.

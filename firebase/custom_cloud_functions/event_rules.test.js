@@ -1761,6 +1761,37 @@ test("direct organizer edit cannot mutate protected or catalog-derived fields", 
   }));
 });
 
+test("direct organizer edit cannot persist language struct maps", async () => {
+  const organizer = testEnv.authenticatedContext("organizer");
+  const eventRef = organizer.firestore().doc("events/editable-event");
+  const languageStruct = {
+    code: "en",
+    alternateCodes: ["en", "en-US"],
+    nameEn: "Stale English",
+    nameRu: "Stale Russian",
+    isPopular: true,
+    ss: "client-ui-state",
+  };
+
+  await assertFails(eventRef.update({
+    ...directEditPatch(),
+    language: languageStruct,
+  }));
+  await assertFails(eventRef.update({
+    ...directEditPatch(),
+    LanguageStruct: languageStruct,
+  }));
+  await assertFails(eventRef.set({
+    ...eventData({
+      startsAt: farFutureStartsAt,
+      participantsCount: 3,
+      capacity: 8,
+      chatId: "editable-event",
+    }),
+    language: languageStruct,
+  }));
+});
+
 test("direct organizer edit rejects unknown fields and field deletion", async () => {
   const organizer = testEnv.authenticatedContext("organizer");
   const eventRef = organizer.firestore().doc("events/editable-event");
