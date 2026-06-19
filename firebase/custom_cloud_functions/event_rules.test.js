@@ -618,6 +618,57 @@ test("canceled event chat stays readable after an eligible participant later lef
     );
   });
 
+test("canceled event chat reads are not granted to participants added after cancellation",
+  async () => {
+    const chatId = "canceled-joined-after";
+    const messageId = "message-1";
+    const canceledAt = new Date("2099-06-01T10:00:00.000Z");
+    const joinedAfterCancel = testEnv.authenticatedContext(
+      "joined-after-cancel",
+    );
+    const snapshotReader = testEnv.authenticatedContext("user-a");
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc(`events/${chatId}`).set(eventData({
+        status: "canceled",
+        canceledAt,
+        chatId,
+      }));
+      await db.doc(`events/${chatId}/participants/joined-after-cancel`).set(
+        participantData({
+          userId: "joined-after-cancel",
+          displayName: "Joined After Cancel",
+          status: "active",
+          joinedAt: new Date("2099-06-01T10:00:01.000Z"),
+          leftAt: null,
+        }),
+      );
+      await db.doc(`eventChats/${chatId}`).set(eventChatData({
+        eventId: chatId,
+        readAccessUserIds: ["user-a"],
+      }));
+      await db.doc(`eventChats/${chatId}/messages/${messageId}`).set(
+        eventChatMessageData(),
+      );
+    });
+
+    const db = joinedAfterCancel.firestore();
+    await assertFails(db.doc(`eventChats/${chatId}`).get());
+    await assertFails(
+      db.doc(`eventChats/${chatId}/messages/${messageId}`).get(),
+    );
+    await assertFails(boundedEventChatMessagesQuery(db, chatId).get());
+
+    const listSnapshot = await assertSucceeds(
+      boundedEventChatMessagesQuery(snapshotReader.firestore(), chatId).get(),
+    );
+    assert.deepEqual(
+      listSnapshot.docs.map((snapshot) => snapshot.id),
+      [messageId],
+    );
+  });
+
 test("canceled event chat metadata uses frozen access, not current membership", async () => {
   const user = testEnv.authenticatedContext("user-a");
   const leftUser = testEnv.authenticatedContext("user-left");

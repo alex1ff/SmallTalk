@@ -381,7 +381,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add rules tests for participant-only chat access on active events.
 - [x] Add rules tests that canceled event chat stays readable for organizer and active participants at cancellation time.
 - [x] Add rules tests that canceled event chat denies reads for nonparticipants and users who left before cancellation.
-- [ ] Add rules tests that canceled event chat does not gain new readers after cancellation.
+- [x] Add rules tests that canceled event chat does not gain new readers after cancellation.
 - [ ] Add rules tests that canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
 - [ ] Add event chat metadata tests for `chatId = eventId`, matching `eventId`, no independent chat status fields, blocked direct metadata writes/deletes, `updatedAt` metadata semantics, and fail-closed missing/mismatched metadata.
 - [ ] Add `readAccessUserIds` tests for uniqueness, no semantic ordering, create `[organizerId]`, join/rejoin add, duplicate active join no-op, leave removes only before `startsAt`, cancel snapshot formula, immutable frozen snapshot, repeated cancel no snapshot changes, and join/leave/rejoin versus cancel commit ordering.
