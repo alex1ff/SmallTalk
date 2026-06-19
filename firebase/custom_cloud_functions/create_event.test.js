@@ -497,6 +497,21 @@ function assertNoLanguageStructFields(data) {
   }
 }
 
+function assertNoCityStructFields(data) {
+  for (const field of [
+    "city",
+    "catalogVersion",
+    "regionCode",
+    "regionNameRu",
+    "regionNameEn",
+  ]) {
+    assert.equal(
+        Object.prototype.hasOwnProperty.call(data, field),
+        false,
+    );
+  }
+}
+
 function readAppEventLanguageAllowlist() {
   const source = JSON.parse(fs.readFileSync(
       path.join(
@@ -669,6 +684,11 @@ test("normalizeCreateEventPayload rejects invalid schema field values", () => {
     {overrides: {cityKey: null}, field: "cityKey", reason: "invalid_type"},
     {
       overrides: {cityKey: "Moscow"},
+      field: "cityKey",
+      reason: "invalid_format",
+    },
+    {
+      overrides: {cityKey: "Москва"},
       field: "cityKey",
       reason: "invalid_format",
     },
@@ -862,6 +882,11 @@ test("normalizeCreateEventPayload normalizes trusted create fields", () => {
   assert.equal(normalized.city.countryCode, "RU");
   assert.equal(normalized.city.cityKey, "moscow");
   assert.equal(normalized.city.cityNameRu, "Москва");
+  assert.equal(normalized.city.cityNameEn, "Moscow");
+  assert.equal(normalized.city.cityDisplayContext, "Россия");
+  assert.equal(normalized.city.regionCode, null);
+  assert.equal(normalized.city.regionNameRu, null);
+  assert.equal(normalized.city.regionNameEn, null);
   assert.equal(normalized.city.timeZoneId, "Europe/Moscow");
   assert.equal(normalized.locationName, "Starbucks, ул. Арбат, 5");
   assert.deepEqual(normalized.locationGeoPointHashValue, {
@@ -972,6 +997,30 @@ test("normalizeCreateEventPayload rejects client language display payloads", () 
       "languageCode",
       "invalid_type",
   );
+});
+
+test("normalizeCreateEventPayload rejects client city display payloads", () => {
+  const cityStruct = {
+    countryCode: "RU",
+    cityKey: "moscow",
+    cityNameRu: "Поддельная Москва",
+    cityNameEn: "Fake Moscow",
+    cityDisplayContext: "Client supplied",
+    timeZoneId: "America/New_York",
+  };
+
+  for (const [key, value] of Object.entries({
+    cityNameRu: "Поддельная Москва",
+    cityNameEn: "Fake Moscow",
+    cityDisplayContext: "Client supplied",
+    regionCode: "FAKE",
+    regionNameRu: "Фейковый регион",
+    regionNameEn: "Fake region",
+    city: cityStruct,
+    catalogVersion: "client-catalog",
+  })) {
+    assertInvalidCreateRequest({[key]: value}, key, "unknown_key");
+  }
 });
 
 test("normalizeCreateEventPayload derives timezone from selected city", () => {
@@ -1777,6 +1826,13 @@ test("executeCreateEventTransaction creates all event documents", async () => {
   assert.equal(store.get("events/event-new").languageNameEn, "English");
   assert.equal(store.get("events/event-new").languageNameRu, "Английский");
   assertNoLanguageStructFields(store.get("events/event-new"));
+  assert.equal(store.get("events/event-new").countryCode, "RU");
+  assert.equal(store.get("events/event-new").cityKey, "moscow");
+  assert.equal(store.get("events/event-new").cityNameRu, "Москва");
+  assert.equal(store.get("events/event-new").cityNameEn, "Moscow");
+  assert.equal(store.get("events/event-new").cityDisplayContext, "Россия");
+  assert.equal(store.get("events/event-new").timeZoneId, "Europe/Moscow");
+  assertNoCityStructFields(store.get("events/event-new"));
   assert.deepEqual(store.get("eventChats/event-new"), {
     eventId: "event-new",
     readAccessUserIds: ["uid"],
@@ -2014,6 +2070,12 @@ test("executeCreateEventTransaction ignores event day and city timezone for coun
         resetAtUtc: "2026-06-17T00:00:00.000Z",
       });
       assert.equal(store.get("events/event-new").cityKey, "dubai");
+      assert.equal(store.get("events/event-new").cityNameRu, "Дубай");
+      assert.equal(store.get("events/event-new").cityNameEn, "Dubai");
+      assert.equal(
+          store.get("events/event-new").cityDisplayContext,
+          "United Arab Emirates",
+      );
       assert.equal(store.get("events/event-new").timeZoneId, "Asia/Dubai");
       assert.equal(
           store.get("events/event-new").startsAt.toMillis(),
@@ -2293,6 +2355,57 @@ test("createEvent callable validates language before transaction writes",
               "invalid_create_request",
               currentCase.field,
               currentCase.reason,
+          );
+        });
+
+        assert.deepEqual(reads, []);
+        assert.deepEqual(writes, []);
+        assertNoCreateDocuments(store);
+      }
+    });
+
+test("createEvent callable rejects client city display payloads before writes",
+    async () => {
+      const cityStruct = {
+        countryCode: "RU",
+        cityKey: "moscow",
+        cityNameRu: "Поддельная Москва",
+        cityNameEn: "Fake Moscow",
+        cityDisplayContext: "Client supplied",
+        timeZoneId: "America/New_York",
+      };
+      const cases = [
+        {overrides: {cityNameRu: "Поддельная Москва"}, field: "cityNameRu"},
+        {overrides: {cityNameEn: "Fake Moscow"}, field: "cityNameEn"},
+        {
+          overrides: {cityDisplayContext: "Client supplied"},
+          field: "cityDisplayContext",
+        },
+        {overrides: {regionCode: "FAKE"}, field: "regionCode"},
+        {overrides: {regionNameRu: "Фейковый регион"}, field: "regionNameRu"},
+        {overrides: {regionNameEn: "Fake region"}, field: "regionNameEn"},
+        {overrides: {city: cityStruct}, field: "city"},
+        {
+          overrides: {catalogVersion: "client-catalog"},
+          field: "catalogVersion",
+        },
+      ];
+
+      for (const currentCase of cases) {
+        const {db, reads, store, writes} = createFakeFirestore({
+          "users/uid": {display_name: "Анастасия Иванова"},
+        });
+
+        await withAdminFirestore(db, async () => {
+          await assertRejectsHttpsError(
+              () => createEvent.run(
+                  cloneValidRequest(currentCase.overrides),
+                  {auth: {uid: "uid"}},
+              ),
+              "invalid-argument",
+              "invalid_create_request",
+              currentCase.field,
+              "unknown_key",
           );
         });
 

@@ -364,7 +364,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add city chip source tests for profile default, missing profile city, recent city ordering, static popular fallback, profile city absent from chips, and recent/static dedupe by `countryCode + cityKey`.
 - [x] Add city catalog sync tests that backend allowlist/shared catalog is versioned and generated from the same source as the full app canonical city catalog.
 - [x] Add city query tests for canonical `countryCode + cityKey`.
-- [ ] Add city identity tests for ISO uppercase `countryCode`, `cityKey` regex, unique `(countryCode, cityKey)`, duplicate-name disambiguation, required display context/known region metadata, alias resolution, ambiguous alias no-auto-resolve behavior, unknown city create/edit/profile-save rejection, stale profile/recent city fallback, and localized names never acting as identity.
+- [x] Add city identity tests for ISO uppercase `countryCode`, `cityKey` regex, unique `(countryCode, cityKey)`, duplicate-name disambiguation, required display context/known region metadata, alias resolution, ambiguous alias no-auto-resolve behavior, unknown city create/edit/profile-save rejection, stale profile/recent city fallback, and localized names never acting as identity.
 - [ ] Add city resolution tests that `Country_NS` alone does not unlock the Events list.
 - [ ] Add city resolution tests that `preferences.preferredLocation` is not used as the default Events city.
 - [ ] Add profile city field tests for missing/null `users.profileCity`, stale `profileCity`, explicit save-only behavior, no auto-migration from `Country_NS`, no top-level `users.countryCode`/`users.cityKey` identity, stored `catalogVersion`, and server-time `updatedAt`.

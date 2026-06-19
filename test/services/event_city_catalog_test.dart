@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -5,15 +6,44 @@ import 'package:small_talk/services/event_city_catalog.dart';
 
 void main() {
   late EventCityCatalog catalog;
+  late Map<String, dynamic> rawCatalogData;
 
   setUpAll(() {
     final rawCatalog = File(eventCityCatalogAssetPath).readAsStringSync();
-    catalog = EventCityCatalog.fromJsonString(rawCatalog);
+    rawCatalogData = Map<String, dynamic>.from(jsonDecode(rawCatalog) as Map);
+    catalog = EventCityCatalog.fromMap(rawCatalogData);
   });
 
   test('loads static city catalog schema from app asset', () {
     expect(catalog.catalogVersion, 'events-city-catalog-mvp-2026-06-16');
     expect(catalog.cities.length, greaterThanOrEqualTo(10));
+
+    final rawCities = rawCatalogData['cities'];
+    expect(rawCities, isA<List>());
+    final rawIdentities = <String>{};
+    final rawCityMaps = <Map<String, dynamic>>[];
+    for (final item in rawCities as List) {
+      expect(item, isA<Map>());
+      final rawCity = Map<String, dynamic>.from(item as Map);
+      rawCityMaps.add(rawCity);
+      final countryCode = _rawRequiredString(rawCity, 'countryCode');
+      final cityKey = _rawRequiredString(rawCity, 'cityKey');
+      final displayContext = _rawRequiredString(rawCity, 'displayContext');
+
+      expect(RegExp(r'^[A-Z]{2}$').hasMatch(countryCode), isTrue);
+      expect(eventCityKeyPattern.hasMatch(cityKey), isTrue);
+      expect(rawIdentities.add('$countryCode:$cityKey'), isTrue);
+      expect(displayContext, isNotEmpty);
+
+      final regionCode = rawCity['regionCode'];
+      if (regionCode != null) {
+        expect(regionCode, isA<String>());
+        expect((regionCode as String).trim(), isNotEmpty);
+        expect(_rawRequiredString(rawCity, 'regionNameRu'), isNotEmpty);
+        expect(_rawRequiredString(rawCity, 'regionNameEn'), isNotEmpty);
+      }
+    }
+    _assertDuplicateDisplayNamesDisambiguated(rawCityMaps);
 
     final identities = <String>{};
     for (final city in catalog.cities) {
@@ -41,6 +71,8 @@ void main() {
     expect(city.cityDisplayContext, 'Россия');
     expect(city.timeZoneId, 'Europe/Moscow');
     expect(catalog.resolve('Россия', 'Москва'), isNull);
+    expect(catalog.resolve('RU', 'Москва'), isNull);
+    expect(catalog.resolve('RU', 'Moscow'), isNull);
     expect(catalog.resolve('RU', 'unknown_city'), isNull);
   });
 
@@ -192,6 +224,8 @@ void main() {
           cityKey: 'springfield_il',
           nameEn: 'Springfield',
           regionCode: 'IL',
+          regionNameRu: 'Иллинойс',
+          regionNameEn: 'Illinois',
           displayContext: 'Illinois, United States',
           priority: 10,
         ),
@@ -200,6 +234,8 @@ void main() {
           cityKey: 'springfield_ma',
           nameEn: 'Springfield',
           regionCode: 'MA',
+          regionNameRu: 'Массачусетс',
+          regionNameEn: 'Massachusetts',
           displayContext: 'Massachusetts, United States',
           priority: 9,
         ),
@@ -248,6 +284,128 @@ void main() {
     ]);
   });
 
+  test('rejects duplicate country and city key identities', () {
+    expect(
+      () => EventCityCatalog.fromMap({
+        'catalogVersion': 'test',
+        'cities': [
+          _cityFixture(
+            countryCode: 'US',
+            cityKey: 'springfield_il',
+            nameEn: 'Springfield',
+            regionCode: 'IL',
+            priority: 10,
+          ),
+          _cityFixture(
+            countryCode: 'US',
+            cityKey: 'springfield_il',
+            nameEn: 'Springfield',
+            regionCode: 'IL',
+            priority: 9,
+          ),
+        ],
+      }),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
+  test('duplicate display names require disambiguating context and region data',
+      () {
+    final ambiguousCatalog = EventCityCatalog.fromMap({
+      'catalogVersion': 'test',
+      'cities': [
+        _cityFixture(
+          countryCode: 'US',
+          cityKey: 'springfield_il',
+          nameEn: 'Springfield',
+          regionCode: 'IL',
+          regionNameRu: 'Иллинойс',
+          regionNameEn: 'Illinois',
+          displayContext: 'Illinois, United States',
+          priority: 10,
+        ),
+        _cityFixture(
+          countryCode: 'US',
+          cityKey: 'springfield_ma',
+          nameEn: 'Springfield',
+          regionCode: 'MA',
+          regionNameRu: 'Массачусетс',
+          regionNameEn: 'Massachusetts',
+          displayContext: 'Massachusetts, United States',
+          priority: 9,
+        ),
+      ],
+    });
+
+    final options = ambiguousCatalog.searchOptions('Springfield');
+
+    expect(options.map((option) => option.identity), [
+      'US:springfield_il',
+      'US:springfield_ma',
+    ]);
+    expect(options.map((option) => option.displayNameEn).toSet(), {
+      'Springfield',
+    });
+    expect(options.map((option) => option.city.cityKey), [
+      'springfield_il',
+      'springfield_ma',
+    ]);
+    expect(options.map((option) => option.displayContext), [
+      'Illinois, United States',
+      'Massachusetts, United States',
+    ]);
+    expect(options.map((option) => option.city.regionCode), ['IL', 'MA']);
+    expect(options.map((option) => option.city.regionNameRu), [
+      'Иллинойс',
+      'Массачусетс',
+    ]);
+    expect(options.map((option) => option.city.regionNameEn), [
+      'Illinois',
+      'Massachusetts',
+    ]);
+  });
+
+  test('rejects duplicate display names without disambiguation metadata', () {
+    final first = _cityFixture(
+      countryCode: 'US',
+      cityKey: 'springfield_il',
+      nameEn: 'Springfield',
+      regionCode: 'IL',
+      regionNameRu: 'Иллинойс',
+      regionNameEn: 'Illinois',
+      displayContext: 'United States',
+      priority: 10,
+    );
+    final second = _cityFixture(
+      countryCode: 'US',
+      cityKey: 'springfield_ma',
+      nameEn: 'Springfield',
+      regionCode: 'MA',
+      regionNameRu: 'Массачусетс',
+      regionNameEn: 'Massachusetts',
+      displayContext: 'United States',
+      priority: 9,
+    );
+
+    expect(
+      () => _assertDuplicateDisplayNamesDisambiguated([first, second]),
+      throwsA(isA<FormatException>()),
+    );
+    expect(
+      () => _assertDuplicateDisplayNamesDisambiguated([
+        first,
+        {
+          ...second,
+          'displayContext': 'Massachusetts, United States',
+          'regionCode': null,
+          'regionNameRu': null,
+          'regionNameEn': null,
+        },
+      ]),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
   test('rejects malformed city catalog entries instead of dropping them', () {
     expect(
       () => EventCityCatalog.fromMap({
@@ -259,12 +417,66 @@ void main() {
   });
 }
 
+String _rawRequiredString(Map<String, dynamic> data, String key) {
+  final value = data[key];
+  if (value is! String || value.trim().isEmpty) {
+    throw FormatException('$key must be a non-empty string');
+  }
+  return value.trim();
+}
+
+void _assertDuplicateDisplayNamesDisambiguated(
+  Iterable<Map<String, dynamic>> rawCities,
+) {
+  final cityMaps = rawCities.toList(growable: false);
+  for (final nameKey in ['nameRu', 'nameEn']) {
+    final byName = <String, List<Map<String, dynamic>>>{};
+    for (final city in cityMaps) {
+      final name = _rawRequiredString(city, nameKey).toLowerCase();
+      byName.putIfAbsent(name, () => <Map<String, dynamic>>[]).add(city);
+    }
+
+    for (final group in byName.values.where((cities) => cities.length > 1)) {
+      final contexts = <String>{};
+      final byCountry = <String, List<Map<String, dynamic>>>{};
+      for (final city in group) {
+        final identity = '${_rawRequiredString(city, 'countryCode')}:'
+            '${_rawRequiredString(city, 'cityKey')}';
+        final displayContext = _rawRequiredString(city, 'displayContext');
+        if (!contexts.add(displayContext)) {
+          throw FormatException(
+            'Duplicate city display name requires distinct context: $identity',
+          );
+        }
+        byCountry
+            .putIfAbsent(
+              _rawRequiredString(city, 'countryCode'),
+              () => <Map<String, dynamic>>[],
+            )
+            .add(city);
+      }
+
+      for (final countryGroup
+          in byCountry.values.where((cities) => cities.length > 1)) {
+        for (final city in countryGroup) {
+          _rawRequiredString(city, 'regionCode');
+          _rawRequiredString(city, 'regionNameRu');
+          _rawRequiredString(city, 'regionNameEn');
+          _rawRequiredString(city, 'displayContext');
+        }
+      }
+    }
+  }
+}
+
 Map<String, dynamic> _cityFixture({
   required String countryCode,
   required String cityKey,
   required String nameEn,
   required String regionCode,
   required int priority,
+  String? regionNameRu,
+  String? regionNameEn,
   String? displayContext,
   List<String>? aliases,
 }) =>
@@ -274,8 +486,8 @@ Map<String, dynamic> _cityFixture({
       'nameRu': nameEn,
       'nameEn': nameEn,
       'regionCode': regionCode,
-      'regionNameRu': regionCode,
-      'regionNameEn': regionCode,
+      'regionNameRu': regionNameRu ?? regionCode,
+      'regionNameEn': regionNameEn ?? regionCode,
       'timeZoneId': 'America/New_York',
       'displayContext': displayContext ?? regionCode,
       'aliases': aliases ?? [nameEn],

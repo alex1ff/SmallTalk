@@ -115,6 +115,21 @@ function assertNoLanguageStructFields(data) {
   }
 }
 
+function assertNoCityStructFields(data) {
+  for (const field of [
+    "city",
+    "catalogVersion",
+    "regionCode",
+    "regionNameRu",
+    "regionNameEn",
+  ]) {
+    assert.equal(
+        Object.prototype.hasOwnProperty.call(data, field),
+        false,
+    );
+  }
+}
+
 function createFakeFirestore(seed = {}) {
   const store = new Map(Object.entries(seed));
   const reads = [];
@@ -313,6 +328,11 @@ test("normalizeEditEventPayload normalizes city and editable fields", () => {
   assert.equal(payload.normalized.city.countryCode, "RU");
   assert.equal(payload.normalized.city.cityKey, "moscow");
   assert.equal(payload.normalized.city.cityNameRu, "Москва");
+  assert.equal(payload.normalized.city.cityNameEn, "Moscow");
+  assert.equal(payload.normalized.city.cityDisplayContext, "Россия");
+  assert.equal(payload.normalized.city.regionCode, null);
+  assert.equal(payload.normalized.city.regionNameRu, null);
+  assert.equal(payload.normalized.city.regionNameEn, null);
   assert.equal(payload.normalized.city.timeZoneId, "Europe/Moscow");
   assert.equal(payload.normalized.locationGeoPoint, null);
 });
@@ -398,6 +418,39 @@ test("normalizeEditEventPayload rejects client language display payloads", () =>
   );
 });
 
+test("normalizeEditEventPayload rejects client city display payloads", () => {
+  const cityStruct = {
+    countryCode: "RU",
+    cityKey: "moscow",
+    cityNameRu: "Поддельная Москва",
+    cityNameEn: "Fake Moscow",
+    cityDisplayContext: "Client supplied",
+    timeZoneId: "America/New_York",
+  };
+
+  for (const [key, value] of Object.entries({
+    cityNameRu: "Поддельная Москва",
+    cityNameEn: "Fake Moscow",
+    cityDisplayContext: "Client supplied",
+    regionCode: "FAKE",
+    regionNameRu: "Фейковый регион",
+    regionNameEn: "Fake region",
+    city: cityStruct,
+    catalogVersion: "client-catalog",
+  })) {
+    assertHttpsError(
+        () => normalizeEditEventPayload(
+            cloneValidEditRequest({[key]: value}),
+            {now: fixedNow},
+        ),
+        "invalid-argument",
+        "invalid_edit_request",
+        key,
+        "unknown_key",
+    );
+  }
+});
+
 test("normalizeEditEventPayload derives timezone from selected city", () => {
   const payload = normalizeEditEventPayload(
       cloneValidEditRequest({
@@ -410,6 +463,9 @@ test("normalizeEditEventPayload derives timezone from selected city", () => {
 
   assert.equal(payload.normalized.city.countryCode, "US");
   assert.equal(payload.normalized.city.cityKey, "new_york");
+  assert.equal(payload.normalized.city.cityNameRu, "Нью-Йорк");
+  assert.equal(payload.normalized.city.cityNameEn, "New York");
+  assert.equal(payload.normalized.city.cityDisplayContext, "United States");
   assert.equal(payload.normalized.city.timeZoneId, "America/New_York");
   assert.equal(payload.normalized.startsAtIso, "2026-06-16T10:00:00.001Z");
   assert.equal(
@@ -801,6 +857,70 @@ test("editEvent callable validates language before transaction writes",
       }
     });
 
+test("editEvent callable validates city before transaction writes", async () => {
+  const cityStruct = {
+    countryCode: "RU",
+    cityKey: "moscow",
+    cityNameRu: "Поддельная Москва",
+    cityNameEn: "Fake Moscow",
+    cityDisplayContext: "Client supplied",
+    timeZoneId: "America/New_York",
+  };
+  const cases = [
+    {
+      overrides: {cityKey: "unknown_city"},
+      field: "cityKey",
+      reason: "unknown_city",
+    },
+    {
+      overrides: {cityKey: "Moscow"},
+      field: "cityKey",
+      reason: "invalid_format",
+    },
+    {
+      overrides: {cityKey: "Москва"},
+      field: "cityKey",
+      reason: "invalid_format",
+    },
+    {overrides: {cityNameRu: "Поддельная Москва"}, field: "cityNameRu"},
+    {overrides: {cityNameEn: "Fake Moscow"}, field: "cityNameEn"},
+    {
+      overrides: {cityDisplayContext: "Client supplied"},
+      field: "cityDisplayContext",
+    },
+    {overrides: {regionCode: "FAKE"}, field: "regionCode"},
+    {overrides: {regionNameRu: "Фейковый регион"}, field: "regionNameRu"},
+    {overrides: {regionNameEn: "Fake region"}, field: "regionNameEn"},
+    {overrides: {city: cityStruct}, field: "city"},
+    {
+      overrides: {catalogVersion: "client-catalog"},
+      field: "catalogVersion",
+    },
+  ];
+
+  for (const currentCase of cases) {
+    const {db, reads, writes} = createFakeFirestore({
+      "events/event-1": eventData(),
+    });
+
+    await withAdminFirestore(db, async () => {
+      await assertRejectsHttpsError(
+          () => editEvent.run(
+              cloneValidEditRequest(currentCase.overrides),
+              {auth: {uid: "uid"}},
+          ),
+          "invalid-argument",
+          "invalid_edit_request",
+          currentCase.field,
+          currentCase.reason || "unknown_key",
+      );
+    });
+
+    assert.deepEqual(reads, []);
+    assert.deepEqual(writes, []);
+  }
+});
+
 test("editEvent callable validates startsAt against trusted backend time",
     async () => {
       for (const startsAt of [
@@ -868,7 +988,10 @@ test("executeEditEventTransaction updates organizer active future event", async 
   assert.equal(event.countryCode, "US");
   assert.equal(event.cityKey, "new_york");
   assert.equal(event.cityNameRu, "Нью-Йорк");
+  assert.equal(event.cityNameEn, "New York");
+  assert.equal(event.cityDisplayContext, "United States");
   assert.equal(event.timeZoneId, "America/New_York");
+  assertNoCityStructFields(event);
   assert.equal(event.capacity, 5);
   assert.equal(event.status, "active");
   assert.equal(event.canceledAt, null);
@@ -878,6 +1001,13 @@ test("executeEditEventTransaction updates organizer active future event", async 
   assert.equal(writes[0].data.languageNameEn, "English");
   assert.equal(writes[0].data.languageNameRu, "Английский");
   assertNoLanguageStructFields(writes[0].data);
+  assert.equal(writes[0].data.countryCode, "US");
+  assert.equal(writes[0].data.cityKey, "new_york");
+  assert.equal(writes[0].data.cityNameRu, "Нью-Йорк");
+  assert.equal(writes[0].data.cityNameEn, "New York");
+  assert.equal(writes[0].data.cityDisplayContext, "United States");
+  assert.equal(writes[0].data.timeZoneId, "America/New_York");
+  assertNoCityStructFields(writes[0].data);
   assert.equal(
       Object.prototype.hasOwnProperty.call(writes[0].data, "status"),
       false,

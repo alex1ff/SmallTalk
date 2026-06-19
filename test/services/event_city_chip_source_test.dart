@@ -231,6 +231,34 @@ void main() {
       expect(chips.first.source, EventCitySelectionSource.recent);
     });
 
+    test(
+        'falls back to static popular cities when all recent entries are stale',
+        () async {
+      final source = EventCityChipSource(
+        recentStore: _MemoryRecentCityStore(
+          [
+            identity('RU', 'unknown_city'),
+            identity('RUS', 'moscow'),
+            identity('RU', 'Moscow'),
+          ],
+        ),
+      );
+
+      final chips = await source.loadChips(
+        catalog: catalog,
+        maxChips: 2,
+      );
+
+      expect(
+        chips.map((chip) => chip.city.identity).toList(),
+        ['RU:moscow', 'US:new_york'],
+      );
+      expect(
+        chips.map((chip) => chip.source).toSet(),
+        {EventCitySelectionSource.static},
+      );
+    });
+
     test('returns no chips for non-positive limits', () async {
       final store = _MemoryRecentCityStore([identity('IT', 'rome')]);
       final source = EventCityChipSource(recentStore: store);
