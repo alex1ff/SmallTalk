@@ -22,6 +22,16 @@ Add a new `События` section with city-aware event discovery, event creati
 - At least 50% of event participants open the group chat before the event starts.
 - Join/leave transaction failures stay below 1% of attempts.
 
+### Success Metrics Dashboard Notes
+
+The release dashboard must define each PRD success criterion from trusted product or backend sources:
+
+- **Events adoption**: unique users with `event_list_opened` divided by monthly active users during the first 30 days after release.
+- **Detail-to-join conversion**: `event_joined` successes divided by `event_detail_opened` events for the same reporting window. MVP analytics supports aggregate conversion; per-event funnel attribution requires event/user identifiers in analytics.
+- **Created events with 2+ participants**: cohort events by `events.createdAt` and count events where `participantsCount >= 2`; do not infer this metric from `event_created` alone.
+- **Participant chat usage before start**: participant users who trigger `event_chat_opened` before the event `startsAt` divided by active event participants. Exact reporting requires event/user linkage for chat-open analytics.
+- **Join/leave transaction failure rate**: backend callable/log failures for `joinEvent` and `leaveEvent` divided by total attempts; client analytics tracks successful joins/leaves only.
+
 ## 2. User Experience & Functionality
 
 ### User Personas
