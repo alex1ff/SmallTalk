@@ -348,7 +348,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add language catalog sync tests that backend allowlist matches the app catalog and `alternateCodes` resolve uniquely.
 - [x] Add language display tests for current locale name, denormalized fallback names, unknown legacy code fallback, and missing catalog load fallback.
 - [x] Add rules tests that block direct client writes bypassing validated event create/edit paths.
-- [ ] Add index contract test or CI check proving `firebase/firestore.indexes.json` contains the `events` collection index with `status ASC`, `countryCode ASC`, `cityKey ASC`, and `startsAt ASC`.
+- [x] Add index contract test or CI check proving `firebase/firestore.indexes.json` contains the `events` collection index with `status ASC`, `countryCode ASC`, `cityKey ASC`, and `startsAt ASC`.
 - [ ] Add rules/model tests that reject `draft`, `past`, `completed`, `deleted`, `archived`, `cancelled`, and unknown values as event statuses in MVP.
 - [ ] Add status lifecycle tests for `active` with `canceledAt = null`, only `active -> canceled`, terminal canceled without reopen/restore, and `canceledAt` set from trusted server/request time.
 - [ ] Add rules tests that deny organizer/client hard delete of active and canceled events.
