@@ -313,6 +313,72 @@ void main() {
       expect(eventIds(page.data), ['at-lower', 'before-upper']);
     });
 
+    test('queries city by canonical country code and city key pair', () async {
+      final fixtures = [
+        eventFixture(
+          'selected-city',
+          countryCode: 'US',
+          cityKey: 'springfield',
+          startsAt: DateTime.parse('2026-06-18T12:00:00Z'),
+        ),
+        eventFixture(
+          'same-city-key-other-country',
+          countryCode: 'CA',
+          cityKey: 'springfield',
+          startsAt: DateTime.parse('2026-06-18T12:00:00Z'),
+        ),
+        eventFixture(
+          'same-country-other-city',
+          countryCode: 'US',
+          cityKey: 'cambridge',
+          startsAt: DateTime.parse('2026-06-18T12:00:00Z'),
+        ),
+      ];
+
+      final page = await EventListRepository.loadRawActiveEventPage(
+        countryCode: 'US',
+        cityKey: 'springfield',
+        lowerBoundUtc: lowerBoundUtc,
+        upperBoundUtc: upperBoundUtc,
+        pageSize: 10,
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          final query = queryBuilder!(collection);
+          final where = query.parameters['where'] as List<dynamic>;
+          final countryCode =
+              whereConditionValue<String>(where, 'countryCode', '==');
+          final cityKey = whereConditionValue<String>(where, 'cityKey', '==');
+          final lowerBound =
+              whereConditionValue<DateTime>(where, 'startsAt', '>=');
+          final upperBound =
+              whereConditionValue<DateTime>(where, 'startsAt', '<');
+
+          expectNoWhereCondition(where, 'cityNameRu');
+          expectNoWhereCondition(where, 'cityNameEn');
+          expectNoWhereCondition(where, 'cityDisplayContext');
+
+          final matchingEvents = fixtures.where((event) {
+            final startsAt = event.startsAt;
+            return event.countryCode == countryCode &&
+                event.cityKey == cityKey &&
+                startsAt != null &&
+                !startsAt.isBefore(lowerBound) &&
+                startsAt.isBefore(upperBound);
+          }).toList(growable: false);
+
+          return FFFirestorePage<EventsRecord>(matchingEvents, null, null);
+        },
+      );
+
+      expect(eventIds(page.data), ['selected-city']);
+    });
+
     test('filters event level ranges inclusively after raw fetch', () {
       final filtered = EventListRepository.filterEventsBySelectedLevel(
         [
