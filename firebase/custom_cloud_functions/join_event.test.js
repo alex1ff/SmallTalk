@@ -57,8 +57,13 @@ async function assertRejectsHttpsError(promiseFactory, code, domainCode) {
   });
 }
 
-function createFakeFirestore(seed = {}) {
+function createFakeFirestore(seed = {}, {
+  maxTransactionAttempts = 5,
+  onBeforeCommit = null,
+  retryOnConcurrentModification = false,
+} = {}) {
   const store = new Map(Object.entries(seed));
+  const versions = new Map(Array.from(store.keys(), (path) => [path, 0]));
   const reads = [];
   const writes = [];
 
@@ -91,42 +96,69 @@ function createFakeFirestore(seed = {}) {
       };
     },
     async runTransaction(callback) {
-      let hasWrites = false;
-      const pendingWrites = [];
-      const tx = {
-        async get(ref) {
-          if (hasWrites) {
-            throw new Error("Firestore transactions require reads first");
-          }
-          reads.push(ref.path);
-          return ref.get();
-        },
-        create(ref, data) {
-          hasWrites = true;
-          if (store.has(ref.path)) {
-            throw new Error(`Document already exists: ${ref.path}`);
-          }
-          writes.push({type: "create", path: ref.path, data});
-          pendingWrites.push({type: "create", path: ref.path, data});
-        },
-        update(ref, data) {
-          hasWrites = true;
-          if (!store.has(ref.path)) {
-            throw new Error(`Document does not exist: ${ref.path}`);
-          }
-          writes.push({type: "update", path: ref.path, data});
-          pendingWrites.push({type: "update", path: ref.path, data});
-        },
-      };
-      const result = await callback(tx);
-      for (const write of pendingWrites) {
-        if (write.type === "create") {
-          store.set(write.path, write.data);
-        } else {
-          store.set(write.path, {...store.get(write.path), ...write.data});
+      for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
+        let hasWrites = false;
+        const pendingWrites = [];
+        const attemptWrites = [];
+        const readVersions = new Map();
+        const writeLog = retryOnConcurrentModification ? attemptWrites : writes;
+        const tx = {
+          async get(ref) {
+            if (hasWrites) {
+              throw new Error("Firestore transactions require reads first");
+            }
+            reads.push(ref.path);
+            if (!readVersions.has(ref.path)) {
+              readVersions.set(ref.path, versions.get(ref.path) || 0);
+            }
+            return ref.get();
+          },
+          create(ref, data) {
+            hasWrites = true;
+            if (
+              store.has(ref.path) ||
+              pendingWrites.some((write) =>
+                write.type === "create" && write.path === ref.path,
+              )
+            ) {
+              throw new Error(`Document already exists: ${ref.path}`);
+            }
+            writeLog.push({type: "create", path: ref.path, data});
+            pendingWrites.push({type: "create", path: ref.path, data});
+          },
+          update(ref, data) {
+            hasWrites = true;
+            if (!store.has(ref.path)) {
+              throw new Error(`Document does not exist: ${ref.path}`);
+            }
+            writeLog.push({type: "update", path: ref.path, data});
+            pendingWrites.push({type: "update", path: ref.path, data});
+          },
+        };
+        const result = await callback(tx);
+        if (onBeforeCommit) {
+          await onBeforeCommit({attempt, pendingWrites, store});
         }
+        if (retryOnConcurrentModification) {
+          const staleRead = Array.from(readVersions).some(
+              ([path, version]) => (versions.get(path) || 0) !== version,
+          );
+          if (staleRead) {
+            continue;
+          }
+          writes.push(...attemptWrites);
+        }
+        for (const write of pendingWrites) {
+          if (write.type === "create") {
+            store.set(write.path, write.data);
+          } else {
+            store.set(write.path, {...store.get(write.path), ...write.data});
+          }
+          versions.set(write.path, (versions.get(write.path) || 0) + 1);
+        }
+        return result;
       }
-      return result;
+      throw new Error("Simulated transaction retry limit exceeded");
     },
   };
 
@@ -193,6 +225,16 @@ function organizerParticipant(overrides = {}) {
     updatedAt: oldTimestamp,
     ...overrides,
   };
+}
+
+function activeParticipantIds(store, eventId = "event-1") {
+  return Array.from(store.entries())
+      .filter(([path, data]) =>
+        path.startsWith(`events/${eventId}/participants/`) &&
+        data.status === "active",
+      )
+      .map(([path]) => path.split("/").pop())
+      .sort();
 }
 
 function counterData() {
@@ -295,6 +337,54 @@ test("executeJoinEventTransaction creates active participant", async () => {
       ],
   );
 });
+
+test("executeJoinEventTransaction allows join into last available seat",
+    async () => {
+      const counterBefore = counterData();
+      const {db, store, writes} = createFakeFirestore({
+        "events/event-1": activeEvent({participantsCount: 2, capacity: 3}),
+        "eventChats/event-1": eventChat({
+          readAccessUserIds: ["organizer", "user-a"],
+        }),
+        "events/event-1/participants/organizer": organizerParticipant(),
+        "events/event-1/participants/user-a": participant({userId: "user-a"}),
+        "users/uid": userProfile(),
+        "eventCreationCounters/organizer/days/20260616": counterBefore,
+      });
+
+      const response = await executeJoinEventTransaction({
+        db,
+        uid: "uid",
+        joinDate: fixedNow,
+        joinTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      });
+
+      assert.equal(response.participantsCount, 3);
+      assert.equal(store.get("events/event-1").participantsCount, 3);
+      assert.deepEqual(activeParticipantIds(store), [
+        "organizer",
+        "uid",
+        "user-a",
+      ]);
+      assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+        "organizer",
+        "user-a",
+        "uid",
+      ]);
+      assert.strictEqual(
+          store.get("eventCreationCounters/organizer/days/20260616"),
+          counterBefore,
+      );
+      assert.deepEqual(
+          writes.map((write) => `${write.type}:${write.path}`),
+          [
+            "update:events/event-1",
+            "create:events/event-1/participants/uid",
+            "update:eventChats/event-1",
+          ],
+      );
+    });
 
 test("executeJoinEventTransaction rejoins left participant", async () => {
   const {db, store, writes} = createFakeFirestore({
@@ -490,6 +580,152 @@ test("executeJoinEventTransaction blocks missing, canceled, past, and full event
     assert.deepEqual(writes, []);
   }
 });
+
+test("executeJoinEventTransaction rejects full event without partial writes",
+    async () => {
+      const eventBefore = activeEvent({participantsCount: 3, capacity: 3});
+      const chatBefore = eventChat({
+        readAccessUserIds: ["organizer", "user-a", "user-b"],
+      });
+      const counterBefore = counterData();
+      const {db, store, writes} = createFakeFirestore({
+        "events/event-1": eventBefore,
+        "eventChats/event-1": chatBefore,
+        "events/event-1/participants/organizer": organizerParticipant(),
+        "events/event-1/participants/user-a": participant({userId: "user-a"}),
+        "events/event-1/participants/user-b": participant({userId: "user-b"}),
+        "users/uid": userProfile(),
+        "eventCreationCounters/organizer/days/20260616": counterBefore,
+      });
+
+      await assert.rejects(
+          () => executeJoinEventTransaction({
+            db,
+            uid: "uid",
+            joinDate: fixedNow,
+            joinTimestamp: fixedTimestamp,
+            payload: {eventId: "event-1"},
+          }),
+          (err) => {
+            assert.equal(err.code, "failed-precondition");
+            assert.deepEqual(err.details, {
+              domainCode: "event_full",
+              participantsCount: 3,
+              capacity: 3,
+            });
+            return true;
+          },
+      );
+
+      assert.deepEqual(writes, []);
+      assert.strictEqual(store.get("events/event-1"), eventBefore);
+      assert.strictEqual(store.get("eventChats/event-1"), chatBefore);
+      assert.strictEqual(
+          store.get("eventCreationCounters/organizer/days/20260616"),
+          counterBefore,
+      );
+      assert.equal(store.has("events/event-1/participants/uid"), false);
+      assert.deepEqual(activeParticipantIds(store), [
+        "organizer",
+        "user-a",
+        "user-b",
+      ]);
+      assert.deepEqual(chatBefore.readAccessUserIds, [
+        "organizer",
+        "user-a",
+        "user-b",
+      ]);
+    });
+
+test("executeJoinEventTransaction concurrent joins never exceed capacity",
+    async () => {
+      let firstAttemptCommits = 0;
+      let releaseFirstAttempts;
+      const firstAttemptsReady = new Promise((resolve) => {
+        releaseFirstAttempts = resolve;
+      });
+      const firstAttemptBarrierTimeout = setTimeout(() => {
+        releaseFirstAttempts();
+      }, 1000);
+      const {db, store, writes} = createFakeFirestore(
+          {
+            "events/event-1": activeEvent({participantsCount: 2, capacity: 3}),
+            "eventChats/event-1": eventChat({
+              readAccessUserIds: ["organizer", "user-a"],
+            }),
+            "events/event-1/participants/organizer": organizerParticipant(),
+            "events/event-1/participants/user-a": participant({
+              userId: "user-a",
+            }),
+            "users/uid-a": userProfile({display_name: "Алекс"}),
+            "users/uid-b": userProfile({display_name: "Ольга"}),
+          },
+          {
+            retryOnConcurrentModification: true,
+            onBeforeCommit: async ({attempt}) => {
+              if (attempt !== 1) {
+                return;
+              }
+              firstAttemptCommits += 1;
+              if (firstAttemptCommits === 2) {
+                releaseFirstAttempts();
+              }
+              await firstAttemptsReady;
+            },
+          },
+      );
+
+      const join = (uid) => executeJoinEventTransaction({
+        db,
+        uid,
+        joinDate: fixedNow,
+        joinTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      });
+
+      const results = await Promise.allSettled([join("uid-a"), join("uid-b")]);
+      clearTimeout(firstAttemptBarrierTimeout);
+      const fulfilled = results.filter((result) =>
+        result.status === "fulfilled");
+      const rejected = results.filter((result) =>
+        result.status === "rejected");
+
+      assert.equal(fulfilled.length, 1);
+      assert.equal(rejected.length, 1);
+      assert.equal(firstAttemptCommits, 2);
+      assert.equal(rejected[0].reason.code, "failed-precondition");
+      assert.deepEqual(rejected[0].reason.details, {
+        domainCode: "event_full",
+        participantsCount: 3,
+        capacity: 3,
+      });
+      assert.equal(store.get("events/event-1").participantsCount, 3);
+
+      const joinedUid = ["uid-a", "uid-b"].find((uid) =>
+        store.has(`events/event-1/participants/${uid}`));
+      const rejectedUid = ["uid-a", "uid-b"].find((uid) => uid !== joinedUid);
+      assert.ok(joinedUid);
+      assert.equal(store.has(`events/event-1/participants/${rejectedUid}`),
+          false);
+      assert.deepEqual(activeParticipantIds(store), [
+        "organizer",
+        joinedUid,
+        "user-a",
+      ].sort());
+      assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+        "organizer",
+        "user-a",
+        joinedUid,
+      ]);
+      assert.deepEqual(
+          writes.map((write) => `${write.type}:${write.path}`),
+          [
+            "update:events/event-1",
+            `create:events/event-1/participants/${joinedUid}`,
+            "update:eventChats/event-1",
+          ],
+      );
+    });
 
 test("executeJoinEventTransaction fails closed on invalid chat metadata", async () => {
   for (const chatSeed of [

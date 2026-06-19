@@ -368,7 +368,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add city resolution tests that `Country_NS` alone does not unlock the Events list.
 - [x] Add city resolution tests that `preferences.preferredLocation` is not used as the default Events city.
 - [x] Add profile city field tests for missing/null `users.profileCity`, stale `profileCity`, explicit save-only behavior, no auto-migration from `Country_NS`, no top-level `users.countryCode`/`users.cityKey` identity, stored `catalogVersion`, and server-time `updatedAt`.
-- [ ] Add transaction tests for join capacity.
+- [x] Add transaction tests for join capacity.
 - [ ] Add transaction tests for duplicate join.
 - [ ] Add transaction tests for rejoin after leave using the same participant document and no duplicate membership.
 - [ ] Add transaction tests for leave.
