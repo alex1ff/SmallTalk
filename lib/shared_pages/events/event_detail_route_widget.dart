@@ -71,6 +71,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   int _participantActionGeneration = 0;
   String? _lastTrackedEventDetailOpenKey;
   String? _lastTrackedCanceledEventId;
+  String? _lastTrackedJoinedEventId;
 
   @override
   void initState() {
@@ -94,6 +95,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _locallyLeftParticipantsCount = null;
       _lastTrackedEventDetailOpenKey = null;
       _lastTrackedCanceledEventId = null;
+      _lastTrackedJoinedEventId = null;
       _participantActionGeneration += 1;
       _isLeaving = false;
       _isJoining = false;
@@ -157,11 +159,14 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     }
   }
 
-  Future<void> _handleJoin() async {
+  Future<void> _handleJoin(EventsRecord event) async {
     if (_isJoining || _isLeaving) {
       return;
     }
 
+    final eventId = event.reference.id;
+    final tracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
     final requestGeneration = _participantActionGeneration + 1;
     _participantActionGeneration = requestGeneration;
 
@@ -170,11 +175,18 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     });
     try {
       final result = await EventActionsRepository.joinEvent(
-        eventId: widget.eventId,
+        eventId: eventId,
         invoker: widget.joinEventInvoker,
       );
       if (!mounted || requestGeneration != _participantActionGeneration) {
         return;
+      }
+      if (result.eventId == eventId) {
+        _trackEventJoinedIfNeeded(
+          eventId: result.eventId,
+          event: event,
+          tracker: tracker,
+        );
       }
       setState(() {
         _locallyJoinedEventId = result.eventId;
@@ -238,6 +250,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           _locallyJoinedParticipantsCount = null;
           _locallyLeftEventId = result.eventId;
           _locallyLeftParticipantsCount = result.participantsCount;
+          _lastTrackedJoinedEventId = null;
         }
       });
     } catch (error) {
@@ -411,7 +424,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                   canOpenChat ? null : _showChatParticipantRequiredSnackBar,
               onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
                   ? canJoin
-                      ? _handleJoin
+                      ? () => _handleJoin(event)
                       : canLeave
                           ? () => _handleLeave(
                                 eventId: eventId,
@@ -553,6 +566,24 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     unawaited(
       Future<void>.sync(
         () => tracker.trackEventCanceled(event),
+      ).catchError(
+        (Object error, StackTrace stackTrace) {},
+      ),
+    );
+  }
+
+  void _trackEventJoinedIfNeeded({
+    required String eventId,
+    required EventsRecord event,
+    required EventsAnalyticsTracker tracker,
+  }) {
+    if (_lastTrackedJoinedEventId == eventId) {
+      return;
+    }
+    _lastTrackedJoinedEventId = eventId;
+    unawaited(
+      Future<void>.sync(
+        () => tracker.trackEventJoined(event),
       ).catchError(
         (Object error, StackTrace stackTrace) {},
       ),

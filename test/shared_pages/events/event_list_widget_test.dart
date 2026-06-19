@@ -2423,6 +2423,12 @@ class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
   }) async {}
 
   @override
+  Future<void> trackEventJoined(
+    EventsRecord event, {
+    String? citySource,
+  }) async {}
+
+  @override
   Future<void> trackEventCanceled(
     EventsRecord event, {
     String? citySource,
@@ -2461,6 +2467,12 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
   Future<void> trackEventEdited({
     required String countryCode,
     required String cityKey,
+    String? citySource,
+  }) async {}
+
+  @override
+  Future<void> trackEventJoined(
+    EventsRecord event, {
     String? citySource,
   }) async {}
 

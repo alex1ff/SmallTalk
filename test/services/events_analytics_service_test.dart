@@ -303,4 +303,82 @@ void main() {
       isNot(contains('status')),
     );
   });
+
+  test('tracks event joined with canonical city payload only', () async {
+    final loggedEvents = <String, Map<String, Object>>{};
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        loggedEvents[name] = parameters;
+      },
+    );
+    final event = EventsRecord.getDocumentFromData(
+      {
+        'countryCode': ' it ',
+        'cityKey': ' rome ',
+        'cityNameEn': 'Rome',
+        'locationName': 'La Cucina',
+        'participantsCount': 5,
+      },
+      EventsRecord.collection.doc('event-1'),
+    );
+
+    await service.trackEventJoined(event, citySource: ' profile ');
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventJoinedEventName],
+      <String, Object>{
+        'countryCode': 'IT',
+        'cityKey': 'rome',
+        'citySource': 'profile',
+      },
+    );
+
+    await service.trackEventJoined(event, citySource: '   ');
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventJoinedEventName],
+      <String, Object>{
+        'countryCode': 'IT',
+        'cityKey': 'rome',
+      },
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventJoinedEventName],
+      isNot(contains('cityNameEn')),
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventJoinedEventName],
+      isNot(contains('locationName')),
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventJoinedEventName],
+      isNot(contains('participantsCount')),
+    );
+  });
+
+  test('skips event joined analytics when city identity is missing', () async {
+    var logCalls = 0;
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        logCalls += 1;
+      },
+    );
+    final event = EventsRecord.getDocumentFromData(
+      {
+        'countryCode': '   ',
+        'cityKey': '',
+      },
+      EventsRecord.collection.doc('event-1'),
+    );
+
+    await service.trackEventJoined(event);
+
+    expect(logCalls, 0);
+  });
 }

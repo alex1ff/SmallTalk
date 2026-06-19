@@ -348,6 +348,7 @@ void main() {
   testWidgets('join tap calls join callable and shows loading until completion',
       (tester) async {
     final completer = Completer<Object?>();
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var joinCalls = 0;
     String? functionName;
     Map<String, dynamic>? payload;
@@ -356,6 +357,7 @@ void main() {
       _buildTestApp(
         home: EventDetailRouteWidget(
           eventId: ' event-1 ',
+          analyticsTracker: analyticsTracker,
           snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
             _FakeEventDocumentSnapshot(
               reference: eventRef,
@@ -390,16 +392,27 @@ void main() {
     expect(joinCalls, 1);
     expect(find.text('Покинуть'), findsOneWidget);
     expect(find.text('Присоединяемся...'), findsNothing);
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventJoinedEventName),
+      [
+        <String, String>{
+          'countryCode': 'RU',
+          'cityKey': 'moscow',
+        },
+      ],
+    );
   });
 
   testWidgets('in-flight join blocks repeated primary taps', (tester) async {
     final completer = Completer<Object?>();
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var joinCalls = 0;
 
     await tester.pumpWidget(
       _buildTestApp(
         home: EventDetailRouteWidget(
           eventId: 'event-1',
+          analyticsTracker: analyticsTracker,
           snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
             _FakeEventDocumentSnapshot(
               reference: eventRef,
@@ -428,6 +441,15 @@ void main() {
 
     expect(joinCalls, 1);
     expect(find.text('Покинуть'), findsOneWidget);
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventJoinedEventName),
+      [
+        <String, String>{
+          'countryCode': 'RU',
+          'cityKey': 'moscow',
+        },
+      ],
+    );
   });
 
   testWidgets('successful join shows joined state with occupancy update',
@@ -474,6 +496,33 @@ void main() {
     } finally {
       semanticsHandle.dispose();
     }
+  });
+
+  testWidgets('join analytics failure does not block successful join',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          analyticsTracker: const _ThrowingEventJoinedAnalyticsTracker(),
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(participantsCount: 5),
+            ),
+          ),
+          joinEventInvoker: (_, __) async =>
+              _joinEventResponse(participantsCount: 6),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('6/10 мест'), findsOneWidget);
   });
 
   testWidgets('joined participant can open chat from detail CTA',
@@ -1016,12 +1065,14 @@ void main() {
 
   testWidgets('join failure clears loading state without changing CTA',
       (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var joinCalls = 0;
 
     await tester.pumpWidget(
       _buildTestApp(
         home: EventDetailRouteWidget(
           eventId: 'event-1',
+          analyticsTracker: analyticsTracker,
           snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
             _FakeEventDocumentSnapshot(
               reference: eventRef,
@@ -1043,6 +1094,10 @@ void main() {
     expect(joinCalls, 1);
     expect(find.text('Присоединиться'), findsOneWidget);
     expect(find.text('Присоединяемся...'), findsNothing);
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventJoinedEventName),
+      isEmpty,
+    );
   });
 
   for (final scenario in [
@@ -1075,12 +1130,14 @@ void main() {
   ]) {
     testWidgets('join failure shows clear ${scenario.name} error',
         (tester) async {
+      final analyticsTracker = _RecordingEventsAnalyticsTracker();
       var joinCalls = 0;
 
       await tester.pumpWidget(
         _buildTestApp(
           home: EventDetailRouteWidget(
             eventId: 'event-1',
+            analyticsTracker: analyticsTracker,
             snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
               _FakeEventDocumentSnapshot(
                 reference: eventRef,
@@ -1104,6 +1161,12 @@ void main() {
       expect(find.text(scenario.message), findsOneWidget);
       expect(find.text('Присоединиться'), findsOneWidget);
       expect(find.text('Присоединяемся...'), findsNothing);
+      expect(
+        analyticsTracker.payloadsFor(
+          EventsAnalyticsService.eventJoinedEventName,
+        ),
+        isEmpty,
+      );
     });
   }
 
@@ -1111,16 +1174,22 @@ void main() {
       (tester) async {
     final firstJoinCompleter = Completer<Object?>();
     final secondJoinCompleter = Completer<Object?>();
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     final joinedEventIds = <String>[];
 
     await tester.pumpWidget(
       _buildTestApp(
         home: EventDetailRouteWidget(
           eventId: 'event-1',
+          analyticsTracker: analyticsTracker,
           snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
             _FakeEventDocumentSnapshot(
               reference: eventRef,
-              data: _eventData(title: 'First event'),
+              data: _eventData(
+                title: 'First event',
+                countryCode: 'RU',
+                cityKey: 'moscow',
+              ),
             ),
           ),
           joinEventInvoker: (_, payload) {
@@ -1141,10 +1210,15 @@ void main() {
       _buildTestApp(
         home: EventDetailRouteWidget(
           eventId: 'event-2',
+          analyticsTracker: analyticsTracker,
           snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
             _FakeEventDocumentSnapshot(
               reference: eventRef,
-              data: _eventData(title: 'Second event'),
+              data: _eventData(
+                title: 'Second event',
+                countryCode: 'US',
+                cityKey: 'new_york',
+              ),
             ),
           ),
           joinEventInvoker: (_, payload) {
@@ -1183,6 +1257,15 @@ void main() {
 
     expect(find.text('Покинуть'), findsOneWidget);
     expect(find.text('6/10 мест'), findsOneWidget);
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventJoinedEventName),
+      [
+        <String, String>{
+          'countryCode': 'US',
+          'cityKey': 'new_york',
+        },
+      ],
+    );
   });
 
   testWidgets('tracks event detail opened once with canonical city payload',
@@ -1938,6 +2021,27 @@ class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
   }) async {}
 
   @override
+  Future<void> trackEventJoined(
+    EventsRecord event, {
+    String? citySource,
+  }) async {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: event.countryCode,
+      cityKey: event.cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return;
+    }
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.eventJoinedEventName,
+        payload: payload.cast<String, String>(),
+      ),
+    );
+  }
+
+  @override
   Future<void> trackEventCanceled(
     EventsRecord event, {
     String? citySource,
@@ -1995,10 +2099,28 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
   }) async {}
 
   @override
+  Future<void> trackEventJoined(
+    EventsRecord event, {
+    String? citySource,
+  }) async {}
+
+  @override
   Future<void> trackEventCanceled(
     EventsRecord event, {
     String? citySource,
   }) async {}
+}
+
+class _ThrowingEventJoinedAnalyticsTracker extends _NoopEventsAnalyticsTracker {
+  const _ThrowingEventJoinedAnalyticsTracker();
+
+  @override
+  Future<void> trackEventJoined(
+    EventsRecord event, {
+    String? citySource,
+  }) {
+    throw StateError('analytics failed');
+  }
 }
 
 class _ThrowingEventCanceledAnalyticsTracker
