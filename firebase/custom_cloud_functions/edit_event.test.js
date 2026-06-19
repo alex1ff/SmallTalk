@@ -284,6 +284,13 @@ test("executeEditEventTransaction updates organizer active future event", async 
       store.get("eventCreationCounters/uid/days/20260616"),
       counterBefore,
   );
+  const counterAfter = store.get("eventCreationCounters/uid/days/20260616");
+  assert.equal(counterAfter.count, 1);
+  assert.deepEqual(counterAfter.eventIds, ["event-1"]);
+  assert.deepEqual(counterAfter.requestEventIds, {request1: "event-1"});
+  assert.deepEqual(counterAfter.requestPayloadHashes, {
+    request1: "a".repeat(64),
+  });
   assert.equal(
       writes.some((write) => write.path.includes("eventCreationCounters")),
       false,

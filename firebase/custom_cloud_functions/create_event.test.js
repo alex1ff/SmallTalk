@@ -1946,10 +1946,19 @@ test("executeCreateEventTransaction keeps counter after admin event delete", asy
     dailyCreation,
     creationTimestamp: fixedTimestamp,
   });
-  const counterBefore = buildValidCounterData({
-    dayInfo: originalDayInfo,
-    count: 1,
-  });
+  const counterBefore = {
+    ...buildValidCounterData({
+      dayInfo: originalDayInfo,
+      count: 1,
+    }),
+    eventIds: ["event-original"],
+    requestEventIds: {
+      [validRequest.createRequestId]: "event-original",
+    },
+    requestPayloadHashes: {
+      [validRequest.createRequestId]: payloadHash,
+    },
+  };
   const {db, makeRef, reads, store, writes} = createFakeFirestore({
     [`eventCreateRequests/uid/requests/${validRequest.createRequestId}`]:
       marker,
@@ -1973,10 +1982,20 @@ test("executeCreateEventTransaction keeps counter after admin event delete", asy
     dailyCreation,
   });
   assert.equal(store.has("events/event-original"), false);
+  assert.equal(store.has("events/event-new"), false);
   assert.strictEqual(
       store.get("eventCreationCounters/uid/days/20260616"),
       counterBefore,
   );
+  const counterAfter = store.get("eventCreationCounters/uid/days/20260616");
+  assert.equal(counterAfter.count, 1);
+  assert.deepEqual(counterAfter.eventIds, ["event-original"]);
+  assert.deepEqual(counterAfter.requestEventIds, {
+    [validRequest.createRequestId]: "event-original",
+  });
+  assert.deepEqual(counterAfter.requestPayloadHashes, {
+    [validRequest.createRequestId]: payloadHash,
+  });
   assert.deepEqual(reads, [
     `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
   ]);

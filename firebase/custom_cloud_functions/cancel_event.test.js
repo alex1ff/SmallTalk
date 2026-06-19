@@ -255,6 +255,17 @@ test("executeCancelEventTransaction cancels active event without counter writes"
       store.get("eventCreationCounters/uid/days/20260616"),
       counterBefore,
   );
+  const counterAfter = store.get("eventCreationCounters/uid/days/20260616");
+  assert.equal(counterAfter.count, 4);
+  assert.deepEqual(
+      counterAfter.eventIds,
+      ["event-a", "event-b", "event-c", "event-1"],
+  );
+  assert.deepEqual(counterAfter.requestEventIds, counterBefore.requestEventIds);
+  assert.deepEqual(
+      counterAfter.requestPayloadHashes,
+      counterBefore.requestPayloadHashes,
+  );
   assert.deepEqual(
       writes.map((write) => `${write.type}:${write.path}`),
       ["update:events/event-1", "update:eventChats/event-1"],
@@ -345,6 +356,7 @@ test("executeCancelEventTransaction fails closed on event chat id mismatch", asy
 });
 
 test("executeCancelEventTransaction returns idempotent canceled response", async () => {
+  const counterBefore = counterData();
   const {db, reads, store, writes} = createFakeFirestore({
     "events/event-1": activeEvent({
       status: "canceled",
@@ -355,6 +367,7 @@ test("executeCancelEventTransaction returns idempotent canceled response", async
       updatedAt: originalCanceledAt,
     }),
     "events/event-1/participants/new-user": participant("active"),
+    "eventCreationCounters/uid/days/20260616": counterBefore,
   });
 
   const response = await executeCancelEventTransaction({
@@ -375,6 +388,21 @@ test("executeCancelEventTransaction returns idempotent canceled response", async
     "alex",
   ]);
   assert.equal(store.get("eventChats/event-1").updatedAt, originalCanceledAt);
+  assert.strictEqual(
+      store.get("eventCreationCounters/uid/days/20260616"),
+      counterBefore,
+  );
+  const counterAfter = store.get("eventCreationCounters/uid/days/20260616");
+  assert.equal(counterAfter.count, 4);
+  assert.deepEqual(
+      counterAfter.eventIds,
+      ["event-a", "event-b", "event-c", "event-1"],
+  );
+  assert.deepEqual(counterAfter.requestEventIds, counterBefore.requestEventIds);
+  assert.deepEqual(
+      counterAfter.requestPayloadHashes,
+      counterBefore.requestPayloadHashes,
+  );
   assert.deepEqual(reads, ["events/event-1", "eventChats/event-1"]);
   assert.deepEqual(writes, []);
 });
