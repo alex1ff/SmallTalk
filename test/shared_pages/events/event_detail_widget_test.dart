@@ -980,6 +980,44 @@ void main() {
     expect(badgeSemantics.properties.label, 'Язык Английский');
   });
 
+  testWidgets('language badge uses current English locale catalog name',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('en'),
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          languageCode: ' es-419 ',
+          languageNameEn: 'Stale English',
+          languageNameRu: 'Stale Russian',
+          languageCatalog: _languageCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailLanguageBadgeKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailLanguageBadgeKey),
+        matching: find.text('Spanish'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailLanguageBadgeKey),
+        matching: find.text('Stale English'),
+      ),
+      findsNothing,
+    );
+
+    final badgeSemantics = tester.widget<Semantics>(
+      find.byKey(eventDetailLanguageBadgeKey),
+    );
+    expect(badgeSemantics.properties.label, 'Language Spanish');
+  });
+
   testWidgets('language badge falls back to denormalized name and raw code',
       (tester) async {
     await tester.pumpWidget(
@@ -1019,6 +1057,54 @@ void main() {
       find.descendant(
         of: find.byKey(eventDetailLanguageBadgeKey),
         matching: find.text('custom-code'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('language badge uses denormalized fallback without catalog',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          languageCode: 'en-US',
+          languageNameEn: 'Fallback English',
+          languageNameRu: 'Фолбэк русский',
+          languageCatalog: null,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailLanguageBadgeKey),
+        matching: find.text('Фолбэк русский'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('language badge uses unknown legacy code without catalog',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          languageCode: ' legacy-code ',
+          languageNameEn: '',
+          languageNameRu: null,
+          languageCatalog: null,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailLanguageBadgeKey),
+        matching: find.text('legacy-code'),
       ),
       findsOneWidget,
     );

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,9 +35,12 @@ const List<LocalizationsDelegate<dynamic>> _localizationsDelegates = [
   FallbackCupertinoLocalizationDelegate(),
 ];
 
-Widget _buildTestApp({Widget? home}) {
+Widget _buildTestApp({
+  Widget? home,
+  Locale locale = const Locale('ru'),
+}) {
   return MaterialApp(
-    locale: Locale('ru'),
+    locale: locale,
     supportedLocales: _supportedLocales,
     localizationsDelegates: _localizationsDelegates,
     home: home ??
@@ -884,6 +888,37 @@ void main() {
     );
   });
 
+  testWidgets('language badge uses current English locale catalog name',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        locale: const Locale('en'),
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: [
+            _eventCardFixture(
+              languageCode: ' es-419 ',
+              languageNameEn: 'Stale English',
+              languageNameRu: 'Stale Russian',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      _textInsideKey(eventListCardLanguageBadgeKey, 'Spanish'),
+      findsOneWidget,
+    );
+    expect(
+      _textInsideKey(eventListCardLanguageBadgeKey, 'Stale English'),
+      findsNothing,
+    );
+  });
+
   testWidgets('language badge falls back to denormalized name and raw code',
       (tester) async {
     await tester.pumpWidget(
@@ -924,6 +959,46 @@ void main() {
     );
     expect(
       _textInsideKey(eventListCardLanguageBadgeKey, 'custom-code'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('language badge falls back when catalog asset load fails',
+      (tester) async {
+    final bundle = _FailingLanguageAssetBundle();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: DefaultAssetBundle(
+          bundle: bundle,
+          child: EventListWidget(
+            cityCatalogOverride: _catalog,
+            initialSelectedCity: _selectedCityFixture(),
+            eventCardsOverride: [
+              _eventCardFixture(
+                languageCode: ' en-US ',
+                languageNameEn: 'Fallback English',
+                languageNameRu: 'Фолбэк русский',
+              ),
+              _eventCardFixture(
+                languageCode: ' legacy-code ',
+                languageNameEn: '',
+                languageNameRu: null,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(bundle.languageCatalogLoadCount, 1);
+    expect(
+      _textInsideKey(eventListCardLanguageBadgeKey, 'Фолбэк русский'),
+      findsOneWidget,
+    );
+    expect(
+      _textInsideKey(eventListCardLanguageBadgeKey, 'legacy-code'),
       findsOneWidget,
     );
   });
@@ -2624,4 +2699,19 @@ class _RecordedAnalyticsEvent {
 
   final String name;
   final Map<String, String> payload;
+}
+
+class _FailingLanguageAssetBundle extends CachingAssetBundle {
+  var languageCatalogLoadCount = 0;
+
+  @override
+  Future<ByteData> load(String key) {
+    if (key == eventLanguageCatalogAssetPath) {
+      languageCatalogLoadCount += 1;
+      return Future<ByteData>.error(
+        FlutterError('Missing test language catalog'),
+      );
+    }
+    return rootBundle.load(key);
+  }
 }
