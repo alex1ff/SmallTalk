@@ -523,6 +523,101 @@ test("canceled event chat metadata get is limited to frozen read access", async 
   await assertFails(adminClient.firestore().doc(chatPath).get());
 });
 
+test("canceled event chat stays readable for organizer and cancellation snapshot participants",
+  async () => {
+    const chatId = "canceled-readable-snapshot";
+    const messageId = "message-1";
+    const contexts = [
+      testEnv.authenticatedContext("organizer"),
+      testEnv.authenticatedContext("user-a"),
+    ];
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc(`events/${chatId}`).set(eventData({
+        status: "canceled",
+        canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+        chatId,
+      }));
+      await db.doc(`eventChats/${chatId}`).set(eventChatData({
+        eventId: chatId,
+        readAccessUserIds: ["organizer", "user-a"],
+      }));
+      await db.doc(`eventChats/${chatId}/messages/${messageId}`).set(
+        eventChatMessageData(),
+      );
+    });
+
+    for (const context of contexts) {
+      const db = context.firestore();
+      const chatSnapshot = await assertSucceeds(
+        db.doc(`eventChats/${chatId}`).get(),
+      );
+      const messageSnapshot = await assertSucceeds(
+        db.doc(`eventChats/${chatId}/messages/${messageId}`).get(),
+      );
+      const listSnapshot = await assertSucceeds(
+        boundedEventChatMessagesQuery(db, chatId).get(),
+      );
+
+      assert.equal(chatSnapshot.exists, true);
+      assert.equal(messageSnapshot.exists, true);
+      assert.deepEqual(
+        listSnapshot.docs.map((snapshot) => snapshot.id),
+        [messageId],
+      );
+    }
+  });
+
+test("canceled event chat stays readable after an eligible participant later left",
+  async () => {
+    const chatId = "canceled-left-after-readable";
+    const messageId = "message-1";
+    const user = testEnv.authenticatedContext("user-left-after");
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc(`events/${chatId}`).set(eventData({
+        status: "canceled",
+        canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+        chatId,
+      }));
+      await db.doc(`events/${chatId}/participants/user-left-after`).set(
+        participantData({
+          userId: "user-left-after",
+          displayName: "Left After",
+          status: "left",
+          leftAt: new Date("2099-06-01T10:00:01.000Z"),
+        }),
+      );
+      await db.doc(`eventChats/${chatId}`).set(eventChatData({
+        eventId: chatId,
+        readAccessUserIds: ["user-left-after"],
+      }));
+      await db.doc(`eventChats/${chatId}/messages/${messageId}`).set(
+        eventChatMessageData(),
+      );
+    });
+
+    const db = user.firestore();
+    const chatSnapshot = await assertSucceeds(
+      db.doc(`eventChats/${chatId}`).get(),
+    );
+    const messageSnapshot = await assertSucceeds(
+      db.doc(`eventChats/${chatId}/messages/${messageId}`).get(),
+    );
+    const listSnapshot = await assertSucceeds(
+      boundedEventChatMessagesQuery(db, chatId).get(),
+    );
+
+    assert.equal(chatSnapshot.exists, true);
+    assert.equal(messageSnapshot.exists, true);
+    assert.deepEqual(
+      listSnapshot.docs.map((snapshot) => snapshot.id),
+      [messageId],
+    );
+  });
+
 test("canceled event chat metadata uses frozen access, not current membership", async () => {
   const user = testEnv.authenticatedContext("user-a");
   const leftUser = testEnv.authenticatedContext("user-left");
