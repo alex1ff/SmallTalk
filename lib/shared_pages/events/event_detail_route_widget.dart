@@ -72,6 +72,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   String? _lastTrackedEventDetailOpenKey;
   String? _lastTrackedCanceledEventId;
   String? _lastTrackedJoinedEventId;
+  String? _lastTrackedLeftEventId;
 
   @override
   void initState() {
@@ -96,6 +97,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _lastTrackedEventDetailOpenKey = null;
       _lastTrackedCanceledEventId = null;
       _lastTrackedJoinedEventId = null;
+      _lastTrackedLeftEventId = null;
       _participantActionGeneration += 1;
       _isLeaving = false;
       _isJoining = false;
@@ -193,6 +195,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         _locallyJoinedParticipantsCount = result.participantsCount;
         _locallyLeftEventId = null;
         _locallyLeftParticipantsCount = null;
+        _lastTrackedLeftEventId = null;
       });
     } catch (error) {
       if (!mounted || requestGeneration != _participantActionGeneration) {
@@ -213,23 +216,24 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     }
   }
 
-  Future<void> _handleLeave({
-    required String eventId,
-    required DateTime? startsAt,
-  }) async {
+  Future<void> _handleLeave(EventsRecord event) async {
     if (_isJoining || _isLeaving) {
       return;
     }
+
+    final eventId = event.reference.id;
     if (_locallyJoinedEventId != eventId) {
       return;
     }
     if (_eventDetailHasStartedForRoute(
       eventId: eventId,
-      startsAt: startsAt,
+      startsAt: event.startsAt,
     )) {
       return;
     }
 
+    final tracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
     final requestGeneration = _participantActionGeneration + 1;
     _participantActionGeneration = requestGeneration;
 
@@ -243,6 +247,14 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       );
       if (!mounted || requestGeneration != _participantActionGeneration) {
         return;
+      }
+      if (result.eventId == eventId &&
+          _locallyJoinedEventId == result.eventId) {
+        _trackEventLeftIfNeeded(
+          eventId: result.eventId,
+          event: event,
+          tracker: tracker,
+        );
       }
       setState(() {
         if (_locallyJoinedEventId == result.eventId) {
@@ -426,10 +438,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                   ? canJoin
                       ? () => _handleJoin(event)
                       : canLeave
-                          ? () => _handleLeave(
-                                eventId: eventId,
-                                startsAt: event.startsAt,
-                              )
+                          ? () => _handleLeave(event)
                           : null
                   : null,
             );
@@ -584,6 +593,24 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     unawaited(
       Future<void>.sync(
         () => tracker.trackEventJoined(event),
+      ).catchError(
+        (Object error, StackTrace stackTrace) {},
+      ),
+    );
+  }
+
+  void _trackEventLeftIfNeeded({
+    required String eventId,
+    required EventsRecord event,
+    required EventsAnalyticsTracker tracker,
+  }) {
+    if (_lastTrackedLeftEventId == eventId) {
+      return;
+    }
+    _lastTrackedLeftEventId = eventId;
+    unawaited(
+      Future<void>.sync(
+        () => tracker.trackEventLeft(event),
       ).catchError(
         (Object error, StackTrace stackTrace) {},
       ),

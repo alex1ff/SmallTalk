@@ -696,6 +696,7 @@ void main() {
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
     try {
+      final analyticsTracker = _RecordingEventsAnalyticsTracker();
       var joinCalls = 0;
       var leaveCalls = 0;
       String? functionName;
@@ -705,6 +706,7 @@ void main() {
         _buildTestApp(
           home: EventDetailRouteWidget(
             eventId: ' event-1 ',
+            analyticsTracker: analyticsTracker,
             snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
               _FakeEventDocumentSnapshot(
                 reference: eventRef,
@@ -748,6 +750,15 @@ void main() {
       expect(find.text('Покинуть'), findsNothing);
       expect(find.text('5/10 мест'), findsOneWidget);
       expect(find.text('6/10 мест'), findsNothing);
+      expect(
+        analyticsTracker.payloadsFor(EventsAnalyticsService.eventLeftEventName),
+        [
+          <String, String>{
+            'countryCode': 'RU',
+            'cityKey': 'moscow',
+          },
+        ],
+      );
 
       final chatSemantics =
           tester.getSemantics(find.byKey(eventDetailChatCtaKey));
@@ -874,6 +885,7 @@ void main() {
   testWidgets('in-flight leave blocks repeated primary taps', (tester) async {
     final semanticsHandle = tester.ensureSemantics();
     final leaveCompleter = Completer<Object?>();
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var leaveCalls = 0;
 
     try {
@@ -881,6 +893,7 @@ void main() {
         _buildTestApp(
           home: EventDetailRouteWidget(
             eventId: 'event-1',
+            analyticsTracker: analyticsTracker,
             snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
               _FakeEventDocumentSnapshot(
                 reference: eventRef,
@@ -919,19 +932,115 @@ void main() {
 
       expect(leaveCalls, 1);
       expect(find.text('Присоединиться'), findsOneWidget);
+      expect(
+        analyticsTracker.payloadsFor(EventsAnalyticsService.eventLeftEventName),
+        [
+          <String, String>{
+            'countryCode': 'RU',
+            'cityKey': 'moscow',
+          },
+        ],
+      );
     } finally {
       semanticsHandle.dispose();
     }
   });
 
-  testWidgets('leave failure clears loading state without changing CTA',
+  testWidgets('leave analytics failure does not block successful leave',
       (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          analyticsTracker: const _ThrowingEventLeftAnalyticsTracker(),
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(participantsCount: 5),
+            ),
+          ),
+          joinEventInvoker: (_, __) async =>
+              _joinEventResponse(participantsCount: 6),
+          leaveEventInvoker: (_, __) async =>
+              _leaveEventResponse(participantsCount: 5),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('5/10 мест'), findsOneWidget);
+  });
+
+  testWidgets('leave analytics tracks again after rejoining same event',
+      (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var leaveCalls = 0;
 
     await tester.pumpWidget(
       _buildTestApp(
         home: EventDetailRouteWidget(
           eventId: 'event-1',
+          analyticsTracker: analyticsTracker,
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(participantsCount: 5),
+            ),
+          ),
+          joinEventInvoker: (_, __) async =>
+              _joinEventResponse(participantsCount: 6),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            return _leaveEventResponse(participantsCount: 5);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (var i = 0; i < 2; i += 1) {
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+      await tester.pumpAndSettle();
+    }
+
+    expect(leaveCalls, 2);
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventLeftEventName),
+      [
+        <String, String>{
+          'countryCode': 'RU',
+          'cityKey': 'moscow',
+        },
+        <String, String>{
+          'countryCode': 'RU',
+          'cityKey': 'moscow',
+        },
+      ],
+    );
+  });
+
+  testWidgets('leave failure clears loading state without changing CTA',
+      (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+    var leaveCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          analyticsTracker: analyticsTracker,
           snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
             _FakeEventDocumentSnapshot(
               reference: eventRef,
@@ -959,15 +1068,21 @@ void main() {
     expect(leaveCalls, 1);
     expect(find.text('Покинуть'), findsOneWidget);
     expect(find.text('Присоединиться'), findsNothing);
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventLeftEventName),
+      isEmpty,
+    );
   });
 
   testWidgets('leave race with event start shows clear error', (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var leaveCalls = 0;
 
     await tester.pumpWidget(
       _buildTestApp(
         home: EventDetailRouteWidget(
           eventId: 'event-1',
+          analyticsTracker: analyticsTracker,
           snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
             _FakeEventDocumentSnapshot(
               reference: eventRef,
@@ -1005,6 +1120,10 @@ void main() {
         findsOneWidget);
     expect(find.text('Покинуть'), findsOneWidget);
     expect(find.text('Присоединиться'), findsNothing);
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventLeftEventName),
+      isEmpty,
+    );
   });
 
   testWidgets('snapshot occupancy replaces local join count after catch-up',
@@ -1384,6 +1503,7 @@ void main() {
   testWidgets('event change ignores stale in-flight leave completion',
       (tester) async {
     final leaveCompleter = Completer<Object?>();
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var leaveCalls = 0;
     var secondJoinCalls = 0;
 
@@ -1391,10 +1511,15 @@ void main() {
       _buildTestApp(
         home: EventDetailRouteWidget(
           eventId: 'event-1',
+          analyticsTracker: analyticsTracker,
           snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
             _FakeEventDocumentSnapshot(
               reference: eventRef,
-              data: _eventData(title: 'First event'),
+              data: _eventData(
+                title: 'First event',
+                countryCode: 'RU',
+                cityKey: 'moscow',
+              ),
             ),
           ),
           joinEventInvoker: (_, __) async =>
@@ -1424,10 +1549,15 @@ void main() {
       _buildTestApp(
         home: EventDetailRouteWidget(
           eventId: 'event-2',
+          analyticsTracker: analyticsTracker,
           snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
             _FakeEventDocumentSnapshot(
               reference: eventRef,
-              data: _eventData(title: 'Second event'),
+              data: _eventData(
+                title: 'Second event',
+                countryCode: 'US',
+                cityKey: 'new_york',
+              ),
             ),
           ),
           joinEventInvoker: (_, __) async {
@@ -1460,6 +1590,10 @@ void main() {
     expect(find.text('Покинуть'), findsOneWidget);
     expect(find.text('Присоединиться'), findsNothing);
     expect(find.text('2/10 мест'), findsNothing);
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventLeftEventName),
+      isEmpty,
+    );
   });
 
   testWidgets('leave confirmation ignores confirm after leave becomes stale',
@@ -2042,6 +2176,27 @@ class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
   }
 
   @override
+  Future<void> trackEventLeft(
+    EventsRecord event, {
+    String? citySource,
+  }) async {
+    final payload = eventCityAnalyticsPayload(
+      countryCode: event.countryCode,
+      cityKey: event.cityKey,
+      citySource: citySource,
+    );
+    if (payload == null) {
+      return;
+    }
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.eventLeftEventName,
+        payload: payload.cast<String, String>(),
+      ),
+    );
+  }
+
+  @override
   Future<void> trackEventCanceled(
     EventsRecord event, {
     String? citySource,
@@ -2105,6 +2260,12 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
   }) async {}
 
   @override
+  Future<void> trackEventLeft(
+    EventsRecord event, {
+    String? citySource,
+  }) async {}
+
+  @override
   Future<void> trackEventCanceled(
     EventsRecord event, {
     String? citySource,
@@ -2116,6 +2277,18 @@ class _ThrowingEventJoinedAnalyticsTracker extends _NoopEventsAnalyticsTracker {
 
   @override
   Future<void> trackEventJoined(
+    EventsRecord event, {
+    String? citySource,
+  }) {
+    throw StateError('analytics failed');
+  }
+}
+
+class _ThrowingEventLeftAnalyticsTracker extends _NoopEventsAnalyticsTracker {
+  const _ThrowingEventLeftAnalyticsTracker();
+
+  @override
+  Future<void> trackEventLeft(
     EventsRecord event, {
     String? citySource,
   }) {

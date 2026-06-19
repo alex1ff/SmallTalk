@@ -381,4 +381,82 @@ void main() {
 
     expect(logCalls, 0);
   });
+
+  test('tracks event left with canonical city payload only', () async {
+    final loggedEvents = <String, Map<String, Object>>{};
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        loggedEvents[name] = parameters;
+      },
+    );
+    final event = EventsRecord.getDocumentFromData(
+      {
+        'countryCode': ' tr ',
+        'cityKey': ' istanbul ',
+        'cityNameEn': 'Istanbul',
+        'locationName': 'Kadikoy Cafe',
+        'participantsCount': 4,
+      },
+      EventsRecord.collection.doc('event-1'),
+    );
+
+    await service.trackEventLeft(event, citySource: ' manual ');
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventLeftEventName],
+      <String, Object>{
+        'countryCode': 'TR',
+        'cityKey': 'istanbul',
+        'citySource': 'manual',
+      },
+    );
+
+    await service.trackEventLeft(event, citySource: '   ');
+
+    expect(
+      loggedEvents[EventsAnalyticsService.eventLeftEventName],
+      <String, Object>{
+        'countryCode': 'TR',
+        'cityKey': 'istanbul',
+      },
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventLeftEventName],
+      isNot(contains('cityNameEn')),
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventLeftEventName],
+      isNot(contains('locationName')),
+    );
+    expect(
+      loggedEvents[EventsAnalyticsService.eventLeftEventName],
+      isNot(contains('participantsCount')),
+    );
+  });
+
+  test('skips event left analytics when city identity is missing', () async {
+    var logCalls = 0;
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        logCalls += 1;
+      },
+    );
+    final event = EventsRecord.getDocumentFromData(
+      {
+        'countryCode': '',
+        'cityKey': '   ',
+      },
+      EventsRecord.collection.doc('event-1'),
+    );
+
+    await service.trackEventLeft(event);
+
+    expect(logCalls, 0);
+  });
 }
