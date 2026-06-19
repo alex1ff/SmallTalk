@@ -88,6 +88,10 @@ function cloneValidRequest(overrides = {}) {
   };
 }
 
+function indexedRequestId(index) {
+  return `660e8400-e29b-41d4-a716-${String(index).padStart(12, "0")}`;
+}
+
 function assertHttpsError(fn, code, domainCode, field, reason) {
   assert.throws(fn, (err) => {
     assert.equal(err.code, code);
@@ -110,12 +114,39 @@ async function assertRejectsHttpsError(promiseFactory, code, domainCode) {
   });
 }
 
+function assertDailyLimitError(err, {
+  dayKeyUtc = "2026-06-16",
+  resetAtUtc = "2026-06-17T00:00:00.000Z",
+  count = DAILY_CREATE_LIMIT,
+  limit = DAILY_CREATE_LIMIT,
+} = {}) {
+  assert.equal(err.code, "resource-exhausted");
+  assert.deepEqual(err.details, {
+    domainCode: "daily_limit_reached",
+    resetAtUtc,
+    dayKeyUtc,
+    count,
+    limit,
+  });
+}
+
+async function assertRejectsDailyLimit(promiseFactory, expected = {}) {
+  await assert.rejects(promiseFactory, (err) => {
+    assertDailyLimitError(err, expected);
+    return true;
+  });
+}
+
 function createFakeFirestore(seed = {}, {
   eventId = "event-new",
   failAfterBufferedWrites = null,
   failBeforeCommit = false,
+  maxTransactionAttempts = 5,
+  onBeforeCommit = null,
+  retryOnConcurrentModification = false,
 } = {}) {
   const store = new Map(Object.entries(seed));
+  const versions = new Map(Array.from(store.keys(), (path) => [path, 0]));
   const reads = [];
   const writes = [];
 
@@ -148,53 +179,75 @@ function createFakeFirestore(seed = {}, {
       };
     },
     async runTransaction(callback) {
-      let hasWrites = false;
-      const pendingWrites = [];
-      const tx = {
-        async get(ref) {
-          if (hasWrites) {
-            throw new Error("Firestore transactions require reads first");
+      for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
+        let hasWrites = false;
+        const pendingWrites = [];
+        const attemptWrites = [];
+        const readVersions = new Map();
+        const writeLog = retryOnConcurrentModification ? attemptWrites : writes;
+        const tx = {
+          async get(ref) {
+            if (hasWrites) {
+              throw new Error("Firestore transactions require reads first");
+            }
+            reads.push(ref.path);
+            if (!readVersions.has(ref.path)) {
+              readVersions.set(ref.path, versions.get(ref.path) || 0);
+            }
+            return ref.get();
+          },
+          create(ref, data) {
+            hasWrites = true;
+            if (
+              store.has(ref.path) ||
+              pendingWrites.some((write) =>
+                write.type === "create" && write.path === ref.path,
+              )
+            ) {
+              throw new Error(`Document already exists: ${ref.path}`);
+            }
+            pendingWrites.push({type: "create", path: ref.path, data});
+            writeLog.push({type: "create", path: ref.path, data});
+            if (pendingWrites.length === failAfterBufferedWrites) {
+              throw new Error(
+                  `Simulated transaction interruption after ${pendingWrites.length} writes`,
+              );
+            }
+          },
+          set(ref, data) {
+            hasWrites = true;
+            pendingWrites.push({type: "set", path: ref.path, data});
+            writeLog.push({type: "set", path: ref.path, data});
+            if (pendingWrites.length === failAfterBufferedWrites) {
+              throw new Error(
+                  `Simulated transaction interruption after ${pendingWrites.length} writes`,
+              );
+            }
+          },
+        };
+        const result = await callback(tx);
+        if (failBeforeCommit) {
+          throw new Error("Simulated transaction commit failure");
+        }
+        if (onBeforeCommit) {
+          await onBeforeCommit({attempt, pendingWrites, store});
+        }
+        if (retryOnConcurrentModification) {
+          const staleRead = Array.from(readVersions).some(
+              ([path, version]) => (versions.get(path) || 0) !== version,
+          );
+          if (staleRead) {
+            continue;
           }
-          reads.push(ref.path);
-          return ref.get();
-        },
-        create(ref, data) {
-          hasWrites = true;
-          if (
-            store.has(ref.path) ||
-            pendingWrites.some((write) =>
-              write.type === "create" && write.path === ref.path,
-            )
-          ) {
-            throw new Error(`Document already exists: ${ref.path}`);
-          }
-          pendingWrites.push({type: "create", path: ref.path, data});
-          writes.push({type: "create", path: ref.path, data});
-          if (pendingWrites.length === failAfterBufferedWrites) {
-            throw new Error(
-                `Simulated transaction interruption after ${pendingWrites.length} writes`,
-            );
-          }
-        },
-        set(ref, data) {
-          hasWrites = true;
-          pendingWrites.push({type: "set", path: ref.path, data});
-          writes.push({type: "set", path: ref.path, data});
-          if (pendingWrites.length === failAfterBufferedWrites) {
-            throw new Error(
-                `Simulated transaction interruption after ${pendingWrites.length} writes`,
-            );
-          }
-        },
-      };
-      const result = await callback(tx);
-      if (failBeforeCommit) {
-        throw new Error("Simulated transaction commit failure");
+          writes.push(...attemptWrites);
+        }
+        for (const write of pendingWrites) {
+          store.set(write.path, write.data);
+          versions.set(write.path, (versions.get(write.path) || 0) + 1);
+        }
+        return result;
       }
-      for (const write of pendingWrites) {
-        store.set(write.path, write.data);
-      }
-      return result;
+      throw new Error("Simulated transaction retry limit exceeded");
     },
   };
 
@@ -974,7 +1027,7 @@ test("buildNextCounterState creates exact daily counter schema", () => {
 
 test("buildNextCounterState rejects daily limit before writing", () => {
   const dayInfo = buildUtcDayInfo(fixedNow);
-  assertHttpsError(
+  assert.throws(
       () => buildNextCounterState({
         counterExists: true,
         counterData: {
@@ -990,8 +1043,10 @@ test("buildNextCounterState rejects daily limit before writing", () => {
         dayInfo,
         creationTimestamp: fixedTimestamp,
       }),
-      "resource-exhausted",
-      "daily_limit_reached",
+      (err) => {
+        assertDailyLimitError(err);
+        return true;
+      },
   );
 });
 
@@ -1833,7 +1888,7 @@ test("executeCreateEventTransaction rejects full daily counter without writes", 
   const dayInfo = buildUtcDayInfo(fixedNow);
   const {normalized, payloadHash} =
     buildNormalizedAndHash(cloneValidRequest());
-  const {db, makeRef, writes} = createFakeFirestore({
+  const {db, makeRef, store, writes} = createFakeFirestore({
     "users/uid": {display_name: "Анастасия Иванова"},
     "eventCreationCounters/uid/days/20260616": buildValidCounterData({
       dayInfo,
@@ -1841,7 +1896,7 @@ test("executeCreateEventTransaction rejects full daily counter without writes", 
     }),
   });
 
-  await assertRejectsHttpsError(
+  await assertRejectsDailyLimit(
       () => executeCreateEventTransaction({
         db,
         uid: "uid",
@@ -1852,41 +1907,221 @@ test("executeCreateEventTransaction rejects full daily counter without writes", 
         payloadHash,
         eventRef: makeRef("events/event-new"),
       }),
-      "resource-exhausted",
-      "daily_limit_reached",
   );
   assert.deepEqual(writes, []);
+  assert.equal(store.has("events/event-new"), false);
+  assert.equal(store.has("events/event-new/participants/uid"), false);
+  assert.equal(store.has("eventChats/event-new"), false);
+  assert.equal(
+      store.has(
+          `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+      ),
+      false,
+  );
 });
 
 test("executeCreateEventTransaction allows fifth daily create", async () => {
-  const dayInfo = buildUtcDayInfo(fixedNow);
+  const creationDate = new Date("2026-06-16T10:00:01.000Z");
+  const creationTimestamp = {
+    toMillis: () => creationDate.getTime(),
+    toDate: () => creationDate,
+  };
+  const dayInfo = buildUtcDayInfo(creationDate);
   const {normalized, payloadHash} =
     buildNormalizedAndHash(cloneValidRequest());
+  const counterBefore = buildValidCounterData({
+    dayInfo,
+    count: DAILY_CREATE_LIMIT - 1,
+  });
   const {db, makeRef, store} = createFakeFirestore({
     "users/uid": {display_name: "Анастасия Иванова"},
-    "eventCreationCounters/uid/days/20260616": buildValidCounterData({
-      dayInfo,
-      count: DAILY_CREATE_LIMIT - 1,
-    }),
+    "eventCreationCounters/uid/days/20260616": counterBefore,
   });
 
   const response = await executeCreateEventTransaction({
     db,
     uid: "uid",
-    creationDate: fixedNow,
-    creationTimestamp: fixedTimestamp,
+    creationDate,
+    creationTimestamp,
     dayInfo,
     normalized,
     payloadHash,
     eventRef: makeRef("events/event-new"),
   });
 
-  assert.equal(response.dailyCreation.count, DAILY_CREATE_LIMIT);
-  assert.equal(response.dailyCreation.remaining, 0);
-  assert.equal(
-      store.get("eventCreationCounters/uid/days/20260616").count,
-      DAILY_CREATE_LIMIT,
+  assertCreateSuccessResponse(response, {
+    eventId: "event-new",
+    createdAt: "2026-06-16T10:00:01.000Z",
+    dailyCreation: {
+      dayKeyUtc: "2026-06-16",
+      count: DAILY_CREATE_LIMIT,
+      remaining: 0,
+      resetAtUtc: "2026-06-17T00:00:00.000Z",
+    },
+  });
+  const counter = store.get("eventCreationCounters/uid/days/20260616");
+  assert.equal(counter.count, DAILY_CREATE_LIMIT);
+  assert.deepEqual(
+      counter.eventIds,
+      ["event-1", "event-2", "event-3", "event-4", "event-new"],
   );
+  assert.equal(
+      counter.requestEventIds[validRequest.createRequestId],
+      "event-new",
+  );
+  assert.equal(
+      counter.requestPayloadHashes[validRequest.createRequestId],
+      payloadHash,
+  );
+  assert.strictEqual(counter.createdAt, counterBefore.createdAt);
+  assert.strictEqual(counter.updatedAt, creationTimestamp);
+  const marker = store.get(
+      `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+  );
+  assert.equal(marker.counterPath, "eventCreationCounters/uid/days/20260616");
+  assert.equal(marker.status, "created");
+  assert.deepEqual(marker.dailyCreation, response.dailyCreation);
+});
+
+test("executeCreateEventTransaction concurrent creates never exceed daily limit",
+    async () => {
+      const dayInfo = buildUtcDayInfo(fixedNow);
+      let firstAttemptCommits = 0;
+      let releaseFirstAttempts;
+      const firstAttemptsReady = new Promise((resolve) => {
+        releaseFirstAttempts = resolve;
+      });
+      const {db, makeRef, store} = createFakeFirestore(
+          {
+            "users/uid": {display_name: "Анастасия Иванова"},
+            "eventCreationCounters/uid/days/20260616": buildValidCounterData({
+              dayInfo,
+              count: DAILY_CREATE_LIMIT - 1,
+            }),
+          },
+          {
+            retryOnConcurrentModification: true,
+            onBeforeCommit: async ({attempt}) => {
+              if (attempt !== 1) {
+                return;
+              }
+              firstAttemptCommits += 1;
+              if (firstAttemptCommits === 2) {
+                releaseFirstAttempts();
+              }
+              await firstAttemptsReady;
+            },
+          },
+      );
+
+      const create = (index) => {
+        const createRequestId = indexedRequestId(index);
+        const {normalized, payloadHash} = buildNormalizedAndHash(
+            cloneValidRequest({
+              createRequestId,
+              title: `Concurrent create ${index}`,
+            }),
+        );
+        return executeCreateEventTransaction({
+          db,
+          uid: "uid",
+          creationDate: fixedNow,
+          creationTimestamp: fixedTimestamp,
+          dayInfo,
+          normalized,
+          payloadHash,
+          eventRef: makeRef(`events/event-concurrent-${index}`),
+        });
+      };
+
+      const results = await Promise.allSettled([create(1), create(2)]);
+      const fulfilled = results.filter((result) =>
+        result.status === "fulfilled");
+      const rejected = results.filter((result) =>
+        result.status === "rejected");
+
+      assert.equal(fulfilled.length, 1);
+      assert.equal(rejected.length, 1);
+      assertDailyLimitError(rejected[0].reason);
+      assert.equal(firstAttemptCommits, 2);
+      const counter = store.get("eventCreationCounters/uid/days/20260616");
+      assert.equal(counter.count, DAILY_CREATE_LIMIT);
+      assert.equal(counter.eventIds.length, DAILY_CREATE_LIMIT);
+      assert.equal(Object.keys(counter.requestEventIds).length,
+          DAILY_CREATE_LIMIT);
+      assert.equal(Object.keys(counter.requestPayloadHashes).length,
+          DAILY_CREATE_LIMIT);
+
+      const createdIndexes = [1, 2].filter((index) =>
+        store.has(`events/event-concurrent-${index}`));
+      const rejectedIndexes = [1, 2].filter((index) =>
+        !store.has(`events/event-concurrent-${index}`));
+      assert.equal(createdIndexes.length, 1);
+      assert.equal(rejectedIndexes.length, 1);
+      const createdIndex = createdIndexes[0];
+      const rejectedIndex = rejectedIndexes[0];
+      const createdRequestId = indexedRequestId(createdIndex);
+      const rejectedRequestId = indexedRequestId(rejectedIndex);
+      const {payloadHash: createdPayloadHash} = buildNormalizedAndHash(
+          cloneValidRequest({
+            createRequestId: createdRequestId,
+            title: `Concurrent create ${createdIndex}`,
+          }),
+      );
+
+      assert.equal(
+          counter.requestEventIds[createdRequestId],
+          `event-concurrent-${createdIndex}`,
+      );
+      assert.equal(
+          counter.requestPayloadHashes[createdRequestId],
+          createdPayloadHash,
+      );
+      assert.equal(counter.eventIds.includes(
+          `event-concurrent-${createdIndex}`,
+      ), true);
+      assert.equal(counter.eventIds.includes(
+          `event-concurrent-${rejectedIndex}`,
+      ), false);
+      assert.equal(
+          Object.prototype.hasOwnProperty.call(
+              counter.requestEventIds,
+              rejectedRequestId,
+          ),
+          false,
+      );
+      assert.equal(
+          Object.prototype.hasOwnProperty.call(
+              counter.requestPayloadHashes,
+              rejectedRequestId,
+          ),
+          false,
+      );
+      assert.equal(
+          store.get(`events/event-concurrent-${createdIndex}/participants/uid`)
+              .role,
+          "organizer",
+      );
+      assert.deepEqual(
+          store.get(`eventChats/event-concurrent-${createdIndex}`)
+              .readAccessUserIds,
+          ["uid"],
+      );
+      assert.equal(
+          store.get(`eventCreateRequests/uid/requests/${createdRequestId}`)
+              .eventId,
+          `event-concurrent-${createdIndex}`,
+      );
+      assert.equal(
+          store.has(`events/event-concurrent-${rejectedIndex}/participants/uid`),
+          false,
+      );
+      assert.equal(store.has(`eventChats/event-concurrent-${rejectedIndex}`),
+          false);
+      assert.equal(
+          store.has(`eventCreateRequests/uid/requests/${rejectedRequestId}`),
+          false,
+      );
 });
 
 test("create_event callable uses a Firestore transaction and no serverTimestamp", () => {
