@@ -15,6 +15,11 @@ void main() {
       source,
       isNot(contains("'/components/student_availability_switch_control.dart'")),
     );
+    expect(
+      File('lib/components/student_availability_switch_control.dart')
+          .existsSync(),
+      isFalse,
+    );
     expect(source, isNot(contains('StudentAvailabilitySwitchControl(')));
     expect(source, isNot(contains('_buildAvailabilitySwitch')));
     expect(source, isNot(contains('_handleAvailabilitySwitchChanged')));

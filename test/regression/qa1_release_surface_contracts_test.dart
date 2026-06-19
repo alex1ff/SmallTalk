@@ -422,6 +422,10 @@ void main() {
           studentDashboard,
           isNot(contains(
               "import '/components/student_availability_switch_control.dart';")));
+      expect(
+          File('lib/components/student_availability_switch_control.dart')
+              .existsSync(),
+          isFalse);
       expect(studentDashboard,
           isNot(contains('StudentAvailabilitySwitchControl(')));
       expect(studentDashboard, isNot(contains('_buildAvailabilitySwitch')));
