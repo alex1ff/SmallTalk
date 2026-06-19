@@ -129,6 +129,57 @@ void main() {
       );
     });
 
+    test('dedupes by country code and city key pair, not city key only',
+        () async {
+      final duplicateCityKeyCatalog = EventCityCatalog.fromMap({
+        'catalogVersion': 'test',
+        'cities': [
+          cityFixture(
+            countryCode: 'CA',
+            cityKey: 'springfield',
+            displayContext: 'Canada',
+            priority: 30,
+          ),
+          cityFixture(
+            countryCode: 'US',
+            cityKey: 'springfield',
+            displayContext: 'United States',
+            priority: 20,
+          ),
+          cityFixture(
+            countryCode: 'MX',
+            cityKey: 'guadalajara',
+            displayContext: 'Mexico',
+            priority: 10,
+          ),
+        ],
+      });
+      final source = EventCityChipSource(
+        recentStore: _MemoryRecentCityStore(
+          [
+            identity('US', 'springfield'),
+            identity('US', 'springfield'),
+          ],
+        ),
+      );
+
+      final chips = await source.loadChips(
+        catalog: duplicateCityKeyCatalog,
+        maxChips: 3,
+      );
+
+      expect(chips.map((chip) => chip.city.identity), [
+        'US:springfield',
+        'CA:springfield',
+        'MX:guadalajara',
+      ]);
+      expect(chips.map((chip) => chip.source), [
+        EventCitySelectionSource.recent,
+        EventCitySelectionSource.static,
+        EventCitySelectionSource.static,
+      ]);
+    });
+
     test('excludes selected profile city from recent and static chips',
         () async {
       final selectedCity = catalog.resolve('RU', 'moscow')!;
@@ -272,6 +323,27 @@ EventCityIdentity identity(String countryCode, String cityKey) =>
       countryCode: countryCode,
       cityKey: cityKey,
     );
+
+Map<String, Object?> cityFixture({
+  required String countryCode,
+  required String cityKey,
+  required String displayContext,
+  required int priority,
+}) =>
+    {
+      'countryCode': countryCode,
+      'cityKey': cityKey,
+      'nameRu': cityKey,
+      'nameEn': cityKey,
+      'regionCode': null,
+      'regionNameRu': null,
+      'regionNameEn': null,
+      'timeZoneId': 'UTC/Test',
+      'displayContext': displayContext,
+      'aliases': [cityKey],
+      'transliterations': [cityKey],
+      'priority': priority,
+    };
 
 class _MemoryRecentCityStore implements EventRecentCityStore {
   _MemoryRecentCityStore([List<EventCityIdentity> identities = const []])

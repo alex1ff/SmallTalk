@@ -361,7 +361,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add same-`startsAt` ordering tests documenting that MVP has no product-visible tie guarantee unless `__name__ ASC` is added later.
 - [x] Add repository/query-shape tests that event list queries include `status == active`, canonical city equality filters, compatible `startsAt` bounds, and `orderBy startsAt ASC`.
 - [x] Add rules tests for enforceable event list constraints only: active-only list reads, reasonable query metadata such as `limit/orderBy` if implemented, and separate direct detail `get` behavior.
-- [ ] Add city chip source tests for profile default, missing profile city, recent city ordering, static popular fallback, profile city absent from chips, and recent/static dedupe by `countryCode + cityKey`.
+- [x] Add city chip source tests for profile default, missing profile city, recent city ordering, static popular fallback, profile city absent from chips, and recent/static dedupe by `countryCode + cityKey`.
 - [x] Add city catalog sync tests that backend allowlist/shared catalog is versioned and generated from the same source as the full app canonical city catalog.
 - [ ] Add city query tests for canonical `countryCode + cityKey`.
 - [ ] Add city identity tests for ISO uppercase `countryCode`, `cityKey` regex, unique `(countryCode, cityKey)`, duplicate-name disambiguation, required display context/known region metadata, alias resolution, ambiguous alias no-auto-resolve behavior, unknown city create/edit/profile-save rejection, stale profile/recent city fallback, and localized names never acting as identity.
