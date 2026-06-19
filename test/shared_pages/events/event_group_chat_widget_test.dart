@@ -365,14 +365,8 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
-    expect(find.byKey(eventGroupChatSendButtonKey), findsOneWidget);
-
-    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
-    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(eventGroupChatReadOnlySnackBarKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsNothing);
     expect(sendCalls, 0);
   });
 
@@ -452,11 +446,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsOneWidget);
-    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
-    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(eventGroupChatReadOnlySnackBarKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsNothing);
     expect(sendCalls, 0);
   });
 
@@ -530,12 +521,9 @@ void main() {
     });
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
-    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
-    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(eventGroupChatReadOnlySnackBarKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsNothing);
   });
 
   testWidgets('shows sender name and avatar fallback for event chat messages',
@@ -708,6 +696,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsOneWidget);
 
     await tester.enterText(
       find.byKey(eventGroupChatMessageInputKey),

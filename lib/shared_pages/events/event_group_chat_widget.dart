@@ -297,10 +297,11 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
             }
 
             final accessState = accessSnapshot.data!;
+            final isCanceledReadOnly =
+                accessState.status == 'canceled' && accessState.readOnly;
             return _buildMessagesContent(
               isReadOnly: accessState.readOnly,
-              showCanceledReadOnlyBanner:
-                  accessState.status == 'canceled' && accessState.readOnly,
+              isCanceledReadOnly: isCanceledReadOnly,
             );
           },
         );
@@ -310,15 +311,14 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
 
   Widget _buildMessagesContent({
     required bool isReadOnly,
-    required bool showCanceledReadOnlyBanner,
+    required bool isCanceledReadOnly,
   }) {
     final messagesStream = _messagesStream ??= _watchMessages();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (showCanceledReadOnlyBanner)
-          const _EventGroupChatCanceledReadOnlyBanner(),
+        if (isCanceledReadOnly) const _EventGroupChatCanceledReadOnlyBanner(),
         Expanded(
           child: StreamBuilder<List<EventChatMessagesRecord>>(
             stream: messagesStream,
@@ -379,12 +379,13 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
             },
           ),
         ),
-        _EventGroupChatComposer(
-          controller: _messageTextController,
-          focusNode: _messageFocusNode,
-          isSending: _isSending,
-          onSendPressed: () => _sendMessage(isReadOnly: isReadOnly),
-        ),
+        if (!isCanceledReadOnly)
+          _EventGroupChatComposer(
+            controller: _messageTextController,
+            focusNode: _messageFocusNode,
+            isSending: _isSending,
+            onSendPressed: () => _sendMessage(isReadOnly: isReadOnly),
+          ),
       ],
     );
   }
