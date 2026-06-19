@@ -218,6 +218,95 @@ void main() {
       );
     });
 
+    test('loads only active events inside selected city date window', () async {
+      final nowUtc = DateTime.parse('2026-03-08T06:00:00Z');
+      final fixtures = [
+        eventFixture(
+          'at-lower',
+          status: 'active',
+          countryCode: 'US',
+          cityKey: 'new_york',
+          startsAt: nowUtc,
+        ),
+        eventFixture(
+          'before-upper',
+          status: 'active',
+          countryCode: 'US',
+          cityKey: 'new_york',
+          startsAt: DateTime.parse('2026-03-09T03:59:59Z'),
+        ),
+        eventFixture(
+          'canceled-in-range',
+          status: 'canceled',
+          countryCode: 'US',
+          cityKey: 'new_york',
+          startsAt: DateTime.parse('2026-03-08T12:00:00Z'),
+        ),
+        eventFixture(
+          'before-now',
+          status: 'active',
+          countryCode: 'US',
+          cityKey: 'new_york',
+          startsAt: DateTime.parse('2026-03-08T05:59:59Z'),
+        ),
+        eventFixture(
+          'at-upper',
+          status: 'active',
+          countryCode: 'US',
+          cityKey: 'new_york',
+          startsAt: DateTime.parse('2026-03-09T04:00:00Z'),
+        ),
+        eventFixture(
+          'other-city',
+          status: 'active',
+          countryCode: 'US',
+          cityKey: 'los_angeles',
+          startsAt: DateTime.parse('2026-03-08T12:00:00Z'),
+        ),
+      ];
+
+      final page = await EventListRepository.loadRawActiveEventPageForDateRange(
+        countryCode: 'US',
+        cityKey: 'new_york',
+        timeZoneId: 'America/New_York',
+        localDateRange: eventListSingleLocalDateRange(DateTime(2026, 3, 8)),
+        nowUtc: nowUtc,
+        pageSize: 5,
+        pageLoader: (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          final query = queryBuilder!(collection);
+          final where = query.parameters['where'] as List<dynamic>;
+          final status = whereConditionValue<String>(where, 'status', '==');
+          final countryCode =
+              whereConditionValue<String>(where, 'countryCode', '==');
+          final cityKey = whereConditionValue<String>(where, 'cityKey', '==');
+          final lowerBound =
+              whereConditionValue<DateTime>(where, 'startsAt', '>=');
+          final upperBound =
+              whereConditionValue<DateTime>(where, 'startsAt', '<');
+          final matchingEvents = fixtures.where((event) {
+            final startsAt = event.startsAt;
+            return event.status == status &&
+                event.countryCode == countryCode &&
+                event.cityKey == cityKey &&
+                startsAt != null &&
+                !startsAt.isBefore(lowerBound) &&
+                startsAt.isBefore(upperBound);
+          }).toList(growable: false);
+
+          return FFFirestorePage<EventsRecord>(matchingEvents, null, null);
+        },
+      );
+
+      expect(eventIds(page.data), ['at-lower', 'before-upper']);
+    });
+
     test('filters event level ranges inclusively after raw fetch', () {
       final filtered = EventListRepository.filterEventsBySelectedLevel(
         [
@@ -662,15 +751,40 @@ void expectNoWhereCondition(
   );
 }
 
+T whereConditionValue<T>(
+  List<dynamic> conditions,
+  String field,
+  String operator,
+) {
+  final expectedField = FieldPath.fromString(field);
+  for (final condition in conditions) {
+    if (condition is List<dynamic> &&
+        condition.length == 3 &&
+        condition[0] == expectedField &&
+        condition[1] == operator) {
+      return condition[2] as T;
+    }
+  }
+  fail('Expected where($field $operator ...).');
+}
+
 EventsRecord eventFixture(
   String id, {
   String? levelMin,
   String? levelMax,
+  String status = activeEventStatus,
+  String countryCode = 'RU',
+  String cityKey = 'moscow',
+  DateTime? startsAt,
 }) {
   return EventsRecord.getDocumentFromData(
     {
       if (levelMin != null) 'levelMin': levelMin,
       if (levelMax != null) 'levelMax': levelMax,
+      'status': status,
+      'countryCode': countryCode,
+      'cityKey': cityKey,
+      if (startsAt != null) 'startsAt': startsAt,
     },
     EventsRecord.collection.doc(id),
   );
