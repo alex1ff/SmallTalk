@@ -114,6 +114,47 @@ function timestampMillis(value) {
   return NaN;
 }
 
+function isValidPathSegment(value) {
+  return typeof value === "string" && value.length > 0 && !value.includes("/");
+}
+
+function failParticipantStateInconsistent() {
+  throwEditError(
+      "failed-precondition",
+      "Event participant state is inconsistent",
+      {domainCode: "event_participant_state_inconsistent"},
+  );
+}
+
+function buildActiveParticipantIds(activeParticipantDocs) {
+  const ids = [];
+  for (const doc of activeParticipantDocs) {
+    if (!isValidPathSegment(doc.id)) {
+      failParticipantStateInconsistent();
+    }
+    ids.push(doc.id);
+  }
+  ids.sort();
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length !== ids.length) {
+    failParticipantStateInconsistent();
+  }
+  return uniqueIds;
+}
+
+function assertParticipantCountInvariant({
+  activeParticipantDocs,
+  eventData,
+}) {
+  const activeParticipantIds = buildActiveParticipantIds(activeParticipantDocs);
+  if (
+    activeParticipantIds.length !== eventData.participantsCount ||
+    !activeParticipantIds.includes(eventData.organizerId)
+  ) {
+    failParticipantStateInconsistent();
+  }
+}
+
 function assertEventEditable({
   eventExists,
   eventData,
@@ -181,6 +222,9 @@ async function executeEditEventTransaction({
   payload,
 }) {
   const eventRef = db.collection("events").doc(payload.eventId);
+  const activeParticipantsQuery = eventRef
+      .collection("participants")
+      .where("status", "==", "active");
   return await db.runTransaction(async (tx) => {
     const eventDoc = await tx.get(eventRef);
     const eventData = eventDoc.exists ? eventDoc.data() || {} : {};
@@ -190,6 +234,11 @@ async function executeEditEventTransaction({
       uid,
       now: editDate,
       requestedCapacity: payload.normalized.capacity,
+    });
+    const activeParticipantsSnapshot = await tx.get(activeParticipantsQuery);
+    assertParticipantCountInvariant({
+      activeParticipantDocs: activeParticipantsSnapshot.docs || [],
+      eventData,
     });
 
     const update = buildEventEditableUpdate({

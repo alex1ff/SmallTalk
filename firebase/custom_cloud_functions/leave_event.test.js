@@ -733,6 +733,35 @@ test("executeLeaveEventTransaction fails closed on invalid participant", async (
   }
 });
 
+test("executeLeaveEventTransaction fails closed on participant count drift",
+    async () => {
+      for (const seed of [
+        validLeaveSeed({event: {participantsCount: 3, capacity: 3}}),
+        {
+          ...validLeaveSeed({
+            event: {participantsCount: 2, capacity: 3},
+            chat: {readAccessUserIds: ["organizer", "uid", "other"]},
+          }),
+          "events/event-1/participants/other": participant({userId: "other"}),
+        },
+      ]) {
+        const {db, writes} = createFakeFirestore(seed);
+
+        await assertRejectsHttpsError(
+            () => executeLeave({
+              db,
+              uid: "uid",
+              leaveDate: fixedNow,
+              leaveTimestamp: fixedTimestamp,
+              payload: {eventId: "event-1"},
+            }),
+            "failed-precondition",
+            "event_participant_state_inconsistent",
+        );
+        assert.deepEqual(writes, []);
+      }
+    });
+
 test("executeLeaveEventTransaction fails closed on corrupt active participant set", async () => {
   for (const otherParticipant of [
     participant({userId: "attacker"}),

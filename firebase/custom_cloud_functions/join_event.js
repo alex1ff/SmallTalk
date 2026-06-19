@@ -154,6 +154,14 @@ function assertEventJoinable({eventExists, eventData, eventId, now}) {
   }
 }
 
+function failParticipantStateInconsistent() {
+  throwJoinError(
+      "failed-precondition",
+      "Event participant state is inconsistent",
+      {domainCode: "event_participant_state_inconsistent"},
+  );
+}
+
 function assertOrganizerParticipantActive({
   organizerParticipantExists,
   organizerParticipantData,
@@ -236,6 +244,35 @@ function validateReadAccessUserIds(value, {organizerId}) {
     );
   }
   return [...value];
+}
+
+function buildActiveParticipantIds(activeParticipantDocs) {
+  const ids = [];
+  for (const doc of activeParticipantDocs) {
+    if (!isValidPathSegment(doc.id)) {
+      failParticipantStateInconsistent();
+    }
+    ids.push(doc.id);
+  }
+  ids.sort();
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length !== ids.length) {
+    failParticipantStateInconsistent();
+  }
+  return uniqueIds;
+}
+
+function assertParticipantCountInvariant({
+  activeParticipantDocs,
+  eventData,
+}) {
+  const activeParticipantIds = buildActiveParticipantIds(activeParticipantDocs);
+  if (
+    activeParticipantIds.length !== eventData.participantsCount ||
+    !activeParticipantIds.includes(eventData.organizerId)
+  ) {
+    failParticipantStateInconsistent();
+  }
 }
 
 function assertParticipantJoinable({
@@ -346,6 +383,9 @@ async function executeJoinEventTransaction({
   const participantRef = eventRef.collection("participants").doc(uid);
   const chatRef = db.collection(EVENT_CHAT_COLLECTION).doc(payload.eventId);
   const userRef = db.collection("users").doc(uid);
+  const activeParticipantsQuery = eventRef
+      .collection("participants")
+      .where("status", "==", PARTICIPANT_STATUS_ACTIVE);
 
   return await db.runTransaction(async (tx) => {
     const eventDoc = await tx.get(eventRef);
@@ -364,13 +404,19 @@ async function executeJoinEventTransaction({
     const organizerParticipantRead = eventData.organizerId === uid ?
       participantRead :
       tx.get(organizerParticipantRef);
-    const [participantDoc, organizerParticipantDoc, chatDoc, userDoc] =
-      await Promise.all([
-        participantRead,
-        organizerParticipantRead,
-        tx.get(chatRef),
-        tx.get(userRef),
-      ]);
+    const [
+      participantDoc,
+      organizerParticipantDoc,
+      chatDoc,
+      userDoc,
+      activeParticipantsSnapshot,
+    ] = await Promise.all([
+      participantRead,
+      organizerParticipantRead,
+      tx.get(chatRef),
+      tx.get(userRef),
+      tx.get(activeParticipantsQuery),
+    ]);
     const participantData = participantDoc.exists ?
       participantDoc.data() || {} :
       {};
@@ -396,6 +442,10 @@ async function executeJoinEventTransaction({
       organizerId: eventData.organizerId,
       eventStartsAt: eventData.startsAt,
       now: joinDate,
+    });
+    assertParticipantCountInvariant({
+      activeParticipantDocs: activeParticipantsSnapshot.docs || [],
+      eventData,
     });
     assertEventHasCapacity(eventData);
     const participantSnapshot = buildParticipantSnapshot({

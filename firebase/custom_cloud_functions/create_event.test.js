@@ -512,6 +512,16 @@ function assertNoCityStructFields(data) {
   }
 }
 
+function activeParticipantIds(store, eventId = "event-new") {
+  return Array.from(store.entries())
+      .filter(([path, data]) =>
+        path.startsWith(`events/${eventId}/participants/`) &&
+        data.status === "active",
+      )
+      .map(([path]) => path.split("/").pop())
+      .sort();
+}
+
 function readAppEventLanguageAllowlist() {
   const source = JSON.parse(fs.readFileSync(
       path.join(
@@ -1802,6 +1812,11 @@ test("executeCreateEventTransaction creates all event documents", async () => {
     },
   });
   assert.equal(store.get("events/event-new").participantsCount, 1);
+  assert.deepEqual(activeParticipantIds(store), ["uid"]);
+  assert.equal(
+      store.get("events/event-new").participantsCount,
+      activeParticipantIds(store).length,
+  );
   assert.equal(
       store.get("events/event-new").organizerDisplayName,
       "Анастасия Иванова",

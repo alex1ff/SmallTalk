@@ -138,22 +138,63 @@ function createFakeFirestore(seed = {}) {
   const makeRef = (path) => ({
     path,
     id: path.split("/").pop(),
+    collection(name) {
+      return makeCollection(`${path}/${name}`);
+    },
     async get() {
       const data = store.get(path);
       return {
         exists: data !== undefined,
         data: () => data,
+        ref: makeRef(path),
       };
+    },
+  });
+
+  const makeQuery = (collectionPath, filters) => ({
+    path: `${collectionPath}?${filters
+        .map((filter) => `${filter.field}${filter.op}${filter.value}`)
+        .join("&")}`,
+    async get() {
+      const docs = [];
+      const prefix = `${collectionPath}/`;
+      for (const [path, data] of store.entries()) {
+        if (!path.startsWith(prefix)) {
+          continue;
+        }
+        const remainder = path.slice(prefix.length);
+        if (!remainder || remainder.includes("/")) {
+          continue;
+        }
+        const matches = filters.every((filter) => (
+          filter.op === "==" && data?.[filter.field] === filter.value
+        ));
+        if (matches) {
+          docs.push({
+            id: remainder,
+            exists: true,
+            data: () => data,
+            ref: makeRef(path),
+          });
+        }
+      }
+      docs.sort((left, right) => left.id.localeCompare(right.id));
+      return {docs};
+    },
+  });
+
+  const makeCollection = (path) => ({
+    doc(id) {
+      return makeRef(`${path}/${id}`);
+    },
+    where(field, op, value) {
+      return makeQuery(path, [{field, op, value}]);
     },
   });
 
   const db = {
     collection(name) {
-      return {
-        doc(id) {
-          return makeRef(`${name}/${id}`);
-        },
-      };
+      return makeCollection(name);
     },
     async runTransaction(callback) {
       let hasWrites = false;
@@ -248,6 +289,13 @@ function eventData(overrides = {}) {
     startsAt: futureStartsAt,
     participantsCount: 3,
     capacity: 10,
+    ...overrides,
+  };
+}
+
+function participant(overrides = {}) {
+  return {
+    status: "active",
     ...overrides,
   };
 }
@@ -964,6 +1012,9 @@ test("executeEditEventTransaction updates organizer active future event", async 
   const counterBefore = counterData();
   const {db, store, writes} = createFakeFirestore({
     "events/event-1": eventData(),
+    "events/event-1/participants/uid": participant(),
+    "events/event-1/participants/alex": participant(),
+    "events/event-1/participants/olga": participant(),
     "eventCreationCounters/uid/days/20260616": counterBefore,
   });
 
@@ -1054,6 +1105,47 @@ test("executeEditEventTransaction rejects non-organizer edit", async () => {
       "not_event_organizer",
   );
   assert.deepEqual(writes, []);
+});
+
+test("executeEditEventTransaction rejects participant count drift", async () => {
+  const payload = normalizeEditEventPayload(
+      cloneValidEditRequest({capacity: 10}),
+      {now: fixedNow},
+  );
+
+  for (const seed of [
+    {
+      "events/event-1": eventData({participantsCount: 3}),
+      "events/event-1/participants/uid": participant(),
+      "events/event-1/participants/alex": participant(),
+    },
+    {
+      "events/event-1": eventData({participantsCount: 2}),
+      "events/event-1/participants/uid": participant(),
+      "events/event-1/participants/alex": participant(),
+      "events/event-1/participants/olga": participant(),
+    },
+    {
+      "events/event-1": eventData({participantsCount: 2}),
+      "events/event-1/participants/alex": participant(),
+      "events/event-1/participants/olga": participant(),
+    },
+  ]) {
+    const {db, writes} = createFakeFirestore(seed);
+
+    await assertRejectsHttpsError(
+        () => executeEditEventTransaction({
+          db,
+          uid: "uid",
+          editDate: fixedNow,
+          editTimestamp: fixedTimestamp,
+          payload,
+        }),
+        "failed-precondition",
+        "event_participant_state_inconsistent",
+    );
+    assert.deepEqual(writes, []);
+  }
 });
 
 test("executeEditEventTransaction rejects canceled or past events", async () => {

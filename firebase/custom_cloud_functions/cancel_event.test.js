@@ -306,6 +306,45 @@ test("executeCancelEventTransaction cancels active event without counter writes"
   ]);
 });
 
+test("executeCancelEventTransaction rejects participant count drift", async () => {
+  for (const seed of [
+    {
+      "events/event-1": activeEvent({participantsCount: 3}),
+      "eventChats/event-1": eventChat(),
+      "events/event-1/participants/uid": participant("active"),
+      "events/event-1/participants/alex": participant("active"),
+    },
+    {
+      "events/event-1": activeEvent({participantsCount: 2}),
+      "eventChats/event-1": eventChat(),
+      "events/event-1/participants/uid": participant("active"),
+      "events/event-1/participants/alex": participant("active"),
+      "events/event-1/participants/olga": participant("active"),
+    },
+    {
+      "events/event-1": activeEvent({participantsCount: 2}),
+      "eventChats/event-1": eventChat(),
+      "events/event-1/participants/alex": participant("active"),
+      "events/event-1/participants/olga": participant("active"),
+    },
+  ]) {
+    const {db, writes} = createFakeFirestore(seed);
+
+    await assertRejectsHttpsError(
+        () => executeCancelEventTransaction({
+          db,
+          uid: "uid",
+          cancelDate: fixedNow,
+          cancelTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "event_participant_state_inconsistent",
+    );
+    assert.deepEqual(writes, []);
+  }
+});
+
 test("executeCancelEventTransaction rejects non-organizer without writes", async () => {
   const {db, writes} = createFakeFirestore({
     "events/event-1": activeEvent({organizerId: "other"}),

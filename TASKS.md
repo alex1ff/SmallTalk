@@ -372,7 +372,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add transaction tests for duplicate join.
 - [x] Add transaction tests for rejoin after leave using the same participant document and no duplicate membership.
 - [x] Add transaction tests for leave.
-- [ ] Add participant count invariant tests proving `participantsCount` equals active participant documents, including organizer.
+- [x] Add participant count invariant tests proving `participantsCount` equals active participant documents, including organizer.
 - [ ] Add participant document tests for `active|left` status allowlist, immutable `role`, server-derived snapshots, server-time `joinedAt`/`leftAt`/`updatedAt`, and no delete-on-leave.
 - [ ] Add tests that leave is blocked at or after `startsAt` and preserves occupancy/chat access.
 - [ ] Add tests that organizer cannot leave as participant.

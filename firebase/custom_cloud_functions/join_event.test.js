@@ -71,11 +71,7 @@ function createFakeFirestore(seed = {}, {
     path,
     id: path.split("/").pop(),
     collection(name) {
-      return {
-        doc(id) {
-          return makeRef(`${path}/${name}/${id}`);
-        },
-      };
+      return makeCollection(`${path}/${name}`);
     },
     async get() {
       const data = store.get(path);
@@ -87,13 +83,50 @@ function createFakeFirestore(seed = {}, {
     },
   });
 
+  const makeQuery = (collectionPath, filters) => ({
+    path: `${collectionPath}?${filters
+        .map((filter) => `${filter.field}${filter.op}${filter.value}`)
+        .join("&")}`,
+    async get() {
+      const docs = [];
+      const prefix = `${collectionPath}/`;
+      for (const [path, data] of store.entries()) {
+        if (!path.startsWith(prefix)) {
+          continue;
+        }
+        const remainder = path.slice(prefix.length);
+        if (!remainder || remainder.includes("/")) {
+          continue;
+        }
+        const matches = filters.every((filter) => (
+          filter.op === "==" && data?.[filter.field] === filter.value
+        ));
+        if (matches) {
+          docs.push({
+            id: remainder,
+            exists: true,
+            data: () => data,
+            ref: makeRef(path),
+          });
+        }
+      }
+      docs.sort((left, right) => left.id.localeCompare(right.id));
+      return {docs};
+    },
+  });
+
+  const makeCollection = (path) => ({
+    doc(id) {
+      return makeRef(`${path}/${id}`);
+    },
+    where(field, op, value) {
+      return makeQuery(path, [{field, op, value}]);
+    },
+  });
+
   const db = {
     collection(name) {
-      return {
-        doc(id) {
-          return makeRef(`${name}/${id}`);
-        },
-      };
+      return makeCollection(name);
     },
     async runTransaction(callback) {
       for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
@@ -103,15 +136,25 @@ function createFakeFirestore(seed = {}, {
         const readVersions = new Map();
         const writeLog = retryOnConcurrentModification ? attemptWrites : writes;
         const tx = {
-          async get(ref) {
+          async get(refOrQuery) {
             if (hasWrites) {
               throw new Error("Firestore transactions require reads first");
             }
-            reads.push(ref.path);
-            if (!readVersions.has(ref.path)) {
-              readVersions.set(ref.path, versions.get(ref.path) || 0);
+            reads.push(refOrQuery.path);
+            const snapshot = await refOrQuery.get();
+            if (Array.isArray(snapshot.docs)) {
+              for (const doc of snapshot.docs) {
+                if (!readVersions.has(doc.ref.path)) {
+                  readVersions.set(doc.ref.path, versions.get(doc.ref.path) || 0);
+                }
+              }
+            } else if (!readVersions.has(refOrQuery.path)) {
+              readVersions.set(
+                  refOrQuery.path,
+                  versions.get(refOrQuery.path) || 0,
+              );
             }
-            return ref.get();
+            return snapshot;
           },
           create(ref, data) {
             hasWrites = true;
@@ -237,6 +280,13 @@ function activeParticipantIds(store, eventId = "event-1") {
       .sort();
 }
 
+function assertParticipantCountInvariant(store, eventId = "event-1") {
+  const event = store.get(`events/${eventId}`);
+  const activeIds = activeParticipantIds(store, eventId);
+  assert.equal(event.participantsCount, activeIds.length);
+  assert.equal(activeIds.includes(event.organizerId), true);
+}
+
 function counterData() {
   return {
     userId: "organizer",
@@ -317,6 +367,7 @@ test("executeJoinEventTransaction creates active participant", async () => {
     "organizer",
     "uid",
   ]);
+  assertParticipantCountInvariant(store);
   assert.strictEqual(
       store.get("eventCreationCounters/organizer/days/20260616"),
       counterBefore,
@@ -327,6 +378,7 @@ test("executeJoinEventTransaction creates active participant", async () => {
     "events/event-1/participants/organizer",
     "eventChats/event-1",
     "users/uid",
+    "events/event-1/participants?status==active",
   ]);
   assert.deepEqual(
       writes.map((write) => `${write.type}:${write.path}`),
@@ -372,6 +424,7 @@ test("executeJoinEventTransaction allows join into last available seat",
         "user-a",
         "uid",
       ]);
+      assertParticipantCountInvariant(store);
       assert.strictEqual(
           store.get("eventCreationCounters/organizer/days/20260616"),
           counterBefore,
@@ -420,6 +473,7 @@ test("executeJoinEventTransaction rejoins left participant", async () => {
     "organizer",
     "uid",
   ]);
+  assertParticipantCountInvariant(store);
   assert.deepEqual(
       writes.map((write) => `${write.type}:${write.path}`),
       [
@@ -495,6 +549,7 @@ test("executeJoinEventTransaction concurrent rejoins reuse one membership",
       });
       assert.equal(store.get("events/event-1").participantsCount, 2);
       assert.deepEqual(activeParticipantIds(store), ["organizer", "uid"]);
+      assertParticipantCountInvariant(store);
       assert.equal(membership.status, "active");
       assert.equal(membership.leftAt, null);
       assert.equal(membership.createdAt, oldTimestamp);
@@ -608,6 +663,7 @@ test("executeJoinEventTransaction concurrent duplicate joins create one membersh
       });
       assert.equal(store.get("events/event-1").participantsCount, 2);
       assert.deepEqual(activeParticipantIds(store), ["organizer", "uid"]);
+      assertParticipantCountInvariant(store);
       assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
         "organizer",
         "uid",
@@ -694,6 +750,42 @@ test("executeJoinEventTransaction fails closed on organizer membership drift", a
   }
 });
 
+test("executeJoinEventTransaction fails closed on participant count drift",
+    async () => {
+      for (const seed of [
+        {
+          "events/event-1": activeEvent({participantsCount: 1, capacity: 3}),
+          "eventChats/event-1": eventChat({readAccessUserIds: ["organizer"]}),
+          "events/event-1/participants/organizer": organizerParticipant(),
+          "events/event-1/participants/user-a": participant({
+            userId: "user-a",
+          }),
+          "users/uid": userProfile(),
+        },
+        {
+          "events/event-1": activeEvent({participantsCount: 3, capacity: 3}),
+          "eventChats/event-1": eventChat({readAccessUserIds: ["organizer"]}),
+          "events/event-1/participants/organizer": organizerParticipant(),
+          "users/uid": userProfile(),
+        },
+      ]) {
+        const {db, writes} = createFakeFirestore(seed);
+
+        await assertRejectsHttpsError(
+            () => executeJoinEventTransaction({
+              db,
+              uid: "uid",
+              joinDate: fixedNow,
+              joinTimestamp: fixedTimestamp,
+              payload: {eventId: "event-1"},
+            }),
+            "failed-precondition",
+            "event_participant_state_inconsistent",
+        );
+        assert.deepEqual(writes, []);
+      }
+    });
+
 test("executeJoinEventTransaction blocks missing, canceled, past, and full events", async () => {
   await assertRejectsHttpsError(
       () => executeJoinEventTransaction({
@@ -726,6 +818,8 @@ test("executeJoinEventTransaction blocks missing, canceled, past, and full event
       "events/event-1": eventData,
       "eventChats/event-1": eventChat(),
       "events/event-1/participants/organizer": organizerParticipant(),
+      "events/event-1/participants/user-a": participant({userId: "user-a"}),
+      "events/event-1/participants/user-b": participant({userId: "user-b"}),
       "users/uid": userProfile(),
     });
 
@@ -863,6 +957,7 @@ test("executeJoinEventTransaction concurrent joins never exceed capacity",
         capacity: 3,
       });
       assert.equal(store.get("events/event-1").participantsCount, 3);
+      assertParticipantCountInvariant(store);
 
       const joinedUid = ["uid-a", "uid-b"].find((uid) =>
         store.has(`events/event-1/participants/${uid}`));

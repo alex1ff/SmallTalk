@@ -69,6 +69,18 @@ function timestampToIso(value) {
   return "";
 }
 
+function isValidPathSegment(value) {
+  return typeof value === "string" && value.length > 0 && !value.includes("/");
+}
+
+function failParticipantStateInconsistent() {
+  throwCancelError(
+      "failed-precondition",
+      "Event participant state is inconsistent",
+      {domainCode: "event_participant_state_inconsistent"},
+  );
+}
+
 function assertEventOrganizer({eventExists, eventData, uid}) {
   if (!eventExists) {
     throwCancelError(
@@ -142,6 +154,38 @@ function assertEventCancelable(eventData) {
   }
 }
 
+function buildActiveParticipantIds(activeParticipantDocs) {
+  const ids = [];
+  for (const doc of activeParticipantDocs) {
+    if (!isValidPathSegment(doc.id)) {
+      failParticipantStateInconsistent();
+    }
+    ids.push(doc.id);
+  }
+  ids.sort();
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length !== ids.length) {
+    failParticipantStateInconsistent();
+  }
+  return uniqueIds;
+}
+
+function assertParticipantCountInvariant({
+  activeParticipantDocs,
+  eventData,
+}) {
+  const activeParticipantIds = buildActiveParticipantIds(activeParticipantDocs);
+  const participantsCount = eventData.participantsCount;
+  if (
+    !Number.isInteger(participantsCount) ||
+    participantsCount < 1 ||
+    activeParticipantIds.length !== participantsCount ||
+    !activeParticipantIds.includes(eventData.organizerId)
+  ) {
+    failParticipantStateInconsistent();
+  }
+}
+
 function buildReadAccessSnapshot({organizerId, activeParticipantDocs}) {
   const participantIds = activeParticipantDocs
       .map((doc) => doc.id)
@@ -193,6 +237,10 @@ async function executeCancelEventTransaction({
     assertEventCancelable(eventData);
 
     const activeParticipantsSnapshot = await tx.get(activeParticipantsQuery);
+    assertParticipantCountInvariant({
+      activeParticipantDocs: activeParticipantsSnapshot.docs || [],
+      eventData,
+    });
     const readAccessUserIds = buildReadAccessSnapshot({
       organizerId: eventData.organizerId,
       activeParticipantDocs: activeParticipantsSnapshot.docs || [],
