@@ -45,10 +45,22 @@ function assertHttpsError(fn, code, domainCode, field, reason) {
   });
 }
 
-async function assertRejectsHttpsError(promiseFactory, code, domainCode) {
+async function assertRejectsHttpsError(
+    promiseFactory,
+    code,
+    domainCode,
+    field,
+    reason,
+) {
   await assert.rejects(promiseFactory, (err) => {
     assert.equal(err.code, code);
     assert.equal(err.details?.domainCode, domainCode);
+    if (field) {
+      assert.equal(err.details?.field, field);
+    }
+    if (reason) {
+      assert.equal(err.details?.reason, reason);
+    }
     return true;
   });
 }
@@ -556,8 +568,15 @@ test("executeLeaveEventTransaction concurrent leaves recompute occupancy and cha
 
 test("executeLeaveEventTransaction blocks leave at or after startsAt", async () => {
   for (const startsAt of [pastStartsAt, equalStartsAt]) {
+    const eventBefore = activeEvent({startsAt});
+    const participantBefore = participant();
+    const chatBefore = eventChat();
     const {db, store, writes} = createFakeFirestore(
-        validLeaveSeed({event: {startsAt}}),
+        validLeaveSeed({
+          event: {startsAt},
+          participant: participantBefore,
+          chat: chatBefore,
+        }),
     );
 
     await assertRejectsHttpsError(
@@ -570,13 +589,15 @@ test("executeLeaveEventTransaction blocks leave at or after startsAt", async () 
         }),
         "failed-precondition",
         "event_not_leaveable",
+        null,
+        "event_started",
     );
-    assert.equal(store.get("events/event-1").participantsCount, 2);
-    assert.equal(store.get("events/event-1/participants/uid").status, "active");
-    assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
-      "organizer",
-      "uid",
-    ]);
+    assert.deepEqual(store.get("events/event-1"), eventBefore);
+    assert.deepEqual(
+        store.get("events/event-1/participants/uid"),
+        participantBefore,
+    );
+    assert.deepEqual(store.get("eventChats/event-1"), chatBefore);
     assert.deepEqual(writes, []);
   }
 });
@@ -603,6 +624,9 @@ test("executeLeaveEventTransaction rechecks startsAt on retry", async () => {
       {retryBeforeCommitCount: 1},
   );
   const {db, store, writes} = fake;
+  const eventBefore = store.get("events/event-1");
+  const participantBefore = store.get("events/event-1/participants/uid");
+  const chatBefore = store.get("eventChats/event-1");
 
   await assertRejectsHttpsError(
       () => executeLeave({
@@ -614,14 +638,16 @@ test("executeLeaveEventTransaction rechecks startsAt on retry", async () => {
       }),
       "failed-precondition",
       "event_not_leaveable",
+      null,
+      "event_started",
   );
   assert.equal(fake.attempts, 2);
-  assert.equal(store.get("events/event-1").participantsCount, 2);
-  assert.equal(store.get("events/event-1/participants/uid").status, "active");
-  assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
-    "organizer",
-    "uid",
-  ]);
+  assert.deepEqual(store.get("events/event-1"), eventBefore);
+  assert.deepEqual(
+      store.get("events/event-1/participants/uid"),
+      participantBefore,
+  );
+  assert.deepEqual(store.get("eventChats/event-1"), chatBefore);
   assert.deepEqual(writes, []);
 });
 
