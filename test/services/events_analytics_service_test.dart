@@ -46,6 +46,36 @@ void main() {
         },
       );
     }
+    for (final level in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']) {
+      await service.trackLevelFilterSelected(level.toLowerCase());
+      expect(
+        loggedEvents[EventsAnalyticsService.levelFilterSelectedEventName],
+        <String, Object>{
+          'levelFilter': level,
+        },
+      );
+    }
+    await service.trackLevelFilterSelected(null);
+    expect(
+      loggedEvents[EventsAnalyticsService.levelFilterSelectedEventName],
+      <String, Object>{
+        'levelFilter': 'none',
+      },
+    );
+    await service.trackLevelFilterSelected(' b2 ');
+    expect(
+      loggedEvents[EventsAnalyticsService.levelFilterSelectedEventName],
+      <String, Object>{
+        'levelFilter': 'B2',
+      },
+    );
+    await service.trackLevelFilterSelected('');
+    expect(
+      loggedEvents[EventsAnalyticsService.levelFilterSelectedEventName],
+      <String, Object>{
+        'levelFilter': 'none',
+      },
+    );
 
     for (final eventName in [
       EventsAnalyticsService.eventListOpenedEventName,

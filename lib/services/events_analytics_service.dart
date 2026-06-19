@@ -1,5 +1,6 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 
+import 'event_level_helper.dart';
 import 'event_list_date_bounds.dart';
 import 'event_selected_city_state.dart';
 
@@ -14,6 +15,8 @@ abstract interface class EventsAnalyticsTracker {
   Future<void> trackCitySelected(EventSelectedCity selectedCity);
 
   Future<void> trackDateFilterSelected(EventListDateFilter dateFilter);
+
+  Future<void> trackLevelFilterSelected(String? selectedLevel);
 }
 
 class EventsAnalyticsService implements EventsAnalyticsTracker {
@@ -27,6 +30,7 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
   static const String eventListOpenedEventName = 'event_list_opened';
   static const String citySelectedEventName = 'city_selected';
   static const String dateFilterSelectedEventName = 'date_filter_selected';
+  static const String levelFilterSelectedEventName = 'level_filter_selected';
 
   final EventsAnalyticsLogEvent _logEvent;
 
@@ -56,6 +60,16 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
     );
   }
 
+  @override
+  Future<void> trackLevelFilterSelected(String? selectedLevel) {
+    return _logEvent(
+      name: levelFilterSelectedEventName,
+      parameters: <String, Object>{
+        'levelFilter': eventLevelFilterAnalyticsValue(selectedLevel),
+      },
+    );
+  }
+
   Future<void> _trackSelectedCityEvent({
     required String eventName,
     required EventSelectedCity selectedCity,
@@ -78,6 +92,14 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
       parameters: parameters,
     );
   }
+}
+
+String eventLevelFilterAnalyticsValue(String? selectedLevel) {
+  final normalizedLevel = selectedLevel?.trim();
+  if (normalizedLevel == null || normalizedLevel.isEmpty) {
+    return 'none';
+  }
+  return normalizeEventLevelCode(normalizedLevel, 'selectedLevel');
 }
 
 extension EventListDateFilterAnalytics on EventListDateFilter {

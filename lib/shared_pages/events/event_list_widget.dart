@@ -353,9 +353,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                               const SizedBox(height: ExpatlioDesign.space12),
                               _EventLevelChips(
                                 selectedLevel: _selectedLevel,
-                                onChanged: (level) => setState(() {
-                                  _selectedLevel = level;
-                                }),
+                                onChanged: _selectLevelFilter,
                               ),
                               const SizedBox(height: ExpatlioDesign.space12),
                               _EventCitySelector(
@@ -504,6 +502,22 @@ class _EventListWidgetState extends State<EventListWidget> {
         widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
     unawaited(
       tracker.trackDateFilterSelected(filter).catchError(
+            (Object error, StackTrace stackTrace) {},
+          ),
+    );
+  }
+
+  void _selectLevelFilter(String? level) {
+    if (level == _selectedLevel) {
+      return;
+    }
+    setState(() {
+      _selectedLevel = level;
+    });
+    final tracker =
+        widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
+    unawaited(
+      tracker.trackLevelFilterSelected(level).catchError(
             (Object error, StackTrace stackTrace) {},
           ),
     );

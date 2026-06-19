@@ -265,6 +265,36 @@ void main() {
     }
   });
 
+  testWidgets('tracks level filter selection and clear on user changes',
+      (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          analyticsTracker: analyticsTracker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(analyticsTracker.payloadsFor('level_filter_selected'), isEmpty);
+
+    await tester.tap(_levelFilterFinder('B2'));
+    await tester.pumpAndSettle();
+    await tester.tap(_levelFilterFinder('C1'));
+    await tester.pumpAndSettle();
+    await tester.tap(_levelFilterFinder('C1'));
+    await tester.pumpAndSettle();
+
+    expect(analyticsTracker.payloadsFor('level_filter_selected'), [
+      <String, String>{'levelFilter': 'B2'},
+      <String, String>{'levelFilter': 'C1'},
+      <String, String>{'levelFilter': 'none'},
+    ]);
+  });
+
   testWidgets('shows a city selector placeholder below the header',
       (tester) async {
     await tester.pumpWidget(_buildTestApp());
@@ -2359,6 +2389,18 @@ class _RecordingEventsAnalyticsTracker implements EventsAnalyticsTracker {
       ),
     );
   }
+
+  @override
+  Future<void> trackLevelFilterSelected(String? selectedLevel) async {
+    events.add(
+      _RecordedAnalyticsEvent(
+        name: EventsAnalyticsService.levelFilterSelectedEventName,
+        payload: <String, String>{
+          'levelFilter': eventLevelFilterAnalyticsValue(selectedLevel),
+        },
+      ),
+    );
+  }
 }
 
 class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
@@ -2372,6 +2414,9 @@ class _NoopEventsAnalyticsTracker implements EventsAnalyticsTracker {
 
   @override
   Future<void> trackDateFilterSelected(EventListDateFilter dateFilter) async {}
+
+  @override
+  Future<void> trackLevelFilterSelected(String? selectedLevel) async {}
 }
 
 class _RecordedAnalyticsEvent {
