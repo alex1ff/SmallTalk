@@ -416,7 +416,7 @@ Deferred from active scope on 2026-06-19.
 - Deferred: Smoke test unauthenticated deep link preserves target `eventId` through login.
 - Deferred: Smoke test no-app/browser opens install landing.
 - Deferred: Verify production `assetlinks.json` and `apple-app-site-association` are reachable without redirects and have correct content type and app identifiers.
-- [ ] Confirm no regression in existing bottom navigation.
+- [x] Confirm no regression in existing bottom navigation.
 
 ## Post-MVP Backlog
 

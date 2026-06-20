@@ -1,22 +1,30 @@
 import 'dart:io';
 
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:small_talk/auth/base_auth_user_provider.dart';
+import 'package:small_talk/auth/firebase_auth/auth_util.dart';
+import 'package:small_talk/backend/backend.dart';
+import 'package:small_talk/backend/schema/enums/enums.dart';
 import 'package:small_talk/components/nav_bar_widget.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
+import 'package:small_talk/services/user_match_profile.dart';
+import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/shared_pages/events/event_edit_widget.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
 import 'package:small_talk/shared_pages/events/event_list_widget.dart';
+import 'package:small_talk/shared_pages/profile/profile_widget.dart';
+import 'package:small_talk/students_pages/favorite/favorite_widget.dart';
+import 'package:small_talk/students_pages/students_dashboard/students_dashboard_widget.dart';
+import 'package:small_talk/students_pages/words/words_widget.dart';
+import 'package:small_talk/teachers_pages/dashboard_n_s/dashboard_n_s_widget.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -33,10 +41,12 @@ void main() {
 
   setUp(() {
     currentUser = null;
+    currentUserDocument = null;
   });
 
   tearDown(() {
     currentUser = null;
+    currentUserDocument = null;
     AppStateNotifier.instance.clearRedirectLocation();
   });
 
@@ -446,6 +456,123 @@ void main() {
     expect(harness.notifier.getRedirectLocation(), '/events/event-123/chat');
   });
 
+  testWidgets('event list route redirects signed-out users to onboarding',
+      (tester) async {
+    final harness = await _pumpSignedOutEventsRouter(tester, '/events');
+
+    expect(harness.router.getCurrentLocation(), '/onboarding');
+    expect(harness.notifier.hasRedirect(), isTrue);
+    expect(harness.notifier.getRedirectLocation(), '/events');
+  });
+
+  testWidgets('event detail route redirects signed-out users to onboarding',
+      (tester) async {
+    final harness =
+        await _pumpSignedOutEventsRouter(tester, '/events/event-123');
+
+    expect(harness.router.getCurrentLocation(), '/onboarding');
+    expect(harness.notifier.hasRedirect(), isTrue);
+    expect(harness.notifier.getRedirectLocation(), '/events/event-123');
+  });
+
+  testWidgets(
+      'student bottom navigation keeps events selected and old tabs live',
+      (tester) async {
+    final router = _buildNavBarRouter();
+    currentUser = _TestAuthUser(userId: 'student-nav-user');
+    currentUserDocument = _userDocumentFixture(
+      userId: 'student-nav-user',
+      role: UserRole.student,
+    );
+
+    router.go(EventListWidget.routePath);
+    await tester.pumpWidget(_routerTestApp(router, locale: const Locale('ru')));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), EventListWidget.routePath);
+    expect(find.byType(NavBarWidget), findsOneWidget);
+    expect(find.text('Главная'), findsOneWidget);
+    expect(find.text('События'), findsOneWidget);
+    expect(find.text('Словарь'), findsOneWidget);
+    expect(find.text('Чаты'), findsOneWidget);
+    expect(find.text('Профиль'), findsOneWidget);
+    _expectSelectedNavLabel(tester, 'События');
+    _expectInactiveNavLabel(tester, 'Главная');
+    _expectInactiveNavLabel(tester, 'Профиль');
+
+    await tester.tap(find.text('Главная'));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/studentsDashboard?zn=false');
+
+    router.go(EventListWidget.routePath);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Словарь'));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), WordsWidget.routePath);
+
+    router.go(EventListWidget.routePath);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Чаты'));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), FavoriteWidget.routePath);
+
+    router.go(EventListWidget.routePath);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Профиль'));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), ProfileWidget.routePath);
+  });
+
+  testWidgets(
+      'teacher bottom navigation keeps events selected and old tabs live',
+      (tester) async {
+    final router = _buildNavBarRouter();
+    currentUser = _TestAuthUser(userId: 'teacher-nav-user');
+    currentUserDocument = _userDocumentFixture(
+      userId: 'teacher-nav-user',
+      role: UserRole.native_speaker,
+      teacherAccreditationStatus: TeacherAccreditationStatus.approved,
+    );
+
+    router.go(EventListWidget.routePath);
+    await tester.pumpWidget(_routerTestApp(router, locale: const Locale('ru')));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), EventListWidget.routePath);
+    expect(find.byType(NavBarWidget), findsOneWidget);
+    expect(find.text('Главная'), findsOneWidget);
+    expect(find.text('События'), findsOneWidget);
+    expect(find.text('Словарь'), findsNothing);
+    expect(find.text('Чаты'), findsOneWidget);
+    expect(find.text('Профиль'), findsOneWidget);
+    _expectSelectedNavLabel(tester, 'События');
+    _expectInactiveNavLabel(tester, 'Главная');
+    _expectInactiveNavLabel(tester, 'Профиль');
+
+    await tester.tap(find.text('Главная'));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), DashboardNSWidget.routePath);
+
+    router.go(EventListWidget.routePath);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Чаты'));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), FavoriteWidget.routePath);
+
+    router.go(EventListWidget.routePath);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Профиль'));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), ProfileWidget.routePath);
+  });
+
   testWidgets('router opens event create path before dynamic detail route',
       (tester) async {
     final router = await _pumpEventsRouter(tester, '/events/create');
@@ -540,7 +667,12 @@ Future<_RouterHarness> _pumpSignedOutEventsRouter(
   return _RouterHarness(router: router, notifier: notifier);
 }
 
-Widget _routerTestApp(GoRouter router) => MaterialApp.router(
+Widget _routerTestApp(
+  GoRouter router, {
+  Locale? locale,
+}) =>
+    MaterialApp.router(
+      locale: locale,
       supportedLocales: const <Locale>[
         Locale('ru'),
         Locale('en'),
@@ -552,6 +684,101 @@ Widget _routerTestApp(GoRouter router) => MaterialApp.router(
       ],
       routerConfig: router,
     );
+
+GoRouter _buildNavBarRouter() {
+  Widget shell(String label, GoRouterState state) => Scaffold(
+        body: Center(child: Text(label)),
+        bottomNavigationBar: NavBarWidget(
+          indexCurrentPage: _navBarIndexForPath(state.uri.path),
+        ),
+      );
+
+  return GoRouter(
+    initialLocation: EventListWidget.routePath,
+    routes: [
+      GoRoute(
+        name: DashboardNSWidget.routeName,
+        path: DashboardNSWidget.routePath,
+        builder: (context, state) => shell('teacher home', state),
+      ),
+      GoRoute(
+        name: StudentsDashboardWidget.routeName,
+        path: StudentsDashboardWidget.routePath,
+        builder: (context, state) => shell('student home', state),
+      ),
+      GoRoute(
+        name: EventListWidget.routeName,
+        path: EventListWidget.routePath,
+        builder: (context, state) => shell('events', state),
+      ),
+      GoRoute(
+        name: WordsWidget.routeName,
+        path: WordsWidget.routePath,
+        builder: (context, state) => shell('words', state),
+      ),
+      GoRoute(
+        name: FavoriteWidget.routeName,
+        path: FavoriteWidget.routePath,
+        builder: (context, state) => shell('favorite', state),
+      ),
+      GoRoute(
+        name: ProfileWidget.routeName,
+        path: ProfileWidget.routePath,
+        builder: (context, state) => shell('profile', state),
+      ),
+    ],
+  );
+}
+
+int _navBarIndexForPath(String path) {
+  final teacherPaths = [
+    DashboardNSWidget.routePath,
+    EventListWidget.routePath,
+    FavoriteWidget.routePath,
+    ProfileWidget.routePath,
+  ];
+  final studentPaths = [
+    StudentsDashboardWidget.routePath,
+    EventListWidget.routePath,
+    WordsWidget.routePath,
+    FavoriteWidget.routePath,
+    ProfileWidget.routePath,
+  ];
+  final paths = canUseNativeSpeakerShell(currentUserDocument)
+      ? teacherPaths
+      : studentPaths;
+  return paths.indexOf(path);
+}
+
+void _expectSelectedNavLabel(WidgetTester tester, String label) {
+  final text = tester.widget<Text>(find.text(label));
+
+  expect(text.style?.color, const Color(0xFF7430E8));
+  expect(text.style?.fontWeight, FontWeight.w500);
+}
+
+void _expectInactiveNavLabel(WidgetTester tester, String label) {
+  final text = tester.widget<Text>(find.text(label));
+
+  expect(text.style?.color, ExpatlioDesign.inactive);
+  expect(text.style?.fontWeight, FontWeight.w500);
+}
+
+UsersRecord _userDocumentFixture({
+  required String userId,
+  required UserRole role,
+  TeacherAccreditationStatus? teacherAccreditationStatus,
+}) {
+  return UsersRecord.getDocumentFromData(
+    {
+      'uid': userId,
+      'role': role.name,
+      if (teacherAccreditationStatus != null)
+        'teacherAccreditationStatus': teacherAccreditationStatus.name,
+    },
+    UsersRecord.collection.doc(userId),
+  );
+}
 
 class _TestFirebaseAuthPlatform extends FirebaseAuthPlatform {
   _TestFirebaseAuthPlatform({FirebaseApp? app}) : super(appInstance: app);
