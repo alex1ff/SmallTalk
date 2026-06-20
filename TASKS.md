@@ -398,7 +398,7 @@ Deferred from active scope on 2026-06-19.
 - Deferred: Add deep link tests for missing, admin-deleted, canceled, past, and full event link states without auto-join.
 - Deferred: Add fallback landing tests for no auto-redirect, no Firestore reads, no event-specific OG/meta tags, no private event/participant/chat data, and generic missing/admin-deleted response.
 - Deferred: Add hosting verification for `/.well-known/assetlinks.json`, `/.well-known/apple-app-site-association`, `/events/**` fallback, and absence of Dynamic Links config.
-- [ ] Run `flutter analyze`.
+- [x] Run `flutter analyze`.
 - [ ] Run relevant `flutter test`.
 
 ## Phase 15: Release Checklist
