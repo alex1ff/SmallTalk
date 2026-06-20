@@ -403,7 +403,7 @@ Deferred from active scope on 2026-06-19.
 
 ## Phase 15: Release Checklist
 
-- [ ] Confirm Firebase indexes deployed.
+- [x] Confirm Firebase indexes deployed.
 - [ ] Confirm Firebase rules deployed.
 - [ ] Confirm Cloud Functions or transaction endpoints deployed if used.
 - [ ] Smoke test new user with profile city.
