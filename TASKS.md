@@ -409,7 +409,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Smoke test new user with profile city.
 - [x] Smoke test user without profile city.
 - [x] Smoke test create, edit, cancel.
-- [ ] Smoke test join, leave, full event.
+- [x] Smoke test join, leave, full event.
 - [ ] Smoke test participant-only chat.
 - Deferred: Smoke test share link.
 - Deferred: Smoke test installed app opens shared event detail.
