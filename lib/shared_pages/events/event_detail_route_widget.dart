@@ -383,7 +383,9 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
             );
             final isJoinedForActions =
                 !isLocallyLeft && (isLocallyJoined || isActiveParticipant);
-            final joinCtaState = _eventDetailJoinStateForEvent(
+            final isOrganizerActiveParticipant =
+                canManage && isActiveParticipant;
+            final resolvedJoinCtaState = _eventDetailJoinStateForEvent(
               event,
               isCanceled: isCanceled,
               isJoined: isJoinedForActions,
@@ -391,8 +393,13 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
               hasStarted: hasStarted,
               resolvedParticipantsCount: participantsCount,
             );
+            final joinCtaState = isOrganizerActiveParticipant &&
+                    resolvedJoinCtaState == EventDetailJoinCtaState.joined
+                ? EventDetailJoinCtaState.joinedLocked
+                : resolvedJoinCtaState;
             final canJoin = joinCtaState == EventDetailJoinCtaState.join;
-            final canLeave = joinCtaState == EventDetailJoinCtaState.joined;
+            final canLeave = !isOrganizerActiveParticipant &&
+                joinCtaState == EventDetailJoinCtaState.joined;
             _scheduleStartsAtRefreshIfNeeded(
               eventId: eventId,
               startsAt: event.startsAt,

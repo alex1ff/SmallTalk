@@ -777,6 +777,16 @@ service cloud.firestore {
       return isSignedIn() && data.status == 'active';
     }
 
+    function canGetEventDetail(eventId, data) {
+      return isSignedIn() &&
+        isAllowedEventStatus(data.status) &&
+        (
+          data.status == 'active' ||
+          data.organizerId == request.auth.uid ||
+          isActiveEventParticipant(eventId, request.auth.uid)
+        );
+    }
+
     function directEventEditFields() {
       return [
         'title',
@@ -1187,6 +1197,7 @@ service cloud.firestore {
     }
 
     match /events/{eventId} {
+      allow get: if canGetEventDetail(eventId, resource.data);
       allow list: if canListActiveEvent(resource.data);
       allow create: if false;
       allow update: if canDirectlyEditOwnEvent();

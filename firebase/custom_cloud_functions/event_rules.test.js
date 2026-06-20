@@ -387,11 +387,47 @@ test("authorized user cannot list non-active event statuses", async () => {
   );
 });
 
-test("direct event detail get remains separate from event list reads", async () => {
+test("authorized user can get active event detail directly", async () => {
   const db = testEnv.authenticatedContext("user-a").firestore();
 
+  await assertSucceeds(db.doc("events/active-moscow").get());
+});
+
+test("unauthenticated user cannot get event detail directly", async () => {
+  const db = testEnv.unauthenticatedContext().firestore();
+
   await assertFails(db.doc("events/active-moscow").get());
-  await assertFails(db.doc("events/canceled-moscow").get());
+});
+
+test("canceled event detail is limited to organizer and active participants", async () => {
+  await assertSucceeds(
+    testEnv
+      .authenticatedContext("organizer")
+      .firestore()
+      .doc("events/canceled-editable-event")
+      .get(),
+  );
+  await assertSucceeds(
+    testEnv
+      .authenticatedContext("user-a")
+      .firestore()
+      .doc("events/canceled-editable-event")
+      .get(),
+  );
+  await assertFails(
+    testEnv
+      .authenticatedContext("other-user")
+      .firestore()
+      .doc("events/canceled-editable-event")
+      .get(),
+  );
+  await assertFails(
+    testEnv
+      .authenticatedContext("user-left")
+      .firestore()
+      .doc("events/canceled-editable-event")
+      .get(),
+  );
 });
 
 test("authorized user can list active event participants for roster UI", async () => {

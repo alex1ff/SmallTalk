@@ -99,6 +99,16 @@ void main() {
               ),
             );
           },
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'organizer-1',
+                status: 'active',
+              ),
+            ),
+          ),
           cancelEventInvoker: (calledFunctionName, calledPayload) async {
             cancelCalls += 1;
             functionName = calledFunctionName;
@@ -114,6 +124,8 @@ void main() {
     expect(streamCalls, 1);
     expect(find.text('Conversation club'), findsOneWidget);
     expect(find.byKey(eventDetailOrganizerControlsKey), findsOneWidget);
+    expect(find.text('Вы участвуете'), findsOneWidget);
+    expect(find.text('Покинуть'), findsNothing);
 
     await _tapVisible(tester, find.byKey(eventDetailOrganizerCancelButtonKey));
     await tester.pumpAndSettle();

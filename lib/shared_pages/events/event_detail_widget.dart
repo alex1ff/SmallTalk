@@ -75,6 +75,10 @@ const ValueKey<String> eventDetailChatCtaKey =
     ValueKey<String>('event_detail_chat_cta');
 
 const Color _eventDetailDestructiveCtaBackground = Color(0xFFB42318);
+const double _eventDetailContentBottomPadding =
+    ExpatlioDesign.buttonHeight * 2 +
+        ExpatlioDesign.space16 +
+        ExpatlioDesign.space24 * 3;
 
 ValueKey<String> eventDetailParticipantTileKey(int index) =>
     ValueKey<String>('event_detail_participant_tile_$index');
@@ -207,7 +211,7 @@ class EventDetailWidget extends StatelessWidget {
                   ExpatlioDesign.space24,
                   ExpatlioDesign.space24,
                   ExpatlioDesign.space24,
-                  ExpatlioDesign.space32,
+                  _eventDetailContentBottomPadding,
                 ),
                 children: [
                   Align(
