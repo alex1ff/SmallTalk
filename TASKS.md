@@ -406,7 +406,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Confirm Firebase indexes deployed.
 - [x] Confirm Firebase rules deployed.
 - [x] Confirm Cloud Functions or transaction endpoints deployed if used.
-- [ ] Smoke test new user with profile city.
+- [x] Smoke test new user with profile city.
 - [ ] Smoke test user without profile city.
 - [ ] Smoke test create, edit, cancel.
 - [ ] Smoke test join, leave, full event.

@@ -368,6 +368,8 @@ void main() {
             ),
             source: EventCitySelectionSource.manual,
           ),
+          eventCardsOverride: const [],
+          isLoadingEvents: true,
         ),
       ),
     );
@@ -394,6 +396,8 @@ void main() {
             ),
             source: EventCitySelectionSource.manual,
           ),
+          eventCardsOverride: const [],
+          isLoadingEvents: true,
         ),
       ),
     );
@@ -441,6 +445,69 @@ void main() {
     expect(loadingSemantics.properties.label, 'Загружаем события');
     expect(loadingSemantics.properties.liveRegion, isTrue);
     expect(loadingSemantics.container, isTrue);
+  });
+
+  testWidgets('loads event cards from repository when city is resolved',
+      (tester) async {
+    var calls = 0;
+    int? capturedPageSize;
+    bool? capturedIsStream;
+    Query Function(Query)? capturedQueryBuilder;
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-loader-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            calls += 1;
+            capturedPageSize = pageSize;
+            capturedIsStream = isStream;
+            capturedQueryBuilder = queryBuilder;
+            return FFFirestorePage<EventsRecord>(
+              [
+                _eventsRecordFixture(
+                  'loaded-event',
+                  title: 'Live loaded event',
+                  startsAt: DateTime.utc(2035, 6, 14, 15),
+                ),
+              ],
+              null,
+              null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(capturedPageSize, 20);
+    expect(capturedIsStream, isFalse);
+    expect(capturedQueryBuilder, isNotNull);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.text('Live loaded event'), findsOneWidget);
+    expect(find.text('Москва · Россия'), findsOneWidget);
   });
 
   testWidgets('does not show loading state before city is selected',
@@ -2316,12 +2383,12 @@ void main() {
     expect(find.byType(EventListWidget), findsOneWidget);
   });
 
-  test('event list city selector state avoids loading event data early', () {
+  test('event list route uses repository loading without profile writes', () {
     final source = File('lib/shared_pages/events/event_list_widget.dart')
         .readAsStringSync();
 
-    expect(source, isNot(contains('EventListRepository')));
-    expect(source, isNot(contains('EventsRecord')));
+    expect(source, contains('EventListRepository'));
+    expect(source, contains('EventsRecord'));
     expect(source, isNot(contains('ProfileCitySaveService')));
     expect(source, isNot(contains('queryEventsRecord')));
   });
@@ -2492,6 +2559,36 @@ EventListCardViewModel _eventCardFixture({
     startsAt: startsAt ?? DateTime.utc(2035, 6, 14, 15),
     timeZoneId: timeZoneId,
     locationName: locationName,
+  );
+}
+
+EventsRecord _eventsRecordFixture(
+  String id, {
+  String title = 'Разговорный клуб',
+  DateTime? startsAt,
+}) {
+  return EventsRecord.getDocumentFromData(
+    {
+      'title': title,
+      'description': 'Описание события',
+      'languageCode': 'en',
+      'languageNameEn': 'English',
+      'languageNameRu': 'Английский',
+      'levelMin': 'B1',
+      'levelMax': 'C1',
+      'countryCode': 'RU',
+      'cityKey': 'moscow',
+      'locationName': 'Starbucks, ул. Арбат, 5',
+      'startsAt': startsAt ?? DateTime.utc(2035, 6, 14, 15),
+      'timeZoneId': 'Europe/Moscow',
+      'capacity': 10,
+      'participantsCount': 1,
+      'organizerId': 'organizer-user',
+      'organizerDisplayName': 'Анастасия Иванова',
+      'organizerPhotoUrl': '',
+      'status': eventStatusActive,
+    },
+    EventsRecord.collection.doc(id),
   );
 }
 

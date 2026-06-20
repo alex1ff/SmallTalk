@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as timezone;
 
 import '/auth/firebase_auth/auth_util.dart';
+import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/events/event_create_widget.dart';
@@ -18,6 +19,7 @@ import '/services/event_city_selection_source.dart';
 import '/services/event_selected_city_state.dart';
 import '/services/event_temporary_city_selection.dart';
 import '/services/event_list_date_bounds.dart';
+import '/services/event_list_repository.dart';
 import '/services/event_level_helper.dart';
 import '/services/event_language_catalog.dart';
 import '/services/events_analytics_service.dart';
@@ -78,6 +80,10 @@ const ValueKey<String> eventListParticipantOverflowKey =
     ValueKey<String>('event_list_participant_overflow');
 const ValueKey<String> eventListCardOccupancyKey =
     ValueKey<String>('event_list_card_occupancy');
+
+typedef EventListNowProvider = DateTime Function();
+
+const int _eventListPageSize = 20;
 
 class EventListParticipantViewModel {
   const EventListParticipantViewModel({
@@ -175,6 +181,8 @@ class EventListWidget extends StatefulWidget {
     this.eventListErrorMessage,
     this.onRetryEventsPressed,
     this.analyticsTracker,
+    this.eventPageLoader,
+    this.nowUtcProvider,
   });
 
   static String routeName = 'events';
@@ -189,6 +197,8 @@ class EventListWidget extends StatefulWidget {
   final String? eventListErrorMessage;
   final VoidCallback? onRetryEventsPressed;
   final EventsAnalyticsTracker? analyticsTracker;
+  final EventListPageLoader? eventPageLoader;
+  final EventListNowProvider? nowUtcProvider;
 
   @override
   State<EventListWidget> createState() => _EventListWidgetState();
@@ -206,6 +216,8 @@ class _EventListWidgetState extends State<EventListWidget> {
   String? _cityChipsSelectedIdentity;
   String? _lastTrackedEventListOpenKey;
   String? _lastTrackedCitySelectedKey;
+  _EventListLoadKey? _eventListLoadKey;
+  Future<List<EventListCardViewModel>>? _eventCardsFuture;
 
   @override
   void initState() {
@@ -233,6 +245,11 @@ class _EventListWidgetState extends State<EventListWidget> {
     }
     if (oldWidget.languageCatalogOverride != widget.languageCatalogOverride) {
       _languageCatalogFuture = _loadLanguageCatalog();
+    }
+    if (oldWidget.eventPageLoader != widget.eventPageLoader ||
+        oldWidget.nowUtcProvider != widget.nowUtcProvider) {
+      _eventListLoadKey = null;
+      _eventCardsFuture = null;
     }
   }
 
@@ -279,10 +296,12 @@ class _EventListWidgetState extends State<EventListWidget> {
                 : null;
             final canShowEventCards = selectedState?.canLoadEvents ?? false;
             final hasEventListError = widget.eventListErrorMessage != null;
-            final isLoadingEvents = widget.isLoadingEvents ||
-                (widget.eventCardsOverride == null && !hasEventListError);
             final eventCards =
                 widget.eventCardsOverride ?? const <EventListCardViewModel>[];
+            final eventCardsFuture =
+                widget.eventCardsOverride == null && !hasEventListError
+                    ? _eventCardsFutureForSelectedState(selectedState)
+                    : null;
             _trackCitySelectedIfNeeded(selectedState);
             _trackEventListOpenedIfNeeded(selectedState);
             final onCitySelectorPressed = widget.onCitySelectorPressed ??
@@ -389,60 +408,68 @@ class _EventListWidgetState extends State<EventListWidget> {
                               ],
                               if (canShowEventCards) ...[
                                 const SizedBox(height: ExpatlioDesign.space16),
-                                if (isLoadingEvents)
+                                if (widget.isLoadingEvents)
                                   const _EventListLoadingState()
                                 else if (hasEventListError)
                                   _EventListErrorState(
                                     message: widget.eventListErrorMessage,
                                     onRetryPressed: widget.onRetryEventsPressed,
                                   )
+                                else if (eventCardsFuture != null)
+                                  FutureBuilder<List<EventListCardViewModel>>(
+                                    future: eventCardsFuture,
+                                    builder: (context, eventsSnapshot) {
+                                      if (eventsSnapshot.connectionState !=
+                                          ConnectionState.done) {
+                                        return const _EventListLoadingState();
+                                      }
+                                      if (eventsSnapshot.hasError) {
+                                        return _EventListErrorState(
+                                          message: null,
+                                          onRetryPressed: () {
+                                            setState(() {
+                                              _eventListLoadKey = null;
+                                              _eventCardsFuture = null;
+                                            });
+                                          },
+                                        );
+                                      }
+
+                                      final loadedCards = eventsSnapshot.data ??
+                                          const <EventListCardViewModel>[];
+                                      if (loadedCards.isEmpty) {
+                                        return const _EventListEmptyState();
+                                      }
+
+                                      return _EventListCards(
+                                        eventCards: loadedCards,
+                                        languageCatalogFuture:
+                                            _languageCatalogFuture,
+                                        selectedCity: selectedState?.selected,
+                                        canOpenEventCardChat:
+                                            _canOpenEventCardChat,
+                                        openEventCardChat: _openEventCardChat,
+                                        showParticipantRequiredSnackBar: () =>
+                                            _showEventListChatParticipantRequiredSnackBar(
+                                          context,
+                                        ),
+                                      );
+                                    },
+                                  )
                                 else if (eventCards.isEmpty)
                                   const _EventListEmptyState()
                                 else
-                                  FutureBuilder<EventLanguageCatalog>(
-                                    future: _languageCatalogFuture,
-                                    builder: (context, languageSnapshot) {
-                                      final languageCatalog =
-                                          languageSnapshot.data;
-                                      return Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          for (final eventCard
-                                              in eventCards) ...[
-                                            _EventCardShell(
-                                              card: eventCard,
-                                              languageCatalog: languageCatalog,
-                                              onChatPressed:
-                                                  _canOpenEventCardChat(
-                                                eventCard,
-                                              )
-                                                      ? () =>
-                                                          _openEventCardChat(
-                                                            event: eventCard,
-                                                            selectedCity:
-                                                                selectedState
-                                                                    ?.selected,
-                                                          )
-                                                      : null,
-                                              onChatParticipantRequiredPressed:
-                                                  eventCard.chatCtaState ==
-                                                          EventListChatCtaState
-                                                              .participantOnly
-                                                      ? () =>
-                                                          _showEventListChatParticipantRequiredSnackBar(
-                                                            context,
-                                                          )
-                                                      : null,
-                                            ),
-                                            if (eventCard != eventCards.last)
-                                              const SizedBox(
-                                                height: ExpatlioDesign.space12,
-                                              ),
-                                          ],
-                                        ],
-                                      );
-                                    },
+                                  _EventListCards(
+                                    eventCards: eventCards,
+                                    languageCatalogFuture:
+                                        _languageCatalogFuture,
+                                    selectedCity: selectedState?.selected,
+                                    canOpenEventCardChat: _canOpenEventCardChat,
+                                    openEventCardChat: _openEventCardChat,
+                                    showParticipantRequiredSnackBar: () =>
+                                        _showEventListChatParticipantRequiredSnackBar(
+                                      context,
+                                    ),
                                   ),
                               ],
                             ],
@@ -458,6 +485,67 @@ class _EventListWidgetState extends State<EventListWidget> {
         );
       },
     );
+  }
+
+  Future<List<EventListCardViewModel>>? _eventCardsFutureForSelectedState(
+    EventSelectedCityState? selectedState,
+  ) {
+    final selected = selectedState?.selected;
+    if (selected == null) {
+      return null;
+    }
+
+    final key = _EventListLoadKey(
+      countryCode: selected.city.countryCode,
+      cityKey: selected.city.cityKey,
+      timeZoneId: selected.city.timeZoneId,
+      dateFilter: _selectedDateFilter,
+      selectedLevel: _selectedLevel,
+    );
+    if (_eventListLoadKey != key || _eventCardsFuture == null) {
+      _eventListLoadKey = key;
+      _eventCardsFuture = _loadEventCards(
+        selected: selected,
+        dateFilter: _selectedDateFilter,
+        selectedLevel: _selectedLevel,
+      );
+    }
+    return _eventCardsFuture;
+  }
+
+  Future<List<EventListCardViewModel>> _loadEventCards({
+    required EventSelectedCity selected,
+    required EventListDateFilter dateFilter,
+    required String? selectedLevel,
+  }) async {
+    final nowUtc = (widget.nowUtcProvider ?? _eventListNowUtc)();
+    final normalizedNowUtc = nowUtc.isUtc ? nowUtc : nowUtc.toUtc();
+    final page =
+        await EventListRepository.loadLevelFilteredActiveEventPageForDateRange(
+      countryCode: selected.city.countryCode,
+      cityKey: selected.city.cityKey,
+      timeZoneId: selected.city.timeZoneId,
+      localDateRange: eventListDateFilterLocalDateRange(
+        dateFilter: dateFilter,
+        timeZoneId: selected.city.timeZoneId,
+        nowUtc: normalizedNowUtc,
+      ),
+      nowUtc: normalizedNowUtc,
+      pageSize: _eventListPageSize,
+      selectedLevel: selectedLevel,
+      pageLoader: widget.eventPageLoader,
+    );
+
+    return page.data
+        .map(
+          (event) => _eventListCardFromRecord(
+            event,
+            fallbackTimeZoneId: selected.city.timeZoneId,
+            nowUtc: normalizedNowUtc,
+          ),
+        )
+        .whereType<EventListCardViewModel>()
+        .toList(growable: false);
   }
 
   Future<void> _openManualCityPicker({
@@ -686,6 +774,177 @@ class _EventListWidgetState extends State<EventListWidget> {
       pathParameters: <String, String>{'eventId': eventId},
     );
   }
+}
+
+class _EventListCards extends StatelessWidget {
+  const _EventListCards({
+    required this.eventCards,
+    required this.languageCatalogFuture,
+    required this.selectedCity,
+    required this.canOpenEventCardChat,
+    required this.openEventCardChat,
+    required this.showParticipantRequiredSnackBar,
+  });
+
+  final List<EventListCardViewModel> eventCards;
+  final Future<EventLanguageCatalog>? languageCatalogFuture;
+  final EventSelectedCity? selectedCity;
+  final bool Function(EventListCardViewModel event) canOpenEventCardChat;
+  final void Function({
+    required EventListCardViewModel event,
+    required EventSelectedCity? selectedCity,
+  }) openEventCardChat;
+  final VoidCallback showParticipantRequiredSnackBar;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<EventLanguageCatalog>(
+      future: languageCatalogFuture,
+      builder: (context, languageSnapshot) {
+        final languageCatalog = languageSnapshot.data;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final eventCard in eventCards) ...[
+              _EventCardShell(
+                card: eventCard,
+                languageCatalog: languageCatalog,
+                onChatPressed: canOpenEventCardChat(eventCard)
+                    ? () => openEventCardChat(
+                          event: eventCard,
+                          selectedCity: selectedCity,
+                        )
+                    : null,
+                onChatParticipantRequiredPressed: eventCard.chatCtaState ==
+                        EventListChatCtaState.participantOnly
+                    ? showParticipantRequiredSnackBar
+                    : null,
+              ),
+              if (eventCard != eventCards.last)
+                const SizedBox(height: ExpatlioDesign.space12),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _EventListLoadKey {
+  const _EventListLoadKey({
+    required this.countryCode,
+    required this.cityKey,
+    required this.timeZoneId,
+    required this.dateFilter,
+    required this.selectedLevel,
+  });
+
+  final String countryCode;
+  final String cityKey;
+  final String timeZoneId;
+  final EventListDateFilter dateFilter;
+  final String? selectedLevel;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _EventListLoadKey &&
+        other.countryCode == countryCode &&
+        other.cityKey == cityKey &&
+        other.timeZoneId == timeZoneId &&
+        other.dateFilter == dateFilter &&
+        other.selectedLevel == selectedLevel;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        countryCode,
+        cityKey,
+        timeZoneId,
+        dateFilter,
+        selectedLevel,
+      );
+}
+
+DateTime _eventListNowUtc() => DateTime.now().toUtc();
+
+EventListCardViewModel? _eventListCardFromRecord(
+  EventsRecord event, {
+  required String fallbackTimeZoneId,
+  required DateTime nowUtc,
+}) {
+  final startsAt = event.startsAt;
+  if (startsAt == null) {
+    return null;
+  }
+  final timeZoneId = event.timeZoneId.trim().isEmpty
+      ? fallbackTimeZoneId
+      : event.timeZoneId.trim();
+  final participantsCount =
+      event.hasParticipantsCount() ? event.participantsCount : null;
+  final capacity = event.hasCapacity() ? event.capacity : null;
+  final isOrganizer = currentUserUid.trim().isNotEmpty &&
+      event.organizerId.trim() == currentUserUid.trim();
+
+  return EventListCardViewModel(
+    eventId: event.reference.id,
+    countryCode: event.countryCode,
+    cityKey: event.cityKey,
+    organizerDisplayName: event.organizerDisplayName,
+    organizerPhotoUrl:
+        event.hasOrganizerPhotoUrl() ? event.organizerPhotoUrl.trim() : null,
+    languageCode: event.languageCode,
+    languageNameEn:
+        event.hasLanguageNameEn() ? event.languageNameEn.trim() : null,
+    languageNameRu:
+        event.hasLanguageNameRu() ? event.languageNameRu.trim() : null,
+    title: event.title,
+    description: event.description,
+    levelMin: event.levelMin,
+    levelMax: event.levelMax,
+    startsAt: startsAt,
+    timeZoneId: timeZoneId,
+    locationName: event.locationName,
+    participantsCount: participantsCount,
+    capacity: capacity,
+    joinCtaState: _eventListJoinStateForRecord(
+      event: event,
+      nowUtc: nowUtc,
+      isOrganizer: isOrganizer,
+      participantsCount: participantsCount,
+      capacity: capacity,
+    ),
+    chatCtaState: isOrganizer
+        ? EventListChatCtaState.enabled
+        : EventListChatCtaState.participantOnly,
+  );
+}
+
+EventListJoinCtaState _eventListJoinStateForRecord({
+  required EventsRecord event,
+  required DateTime nowUtc,
+  required bool isOrganizer,
+  required int? participantsCount,
+  required int? capacity,
+}) {
+  if (event.status == eventStatusCanceled) {
+    return EventListJoinCtaState.canceled;
+  }
+  if (isOrganizer) {
+    return EventListJoinCtaState.joined;
+  }
+  final startsAt = event.startsAt;
+  if (startsAt == null || !startsAt.isAfter(nowUtc)) {
+    return EventListJoinCtaState.past;
+  }
+  final resolvedCapacity = capacity;
+  final resolvedParticipantsCount = participantsCount;
+  if (resolvedCapacity != null &&
+      resolvedCapacity > 0 &&
+      resolvedParticipantsCount != null &&
+      resolvedParticipantsCount >= resolvedCapacity) {
+    return EventListJoinCtaState.full;
+  }
+  return EventListJoinCtaState.join;
 }
 
 class _EventListEmptyState extends StatelessWidget {
