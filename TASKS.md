@@ -392,7 +392,7 @@ Deferred from active scope on 2026-06-19.
 - [x] Add widget tests for canceled chat read-only banner/status and hidden or disabled composer.
 - [x] Add widget tests for list empty/loading/error states.
 - [x] Add widget tests for create form validation.
-- [ ] Add widget tests for detail CTA states.
+- [x] Add widget tests for detail CTA states.
 - Deferred: Add deep link test for opening event detail.
 - Deferred: Add deep link test for preserving target `eventId` through auth redirect.
 - Deferred: Add deep link tests for missing, admin-deleted, canceled, past, and full event link states without auto-join.

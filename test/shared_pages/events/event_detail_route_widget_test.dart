@@ -668,6 +668,350 @@ void main() {
     );
   });
 
+  testWidgets('active participant can leave through primary CTA',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final semanticsHandle = tester.ensureSemantics();
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+    var leaveCalls = 0;
+    String? functionName;
+    Map<String, dynamic>? payload;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: ' event-1 ',
+            analyticsTracker: analyticsTracker,
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(organizerId: 'organizer-1'),
+              ),
+            ),
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                data: _participantData(
+                  userId: 'uid-1',
+                  status: 'active',
+                ),
+              ),
+            ),
+            leaveEventInvoker: (calledFunctionName, calledPayload) async {
+              leaveCalls += 1;
+              functionName = calledFunctionName;
+              payload = calledPayload;
+              return _leaveEventResponse();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.text('Присоединиться'), findsNothing);
+      var primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isTrue);
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(leaveCalls, 1);
+      expect(functionName, leaveEventFunctionName);
+      expect(payload, <String, dynamic>{'eventId': 'event-1'});
+      expect(find.text('Присоединиться'), findsOneWidget);
+      expect(find.text('Покинуть'), findsNothing);
+      expect(
+        analyticsTracker.payloadsFor(EventsAnalyticsService.eventLeftEventName),
+        [
+          <String, String>{
+            'countryCode': 'RU',
+            'cityKey': 'moscow',
+          },
+        ],
+      );
+
+      primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      final chatSemantics =
+          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isTrue);
+      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('started active participant keeps primary CTA locked',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final semanticsHandle = tester.ensureSemantics();
+    var leaveCalls = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(
+                  organizerId: 'organizer-1',
+                  startsAt: DateTime.utc(2000),
+                ),
+              ),
+            ),
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                data: _participantData(
+                  userId: 'uid-1',
+                  status: 'active',
+                ),
+              ),
+            ),
+            leaveEventInvoker: (_, __) async {
+              leaveCalls += 1;
+              return _leaveEventResponse();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Вы участвуете'), findsOneWidget);
+      expect(find.text('Покинуть'), findsNothing);
+
+      final primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, 'Вы участвуете');
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(leaveCalls, 0);
+      expect(find.byKey(eventDetailLeaveDialogKey), findsNothing);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('active participant leave action locks automatically at startsAt',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    const startsAfter = Duration(seconds: 30);
+    final startsAt = DateTime.now().toUtc().add(startsAfter);
+    var leaveCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(
+                organizerId: 'organizer-1',
+                startsAt: startsAt,
+              ),
+            ),
+          ),
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'uid-1',
+                status: 'active',
+              ),
+            ),
+          ),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            return _leaveEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Покинуть'), findsOneWidget);
+
+    await tester.pump(startsAfter + const Duration(milliseconds: 1));
+
+    expect(find.text('Вы участвуете'), findsOneWidget);
+    expect(find.text('Покинуть'), findsNothing);
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(leaveCalls, 0);
+    expect(find.byKey(eventDetailLeaveDialogKey), findsNothing);
+  });
+
+  testWidgets('server-side disabled CTA states do not call join',
+      (tester) async {
+    currentUser = null;
+    final semanticsHandle = tester.ensureSemantics();
+    final cases = <({
+      String label,
+      String semanticsReason,
+      Map<String, dynamic> eventData,
+    })>[
+      (
+        label: 'Мест нет',
+        semanticsReason: 'Мест нет',
+        eventData: _eventData(participantsCount: 10),
+      ),
+      (
+        label: 'Отменено',
+        semanticsReason: 'Событие отменено',
+        eventData: _eventData(status: 'canceled'),
+      ),
+      (
+        label: 'Уже началось',
+        semanticsReason: 'Событие уже началось',
+        eventData: _eventData(startsAt: DateTime.utc(2000)),
+      ),
+    ];
+
+    try {
+      for (final testCase in cases) {
+        var joinCalls = 0;
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            home: EventDetailRouteWidget(
+              eventId: 'event-1',
+              snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+                _FakeEventDocumentSnapshot(
+                  reference: eventRef,
+                  data: testCase.eventData,
+                ),
+              ),
+              joinEventInvoker: (_, __) async {
+                joinCalls += 1;
+                return _joinEventResponse();
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text(testCase.label), findsOneWidget);
+
+        final primarySemantics =
+            tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+        expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+        expect(primarySemantics.label, contains(testCase.semanticsReason));
+
+        await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+        await tester.pumpAndSettle();
+
+        expect(joinCalls, 0);
+      }
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('event change ignores stale active participant snapshot',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final firstParticipantController = StreamController<DocumentSnapshot>();
+    final secondParticipantController = StreamController<DocumentSnapshot>();
+    addTearDown(firstParticipantController.close);
+    addTearDown(secondParticipantController.close);
+    var leaveCalls = 0;
+
+    Stream<DocumentSnapshot> Function(DocumentReference) snapshotStreamFor(
+      String title,
+    ) =>
+        (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(
+                  title: title,
+                  organizerId: 'organizer-1',
+                ),
+              ),
+            ).asBroadcastStream();
+
+    Stream<DocumentSnapshot> participantSnapshotStream(
+      DocumentReference participantRef,
+    ) {
+      final eventId = participantRef.parent.parent!.id;
+      if (eventId == 'event-1') {
+        return firstParticipantController.stream;
+      }
+      return secondParticipantController.stream;
+    }
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: snapshotStreamFor('First event'),
+          participantSnapshotStream: participantSnapshotStream,
+          joinEventInvoker: (_, __) async => _joinEventResponse(),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            return _leaveEventResponse();
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    firstParticipantController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventParticipantsRecord.createDoc(
+          EventsRecord.collection.doc('event-1'),
+          id: 'uid-1',
+        ),
+        data: _participantData(
+          userId: 'uid-1',
+          status: 'active',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('First event'), findsOneWidget);
+    expect(find.text('Покинуть'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-2',
+          snapshotStream: snapshotStreamFor('Second event'),
+          participantSnapshotStream: participantSnapshotStream,
+          joinEventInvoker: (_, __) async =>
+              _joinEventResponse(eventId: 'event-2'),
+          leaveEventInvoker: (_, __) async {
+            leaveCalls += 1;
+            return _leaveEventResponse(eventId: 'event-2');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Second event'), findsOneWidget);
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Покинуть'), findsNothing);
+    expect(leaveCalls, 0);
+    expect(find.byKey(eventDetailLeaveDialogKey), findsNothing);
+  });
+
   testWidgets('organizer can open chat from detail and logs analytics',
       (tester) async {
     final analyticsTracker = _RecordingEventsAnalyticsTracker();

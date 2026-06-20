@@ -216,13 +216,18 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     }
   }
 
-  Future<void> _handleLeave(EventsRecord event) async {
+  Future<void> _handleLeave(
+    EventsRecord event, {
+    required bool isActiveParticipant,
+  }) async {
     if (_isJoining || _isLeaving) {
       return;
     }
 
     final eventId = event.reference.id;
-    if (_locallyJoinedEventId != eventId) {
+    final wasJoined = _locallyJoinedEventId == eventId ||
+        (_locallyLeftEventId != eventId && isActiveParticipant);
+    if (!wasJoined) {
       return;
     }
     if (_eventDetailHasStartedForRoute(
@@ -248,8 +253,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       if (!mounted || requestGeneration != _participantActionGeneration) {
         return;
       }
-      if (result.eventId == eventId &&
-          _locallyJoinedEventId == result.eventId) {
+      if (result.eventId == eventId) {
         _trackEventLeftIfNeeded(
           eventId: result.eventId,
           event: event,
@@ -257,7 +261,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         );
       }
       setState(() {
-        if (_locallyJoinedEventId == result.eventId) {
+        if (result.eventId == eventId) {
           _locallyJoinedEventId = null;
           _locallyJoinedParticipantsCount = null;
           _locallyLeftEventId = result.eventId;
@@ -357,24 +361,6 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           startsAt: event.startsAt,
         );
         final canManage = _eventDetailCanCurrentUserManage(event);
-        final joinCtaState = _eventDetailJoinStateForEvent(
-          event,
-          isCanceled: isCanceled,
-          isJoined: isLocallyJoined,
-          isJoining: _isJoining,
-          hasStarted: hasStarted,
-          resolvedParticipantsCount: participantsCount,
-        );
-        final canJoin = joinCtaState == EventDetailJoinCtaState.join;
-        final canLeave = joinCtaState == EventDetailJoinCtaState.joined;
-        _scheduleStartsAtRefreshIfNeeded(
-          eventId: eventId,
-          startsAt: event.startsAt,
-          hasStarted: hasStarted,
-          isActive: isActive,
-          isCanceled: isCanceled,
-          isJoined: isLocallyJoined,
-        );
         _clearLocalParticipantsCountIfSnapshotCaughtUp(
           eventId: eventId,
           snapshotParticipantsCount: snapshotParticipantsCount,
@@ -391,8 +377,30 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         return StreamBuilder<EventParticipantsRecord?>(
           stream: participantStream,
           builder: (context, participantSnapshot) {
-            final isActiveParticipant =
-                _eventDetailIsActiveParticipant(participantSnapshot.data);
+            final isActiveParticipant = _eventDetailIsActiveParticipant(
+              participantSnapshot.data,
+              eventId: eventId,
+            );
+            final isJoinedForActions =
+                !isLocallyLeft && (isLocallyJoined || isActiveParticipant);
+            final joinCtaState = _eventDetailJoinStateForEvent(
+              event,
+              isCanceled: isCanceled,
+              isJoined: isJoinedForActions,
+              isJoining: _isJoining,
+              hasStarted: hasStarted,
+              resolvedParticipantsCount: participantsCount,
+            );
+            final canJoin = joinCtaState == EventDetailJoinCtaState.join;
+            final canLeave = joinCtaState == EventDetailJoinCtaState.joined;
+            _scheduleStartsAtRefreshIfNeeded(
+              eventId: eventId,
+              startsAt: event.startsAt,
+              hasStarted: hasStarted,
+              isActive: isActive,
+              isCanceled: isCanceled,
+              isJoined: isJoinedForActions,
+            );
             final canOpenChat = eventId.trim().isNotEmpty &&
                 !isLocallyLeft &&
                 (isLocallyJoined || isActiveParticipant || canManage);
@@ -441,7 +449,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                   ? canJoin
                       ? () => _handleJoin(event)
                       : canLeave
-                          ? () => _handleLeave(event)
+                          ? () => _handleLeave(
+                                event,
+                                isActiveParticipant: isActiveParticipant,
+                              )
                           : null
                   : null,
             );
@@ -774,8 +785,14 @@ bool _eventDetailCanCurrentUserManage(EventsRecord event) {
   return organizerId.isNotEmpty && userId.isNotEmpty && organizerId == userId;
 }
 
-bool _eventDetailIsActiveParticipant(EventParticipantsRecord? participant) {
+bool _eventDetailIsActiveParticipant(
+  EventParticipantsRecord? participant, {
+  required String eventId,
+}) {
   if (participant == null) {
+    return false;
+  }
+  if (participant.parentReference.id != eventId) {
     return false;
   }
   return participant.userId.trim() == currentUserUid.trim() &&
