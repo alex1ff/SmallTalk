@@ -116,7 +116,6 @@ function requestMatchesSession(requestData = {}, sessionId) {
 function readRequestIds(requestData = {}) {
   return [
     requestData.requestId,
-    requestData.searchRequestId,
     requestData.clientSearchId,
     requestData.activeSearchRequestId,
   ].map(normalizeNonEmptyString).filter(Boolean);
@@ -142,6 +141,26 @@ function getAssignedResponderId(sessionData = {}) {
     normalizeNonEmptyString(sessionData.currentResponderId) ||
     normalizeNonEmptyString(sessionData.responderId) ||
     normalizeNonEmptyString(sessionData.matchContext?.acceptedResponderId);
+}
+
+function timestampToMillis(value) {
+  if (!value) {
+    return null;
+  }
+  if (typeof value.toMillis === "function") {
+    const millis = Number(value.toMillis());
+    return Number.isFinite(millis) ? millis : null;
+  }
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  const millis = Number(value);
+  return Number.isFinite(millis) ? millis : null;
+}
+
+function timestampToIsoString(value) {
+  const millis = timestampToMillis(value);
+  return millis === null ? null : new Date(millis).toISOString();
 }
 
 function buildStopSearchDecision({
@@ -219,24 +238,31 @@ function buildStopSearchDecision({
       stoppedBy: userId,
       updatedAt: serverTimestamp,
       activeSessionId: fieldDelete,
-      currentSessionId: fieldDelete,
+      currentSessionId: null,
       matchedSessionId: fieldDelete,
       matchedStudentId: fieldDelete,
       matchedTeacherId: fieldDelete,
-      matchedUserId: fieldDelete,
+      matchedUserId: null,
       matchedResponderId: fieldDelete,
-      matchedRole: fieldDelete,
-      pairAttemptId: fieldDelete,
-      attemptExcludedCandidateIds: fieldDelete,
+      matchedRole: null,
+      pairAttemptId: null,
+      excludedCandidateIds: [],
+      attemptExcludedCandidateIds: [],
       candidateLockOwner: fieldDelete,
       candidateLockExpiresAt: fieldDelete,
-      lockOwner: fieldDelete,
-      lockExpiresAt: fieldDelete,
+      lockOwner: null,
+      lockExpiresAt: null,
+      lastError: null,
+      errorCode: fieldDelete,
+      errorMessage: fieldDelete,
     },
     response: {
       status: "stopped",
       stopped: true,
       reason: "manual",
+      pairAttemptId: null,
+      expiresAt: null,
+      errorCode: null,
     },
   };
 }
@@ -378,6 +404,9 @@ function buildResponse({
     requestId: requestId || null,
     sessionId: sessionId || null,
     cancelledSessionId: sessionStopped ? sessionId : null,
+    pairAttemptId: primaryResponse.pairAttemptId || null,
+    expiresAt: primaryResponse.expiresAt || null,
+    errorCode: null,
     dailyRoomName: sessionStopped ?
       sessionDecision.response.dailyRoomName || "" :
       "",
@@ -453,7 +482,7 @@ exports.stopSearch = functions
       );
     }
 
-    const rawRequestId = data?.requestId || data?.searchRequestId;
+    const rawRequestId = data?.requestId;
     const requestId =
       rawRequestId == null ? "" : normalizeRequestId(rawRequestId);
     if (rawRequestId != null && !requestId) {
@@ -621,4 +650,5 @@ exports.__private__ = {
   requestMatchesSearchRequestId,
   requestMatchesSession,
   resolveStopSessionId,
+  timestampToMillis,
 };

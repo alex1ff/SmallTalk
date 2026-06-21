@@ -112,6 +112,13 @@ test("requestMatchesSearchRequestId protects sessionless requests", () => {
       true,
   );
   assert.equal(
+      requestMatchesSearchRequestId(
+          {searchRequestId: "student-a", requestId: "request-a"},
+          "student-a",
+      ),
+      false,
+  );
+  assert.equal(
       requestMatchesSearchRequestId({requestId: "request-b"}, "request-a"),
       false,
   );
@@ -166,6 +173,9 @@ test("active request is marked stopped and transient match fields are cleared", 
     status: "stopped",
     stopped: true,
     reason: "manual",
+    pairAttemptId: null,
+    expiresAt: null,
+    errorCode: null,
   });
   assert.equal(decision.update.status, "stopped");
   assert.equal(decision.update.stopReason, "manual");
@@ -173,16 +183,21 @@ test("active request is marked stopped and transient match fields are cleared", 
   assert.equal(decision.update.stoppedAt, serverTimestamp);
   assert.equal(decision.update.updatedAt, serverTimestamp);
   assert.equal(decision.update.activeSessionId, fieldDelete);
-  assert.equal(decision.update.currentSessionId, fieldDelete);
+  assert.equal(decision.update.currentSessionId, null);
   assert.equal(decision.update.matchedSessionId, fieldDelete);
   assert.equal(decision.update.matchedResponderId, fieldDelete);
-  assert.equal(decision.update.matchedRole, fieldDelete);
-  assert.equal(decision.update.pairAttemptId, fieldDelete);
-  assert.equal(decision.update.attemptExcludedCandidateIds, fieldDelete);
+  assert.equal(decision.update.matchedUserId, null);
+  assert.equal(decision.update.matchedRole, null);
+  assert.equal(decision.update.pairAttemptId, null);
+  assert.deepEqual(decision.update.excludedCandidateIds, []);
+  assert.deepEqual(decision.update.attemptExcludedCandidateIds, []);
   assert.equal(decision.update.candidateLockOwner, fieldDelete);
   assert.equal(decision.update.candidateLockExpiresAt, fieldDelete);
-  assert.equal(decision.update.lockOwner, fieldDelete);
-  assert.equal(decision.update.lockExpiresAt, fieldDelete);
+  assert.equal(decision.update.lockOwner, null);
+  assert.equal(decision.update.lockExpiresAt, null);
+  assert.equal(decision.update.lastError, null);
+  assert.equal(decision.update.errorCode, fieldDelete);
+  assert.equal(decision.update.errorMessage, fieldDelete);
 });
 
 test("matched request stop clears transient match state", () => {
@@ -199,13 +214,17 @@ test("matched request stop clears transient match state", () => {
   assert.equal(decision.update.status, "stopped");
   assert.equal(decision.update.matchedSessionId, fieldDelete);
   assert.equal(decision.update.matchedResponderId, fieldDelete);
-  assert.equal(decision.update.matchedRole, fieldDelete);
-  assert.equal(decision.update.pairAttemptId, fieldDelete);
-  assert.equal(decision.update.lockOwner, fieldDelete);
+  assert.equal(decision.update.matchedUserId, null);
+  assert.equal(decision.update.matchedRole, null);
+  assert.equal(decision.update.pairAttemptId, null);
+  assert.equal(decision.update.lockOwner, null);
   assert.deepEqual(decision.response, {
     status: "stopped",
     stopped: true,
     reason: "manual",
+    pairAttemptId: null,
+    expiresAt: null,
+    errorCode: null,
   });
 });
 
@@ -385,6 +404,9 @@ test("combined response succeeds when either request or session is stopped", () 
   assert.equal(response.stopped, true);
   assert.equal(response.reason, "manual");
   assert.equal(response.cancelledSessionId, "session-a");
+  assert.equal(response.pairAttemptId, null);
+  assert.equal(response.expiresAt, null);
+  assert.equal(response.errorCode, null);
 });
 
 test("derived session is not stopped when request guard mismatches", () => {
@@ -425,3 +447,244 @@ test("stopSearch is exported and included in readiness deploy target", () => {
   assert.match(indexSource, /exports\.stopSearch\b/);
   assert.match(deployScript, /functions:custom_cloud_functions:stopSearch\b/);
 });
+
+const hasFirestoreEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+
+if (!hasFirestoreEmulator) {
+  test(
+    "stopSearch callable Firestore coverage requires emulator",
+    {skip: "run with firebase emulators:exec --only firestore"},
+    () => {},
+  );
+} else {
+  const admin = require("firebase-admin");
+  const functionsTest = require("firebase-functions-test");
+  const {stopSearch} = require("./stop_search");
+
+  const projectId =
+    process.env.GCLOUD_PROJECT ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    "demo-smalltalk";
+  process.env.GCLOUD_PROJECT = projectId;
+  process.env.GOOGLE_CLOUD_PROJECT = projectId;
+
+  if (!admin.apps.length) {
+    admin.initializeApp({projectId});
+  }
+
+  const testEnv = functionsTest({projectId});
+  const db = admin.firestore();
+  const wrappedStopSearch = testEnv.wrap(stopSearch);
+  let uidCounter = 0;
+
+  test.after(() => {
+    testEnv.cleanup();
+  });
+
+  function uniqueId(prefix) {
+    uidCounter += 1;
+    return [
+      prefix,
+      process.pid,
+      Date.now(),
+      uidCounter,
+    ].join("-");
+  }
+
+  function authContext(uid) {
+    return {
+      auth: {
+        uid,
+        token: {
+          firebase: {
+            sign_in_provider: "custom",
+          },
+        },
+      },
+    };
+  }
+
+  function userRef(uid) {
+    return db.collection("users").doc(uid);
+  }
+
+  function searchRequestRef(uid) {
+    return db.collection("searchRequests").doc(uid);
+  }
+
+  function sessionRef(sessionId) {
+    return db.collection("videoSessions").doc(sessionId);
+  }
+
+  function futureTimestamp(minutes = 10) {
+    return admin.firestore.Timestamp.fromMillis(
+      Date.now() + minutes * 60 * 1000,
+    );
+  }
+
+  async function deleteDoc(ref) {
+    const snapshot = await ref.get();
+    if (snapshot.exists) {
+      await ref.delete();
+    }
+  }
+
+  async function seedUser(uid, overrides = {}) {
+    await userRef(uid).set({
+      role: "student",
+      isInCall: false,
+      currentSessionId: "",
+      ...overrides,
+    });
+  }
+
+  async function seedActiveRequest(uid, overrides = {}) {
+    await searchRequestRef(uid).set({
+      requestId: "request-active",
+      userId: uid,
+      userRef: userRef(uid),
+      role: "student",
+      language: "en",
+      filters: {preferredLevel: "B1", levelRank: 3},
+      status: "active",
+      appState: "foreground",
+      appStateUpdatedAt: admin.firestore.Timestamp.now(),
+      createdAt: admin.firestore.Timestamp.now(),
+      updatedAt: admin.firestore.Timestamp.now(),
+      heartbeatAt: admin.firestore.Timestamp.now(),
+      expiresAt: futureTimestamp(10),
+      backgroundExpiresAt: null,
+      currentSessionId: null,
+      matchedUserId: null,
+      matchedRole: null,
+      pairAttemptId: null,
+      excludedCandidateIds: ["old-candidate"],
+      attemptExcludedCandidateIds: ["attempt-candidate"],
+      lockOwner: "matcher-a",
+      lockExpiresAt: futureTimestamp(1),
+      version: 2,
+      stopReason: null,
+      stoppedAt: null,
+      lastError: {code: "old"},
+      ...overrides,
+    });
+  }
+
+  test("stopSearch callable stops request and preserves contract fields", async () => {
+    const uid = uniqueId("student-stop");
+    await deleteDoc(userRef(uid));
+    await deleteDoc(searchRequestRef(uid));
+    await seedUser(uid);
+    await seedActiveRequest(uid, {
+      currentSessionId: "session-a",
+      matchedUserId: "teacher-a",
+      matchedRole: "native_speaker",
+      pairAttemptId: "pair-a",
+      expiresAt: futureTimestamp(10),
+    });
+
+    const response = await wrappedStopSearch({
+      requestId: "request-active",
+    }, authContext(uid));
+    const snapshot = await searchRequestRef(uid).get();
+    const requestData = snapshot.data();
+
+    assert.equal(response.status, "stopped");
+    assert.equal(response.stopped, true);
+    assert.equal(response.searchRequestId, uid);
+    assert.equal(response.requestId, "request-active");
+    assert.equal(response.sessionId, "session-a");
+    assert.equal(response.pairAttemptId, null);
+    assert.equal(response.expiresAt, null);
+    assert.equal(response.errorCode, null);
+    assert.equal(requestData.status, "stopped");
+    assert.equal(requestData.stopReason, "manual");
+    assert.equal(requestData.stoppedBy, uid);
+    assert.equal(requestData.currentSessionId, null);
+    assert.equal(requestData.matchedUserId, null);
+    assert.equal(requestData.matchedRole, null);
+    assert.equal(requestData.pairAttemptId, null);
+    assert.deepEqual(requestData.excludedCandidateIds, []);
+    assert.deepEqual(requestData.attemptExcludedCandidateIds, []);
+    assert.equal(requestData.lockOwner, null);
+    assert.equal(requestData.lockExpiresAt, null);
+    assert.equal(requestData.lastError, null);
+  });
+
+  test("stopSearch callable ignores stale requestId", async () => {
+    const uid = uniqueId("student-stale-stop");
+    await deleteDoc(userRef(uid));
+    await deleteDoc(searchRequestRef(uid));
+    await seedUser(uid);
+    await seedActiveRequest(uid, {requestId: "request-new"});
+
+    const response = await wrappedStopSearch({
+      requestId: "request-old",
+    }, authContext(uid));
+    const snapshot = await searchRequestRef(uid).get();
+
+    assert.equal(response.status, "noop");
+    assert.equal(response.reason, "request_mismatch");
+    assert.equal(snapshot.data().status, "active");
+    assert.equal(snapshot.data().requestId, "request-new");
+  });
+
+  test("stopSearch callable does not cancel active video session", async () => {
+    const uid = uniqueId("student-active-session");
+    const sessionId = uniqueId("session-active");
+    await deleteDoc(userRef(uid));
+    await deleteDoc(searchRequestRef(uid));
+    await deleteDoc(sessionRef(sessionId));
+    await seedUser(uid, {currentSessionId: sessionId});
+    await seedActiveRequest(uid, {
+      requestId: "request-active",
+      currentSessionId: sessionId,
+    });
+    await sessionRef(sessionId).set({
+      status: "active",
+      studentId: uid,
+      tutorId: "teacher-a",
+      participantIds: [uid, "teacher-a"],
+    });
+
+    const response = await wrappedStopSearch({
+      requestId: "request-active",
+    }, authContext(uid));
+    const searchSnapshot = await searchRequestRef(uid).get();
+    const sessionSnapshot = await sessionRef(sessionId).get();
+
+    assert.equal(response.status, "stopped");
+    assert.equal(searchSnapshot.data().status, "stopped");
+    assert.equal(sessionSnapshot.data().status, "active");
+  });
+
+  test("stopSearch callable cancels own explicit legacy searching session", async () => {
+    const uid = uniqueId("student-legacy-session");
+    const teacherId = uniqueId("teacher-legacy-session");
+    const sessionId = uniqueId("session-legacy");
+    await deleteDoc(userRef(uid));
+    await deleteDoc(userRef(teacherId));
+    await deleteDoc(searchRequestRef(uid));
+    await deleteDoc(sessionRef(sessionId));
+    await seedUser(uid, {currentSessionId: sessionId});
+    await seedUser(teacherId, {role: "native_speaker", currentSessionId: sessionId});
+    await sessionRef(sessionId).set({
+      status: "searching",
+      studentId: uid,
+      currentTutorId: teacherId,
+    });
+
+    const response = await wrappedStopSearch({
+      sessionId,
+    }, authContext(uid));
+    const sessionSnapshot = await sessionRef(sessionId).get();
+    const userSnapshot = await userRef(uid).get();
+    const teacherSnapshot = await userRef(teacherId).get();
+
+    assert.equal(response.status, "cancelled");
+    assert.equal(response.cancelledSessionId, sessionId);
+    assert.equal(sessionSnapshot.data().status, "cancelled");
+    assert.equal(userSnapshot.data().currentSessionId, undefined);
+    assert.equal(teacherSnapshot.data().currentSessionId, undefined);
+  });
+}
