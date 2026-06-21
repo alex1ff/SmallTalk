@@ -6,16 +6,16 @@ const {
 const {
   deleteDailyRoomForSession,
 } = require("./daily_room_cleanup");
+const {
+  SEARCH_REQUEST_COLLECTION,
+  SEARCH_REQUEST_TERMINAL_STATUSES,
+} = require("./search_requests");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 
 const TERMINAL_SEARCH_REQUEST_STATUSES = new Set([
-  "stopped",
-  "cancelled",
+  ...SEARCH_REQUEST_TERMINAL_STATUSES,
   "cancelled_by_user",
-  "expired",
-  "failed",
-  "completed",
 ]);
 
 const STOPPABLE_SESSION_STATUSES = new Set([
@@ -465,7 +465,9 @@ exports.stopSearch = functions
 
     const db = admin.firestore();
     const userId = context.auth.uid;
-    const searchRequestRef = db.collection("searchRequests").doc(userId);
+    const searchRequestRef = db
+      .collection(SEARCH_REQUEST_COLLECTION)
+      .doc(userId);
     const requesterRef = db.collection("users").doc(userId);
     const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
     const fieldDelete = admin.firestore.FieldValue.delete();

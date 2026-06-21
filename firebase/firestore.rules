@@ -23,7 +23,8 @@ service cloud.firestore {
       return documentPath[0] in [
         'eventCreationCounters',
         'eventCreateRequests',
-        'eventChats'
+        'eventChats',
+        'searchRequests'
       ];
     }
 
@@ -1130,6 +1131,11 @@ service cloud.firestore {
       allow create: if isAdmin() || canCreateOwnTeacherVerificationRequest(userId);
       allow update: if isAdmin() || canUpdateOwnTeacherVerificationRequest(userId);
       allow delete: if isAdmin();
+    }
+
+    match /searchRequests/{userId} {
+      allow get: if isAdmin() || isSelf(userId);
+      allow list, create, update, delete: if false;
     }
 
     match /videoSessions/{sessionId} {
