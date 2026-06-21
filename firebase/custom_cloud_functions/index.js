@@ -17,6 +17,9 @@ const stopSearch = require("./stop_search.js");
 exports.stopSearch = stopSearch.stopSearch;
 const heartbeatSearch = require("./heartbeat_search.js");
 exports.heartbeatSearch = heartbeatSearch.heartbeatSearch;
+const staleSearchRequestCleanup = require("./cleanup_stale_search_requests.js");
+exports.cleanupStaleSearchRequests =
+  staleSearchRequestCleanup.cleanupStaleSearchRequests;
 const processExpiredNotifications = require("./process_expired_notifications.js");
 exports.processExpiredNotifications =
   processExpiredNotifications.processExpiredNotifications;

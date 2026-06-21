@@ -174,6 +174,7 @@ test("active unexpired search request is reusable and returned unchanged", () =>
     requestId: "request-existing",
     currentSessionId: "session-a",
     pairAttemptId: "pair-a",
+    heartbeatAt: timestampFromMillis(fixedNowMillis - 30 * 1000),
     expiresAt: futureTimestamp(3),
     filters: {preferredLevel: "B1"},
   };
@@ -212,6 +213,30 @@ test("expired active and terminal requests are not reusable", () => {
       expiresAt: futureTimestamp(3),
     }, fixedNowMillis),
     false,
+  );
+});
+
+test("stale active search request is not reusable", () => {
+  assert.equal(
+    isReusableSearchRequest({
+      status: SEARCH_REQUEST_STATUS.ACTIVE,
+      heartbeatAt: timestampFromMillis(
+        fixedNowMillis -
+          (SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS + 1) * 1000,
+      ),
+      expiresAt: futureTimestamp(3),
+    }, fixedNowMillis),
+    false,
+  );
+});
+
+test("matched search request is reusable without fresh heartbeat", () => {
+  assert.equal(
+    isReusableSearchRequest({
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      expiresAt: futureTimestamp(3),
+    }, fixedNowMillis),
+    true,
   );
 });
 

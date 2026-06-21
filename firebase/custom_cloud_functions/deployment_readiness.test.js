@@ -74,6 +74,7 @@ test("deployment readiness fails missing critical functions", () => {
   assert.ok(missingIds.includes("markSessionConnected"));
   assert.ok(missingIds.includes("startSearch"));
   assert.ok(missingIds.includes("heartbeatSearch"));
+  assert.ok(missingIds.includes("cleanupStaleSearchRequests"));
   assert.ok(missingIds.includes("stopSearch"));
   assert.ok(missingIds.includes("getDirectCallStatus"));
   assert.ok(missingIds.includes("syncUserPublicProfile"));
@@ -181,6 +182,31 @@ test("deployment readiness exposes heartbeatSearch queue callable", () => {
   assert.match(
       deployScript,
       /functions:custom_cloud_functions:heartbeatSearch\b/,
+  );
+});
+
+test("deployment readiness exposes stale search cleanup scheduler", () => {
+  const functionIds = new Set(REQUIRED_FUNCTIONS.map((item) => item.id));
+  const readinessEntry = REQUIRED_FUNCTIONS.find(
+      (item) => item.id === "cleanupStaleSearchRequests",
+  );
+  const indexSource = fs.readFileSync(
+      path.join(__dirname, "index.js"),
+      "utf8",
+  );
+  const packageJson = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "package.json"),
+      "utf8",
+  ));
+  const deployScript = packageJson.scripts["deploy:readiness-functions"];
+
+  assert.ok(functionIds.has("cleanupStaleSearchRequests"));
+  assert.equal(readinessEntry.trigger, "scheduled");
+  assert.match(indexSource, /exports\.cleanupStaleSearchRequests\b/);
+  assert.match(deployScript, /--only firestore:indexes,/);
+  assert.match(
+      deployScript,
+      /functions:custom_cloud_functions:cleanupStaleSearchRequests\b/,
   );
 });
 

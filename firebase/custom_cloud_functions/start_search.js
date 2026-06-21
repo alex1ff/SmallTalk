@@ -20,6 +20,7 @@ const {
   SEARCH_REQUEST_APP_STATE,
   SEARCH_REQUEST_COLLECTION,
   SEARCH_REQUEST_FIELD,
+  SEARCH_REQUEST_STATUS,
   SEARCH_REQUEST_TIMING,
   buildInitialSearchRequestData,
   normalizeAppState,
@@ -214,7 +215,19 @@ function isReusableSearchRequest(requestData = {}, nowMillis = Date.now()) {
   }
 
   const expiresAtMillis = timestampToMillis(requestData.expiresAt);
-  return expiresAtMillis !== null && expiresAtMillis > nowMillis;
+  if (expiresAtMillis === null || expiresAtMillis <= nowMillis) {
+    return false;
+  }
+
+  if (status === SEARCH_REQUEST_STATUS.MATCHED) {
+    return true;
+  }
+
+  const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
+  const staleCutoffMillis =
+    nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
+
+  return heartbeatAtMillis !== null && heartbeatAtMillis >= staleCutoffMillis;
 }
 
 function buildStartSearchResponse({
