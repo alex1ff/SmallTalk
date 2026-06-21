@@ -384,6 +384,7 @@ if (!hasFirestoreEmulator) {
     await deleteDoc(searchRequestRef(uid));
     await seedStudent(uid);
 
+    const startedAtMillis = Date.now();
     const response = await wrappedStartSearch({
       preferredPartnerLevel: "B2",
       appState: "foreground",
@@ -398,16 +399,32 @@ if (!hasFirestoreEmulator) {
     assert.equal(response.pairAttemptId, null);
     assert.equal(response.reused, false);
     assert.equal(snapshot.exists, true);
+    assert.equal(requestData.requestId, response.requestId);
+    assert.equal(requestData.userRef.path, `users/${uid}`);
     assert.equal(requestData.status, "active");
     assert.equal(requestData.userId, uid);
     assert.equal(requestData.role, "student");
     assert.equal(requestData.language, "en");
+    assert.equal(requestData.appState, "foreground");
+    assert.equal(requestData.backgroundExpiresAt, null);
     assert.deepEqual(requestData.filters, {
       preferredLevel: "B2",
       levelRank: 4,
       countryCode: "US",
       cityKey: "new_york",
     });
+    assert.equal(typeof requestData.createdAt.toMillis, "function");
+    assert.equal(typeof requestData.updatedAt.toMillis, "function");
+    assert.equal(typeof requestData.heartbeatAt.toMillis, "function");
+    assert.equal(typeof requestData.appStateUpdatedAt.toMillis, "function");
+    assert.equal(typeof requestData.expiresAt.toMillis, "function");
+    assert.ok(requestData.createdAt.toMillis() >= startedAtMillis - 5000);
+    assert.ok(requestData.heartbeatAt.toMillis() >= startedAtMillis - 5000);
+    assert.ok(
+      requestData.expiresAt.toMillis() >=
+        startedAtMillis + SEARCH_REQUEST_TIMING.MAX_SEARCH_SECONDS * 1000 -
+          5000,
+    );
     assert.deepEqual(requestData.excludedCandidateIds, []);
     assert.equal(requestData.currentSessionId, null);
   });
