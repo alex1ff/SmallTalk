@@ -381,6 +381,141 @@ test("teacher availability candidate requires approved available teacher", () =>
   );
 });
 
+test("teacher availability candidate honors structured schedule", () => {
+  const withinInterval = buildTeacherAvailabilityCandidateFromDoc({
+    userDoc: doc("teacher-a", teacherData({
+      availabilityToday: {
+        enabled: true,
+        intervals: [{start: "11:30", end: "12:30"}],
+        timezoneOffsetMinutes: 0,
+      },
+    })),
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.equal(withinInterval.userId, "teacher-a");
+  assert.equal(withinInterval.availability.reason, "within_interval");
+  assert.equal(withinInterval.availability.localTime, "12:00");
+  assert.equal(withinInterval.availability.timezoneOffsetMinutes, 0);
+
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-a", teacherData({
+        availabilityToday: {
+          enabled: true,
+          intervals: [{start: "08:00", end: "09:00"}],
+          timezoneOffsetMinutes: 0,
+        },
+      })),
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+});
+
+test("teacher availability candidate rejects disabled teacher schedule", () => {
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-a", teacherData({
+        isAvailable: true,
+        availabilityToday: {
+          enabled: false,
+          intervals: [{start: "00:00", end: "23:59"}],
+          timezoneOffsetMinutes: 0,
+        },
+      })),
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+});
+
+test("teacher availability candidate supports overnight interval boundaries", () => {
+  const atStart = buildTeacherAvailabilityCandidateFromDoc({
+    userDoc: doc("teacher-a", teacherData({
+      availabilityToday: {
+        enabled: true,
+        intervals: [{start: "22:00", end: "02:00"}],
+        timezoneOffsetMinutes: 0,
+      },
+    })),
+    language: "en",
+    now: new Date(Date.UTC(2026, 0, 1, 22, 0, 0)),
+    nowMillis: fixedNowMillis,
+  });
+  const beforeEnd = buildTeacherAvailabilityCandidateFromDoc({
+    userDoc: doc("teacher-a", teacherData({
+      availabilityToday: {
+        enabled: true,
+        intervals: [{start: "22:00", end: "02:00"}],
+        timezoneOffsetMinutes: 0,
+      },
+    })),
+    language: "en",
+    now: new Date(Date.UTC(2026, 0, 1, 1, 59, 0)),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.equal(atStart.userId, "teacher-a");
+  assert.equal(atStart.availability.reason, "within_interval");
+  assert.equal(beforeEnd.userId, "teacher-a");
+  assert.equal(beforeEnd.availability.reason, "within_interval");
+
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-a", teacherData({
+        availabilityToday: {
+          enabled: true,
+          intervals: [{start: "22:00", end: "02:00"}],
+          timezoneOffsetMinutes: 0,
+        },
+      })),
+      language: "en",
+      now: new Date(Date.UTC(2026, 0, 1, 2, 0, 0)),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+});
+
+test("teacher availability candidate rejects future availableAfter", () => {
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-a", teacherData({
+        availableAfter: timestampFromMillis(fixedNowMillis + 60 * 1000),
+      })),
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+});
+
+test("student queue candidate ignores legacy availability fields", () => {
+  const candidate = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-a", activeRequest()),
+    userDoc: doc("student-a", studentData({
+      isAvailable: false,
+      availabilityToday: {
+        enabled: false,
+        intervals: [{start: "00:00", end: "00:01"}],
+      },
+    })),
+    language: "en",
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.equal(candidate.userId, "student-a");
+  assert.equal(candidate.availability.reason, "active_search_request");
+});
+
 test("candidate pool merge is ordered by waiting time, not role", () => {
   const candidates = mergeCandidatePools({
     studentCandidates: [
