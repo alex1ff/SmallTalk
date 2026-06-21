@@ -12,8 +12,10 @@ const {
     buildStartSearchFilters,
     buildStartSearchRequestData,
     buildStartSearchResponse,
+    canReuseSearchRequestForUser,
     isReusableSearchRequest,
     normalizeStartSearchInput,
+    searchRequestBelongsToUser,
   },
 } = require("./start_search");
 
@@ -269,6 +271,47 @@ test("matched search request is reusable without fresh heartbeat", () => {
   );
 });
 
+test("search request reuse requires current user ownership", () => {
+  const requestData = {
+    status: SEARCH_REQUEST_STATUS.ACTIVE,
+    requestId: "request-a",
+    userId: "student-b",
+    userRef: {id: "student-b"},
+    heartbeatAt: timestampFromMillis(fixedNowMillis - 30 * 1000),
+    expiresAt: futureTimestamp(3),
+  };
+
+  assert.equal(searchRequestBelongsToUser(requestData, "student-a"), false);
+  assert.equal(
+    canReuseSearchRequestForUser({
+      requestData,
+      userId: "student-a",
+      nowMillis: fixedNowMillis,
+    }),
+    false,
+  );
+  assert.equal(
+    canReuseSearchRequestForUser({
+      requestData: {...requestData, userId: "student-a"},
+      userId: "student-a",
+      nowMillis: fixedNowMillis,
+    }),
+    false,
+  );
+  assert.equal(
+    canReuseSearchRequestForUser({
+      requestData: {
+        ...requestData,
+        userId: "student-a",
+        userRef: {id: "student-a"},
+      },
+      userId: "student-a",
+      nowMillis: fixedNowMillis,
+    }),
+    true,
+  );
+});
+
 test("new start search request data resets lifecycle fields", () => {
   const data = buildStartSearchRequestData({
     userId: "student-a",
@@ -505,6 +548,79 @@ if (!hasFirestoreEmulator) {
       countryCode: "US",
       cityKey: "new_york",
     });
+  });
+
+  test("startSearch callable keeps a single active request under concurrency", async () => {
+    const uid = uniqueId("student-concurrent");
+    await deleteDoc(userRef(uid));
+    await deleteDoc(searchRequestRef(uid));
+    await seedStudent(uid);
+
+    const responses = await Promise.all(
+      Array.from({length: 5}, (_, index) => wrappedStartSearch({
+        preferredPartnerLevel: index % 2 === 0 ? "B1" : "C2",
+      }, authContext(uid))),
+    );
+    const snapshot = await searchRequestRef(uid).get();
+    const requestIds = new Set(responses.map((response) => response.requestId));
+
+    assert.equal(snapshot.exists, true);
+    assert.equal(requestIds.size, 1);
+    assert.equal(snapshot.data().requestId, responses[0].requestId);
+    assert.equal(snapshot.ref.id, uid);
+    assert.equal(
+      await db.collection("searchRequests").where("userId", "==", uid).get()
+        .then((query) => query.size),
+      1,
+    );
+  });
+
+  test("startSearch callable does not reuse request owned by another user", async () => {
+    const uid = uniqueId("student-owner-guard");
+    const otherUid = uniqueId("student-owner-other");
+    await deleteDoc(userRef(uid));
+    await deleteDoc(userRef(otherUid));
+    await deleteDoc(searchRequestRef(uid));
+    await seedStudent(uid);
+    await searchRequestRef(uid).set({
+      requestId: "request-other-owner",
+      userId: otherUid,
+      userRef: userRef(otherUid),
+      role: "student",
+      language: "en",
+      filters: {preferredLevel: "B1", levelRank: 3},
+      status: "active",
+      appState: "foreground",
+      appStateUpdatedAt: admin.firestore.Timestamp.now(),
+      createdAt: admin.firestore.Timestamp.now(),
+      updatedAt: admin.firestore.Timestamp.now(),
+      heartbeatAt: admin.firestore.Timestamp.now(),
+      expiresAt: emulatorFutureTimestamp(10),
+      backgroundExpiresAt: null,
+      currentSessionId: "foreign-session",
+      matchedUserId: "foreign-peer",
+      matchedRole: "student",
+      pairAttemptId: "foreign-pair",
+      excludedCandidateIds: ["foreign-peer"],
+      attemptExcludedCandidateIds: ["foreign-peer"],
+      lockOwner: "foreign-lock",
+      lockExpiresAt: emulatorFutureTimestamp(1),
+      version: 1,
+      stopReason: null,
+      stoppedAt: null,
+      lastError: null,
+    });
+
+    const response = await wrappedStartSearch({}, authContext(uid));
+    const snapshot = await searchRequestRef(uid).get();
+
+    assert.equal(response.reused, false);
+    assert.notEqual(response.requestId, "request-other-owner");
+    assert.equal(response.sessionId, null);
+    assert.equal(snapshot.data().userId, uid);
+    assert.equal(snapshot.data().currentSessionId, null);
+    assert.equal(snapshot.data().matchedUserId, null);
+    assert.equal(snapshot.data().pairAttemptId, null);
   });
 
   test(

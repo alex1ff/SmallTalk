@@ -208,6 +208,28 @@ function timestampToIsoString(value) {
   return millis === null ? null : new Date(millis).toISOString();
 }
 
+function readReferenceId(value) {
+  return value && typeof value.id === "string" ? value.id.trim() : "";
+}
+
+function searchRequestBelongsToUser(requestData = {}, userId) {
+  const normalizedUserId = normalizeString(userId);
+  const explicitUserIds = [
+    requestData.userId,
+    requestData.studentId,
+    requestData.requesterId,
+  ].map(normalizeString).filter(Boolean);
+  const referencedUserIds = [
+    requestData.userRef,
+    requestData.studentRef,
+    requestData.requesterRef,
+  ].map(readReferenceId).filter(Boolean);
+  const ownerIds = [...explicitUserIds, ...referencedUserIds];
+
+  return ownerIds.length === 0 ||
+    ownerIds.every((ownerId) => ownerId === normalizedUserId);
+}
+
 function isReusableSearchRequest(requestData = {}, nowMillis = Date.now()) {
   const status = normalizeString(requestData.status);
   if (!SEARCH_REQUEST_ACTIVE_STATUSES.includes(status)) {
@@ -249,6 +271,15 @@ function isReusableSearchRequest(requestData = {}, nowMillis = Date.now()) {
     nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
 
   return heartbeatAtMillis !== null && heartbeatAtMillis >= staleCutoffMillis;
+}
+
+function canReuseSearchRequestForUser({
+  requestData = {},
+  userId,
+  nowMillis = Date.now(),
+}) {
+  return searchRequestBelongsToUser(requestData, userId) &&
+    isReusableSearchRequest(requestData, nowMillis);
 }
 
 function buildStartSearchResponse({
@@ -373,7 +404,11 @@ exports.startSearch = functions.https.onCall(async (data, context) => {
 
     if (
       existingRequestData &&
-      isReusableSearchRequest(existingRequestData, nowMillis)
+      canReuseSearchRequestForUser({
+        requestData: existingRequestData,
+        userId,
+        nowMillis,
+      })
     ) {
       return buildStartSearchResponse({
         userId,
@@ -408,7 +443,9 @@ exports.__private__ = {
   buildStartSearchFilters,
   buildStartSearchRequestData,
   buildStartSearchResponse,
+  canReuseSearchRequestForUser,
   isReusableSearchRequest,
   normalizeStartSearchInput,
+  searchRequestBelongsToUser,
   timestampToMillis,
 };

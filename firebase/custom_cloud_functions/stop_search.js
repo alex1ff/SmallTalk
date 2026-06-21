@@ -63,6 +63,7 @@ function readReferenceId(value) {
 }
 
 function requestBelongsToUser(requestData = {}, userId) {
+  const normalizedUserId = normalizeNonEmptyString(userId);
   const explicitUserIds = [
     requestData.userId,
     requestData.studentId,
@@ -75,7 +76,8 @@ function requestBelongsToUser(requestData = {}, userId) {
   ].map(readReferenceId).filter(Boolean);
   const ownerIds = [...explicitUserIds, ...referencedUserIds];
 
-  return ownerIds.length === 0 || ownerIds.includes(userId);
+  return ownerIds.length === 0 ||
+    ownerIds.every((ownerId) => ownerId === normalizedUserId);
 }
 
 function readRequestSessionIds(requestData = {}) {
@@ -168,6 +170,7 @@ function buildStopSearchDecision({
   requestData = {},
   userId,
   sessionId = "",
+  explicitSessionId = "",
   requestId = "",
   serverTimestamp,
   fieldDelete,
@@ -200,6 +203,22 @@ function buildStopSearchDecision({
         status: "noop",
         stopped: false,
         reason: "session_mismatch",
+      },
+    };
+  }
+
+  if (
+    !explicitSessionId &&
+    !requestId &&
+    readRequestIds(requestData).length > 0
+  ) {
+    return {
+      ok: true,
+      update: null,
+      response: {
+        status: "noop",
+        stopped: false,
+        reason: "request_id_required",
       },
     };
   }
@@ -422,6 +441,7 @@ function canStopSessionAfterSearchDecision({
   const mismatchReason = [
     "session_mismatch",
     "request_mismatch",
+    "request_id_required",
   ].includes(searchDecision?.response?.reason);
 
   return Boolean(explicitSessionId) || !mismatchReason;
@@ -537,6 +557,7 @@ exports.stopSearch = functions
         requestData,
         userId,
         sessionId: effectiveSessionId,
+        explicitSessionId: sessionId,
         requestId,
         serverTimestamp,
         fieldDelete,

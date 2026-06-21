@@ -79,6 +79,13 @@ test("request owner can be stored as ids, refs, or omitted for uid doc", () => {
   );
   assert.equal(requestBelongsToUser({}, "student-a"), true);
   assert.equal(requestBelongsToUser({userId: "student-b"}, "student-a"), false);
+  assert.equal(
+      requestBelongsToUser({
+        userId: "student-a",
+        userRef: {id: "student-b"},
+      }, "student-a"),
+      false,
+  );
 });
 
 test("requestMatchesSession requires an explicit match when session is provided", () => {
@@ -198,6 +205,27 @@ test("active request is marked stopped and transient match fields are cleared", 
   assert.equal(decision.update.lastError, null);
   assert.equal(decision.update.errorCode, fieldDelete);
   assert.equal(decision.update.errorMessage, fieldDelete);
+});
+
+test("sessionless request stop requires lifecycle requestId", () => {
+  const decision = stopSearchDecision({
+    requestData: {
+      status: "active",
+      userId: "student-a",
+      requestId: "request-a",
+      currentSessionId: null,
+    },
+    sessionId: "",
+    requestId: "",
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.update, null);
+  assert.deepEqual(decision.response, {
+    status: "noop",
+    stopped: false,
+    reason: "request_id_required",
+  });
 });
 
 test("matched request stop clears transient match state", () => {
