@@ -125,6 +125,7 @@ exports.declineCall = functions
           transaction,
           candidateIds: availableTutors,
           triedCandidateIds: triedTutors,
+          language: sessionData.language,
         });
         const nextTutor = nextCandidate.candidateId;
         const nextTriedTutors = nextCandidate.triedCandidateIds;

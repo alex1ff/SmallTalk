@@ -1,4 +1,8 @@
-const { normalizeRole } = require("./video_sessions_shared");
+const {
+  normalizeRole,
+  readLanguageCode,
+  supportsConversationLanguage,
+} = require("./video_sessions_shared");
 const { buildReadOnlyVoipTokenState } = require("./voip_tokens");
 
 const USER_COLLECTION = "users";
@@ -20,6 +24,7 @@ async function readCandidateCallabilityInTransaction({
   db,
   transaction,
   candidateId,
+  language = "",
 }) {
   const userId = normalizeCandidateId(candidateId);
   if (!userId) {
@@ -35,6 +40,14 @@ async function readCandidateCallabilityInTransaction({
 
   const userData = userSnap.data() || {};
   const role = normalizeRole(userData.role);
+  const normalizedLanguage = readLanguageCode(language);
+  if (!normalizedLanguage) {
+    return {callable: false, reason: "missing_language", role};
+  }
+  if (!supportsConversationLanguage(userData, normalizedLanguage)) {
+    return {callable: false, reason: "language_mismatch", role};
+  }
+
   if (role !== "native_speaker") {
     return {callable: true, reason: "token_not_required", role};
   }
@@ -65,6 +78,7 @@ async function findNextCallableCandidateInTransaction({
   transaction,
   candidateIds = [],
   triedCandidateIds = [],
+  language = "",
 }) {
   const triedSet = new Set(
     triedCandidateIds.map(normalizeCandidateId).filter(Boolean),
@@ -81,6 +95,7 @@ async function findNextCallableCandidateInTransaction({
       db,
       transaction,
       candidateId,
+      language,
     });
     if (callability.callable) {
       return {

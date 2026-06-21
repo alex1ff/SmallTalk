@@ -243,8 +243,11 @@ function buildStudentQueueCandidateFromDocs({
   const requestLanguage = readLanguageCode(
     requestData[SEARCH_REQUEST_FIELD.LANGUAGE],
   );
-  const normalizedLanguage = readLanguageCode(language) || requestLanguage;
+  const normalizedLanguage = readLanguageCode(language);
   if (!normalizedLanguage || requestLanguage !== normalizedLanguage) {
+    return null;
+  }
+  if (!supportsConversationLanguage(userData, normalizedLanguage)) {
     return null;
   }
 
@@ -300,10 +303,10 @@ function buildTeacherAvailabilityCandidateFromDoc({
   }
 
   const normalizedLanguage = readLanguageCode(language);
-  if (
-    normalizedLanguage &&
-    !supportsConversationLanguage(userData, normalizedLanguage)
-  ) {
+  if (!normalizedLanguage) {
+    return null;
+  }
+  if (!supportsConversationLanguage(userData, normalizedLanguage)) {
     return null;
   }
 
@@ -628,11 +631,27 @@ async function collectMatchCandidatePool({
   teacherMaxScanPages = DEFAULT_SCAN_MAX_PAGES,
 }) {
   const effectiveNowMillis = resolveNowMillis(now, nowMillis);
+  const normalizedLanguage = readLanguageCode(language);
+  if (!normalizedLanguage) {
+    return {
+      candidates: [],
+      stats: {
+        studentRequestsScanned: 0,
+        studentCandidates: 0,
+        teacherUsersScanned: 0,
+        teacherCandidates: 0,
+        totalCandidates: 0,
+      },
+    };
+  }
+
   const [studentResult, teacherResult] = await Promise.all([
     collectStudentQueueCandidates({
       db,
-      query: buildActiveStudentSearchRequestsQuery(db, {language}),
-      language,
+      query: buildActiveStudentSearchRequestsQuery(db, {
+        language: normalizedLanguage,
+      }),
+      language: normalizedLanguage,
       nowMillis: effectiveNowMillis,
       candidateLimit: studentLimit,
       pageSize: studentScanPageSize,
@@ -640,8 +659,8 @@ async function collectMatchCandidatePool({
     }),
     collectTeacherAvailabilityCandidates({
       db,
-      query: buildAvailableTeachersQuery(db, {language}),
-      language,
+      query: buildAvailableTeachersQuery(db, {language: normalizedLanguage}),
+      language: normalizedLanguage,
       now,
       nowMillis: effectiveNowMillis,
       candidateLimit: teacherLimit,

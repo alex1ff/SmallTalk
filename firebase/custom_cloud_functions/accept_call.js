@@ -21,6 +21,8 @@ const {
   isCredentialSessionJoinable,
   isSupportedSessionRole,
   normalizeRole,
+  readLanguageCode,
+  supportsConversationLanguage,
 } = require("./video_sessions_shared");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
@@ -71,6 +73,27 @@ function getDailyCredentialTtlOrThrow(sessionData = {}) {
     );
   }
   return credentialTtlSeconds;
+}
+
+function validateResponderLanguageOrThrow(
+  tutorId,
+  tutorData = {},
+  sessionData = {},
+) {
+  const sessionLanguage = readLanguageCode(sessionData.language);
+  if (
+    !sessionLanguage ||
+    !supportsConversationLanguage(tutorData, sessionLanguage)
+  ) {
+    console.log("❌ Responder cannot accept this language:", {
+      tutorId,
+      sessionLanguage: sessionData.language || null,
+    });
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Responder cannot accept this language",
+    );
+  }
 }
 
 exports.acceptCall = functions
@@ -193,6 +216,18 @@ exports.acceptCall = functions
         language: sessionData.language,
       });
 
+      const tutorDoc = await admin
+        .firestore()
+        .collection("users")
+        .doc(tutorId)
+        .get();
+      if (!tutorDoc.exists) {
+        console.log("❌ Tutor not found:", tutorId);
+        throw new functions.https.HttpsError("not-found", "Tutor not found");
+      }
+      const tutorData = tutorDoc.data();
+      validateResponderLanguageOrThrow(tutorId, tutorData, sessionData);
+
       if (initialSessionState.alreadyAccepted) {
         console.log(
           "ℹ️ Session already active for this tutor, returning existing room",
@@ -213,6 +248,7 @@ exports.acceptCall = functions
               userName:
                 sessionData.tutorInfo?.name ||
                 sessionData.tutorName ||
+                tutorData.display_name ||
                 "Partner",
             });
           } catch (tokenError) {
@@ -243,18 +279,13 @@ exports.acceptCall = functions
       }
 
       // === 3. ПОЛУЧЕНИЕ ДАННЫХ РЕСПОНДЕРА И ИНИЦИАТОРА (ПАРАЛЛЕЛЬНО) ===
-      console.log("👥 Fetching responder and requester data in parallel...");
-      const [tutorDoc, studentDoc] = await Promise.all([
-        admin.firestore().collection("users").doc(tutorId).get(),
-        admin.firestore().collection("users").doc(requesterId).get(),
-      ]);
+      console.log("👥 Fetching requester data...");
+      const studentDoc = await admin
+        .firestore()
+        .collection("users")
+        .doc(requesterId)
+        .get();
 
-      if (!tutorDoc.exists) {
-        console.log("❌ Tutor not found:", tutorId);
-        throw new functions.https.HttpsError("not-found", "Tutor not found");
-      }
-
-      const tutorData = tutorDoc.data();
       const availabilityCheck = evaluateTutorAvailabilityWindow(tutorData);
       const isAvailable = availabilityCheck.isAvailable;
 

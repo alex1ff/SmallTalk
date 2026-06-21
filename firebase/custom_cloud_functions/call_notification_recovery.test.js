@@ -140,6 +140,16 @@ test("tutor assignment paths create notification docs in the assignment transact
     assert.match(source, /createIncomingCallNotificationInTransaction/);
     assert.doesNotMatch(source, /collection\("notifications"\)\.add/);
     assert.match(source, /findNextCallableCandidateInTransaction/);
+    const candidateHelperIndex = source.indexOf(
+      "findNextCallableCandidateInTransaction({",
+    );
+    assert.notEqual(candidateHelperIndex, -1);
+    const candidateHelperEnd = source.indexOf("});", candidateHelperIndex);
+    assert.notEqual(candidateHelperEnd, -1);
+    assert.match(
+      source.slice(candidateHelperIndex, candidateHelperEnd),
+      /language:/,
+    );
 
     const helperIndex = source.indexOf(
       "createIncomingCallNotificationInTransaction({",
@@ -205,4 +215,16 @@ test("expired notification handoff validates assignment before push", () => {
     pushIndex > validationIndex,
     "processExpiredNotifications must send push only after fresh validation",
   );
+});
+
+test("acceptCall validates responder language before room credentials", () => {
+  const source = readFunctionSource("accept_call.js");
+  const languageIndex = source.indexOf(
+    "validateResponderLanguageOrThrow(tutorId, tutorData, sessionData);",
+  );
+  const credentialIndex = source.indexOf("createMeetingToken({");
+
+  assert.notEqual(languageIndex, -1);
+  assert.notEqual(credentialIndex, -1);
+  assert.ok(languageIndex < credentialIndex);
 });

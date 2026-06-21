@@ -164,6 +164,7 @@ async function processExpiredNotification(notificationDoc) {
           transaction,
           candidateIds: availableTutors,
           triedCandidateIds: triedTutors,
+          language: freshSessionData.language,
         });
         const nextTutor = nextCandidate.candidateId;
         const nextTriedTutors = nextCandidate.triedCandidateIds;

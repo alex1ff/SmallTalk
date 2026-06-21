@@ -362,6 +362,36 @@ test("student queue candidate rejects missing user and changed role", () => {
     }),
     null,
   );
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-a", activeRequest({language: "en"})),
+      userDoc: doc("student-a", studentData({
+        learningLanguage: {code: "fr"},
+      })),
+      language: "en",
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-a", activeRequest({language: "fr"})),
+      userDoc: doc("student-a", studentData({
+        learningLanguage: {code: "fr"},
+      })),
+      language: "en",
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-a", activeRequest()),
+      userDoc: doc("student-a", studentData()),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
 });
 
 test("teacher availability candidate requires approved available teacher", () => {
@@ -393,6 +423,26 @@ test("teacher availability candidate requires approved available teacher", () =>
     buildTeacherAvailabilityCandidateFromDoc({
       userDoc: doc("teacher-a", teacherData({isAvailable: false})),
       language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-a", teacherData({
+        language_instruction_NS: {code: "es"},
+        native_language_NS: {code: "en"},
+      })),
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-a", teacherData()),
       now: new Date(fixedNowMillis),
       nowMillis: fixedNowMillis,
     }),
@@ -645,6 +695,93 @@ test("collectMatchCandidatePool excludes requester from unified pool", async () 
     ["student-a"],
   );
   assert.equal(result.stats.totalCandidates, 1);
+});
+
+test("collectMatchCandidatePool fails closed without requested language", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [doc("student-a", activeRequest())],
+    teacherDocs: [doc("teacher-a", teacherData())],
+    userDocsById: {
+      "student-a": doc("student-a", studentData()),
+    },
+    privateTokenDocsById: {
+      "teacher-a": doc("teacher-a", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(result.candidates, []);
+  assert.deepEqual(result.stats, {
+    studentRequestsScanned: 0,
+    studentCandidates: 0,
+    teacherUsersScanned: 0,
+    teacherCandidates: 0,
+    totalCandidates: 0,
+  });
+});
+
+test("collectMatchCandidatePool excludes wrong-language candidates", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-stale-language", activeRequest({
+        userId: "student-stale-language",
+        userRef: {id: "student-stale-language"},
+        language: "en",
+      })),
+      doc("student-request-language-mismatch", activeRequest({
+        userId: "student-request-language-mismatch",
+        userRef: {id: "student-request-language-mismatch"},
+        language: "fr",
+      })),
+      doc("student-a", activeRequest({
+        userId: "student-a",
+        userRef: {id: "student-a"},
+        language: "en",
+      })),
+    ],
+    teacherDocs: [
+      doc("teacher-native-only", teacherData({
+        language_instruction_NS: {code: "es"},
+        native_language_NS: {code: "en"},
+      })),
+      doc("teacher-a", teacherData({
+        language_instruction_NS: {code: "en"},
+      })),
+    ],
+    userDocsById: {
+      "student-stale-language": doc(
+        "student-stale-language",
+        studentData({learningLanguage: {code: "fr"}}),
+      ),
+      "student-request-language-mismatch": doc(
+        "student-request-language-mismatch",
+        studentData({learningLanguage: {code: "fr"}}),
+      ),
+      "student-a": doc("student-a", studentData({learningLanguage: {code: "en"}})),
+    },
+    privateTokenDocsById: {
+      "teacher-native-only": doc("teacher-native-only", privateTokenData()),
+      "teacher-a": doc("teacher-a", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-a", "student-a"],
+  );
 });
 
 test("collectMatchCandidatePool excludes teachers without usable token", async () => {

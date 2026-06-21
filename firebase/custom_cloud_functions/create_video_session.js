@@ -1247,6 +1247,7 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
           transaction,
           candidateIds: availableTutors,
           triedCandidateIds: triedTutors,
+          language: freshSessionData.language,
         });
         const nextTutor = nextCandidate.candidateId;
         const nextTriedTutors = nextCandidate.triedCandidateIds;

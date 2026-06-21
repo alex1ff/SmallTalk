@@ -45,9 +45,15 @@ test("candidate callability requires tokens only for teachers", async () => {
   const db = fakeDb({
     reads,
     usersById: {
-      "student-a": {role: "student"},
-      "teacher-a": {role: "native_speaker"},
-      "teacher-b": {role: "native_speaker"},
+      "student-a": {role: "student", learningLanguage: {code: "en"}},
+      "teacher-a": {
+        role: "native_speaker",
+        language_instruction_NS: {code: "en"},
+      },
+      "teacher-b": {
+        role: "native_speaker",
+        language_instruction_NS: {code: "en"},
+      },
     },
     privateTokensById: {
       "teacher-b": {voipPushToken: " push-token "},
@@ -60,6 +66,7 @@ test("candidate callability requires tokens only for teachers", async () => {
       db,
       transaction,
       candidateId: "student-a",
+      language: "en",
     }),
     {callable: true, reason: "token_not_required", role: "student"},
   );
@@ -70,6 +77,7 @@ test("candidate callability requires tokens only for teachers", async () => {
       db,
       transaction,
       candidateId: "teacher-a",
+      language: "en",
     })).callable,
     false,
   );
@@ -78,8 +86,60 @@ test("candidate callability requires tokens only for teachers", async () => {
       db,
       transaction,
       candidateId: "teacher-b",
+      language: "en",
     })).callable,
     true,
+  );
+});
+
+test("candidate callability checks conversation language before tokens", async () => {
+  const reads = [];
+  const db = fakeDb({
+    reads,
+    usersById: {
+      "student-fr": {role: "student", learningLanguage: {code: "fr"}},
+      "teacher-es": {
+        role: "native_speaker",
+        language_instruction_NS: {code: "es"},
+        native_language_NS: {code: "en"},
+      },
+    },
+    privateTokensById: {
+      "teacher-es": {voipToken: "teacher-fcm"},
+    },
+  });
+  const transaction = fakeTransaction(db);
+
+  assert.deepEqual(
+    await readCandidateCallabilityInTransaction({
+      db,
+      transaction,
+      candidateId: "student-fr",
+      language: "en",
+    }),
+    {callable: false, reason: "language_mismatch", role: "student"},
+  );
+  assert.deepEqual(
+    await readCandidateCallabilityInTransaction({
+      db,
+      transaction,
+      candidateId: "teacher-es",
+      language: "en",
+    }),
+    {
+      callable: false,
+      reason: "language_mismatch",
+      role: "native_speaker",
+    },
+  );
+  assert.equal(reads.includes("userPrivateTokens/teacher-es"), false);
+  assert.equal(
+    (await readCandidateCallabilityInTransaction({
+      db,
+      transaction,
+      candidateId: "student-fr",
+    })).reason,
+    "missing_language",
   );
 });
 
@@ -90,9 +150,16 @@ test(
     const db = fakeDb({
       reads,
       usersById: {
-        "teacher-declined": {role: "native_speaker", voipToken: "legacy-fcm"},
-        "teacher-tokenless": {role: "native_speaker"},
-        "student-a": {role: "student"},
+        "teacher-declined": {
+          role: "native_speaker",
+          language_instruction_NS: {code: "en"},
+          voipToken: "legacy-fcm",
+        },
+        "teacher-tokenless": {
+          role: "native_speaker",
+          language_instruction_NS: {code: "en"},
+        },
+        "student-a": {role: "student", learningLanguage: {code: "en"}},
       },
     });
 
@@ -101,6 +168,7 @@ test(
       transaction: fakeTransaction(db),
       candidateIds: ["teacher-declined", "teacher-tokenless", "student-a"],
       triedCandidateIds: ["teacher-declined"],
+      language: "en",
     });
 
     assert.equal(result.candidateId, "student-a");
@@ -118,9 +186,13 @@ test("next candidate does not revive cleared legacy teacher token", async () => 
     usersById: {
       "teacher-cleared": {
         role: "native_speaker",
+        language_instruction_NS: {code: "en"},
         voipToken: "legacy-fcm",
       },
-      "teacher-private": {role: "native_speaker"},
+      "teacher-private": {
+        role: "native_speaker",
+        language_instruction_NS: {code: "en"},
+      },
     },
     privateTokensById: {
       "teacher-cleared": {voipTokensClearedAt: true},
@@ -133,6 +205,7 @@ test("next candidate does not revive cleared legacy teacher token", async () => 
     transaction: fakeTransaction(db),
     candidateIds: ["teacher-cleared", "teacher-private"],
     triedCandidateIds: [],
+    language: "en",
   });
 
   assert.equal(result.candidateId, "teacher-private");
