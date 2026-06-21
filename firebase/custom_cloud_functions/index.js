@@ -11,6 +11,8 @@ const declineCall = require("./decline_call.js");
 exports.declineCall = declineCall.declineCall;
 const cancelCall = require("./cancel_call.js");
 exports.cancelCall = cancelCall.cancelCall;
+const stopSearch = require("./stop_search.js");
+exports.stopSearch = stopSearch.stopSearch;
 const processExpiredNotifications = require("./process_expired_notifications.js");
 exports.processExpiredNotifications =
   processExpiredNotifications.processExpiredNotifications;

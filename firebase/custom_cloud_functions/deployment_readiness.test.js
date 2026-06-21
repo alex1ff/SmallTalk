@@ -72,6 +72,7 @@ test("deployment readiness fails missing critical functions", () => {
   assert.ok(missingIds.includes("getDeepgramToken"));
   assert.ok(missingIds.includes("processExpiredNotifications"));
   assert.ok(missingIds.includes("markSessionConnected"));
+  assert.ok(missingIds.includes("stopSearch"));
   assert.ok(missingIds.includes("getDirectCallStatus"));
   assert.ok(missingIds.includes("syncUserPublicProfile"));
   assert.ok(missingIds.includes("createEvent"));

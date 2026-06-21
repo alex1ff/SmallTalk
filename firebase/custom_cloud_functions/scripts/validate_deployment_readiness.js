@@ -27,6 +27,11 @@ const REQUIRED_FUNCTIONS = [
     secrets: DAILY_SECRETS,
   },
   {
+    id: "stopSearch",
+    trigger: "callable",
+    secrets: DAILY_SECRETS,
+  },
+  {
     id: "endSession",
     trigger: "callable",
     secrets: DAILY_SECRETS,

@@ -145,6 +145,7 @@ void main() {
       return false;
     };
     StudentsDashboardWidget.debugActiveSessionReader = (_) async => null;
+    StudentsDashboardWidget.debugStopSearchRequest = (_) async {};
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_permissionsChannel, (call) async {
@@ -180,6 +181,7 @@ void main() {
         .setMockMethodCallHandler(_permissionsChannel, null);
     StudentsDashboardWidget.debugUsageLimitReachedChecker = null;
     StudentsDashboardWidget.debugActiveSessionReader = null;
+    StudentsDashboardWidget.debugStopSearchRequest = null;
     currentUser = null;
     currentUserDocument = null;
   });
@@ -597,6 +599,893 @@ void main() {
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(_checkPermissionStatusCallCount, permissionChecksAfterStart);
     expect(_requestPermissionsCallCount, permissionRequestsAfterStart);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard manual stop calls backend once and stays responsive',
+      (tester) async {
+    setActiveStudent('student-stop-search-backend-test');
+    final stopCompleter = Completer<void>();
+    var stopRequestCount = 0;
+    final stoppedSessionIds = <String?>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: (sessionId) {
+            stopRequestCount += 1;
+            stoppedSessionIds.add(sessionId);
+            return stopCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    final stopSearchButton = find.ancestor(
+      of: find.text('Остановить поиск'),
+      matching: find.byType(InkWell),
+    );
+
+    await tester.tap(stopSearchButton);
+    await tester.tap(stopSearchButton);
+    await tester.pump();
+
+    expect(stopRequestCount, 1);
+    expect(stoppedSessionIds, [null]);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    stopCompleter.complete();
+    await tester.pump();
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard deduplicates immediate manual stop before rebuild',
+      (tester) async {
+    setActiveStudent('student-stop-search-immediate-test');
+    var stopRequestCount = 0;
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: (_) async {
+            stopRequestCount += 1;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    final stopSearchButton = find.ancestor(
+      of: find.text('Остановить поиск'),
+      matching: find.byType(InkWell),
+    );
+
+    await tester.tap(stopSearchButton);
+    await tester.tap(stopSearchButton);
+    await tester.pump();
+
+    expect(stopRequestCount, 1);
+    expect(find.text('Начать поиск'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard restarts after immediate backend stop',
+      (tester) async {
+    setActiveStudent('student-restart-after-immediate-stop-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard queues restart while backend stop is pending',
+      (tester) async {
+    setActiveStudent('student-restart-while-stop-pending-test');
+    final stopCompleter = Completer<void>();
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: (_) => stopCompleter.future,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    final permissionChecksAfterStop = _checkPermissionStatusCallCount;
+    final permissionRequestsAfterStop = _requestPermissionsCallCount;
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(_checkPermissionStatusCallCount, permissionChecksAfterStop);
+    expect(_requestPermissionsCallCount, permissionRequestsAfterStop);
+
+    stopCompleter.complete();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+    expect(_checkPermissionStatusCallCount,
+        greaterThan(permissionChecksAfterStop));
+    expect(_requestPermissionsCallCount, permissionRequestsAfterStop);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard drops queued restart when backend stop fails',
+      (tester) async {
+    setActiveStudent('student-restart-after-stop-failure-test');
+    final stopCompleter = Completer<void>();
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: (_) => stopCompleter.future,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    final permissionChecksAfterStop = _checkPermissionStatusCallCount;
+    final permissionRequestsAfterStop = _requestPermissionsCallCount;
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    stopCompleter.completeError(StateError('stopSearch failed'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(_checkPermissionStatusCallCount, permissionChecksAfterStop);
+    expect(_requestPermissionsCallCount, permissionRequestsAfterStop);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard drops queued restart when backend stop hangs',
+      (tester) async {
+    setActiveStudent('student-restart-after-stop-timeout-test');
+    final neverCompletes = Completer<void>();
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: (_) => neverCompletes.future,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    final permissionChecksAfterStop = _checkPermissionStatusCallCount;
+    final permissionRequestsAfterStop = _requestPermissionsCallCount;
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.pump(StudentsDashboardWidget.stopSearchRequestTimeout);
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(_checkPermissionStatusCallCount, permissionChecksAfterStop);
+    expect(_requestPermissionsCallCount, permissionRequestsAfterStop);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard manual stop passes active session id',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(
+      'student-stop-search-session-test',
+      currentSessionId: 'session-stop-search-test',
+    );
+    String? stoppedSessionId;
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+          stopSearchRequest: (sessionId) async {
+            stoppedSessionId = sessionId;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture('session-stop-search-test', 'searching'),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(stoppedSessionId, 'session-stop-search-test');
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard suppresses late active session after local stop',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(
+      'student-stop-search-late-session-test',
+      currentSessionId: 'session-late-stop-search-test',
+    );
+    String? stoppedSessionId;
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          initialSearchState: StudentDashboardSearchState.searching,
+          activeSessionStream: activeSessionController.stream,
+          stopSearchRequest: (sessionId) async {
+            stoppedSessionId = sessionId;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture('session-late-stop-search-test', 'searching'),
+    );
+    await tester.pump();
+
+    expect(stoppedSessionId, 'session-late-stop-search-test');
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard restores protected connecting session after stop noop',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(
+      'student-protected-connecting-stop-test',
+      currentSessionId: 'session-protected-connecting-stop-test',
+    );
+    final stopCompleter = Completer<dynamic>();
+    String? stoppedSessionId;
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+          stopSearchRequest: (sessionId) {
+            stoppedSessionId = sessionId;
+            return stopCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture('session-protected-connecting-stop-test', 'connecting'),
+    );
+    await tester.pump();
+
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsOneWidget);
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    stopCompleter.complete({
+      'status': 'stopped',
+      'stopped': true,
+      'reason': 'manual',
+      'cancelledSessionId': null,
+      'videoSession': {
+        'status': 'noop',
+        'stopped': false,
+        'reason': 'session_not_searching',
+      },
+    });
+    await tester.pump();
+    await tester.pump();
+
+    expect(stoppedSessionId, 'session-protected-connecting-stop-test');
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard stops a new session while previous stop waits',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(
+      'student-stop-search-new-session-test',
+      currentSessionId: 'session-first-stop-test',
+    );
+    final firstStopCompleter = Completer<void>();
+    final stoppedSessionIds = <String?>[];
+    Future<void> stopSearchRequest(String? sessionId) {
+      stoppedSessionIds.add(sessionId);
+      if (sessionId == 'session-first-stop-test') {
+        return firstStopCompleter.future;
+      }
+      return Future<void>.value();
+    }
+
+    final dashboard = StudentsDashboardWidget(
+      activeSessionStream: activeSessionController.stream,
+      stopSearchRequest: stopSearchRequest,
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        dashboard,
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture('session-first-stop-test', 'searching'),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        'role': 'student',
+        'display_name': 'Student',
+        'isInCall': false,
+        'learningLanguage': {
+          'code': 'en',
+          'name': 'English',
+        },
+        'subscription': {
+          'productId': 'test',
+          'expiresAt': DateTime.now().add(const Duration(days: 1)),
+        },
+        'currentSessionId': 'session-second-stop-test',
+      },
+      UsersRecord.collection.doc('student-stop-search-new-session-test'),
+    );
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: Stream<VideoSessionsRecord?>.value(
+            sessionFixture('session-second-stop-test', 'searching'),
+          ),
+          stopSearchRequest: stopSearchRequest,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Остановить поиск'), findsOneWidget);
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(stoppedSessionIds, [
+      'session-first-stop-test',
+      'session-second-stop-test',
+    ]);
+    expect(find.text('Начать поиск'), findsOneWidget);
+
+    firstStopCompleter.complete();
+    await tester.pump();
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard suppresses late session after user-level stop',
+      (tester) async {
+    setActiveStudent('student-stop-search-user-key-test');
+    final userStopCompleter = Completer<void>();
+    final stoppedSessionIds = <String?>[];
+    Future<void> stopSearchRequest(String? sessionId) {
+      stoppedSessionIds.add(sessionId);
+      if (sessionId == null) {
+        return userStopCompleter.future;
+      }
+      return Future<void>.value();
+    }
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: stopSearchRequest,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        'role': 'student',
+        'display_name': 'Student',
+        'isInCall': false,
+        'learningLanguage': {
+          'code': 'en',
+          'name': 'English',
+        },
+        'subscription': {
+          'productId': 'test',
+          'expiresAt': DateTime.now().add(const Duration(days: 1)),
+        },
+        'currentSessionId': 'session-user-key-stop-test',
+      },
+      UsersRecord.collection.doc('student-stop-search-user-key-test'),
+    );
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: Stream<VideoSessionsRecord?>.value(
+            sessionFixture('session-user-key-stop-test', 'searching'),
+          ),
+          stopSearchRequest: stopSearchRequest,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(stoppedSessionIds, [null]);
+
+    userStopCompleter.complete();
+    await tester.pump();
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard shows new session after user-level stop drains',
+      (tester) async {
+    setActiveStudent('student-new-session-after-user-stop-test');
+    final userStopCompleter = Completer<void>();
+    final stoppedSessionIds = <String?>[];
+    Future<void> stopSearchRequest(String? sessionId) {
+      stoppedSessionIds.add(sessionId);
+      if (sessionId == null) {
+        return userStopCompleter.future;
+      }
+      return Future<void>.value();
+    }
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: stopSearchRequest,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    userStopCompleter.complete();
+    await tester.pump();
+
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        'role': 'student',
+        'display_name': 'Student',
+        'isInCall': false,
+        'learningLanguage': {
+          'code': 'en',
+          'name': 'English',
+        },
+        'subscription': {
+          'productId': 'test',
+          'expiresAt': DateTime.now().add(const Duration(days: 1)),
+        },
+        'currentSessionId': 'session-after-user-stop-test',
+      },
+      UsersRecord.collection.doc('student-new-session-after-user-stop-test'),
+    );
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: Stream<VideoSessionsRecord?>.value(
+            sessionFixture('session-after-user-stop-test', 'searching'),
+          ),
+          stopSearchRequest: stopSearchRequest,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(stoppedSessionIds, [null, 'session-after-user-stop-test']);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard reveals pending session after user stop drains',
+      (tester) async {
+    setActiveStudent('student-pending-session-after-user-stop-test');
+    final userStopCompleter = Completer<void>();
+    final stoppedSessionIds = <String?>[];
+    Future<void> stopSearchRequest(String? sessionId) {
+      stoppedSessionIds.add(sessionId);
+      if (sessionId == null) {
+        return userStopCompleter.future;
+      }
+      return Future<void>.value();
+    }
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: stopSearchRequest,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        'role': 'student',
+        'display_name': 'Student',
+        'isInCall': false,
+        'learningLanguage': {
+          'code': 'en',
+          'name': 'English',
+        },
+        'subscription': {
+          'productId': 'test',
+          'expiresAt': DateTime.now().add(const Duration(days: 1)),
+        },
+        'currentSessionId': 'session-pending-user-stop-test',
+      },
+      UsersRecord.collection.doc(
+        'student-pending-session-after-user-stop-test',
+      ),
+    );
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: Stream<VideoSessionsRecord?>.value(
+            sessionFixture('session-pending-user-stop-test', 'searching'),
+          ),
+          stopSearchRequest: stopSearchRequest,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    userStopCompleter.complete();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(stoppedSessionIds, [null]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard suppresses stream error after manual stop',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(
+      'student-stop-search-stream-error-test',
+      currentSessionId: 'session-stop-stream-error-test',
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          initialSearchState: StudentDashboardSearchState.searching,
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.addError(
+      StateError('stream failed after manual stop'),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Не удалось обновить поиск'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard keeps stopped state when backend stop fails',
+      (tester) async {
+    setActiveStudent('student-stop-search-failure-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: (_) async {
+            throw StateError('stopSearch failed');
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

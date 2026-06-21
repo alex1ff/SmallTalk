@@ -23,6 +23,7 @@ import '/index.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
@@ -56,6 +57,7 @@ class StudentsDashboardWidget extends StatefulWidget {
     this.initialSearchState = StudentDashboardSearchState.idle,
     this.activeSessionStream,
     this.usageLimitReachedChecker,
+    this.stopSearchRequest,
   })  : this.zn = zn ?? false,
         this.topUpSuccess = topUpSuccess ?? false;
 
@@ -65,10 +67,14 @@ class StudentsDashboardWidget extends StatefulWidget {
   final StudentDashboardSearchState initialSearchState;
   final Stream<VideoSessionsRecord?>? activeSessionStream;
   final Future<bool> Function(UsersRecord user)? usageLimitReachedChecker;
+  final Future<dynamic> Function(String? activeSessionId)? stopSearchRequest;
 
   static Future<bool> Function(UsersRecord user)? debugUsageLimitReachedChecker;
   static Future<VideoSessionsRecord?> Function(DocumentReference sessionRef)?
       debugActiveSessionReader;
+  static Future<dynamic> Function(String? activeSessionId)?
+      debugStopSearchRequest;
+  static const Duration stopSearchRequestTimeout = Duration(seconds: 10);
 
   static String routeName = 'Students_Dashboard';
   static String routePath = '/studentsDashboard';
@@ -91,7 +97,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   StudentDashboardSearchState _searchState = StudentDashboardSearchState.idle;
   bool _isStartingSearch = false;
   bool _ignoreStartSearchUntilNextFrame = false;
+  bool _ignoreStopSearchUntilNextFrame = false;
+  bool _startSearchAfterStop = false;
+  bool _queuedStartHasActiveCallSession = false;
+  bool _stopFailureSinceLastDrain = false;
+  final Set<String> _stoppingSearchKeys = <String>{};
   String? _suppressedActiveSessionId;
+  String? _suppressedActiveSearchUserId;
   String? _lastActiveSessionId;
   Timer? _searchTimeoutTimer;
   StudentDashboardSearchErrorReason? _searchErrorReason;
@@ -109,8 +121,155 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   bool _showsSearchStatus(StudentDashboardSearchState searchState) =>
       searchState != StudentDashboardSearchState.idle;
 
+  String? _normalizedSessionId(String? sessionId) {
+    final normalizedSessionId = sessionId?.trim();
+    if (normalizedSessionId == null || normalizedSessionId.isEmpty) {
+      return null;
+    }
+    return normalizedSessionId;
+  }
+
+  String? _stopSessionIdFor(String? visibleSessionId) {
+    return _normalizedSessionId(visibleSessionId) ??
+        _normalizedSessionId(currentUserDocument?.currentSessionId);
+  }
+
+  bool _isStopSearchResponseSuccess(
+    dynamic data, {
+    required bool hasExplicitSessionId,
+  }) {
+    if (data is! Map) {
+      return false;
+    }
+
+    final status = data['status']?.toString();
+    final reason = data['reason']?.toString();
+    if (hasExplicitSessionId) {
+      final cancelledSessionId = data['cancelledSessionId']?.toString().trim();
+      if (cancelledSessionId != null && cancelledSessionId.isNotEmpty) {
+        return true;
+      }
+
+      final videoSession = data['videoSession'];
+      if (videoSession is Map) {
+        final videoSessionStatus = videoSession['status']?.toString();
+        final videoSessionReason = videoSession['reason']?.toString();
+        if (videoSession['stopped'] == true ||
+            videoSessionStatus == 'cancelled') {
+          return true;
+        }
+        if (videoSessionStatus == 'noop') {
+          return videoSessionReason == 'session_not_found' ||
+              videoSessionReason == 'session_already_inactive';
+        }
+      }
+
+      return false;
+    }
+
+    if (data['stopped'] == true ||
+        status == 'stopped' ||
+        status == 'cancelled') {
+      return true;
+    }
+
+    if (status == 'noop') {
+      return reason == 'not_found' ||
+          reason == 'already_inactive' ||
+          reason == 'session_not_found' ||
+          reason == 'session_already_inactive';
+    }
+
+    return false;
+  }
+
+  String _stopSearchKeyFor(String? activeSessionId) {
+    final sessionId = _normalizedSessionId(activeSessionId);
+    if (sessionId != null) {
+      return 'session:$sessionId';
+    }
+
+    final userId = currentUserUid.trim();
+    if (userId.isNotEmpty) {
+      return 'user:$userId';
+    }
+
+    return 'user:unknown';
+  }
+
+  String? _currentSearchUserId() {
+    final userId = currentUserUid.trim();
+    if (userId.isEmpty) {
+      return null;
+    }
+    return userId;
+  }
+
+  bool _isActiveSessionSuppressed(String? sessionId) {
+    final normalizedSessionId = _normalizedSessionId(sessionId);
+    if (normalizedSessionId != null &&
+        normalizedSessionId == _suppressedActiveSessionId) {
+      return true;
+    }
+
+    final userId = _currentSearchUserId();
+    return userId != null && userId == _suppressedActiveSearchUserId;
+  }
+
+  void _queueStartSearchAfterStop({
+    required bool hasActiveCallSession,
+  }) {
+    _startSearchAfterStop = true;
+    _queuedStartHasActiveCallSession = hasActiveCallSession;
+  }
+
+  void _clearQueuedStartSearchAfterStop() {
+    _startSearchAfterStop = false;
+    _queuedStartHasActiveCallSession = false;
+  }
+
+  void _handleStopSearchFinished({required bool succeeded}) {
+    if (!succeeded) {
+      _stopFailureSinceLastDrain = true;
+    }
+
+    if (_stoppingSearchKeys.isNotEmpty) {
+      return;
+    }
+
+    final hadStopFailure = _stopFailureSinceLastDrain;
+    final shouldStartSearch = _startSearchAfterStop && !hadStopFailure;
+    final hasActiveCallSession = _queuedStartHasActiveCallSession;
+    _clearQueuedStartSearchAfterStop();
+    _stopFailureSinceLastDrain = false;
+    if (hadStopFailure) {
+      _suppressedActiveSessionId = null;
+    }
+    _suppressedActiveSearchUserId = null;
+    _ignoreStartSearchUntilNextFrame = false;
+
+    if (!mounted) {
+      return;
+    }
+
+    safeSetState(() {});
+
+    if (!shouldStartSearch) {
+      return;
+    }
+
+    unawaited(
+      _handleStartConversation(
+        StudentDashboardSearchState.idle,
+        null,
+        hasActiveCallSession,
+      ),
+    );
+  }
+
   bool _canSurfaceActiveSessionError(String expectedSessionId) =>
       expectedSessionId.isNotEmpty &&
+      !_isActiveSessionSuppressed(expectedSessionId) &&
       _searchState == StudentDashboardSearchState.idle &&
       (_lastActiveSessionId != expectedSessionId ||
           _lastActiveSessionSearchState == StudentDashboardSearchState.idle);
@@ -126,6 +285,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       _searchState = StudentDashboardSearchState.error;
       _searchErrorReason = reason;
       _suppressedActiveSessionId = null;
+      _suppressedActiveSearchUserId = null;
     });
   }
 
@@ -220,7 +380,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     if (cachedSessionId == null ||
         expectedSessionId.isEmpty ||
         cachedSessionId != expectedSessionId ||
-        cachedSessionId == _suppressedActiveSessionId ||
+        _isActiveSessionSuppressed(cachedSessionId) ||
         _lastActiveSessionSearchState == StudentDashboardSearchState.idle ||
         (_searchState != StudentDashboardSearchState.idle &&
             _searchState != StudentDashboardSearchState.noMatchFound)) {
@@ -237,7 +397,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     final sessionId = session?.reference.id;
     if (sessionSearchState != StudentDashboardSearchState.idle &&
         sessionId != null &&
-        sessionId != _suppressedActiveSessionId) {
+        !_isActiveSessionSuppressed(sessionId)) {
       if (sessionSearchState == StudentDashboardSearchState.searching &&
           _searchState == StudentDashboardSearchState.noMatchFound) {
         return _searchState;
@@ -1100,28 +1260,99 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     return true;
   }
 
+  Future<void> _stopActiveSearchRequest(String? activeSessionId) async {
+    final stopSearchKey = _stopSearchKeyFor(activeSessionId);
+    if (_stoppingSearchKeys.contains(stopSearchKey)) {
+      return;
+    }
+
+    _stoppingSearchKeys.add(stopSearchKey);
+    var stopSucceeded = false;
+    final stopSearchRequest = widget.stopSearchRequest ??
+        StudentsDashboardWidget.debugStopSearchRequest;
+    final normalizedSessionId = _normalizedSessionId(activeSessionId);
+    final payload = <String, dynamic>{
+      if (normalizedSessionId != null) 'sessionId': normalizedSessionId,
+    };
+
+    try {
+      if (stopSearchRequest != null) {
+        final stopSearchResult = await stopSearchRequest(
+          normalizedSessionId,
+        ).timeout(StudentsDashboardWidget.stopSearchRequestTimeout);
+        stopSucceeded = stopSearchResult == null
+            ? true
+            : _isStopSearchResponseSuccess(
+                stopSearchResult,
+                hasExplicitSessionId: normalizedSessionId != null,
+              );
+        return;
+      }
+
+      final stopSearchResult = await FirebaseFunctions.instance
+          .httpsCallable('stopSearch')
+          .call(
+            payload,
+          )
+          .timeout(StudentsDashboardWidget.stopSearchRequestTimeout);
+      stopSucceeded = _isStopSearchResponseSuccess(
+        stopSearchResult.data,
+        hasExplicitSessionId: normalizedSessionId != null,
+      );
+    } catch (error) {
+      debugPrint(
+        'StudentsDashboard: failed to stop active search: $error',
+      );
+    } finally {
+      _stoppingSearchKeys.remove(stopSearchKey);
+      _handleStopSearchFinished(succeeded: stopSucceeded);
+    }
+  }
+
   Future<void> _handleStartConversation(
     StudentDashboardSearchState visibleSearchState,
     String? visibleSessionId,
     bool hasActiveCallSession,
   ) async {
     if (_isStopSearchState(visibleSearchState)) {
+      if (_ignoreStopSearchUntilNextFrame) {
+        return;
+      }
+
+      _ignoreStopSearchUntilNextFrame = true;
+      final stopSessionId = _stopSessionIdFor(visibleSessionId);
+      _clearQueuedStartSearchAfterStop();
       safeSetState(() {
         _searchState = StudentDashboardSearchState.idle;
         _searchErrorReason = null;
-        _suppressedActiveSessionId = visibleSessionId;
+        _suppressedActiveSessionId = stopSessionId;
+        _suppressedActiveSearchUserId =
+            stopSessionId == null ? _currentSearchUserId() : null;
         _ignoreStartSearchUntilNextFrame = true;
       });
       _clearSearchTimeoutTimer();
+      unawaited(_stopActiveSearchRequest(stopSessionId));
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _ignoreStartSearchUntilNextFrame = false;
+          _ignoreStopSearchUntilNextFrame = false;
         }
       });
       return;
     }
 
-    if (_ignoreStartSearchUntilNextFrame || _isStartingSearch) {
+    if (_isStartingSearch) {
+      return;
+    }
+
+    if (_stoppingSearchKeys.isNotEmpty) {
+      _queueStartSearchAfterStop(
+        hasActiveCallSession: hasActiveCallSession,
+      );
+      return;
+    }
+
+    if (_ignoreStartSearchUntilNextFrame) {
       return;
     }
 
@@ -1129,6 +1360,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       _isStartingSearch = true;
       _searchErrorReason = null;
       _suppressedActiveSessionId = null;
+      _suppressedActiveSearchUserId = null;
     });
     _clearSearchTimeoutTimer();
 
@@ -1147,6 +1379,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
         _searchState = StudentDashboardSearchState.searching;
         _searchErrorReason = null;
         _suppressedActiveSessionId = null;
+        _suppressedActiveSearchUserId = null;
       });
       _startSearchTimeoutTimer();
     } on Exception {

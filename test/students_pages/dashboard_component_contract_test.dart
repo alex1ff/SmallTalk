@@ -97,6 +97,28 @@ void main() {
     );
   });
 
+  test('manual stop search CTA calls backend stop without blocking UI', () {
+    final source = File(
+            'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
+        .readAsStringSync();
+    final handlerStart =
+        source.indexOf('Future<void> _handleStartConversation');
+    final activeCtaEnd = source.indexOf('Widget _buildSearchCtaContent');
+    final handlerSource = source.substring(handlerStart, activeCtaEnd);
+
+    expect(source, contains("httpsCallable('stopSearch')"));
+    expect(source, contains('Future<void> _stopActiveSearchRequest'));
+    expect(source, contains('bool _isStopSearchResponseSuccess'));
+    expect(source, isNot(contains("reason == 'session_mismatch'")));
+    expect(source, isNot(contains("reason == 'request_mismatch'")));
+    expect(source, contains('debugStopSearchRequest'));
+    expect(source, contains('_ignoreStopSearchUntilNextFrame'));
+    expect(handlerSource, contains('unawaited('));
+    expect(handlerSource, contains('_stopActiveSearchRequest('));
+    expect(handlerSource, contains('_isStopSearchState(visibleSearchState)'));
+    expect(handlerSource, contains('StudentDashboardSearchState.idle'));
+  });
+
   test('student dashboard maps active video session status to search UI', () {
     final source = File(
             'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
