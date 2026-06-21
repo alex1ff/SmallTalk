@@ -97,7 +97,8 @@ class StudentsDashboardWidget extends StatefulWidget {
       _StudentsDashboardWidgetState();
 }
 
-class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
+class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
+    with WidgetsBindingObserver {
   late StudentsDashboardModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
@@ -122,6 +123,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   Timer? _searchHeartbeatTimer;
   String? _activeSearchRequestId;
   bool _searchHeartbeatInFlight = false;
+  bool _pendingLifecycleSearchHeartbeat = false;
+  String _searchAppState = 'foreground';
   StudentDashboardSearchErrorReason? _searchErrorReason;
   StudentDashboardSearchState _lastActiveSessionSearchState =
       StudentDashboardSearchState.idle;
@@ -300,6 +303,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     _searchHeartbeatTimer = null;
     _activeSearchRequestId = null;
     _searchHeartbeatInFlight = false;
+    _pendingLifecycleSearchHeartbeat = false;
   }
 
   void _setSearchError(StudentDashboardSearchErrorReason reason) {
@@ -342,9 +346,53 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     return value == null || value.isEmpty ? null : value;
   }
 
+  bool _responseBool(Map<String, dynamic> data, String key) {
+    final value = data[key];
+    if (value is bool) {
+      return value;
+    }
+    if (value is String) {
+      return value.trim().toLowerCase() == 'true';
+    }
+    return false;
+  }
+
+  void _handleSearchHeartbeatResponse(
+    String requestId,
+    Map<String, dynamic> data,
+  ) {
+    if (_activeSearchRequestId != requestId ||
+        _searchState != StudentDashboardSearchState.searching) {
+      return;
+    }
+
+    final errorCode = _normalizedResponseString(data, 'errorCode');
+    final reason = _normalizedResponseString(data, 'reason');
+    final inactiveReasons = <String>{
+      'background_expired',
+      'expired',
+      'inactive',
+      'stale',
+    };
+    if (!inactiveReasons.contains(errorCode) &&
+        !inactiveReasons.contains(reason)) {
+      return;
+    }
+
+    _clearSearchTimeoutTimer();
+    _clearSearchHeartbeatTimer();
+    if (!mounted) {
+      return;
+    }
+
+    safeSetState(() {
+      _searchState = StudentDashboardSearchState.noMatchFound;
+    });
+  }
+
   Map<String, dynamic> _buildStartSearchPayload(UsersRecord user) {
     final payload = <String, dynamic>{
-      'appState': 'foreground',
+      'appState': _searchAppState,
     };
     final language = resolveUserActiveConversationLanguage(user);
     if (language != null && language.trim().isNotEmpty) {
@@ -405,30 +453,76 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
     _searchHeartbeatInFlight = true;
     final payload = <String, dynamic>{
       'requestId': requestId,
-      'appState': 'foreground',
+      'appState': _searchAppState,
     };
 
     try {
       final heartbeatSearchRequest = widget.heartbeatSearchRequest ??
           StudentsDashboardWidget.debugHeartbeatSearchRequest;
       if (heartbeatSearchRequest != null) {
-        await heartbeatSearchRequest(
+        final data = await heartbeatSearchRequest(
           payload,
         ).timeout(StudentsDashboardWidget.heartbeatSearchRequestTimeout);
+        _handleSearchHeartbeatResponse(
+          requestId,
+          _normalizeCallableMap(data),
+        );
         return;
       }
 
-      await FirebaseFunctions.instance
+      final response = await FirebaseFunctions.instance
           .httpsCallable('heartbeatSearch')
           .call(payload)
           .timeout(StudentsDashboardWidget.heartbeatSearchRequestTimeout);
+      _handleSearchHeartbeatResponse(
+        requestId,
+        _normalizeCallableMap(response.data),
+      );
     } catch (error) {
       debugPrint('StudentsDashboard: failed to heartbeat search: $error');
     } finally {
       if (_activeSearchRequestId == requestId) {
         _searchHeartbeatInFlight = false;
+        if (_pendingLifecycleSearchHeartbeat &&
+            mounted &&
+            _searchState == StudentDashboardSearchState.searching) {
+          _pendingLifecycleSearchHeartbeat = false;
+          unawaited(_sendSearchHeartbeat(requestId));
+        }
       }
     }
+  }
+
+  String _searchAppStateForLifecycle(AppLifecycleState? state) {
+    return state == null || state == AppLifecycleState.resumed
+        ? 'foreground'
+        : 'background';
+  }
+
+  void _sendLifecycleSearchHeartbeat() {
+    final requestId = _activeSearchRequestId;
+    if (requestId == null ||
+        _searchState != StudentDashboardSearchState.searching) {
+      return;
+    }
+
+    if (_searchHeartbeatInFlight) {
+      _pendingLifecycleSearchHeartbeat = true;
+      return;
+    }
+
+    unawaited(_sendSearchHeartbeat(requestId));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final nextSearchAppState = _searchAppStateForLifecycle(state);
+    if (_searchAppState == nextSearchAppState) {
+      return;
+    }
+
+    _searchAppState = nextSearchAppState;
+    _sendLifecycleSearchHeartbeat();
   }
 
   Stream<VideoSessionsRecord?> _activeSessionStreamFor(UsersRecord user) {
@@ -1538,6 +1632,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       }
       final sessionId = _normalizedResponseString(startSearchData, 'sessionId');
       final status = _normalizedResponseString(startSearchData, 'status');
+      final reusedSearchRequest = _responseBool(startSearchData, 'reused');
       final nextSearchState = sessionId != null || status == 'matched'
           ? StudentDashboardSearchState.connecting
           : StudentDashboardSearchState.searching;
@@ -1555,6 +1650,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
       if (nextSearchState == StudentDashboardSearchState.searching) {
         _startSearchTimeoutTimer();
         _startSearchHeartbeatTimer(requestId);
+        if (reusedSearchRequest) {
+          unawaited(_sendSearchHeartbeat(requestId));
+        }
       } else {
         _clearSearchTimeoutTimer();
         _clearSearchHeartbeatTimer();
@@ -1968,6 +2066,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
   @override
   void initState() {
     super.initState();
+    _searchAppState = _searchAppStateForLifecycle(
+      WidgetsBinding.instance.lifecycleState,
+    );
+    WidgetsBinding.instance.addObserver(this);
     _searchState = widget.initialSearchState;
     _model = createModel(context, () => StudentsDashboardModel());
 
@@ -2020,6 +2122,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _clearSearchTimeoutTimer();
     _clearSearchHeartbeatTimer();
     _model.dispose();

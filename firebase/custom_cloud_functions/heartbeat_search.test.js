@@ -117,6 +117,51 @@ test("foreground heartbeat clears background expiry", () => {
   assert.equal(decision.update.backgroundExpiresAt, null);
 });
 
+test("background heartbeat keeps first background expiry deadline", () => {
+  const existingBackgroundExpiresAt = timestampFromMillis(
+    fixedNowMillis + 5 * 60 * 1000,
+  );
+
+  const decision = buildHeartbeatSearchDecision({
+    requestExists: true,
+    requestData: activeRequest({
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: existingBackgroundExpiresAt,
+      heartbeatAt: timestampFromMillis(fixedNowMillis - 2 * 60 * 1000),
+    }),
+    userId: "student-a",
+    requestId: "request-a",
+    appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    timestampFromMillis,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.update.backgroundExpiresAt, existingBackgroundExpiresAt);
+});
+
+test("foreground heartbeat resumes background request before deadline", () => {
+  const decision = buildHeartbeatSearchDecision({
+    requestExists: true,
+    requestData: activeRequest({
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 5 * 60 * 1000),
+      heartbeatAt: timestampFromMillis(fixedNowMillis - 2 * 60 * 1000),
+    }),
+    userId: "student-a",
+    requestId: "request-a",
+    appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    timestampFromMillis,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.update.appState, "foreground");
+  assert.equal(decision.update.backgroundExpiresAt, null);
+});
+
 test("heartbeat ignores stale requestId and terminal state", () => {
   const mismatch = buildHeartbeatSearchDecision({
     requestExists: true,

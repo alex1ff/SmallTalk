@@ -4,15 +4,20 @@ const fs = require("node:fs");
 const path = require("node:path");
 const admin = require("firebase-admin");
 const {
+  SEARCH_REQUEST_APP_STATE,
   SEARCH_REQUEST_TIMING,
 } = require("./search_requests");
 const {
   __private__: {
+    buildBackgroundExpiredSearchRequestCleanupUpdate,
     buildExpiredSearchRequestCleanupUpdate,
     buildStaleSearchRequestCleanupUpdate,
+    cleanupBackgroundExpiredSearchRequestDocs,
     cleanupStaleSearchRequestDocs,
+    isBackgroundExpiredSearchRequest,
     isExpiredUnmatchedSearchRequest,
     isStaleSearchRequest,
+    queueBackgroundExpiredSearchRequestCleanup,
     queueExpiredSearchRequestCleanup,
     queueStaleSearchRequestCleanup,
   },
@@ -72,6 +77,14 @@ test("stale search request cleanup uses heartbeat cutoff", () => {
   );
   assert.equal(
     isStaleSearchRequest(activeRequest({status: "matched"}), fixedNowMillis),
+    false,
+  );
+  assert.equal(
+    isStaleSearchRequest(activeRequest({
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60 * 1000),
+      heartbeatAt: timestampFromMillis(cutoffMillis - 1),
+    }), fixedNowMillis),
     false,
   );
 });
@@ -156,6 +169,67 @@ test("expired unmatched cleanup marks request expired and clears locks", () => {
     lastError: {
       code: "search_timeout",
       message: "Search request expired without a match",
+    },
+    activeSessionId: fieldDelete,
+    matchedSessionId: fieldDelete,
+    matchedResponderId: fieldDelete,
+  });
+});
+
+test("background expired search request cleanup uses background deadline", () => {
+  assert.equal(
+    isBackgroundExpiredSearchRequest(activeRequest({
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis),
+    }), fixedNowMillis),
+    true,
+  );
+  assert.equal(
+    isBackgroundExpiredSearchRequest(activeRequest({
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 1),
+    }), fixedNowMillis),
+    false,
+  );
+  assert.equal(
+    isBackgroundExpiredSearchRequest(activeRequest({
+      appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis - 1),
+    }), fixedNowMillis),
+    false,
+  );
+  assert.equal(
+    isBackgroundExpiredSearchRequest(activeRequest({
+      status: "matched",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis - 1),
+    }), fixedNowMillis),
+    false,
+  );
+});
+
+test("background expired cleanup marks request expired and clears locks", () => {
+  const update = buildBackgroundExpiredSearchRequestCleanupUpdate({
+    requestData: activeRequest({status: "matching"}),
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.deepEqual(update, {
+    status: "expired",
+    updatedAt: serverTimestamp,
+    stoppedAt: serverTimestamp,
+    stopReason: "background_timeout",
+    currentSessionId: null,
+    matchedUserId: null,
+    matchedRole: null,
+    pairAttemptId: null,
+    attemptExcludedCandidateIds: [],
+    lockOwner: null,
+    lockExpiresAt: null,
+    lastError: {
+      code: "background_timeout",
+      message: "Search request expired in background",
     },
     activeSessionId: fieldDelete,
     matchedSessionId: fieldDelete,
@@ -291,6 +365,54 @@ test("queue expired cleanup writes only expired unmatched request", () => {
   assert.equal(writerOperations.length, 1);
 });
 
+test("queue background expired cleanup writes only background expired request", () => {
+  const writerOperations = [];
+  const writer = {
+    update(ref, data) {
+      writerOperations.push({type: "update", ref, data});
+    },
+  };
+
+  const result = queueBackgroundExpiredSearchRequestCleanup({
+    writer,
+    doc: {
+      id: "student-a",
+      ref: {path: "searchRequests/student-a"},
+      data: () => activeRequest({
+        appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+        backgroundExpiresAt: timestampFromMillis(fixedNowMillis),
+      }),
+    },
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(result.cleaned, true);
+  assert.equal(result.requestId, "request-a");
+  assert.equal(writerOperations.length, 1);
+  assert.equal(writerOperations[0].data.status, "expired");
+  assert.equal(writerOperations[0].data.stopReason, "background_timeout");
+
+  const foregroundResult = queueBackgroundExpiredSearchRequestCleanup({
+    writer,
+    doc: {
+      id: "student-b",
+      ref: {path: "searchRequests/student-b"},
+      data: () => activeRequest({
+        appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+        backgroundExpiresAt: timestampFromMillis(fixedNowMillis - 1),
+      }),
+    },
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(foregroundResult.cleaned, false);
+  assert.equal(writerOperations.length, 1);
+});
+
 test("cleanup stale docs rereads transaction data and dedupes fallback hits", async () => {
   const updates = [];
   const staleDoc = {
@@ -341,6 +463,59 @@ test("cleanup stale docs rereads transaction data and dedupes fallback hits", as
   assert.equal(updates.length, 1);
 });
 
+test("background cleanup still runs after stale pass skips same doc", async () => {
+  const updates = [];
+  const backgroundDoc = {
+    id: "student-a",
+    ref: {path: "searchRequests/student-a"},
+  };
+  const db = {
+    async runTransaction(callback) {
+      return await callback({
+        async get() {
+          return {
+            exists: true,
+            data: () => activeRequest({
+              appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+              backgroundExpiresAt: timestampFromMillis(fixedNowMillis),
+              heartbeatAt: timestampFromMillis(
+                fixedNowMillis -
+                  (SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS + 1) * 1000,
+              ),
+            }),
+          };
+        },
+        update(ref, data) {
+          updates.push({ref, data});
+        },
+      });
+    },
+  };
+  const seenDocKeys = new Set();
+
+  const stalePass = await cleanupStaleSearchRequestDocs({
+    db,
+    docs: [backgroundDoc],
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+    seenDocKeys,
+  });
+  const backgroundPass = await cleanupBackgroundExpiredSearchRequestDocs({
+    db,
+    docs: [backgroundDoc],
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+    seenDocKeys,
+  });
+
+  assert.equal(stalePass, 0);
+  assert.equal(backgroundPass, 1);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].data.stopReason, "background_timeout");
+});
+
 test("cleanupStaleSearchRequests is scheduled every minute", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "cleanup_stale_search_requests.js"),
@@ -353,6 +528,8 @@ test("cleanupStaleSearchRequests is scheduled every minute", () => {
   assert.match(source, /where\("heartbeatAt", "<"/);
   assert.match(source, /where\("updatedAt", "<"/);
   assert.match(source, /where\("expiresAt", "<="/);
+  assert.match(source, /where\("appState", "=="/);
+  assert.match(source, /where\("backgroundExpiresAt", "<="/);
 });
 
 test("Firestore indexes support stale search request cleanup query", () => {
@@ -370,10 +547,23 @@ test("Firestore indexes support stale search request cleanup query", () => {
       index.fields.some((field) =>
         field.fieldPath === fieldPath && field.order === "ASCENDING",
       ));
+  const hasSearchRequestIndexFields = (fieldPaths) => indexes.some((index) =>
+    index.collectionGroup === "searchRequests" &&
+      index.queryScope === "COLLECTION" &&
+      fieldPaths.every((fieldPath) =>
+        index.fields.some((field) =>
+          field.fieldPath === fieldPath && field.order === "ASCENDING",
+        ),
+      ));
 
   assert.ok(hasSearchRequestIndex("heartbeatAt"));
   assert.ok(hasSearchRequestIndex("updatedAt"));
   assert.ok(hasSearchRequestIndex("expiresAt"));
+  assert.ok(hasSearchRequestIndexFields([
+    "status",
+    "appState",
+    "backgroundExpiresAt",
+  ]));
 });
 
 test("deploy script includes stale cleanup indexes", () => {

@@ -88,6 +88,55 @@ function readRequestSessionId(requestData = {}) {
     null;
 }
 
+function isBackgroundGraceActive(requestData = {}, nowMillis = Date.now()) {
+  if (
+    normalizeAppState(requestData.appState) !==
+      SEARCH_REQUEST_APP_STATE.BACKGROUND
+  ) {
+    return false;
+  }
+
+  const backgroundExpiresAtMillis = timestampToMillis(
+    requestData.backgroundExpiresAt,
+  );
+  return backgroundExpiresAtMillis !== null &&
+    backgroundExpiresAtMillis > nowMillis;
+}
+
+function isBackgroundExpired(requestData = {}, nowMillis = Date.now()) {
+  if (
+    normalizeAppState(requestData.appState) !==
+      SEARCH_REQUEST_APP_STATE.BACKGROUND
+  ) {
+    return false;
+  }
+
+  const backgroundExpiresAtMillis = timestampToMillis(
+    requestData.backgroundExpiresAt,
+  );
+  return backgroundExpiresAtMillis !== null &&
+    backgroundExpiresAtMillis <= nowMillis;
+}
+
+function resolveBackgroundExpiresAt({
+  requestData = {},
+  nextAppState,
+  nowMillis = Date.now(),
+  timestampFromMillis = admin.firestore.Timestamp.fromMillis,
+}) {
+  if (nextAppState === SEARCH_REQUEST_APP_STATE.FOREGROUND) {
+    return null;
+  }
+
+  if (isBackgroundGraceActive(requestData, nowMillis)) {
+    return requestData.backgroundExpiresAt;
+  }
+
+  return timestampFromMillis(
+    nowMillis + SEARCH_REQUEST_TIMING.BACKGROUND_MAX_SEARCH_SECONDS * 1000,
+  );
+}
+
 function buildHeartbeatResponse({
   userId,
   requestData = {},
@@ -201,25 +250,7 @@ function buildHeartbeatSearchDecision({
     });
   }
 
-  const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
-  const staleCutoffMillis =
-    nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
-  if (heartbeatAtMillis === null || heartbeatAtMillis < staleCutoffMillis) {
-    return buildNoopDecision({
-      userId,
-      requestData,
-      reason: "stale",
-      errorCode: "stale",
-    });
-  }
-
-  const backgroundExpiresAtMillis = timestampToMillis(
-    requestData.backgroundExpiresAt,
-  );
-  if (
-    backgroundExpiresAtMillis !== null &&
-    backgroundExpiresAtMillis <= nowMillis
-  ) {
+  if (isBackgroundExpired(requestData, nowMillis)) {
     return buildNoopDecision({
       userId,
       requestData,
@@ -228,14 +259,28 @@ function buildHeartbeatSearchDecision({
     });
   }
 
+  const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
+  const staleCutoffMillis =
+    nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
+  if (
+    !isBackgroundGraceActive(requestData, nowMillis) &&
+    (heartbeatAtMillis === null || heartbeatAtMillis < staleCutoffMillis)
+  ) {
+    return buildNoopDecision({
+      userId,
+      requestData,
+      reason: "stale",
+      errorCode: "stale",
+    });
+  }
+
   const nextAppState = normalizeAppState(appState);
-  const backgroundExpiresAt =
-    nextAppState === SEARCH_REQUEST_APP_STATE.FOREGROUND ?
-      null :
-      timestampFromMillis(
-        nowMillis +
-          SEARCH_REQUEST_TIMING.BACKGROUND_MAX_SEARCH_SECONDS * 1000,
-      );
+  const backgroundExpiresAt = resolveBackgroundExpiresAt({
+    requestData,
+    nextAppState,
+    nowMillis,
+    timestampFromMillis,
+  });
   const update = {
     heartbeatAt: serverTimestamp,
     updatedAt: serverTimestamp,
@@ -308,7 +353,10 @@ exports.__private__ = {
   HEARTBEAT_WRITABLE_STATUSES,
   buildHeartbeatResponse,
   buildHeartbeatSearchDecision,
+  isBackgroundExpired,
+  isBackgroundGraceActive,
   normalizeHeartbeatInput,
   normalizeRequestId,
+  resolveBackgroundExpiresAt,
   timestampToMillis,
 };

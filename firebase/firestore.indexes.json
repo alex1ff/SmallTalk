@@ -93,6 +93,24 @@
       ]
     },
     {
+      "collectionGroup": "searchRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "appState",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "backgroundExpiresAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "users",
       "queryScope": "COLLECTION",
       "fields": [

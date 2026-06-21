@@ -223,6 +223,27 @@ function isReusableSearchRequest(requestData = {}, nowMillis = Date.now()) {
     return true;
   }
 
+  const isBackgroundSearch =
+    normalizeAppState(requestData.appState) ===
+      SEARCH_REQUEST_APP_STATE.BACKGROUND;
+  const backgroundExpiresAtMillis = timestampToMillis(
+    requestData.backgroundExpiresAt,
+  );
+  if (
+    isBackgroundSearch &&
+    backgroundExpiresAtMillis !== null &&
+    backgroundExpiresAtMillis <= nowMillis
+  ) {
+    return false;
+  }
+  if (
+    isBackgroundSearch &&
+    backgroundExpiresAtMillis !== null &&
+    backgroundExpiresAtMillis > nowMillis
+  ) {
+    return true;
+  }
+
   const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
   const staleCutoffMillis =
     nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;

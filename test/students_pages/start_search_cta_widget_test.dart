@@ -673,7 +673,211 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('student dashboard handles start search response without request id',
+  testWidgets('student dashboard sends app lifecycle search heartbeat',
+      (tester) async {
+    setActiveStudent('student-heartbeat-lifecycle-test');
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (_) async {
+            return <String, dynamic>{'requestId': 'request-lifecycle-test'};
+          },
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(1));
+    expect(heartbeatPayloads.last, <String, dynamic>{
+      'requestId': 'request-lifecycle-test',
+      'appState': 'background',
+    });
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(2));
+    expect(heartbeatPayloads.last, <String, dynamic>{
+      'requestId': 'request-lifecycle-test',
+      'appState': 'foreground',
+    });
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard heartbeats immediately for reused search',
+      (tester) async {
+    setActiveStudent('student-heartbeat-reused-test');
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (_) async {
+            return <String, dynamic>{
+              'requestId': 'request-reused-test',
+              'reused': true,
+            };
+          },
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(1));
+    expect(heartbeatPayloads.single, <String, dynamic>{
+      'requestId': 'request-reused-test',
+      'appState': 'foreground',
+    });
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard queues lifecycle heartbeat while one is active',
+      (tester) async {
+    setActiveStudent('student-heartbeat-lifecycle-queued-test');
+    final firstHeartbeatCompleter = Completer<void>();
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (_) async {
+            return <String, dynamic>{
+              'requestId': 'request-lifecycle-queued-test',
+            };
+          },
+          heartbeatSearchRequest: (payload) {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+            if (heartbeatPayloads.length == 1) {
+              return firstHeartbeatCompleter.future;
+            }
+            return Future<void>.value();
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(1));
+    expect(heartbeatPayloads.single['appState'], 'foreground');
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(1));
+
+    firstHeartbeatCompleter.complete();
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(2));
+    expect(heartbeatPayloads.last, <String, dynamic>{
+      'requestId': 'request-lifecycle-queued-test',
+      'appState': 'background',
+    });
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard ignores stale heartbeat response after stop',
+      (tester) async {
+    setActiveStudent('student-heartbeat-stale-response-test');
+    final heartbeatCompleter = Completer<Map<String, dynamic>>();
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (_) async {
+            return <String, dynamic>{
+              'requestId': 'request-stale-response-test',
+            };
+          },
+          heartbeatSearchRequest: (payload) {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+            return heartbeatCompleter.future;
+          },
+          stopSearchRequest: (_) async => null,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(1));
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    heartbeatCompleter.complete(<String, dynamic>{
+      'errorCode': 'expired',
+      'reason': 'expired',
+    });
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Пока никого не нашли'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard handles start search response without request id',
       (tester) async {
     setActiveStudent('student-start-search-missing-request-id-test');
 

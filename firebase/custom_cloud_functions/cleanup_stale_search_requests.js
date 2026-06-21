@@ -1,6 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
+  SEARCH_REQUEST_APP_STATE,
   SEARCH_REQUEST_COLLECTION,
   SEARCH_REQUEST_STATUS,
   SEARCH_REQUEST_TIMING,
@@ -18,9 +19,16 @@ const EXPIRED_CLEANUP_STATUSES = Object.freeze([
   SEARCH_REQUEST_STATUS.LEGACY_SEARCHING,
 ]);
 
+const BACKGROUND_EXPIRED_CLEANUP_STATUSES = Object.freeze([
+  SEARCH_REQUEST_STATUS.ACTIVE,
+  SEARCH_REQUEST_STATUS.MATCHING,
+  SEARCH_REQUEST_STATUS.LEGACY_SEARCHING,
+]);
+
 const STALE_SEARCH_CLEANUP_LIMIT = 200;
 const STALE_SEARCH_FALLBACK_CLEANUP_LIMIT = 200;
 const EXPIRED_SEARCH_CLEANUP_LIMIT = 200;
+const BACKGROUND_EXPIRED_SEARCH_CLEANUP_LIMIT = 200;
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -45,9 +53,19 @@ function staleCutoffMillisFor(nowMillis = Date.now()) {
   return nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
 }
 
+function hasBackgroundSearchDeadline(requestData = {}) {
+  return normalizeString(requestData.appState) ===
+      SEARCH_REQUEST_APP_STATE.BACKGROUND &&
+    timestampToMillis(requestData.backgroundExpiresAt) !== null;
+}
+
 function isStaleSearchRequest(requestData = {}, nowMillis = Date.now()) {
   const status = normalizeString(requestData.status);
   if (!STALE_CLEANUP_STATUSES.includes(status)) {
+    return false;
+  }
+
+  if (hasBackgroundSearchDeadline(requestData)) {
     return false;
   }
 
@@ -67,6 +85,28 @@ function isExpiredUnmatchedSearchRequest(
 
   const expiresAtMillis = timestampToMillis(requestData.expiresAt);
   return expiresAtMillis !== null && expiresAtMillis <= nowMillis;
+}
+
+function isBackgroundExpiredSearchRequest(
+  requestData = {},
+  nowMillis = Date.now(),
+) {
+  const status = normalizeString(requestData.status);
+  if (!BACKGROUND_EXPIRED_CLEANUP_STATUSES.includes(status)) {
+    return false;
+  }
+  if (
+    normalizeString(requestData.appState) !==
+      SEARCH_REQUEST_APP_STATE.BACKGROUND
+  ) {
+    return false;
+  }
+
+  const backgroundExpiresAtMillis = timestampToMillis(
+    requestData.backgroundExpiresAt,
+  );
+  return backgroundExpiresAtMillis !== null &&
+    backgroundExpiresAtMillis <= nowMillis;
 }
 
 function buildSearchRequestCleanupUpdate({
@@ -116,6 +156,18 @@ function buildExpiredSearchRequestCleanupUpdate({
   return buildSearchRequestCleanupUpdate({
     stopReason: "search_timeout",
     errorMessage: "Search request expired without a match",
+    serverTimestamp,
+    fieldDelete,
+  });
+}
+
+function buildBackgroundExpiredSearchRequestCleanupUpdate({
+  serverTimestamp,
+  fieldDelete,
+}) {
+  return buildSearchRequestCleanupUpdate({
+    stopReason: "background_timeout",
+    errorMessage: "Search request expired in background",
     serverTimestamp,
     fieldDelete,
   });
@@ -175,6 +227,33 @@ function queueExpiredSearchRequestCleanup({
   };
 }
 
+function queueBackgroundExpiredSearchRequestCleanup({
+  writer,
+  doc,
+  nowMillis = Date.now(),
+  serverTimestamp,
+  fieldDelete,
+}) {
+  const requestData = doc.data() || {};
+  if (!isBackgroundExpiredSearchRequest(requestData, nowMillis)) {
+    return {
+      cleaned: false,
+      requestId: normalizeString(requestData.requestId) || null,
+    };
+  }
+
+  writer.update(doc.ref, buildBackgroundExpiredSearchRequestCleanupUpdate({
+    requestData,
+    serverTimestamp,
+    fieldDelete,
+  }));
+
+  return {
+    cleaned: true,
+    requestId: normalizeString(requestData.requestId) || null,
+  };
+}
+
 function docKey(doc = {}) {
   return normalizeString(doc.ref && doc.ref.path) || normalizeString(doc.id);
 }
@@ -194,9 +273,6 @@ async function cleanupSearchRequestDocs({
     const key = docKey(doc);
     if (key && seenDocKeys.has(key)) {
       continue;
-    }
-    if (key) {
-      seenDocKeys.add(key);
     }
 
     const result = await db.runTransaction(async (transaction) => {
@@ -219,6 +295,9 @@ async function cleanupSearchRequestDocs({
     });
 
     if (result.cleaned) {
+      if (key) {
+        seenDocKeys.add(key);
+      }
       cleanedCount += 1;
     }
   }
@@ -237,6 +316,13 @@ async function cleanupExpiredSearchRequestDocs(options) {
   return await cleanupSearchRequestDocs({
     ...options,
     queueCleanup: queueExpiredSearchRequestCleanup,
+  });
+}
+
+async function cleanupBackgroundExpiredSearchRequestDocs(options) {
+  return await cleanupSearchRequestDocs({
+    ...options,
+    queueCleanup: queueBackgroundExpiredSearchRequestCleanup,
   });
 }
 
@@ -276,8 +362,21 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         .orderBy("expiresAt")
         .limit(EXPIRED_SEARCH_CLEANUP_LIMIT)
         .get();
+      const backgroundExpiredQuery = await db
+        .collection(SEARCH_REQUEST_COLLECTION)
+        .where("status", "in", BACKGROUND_EXPIRED_CLEANUP_STATUSES)
+        .where("appState", "==", SEARCH_REQUEST_APP_STATE.BACKGROUND)
+        .where("backgroundExpiresAt", "<=", expiresCutoff)
+        .orderBy("backgroundExpiresAt")
+        .limit(BACKGROUND_EXPIRED_SEARCH_CLEANUP_LIMIT)
+        .get();
 
-      if (staleQuery.empty && staleFallbackQuery.empty && expiredQuery.empty) {
+      if (
+        staleQuery.empty &&
+        staleFallbackQuery.empty &&
+        expiredQuery.empty &&
+        backgroundExpiredQuery.empty
+      ) {
         console.log("📭 No stale search requests found");
         return null;
       }
@@ -299,6 +398,15 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         fieldDelete,
         seenDocKeys,
       });
+      const cleanedByBackgroundExpiry =
+        await cleanupBackgroundExpiredSearchRequestDocs({
+          db,
+          docs: backgroundExpiredQuery.docs,
+          nowMillis,
+          serverTimestamp,
+          fieldDelete,
+          seenDocKeys,
+        });
       const cleanedByExpiry = await cleanupExpiredSearchRequestDocs({
         db,
         docs: expiredQuery.docs,
@@ -308,7 +416,10 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         seenDocKeys,
       });
       const cleanedCount =
-        cleanedByHeartbeat + cleanedByFallback + cleanedByExpiry;
+        cleanedByHeartbeat +
+        cleanedByFallback +
+        cleanedByBackgroundExpiry +
+        cleanedByExpiry;
 
       console.log(`✅ Search requests marked expired: ${cleanedCount}`);
       return null;
@@ -319,19 +430,26 @@ exports.cleanupStaleSearchRequests = functions.pubsub
   });
 
 exports.__private__ = {
+  BACKGROUND_EXPIRED_CLEANUP_STATUSES,
+  BACKGROUND_EXPIRED_SEARCH_CLEANUP_LIMIT,
   EXPIRED_CLEANUP_STATUSES,
   EXPIRED_SEARCH_CLEANUP_LIMIT,
   STALE_CLEANUP_STATUSES,
   STALE_SEARCH_FALLBACK_CLEANUP_LIMIT,
   STALE_SEARCH_CLEANUP_LIMIT,
+  buildBackgroundExpiredSearchRequestCleanupUpdate,
   buildExpiredSearchRequestCleanupUpdate,
   buildSearchRequestCleanupUpdate,
   buildStaleSearchRequestCleanupUpdate,
+  cleanupBackgroundExpiredSearchRequestDocs,
   cleanupExpiredSearchRequestDocs,
   cleanupSearchRequestDocs,
   cleanupStaleSearchRequestDocs,
+  hasBackgroundSearchDeadline,
+  isBackgroundExpiredSearchRequest,
   isExpiredUnmatchedSearchRequest,
   isStaleSearchRequest,
+  queueBackgroundExpiredSearchRequestCleanup,
   queueExpiredSearchRequestCleanup,
   queueStaleSearchRequestCleanup,
   staleCutoffMillisFor,
