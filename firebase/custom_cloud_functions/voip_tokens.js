@@ -78,9 +78,48 @@ function hasPrivateVoipTokens(privateData = {}) {
   );
 }
 
+function hasVoipTokensCleared(privateData = {}) {
+  return Boolean(privateData.voipTokensClearedAt);
+}
+
 function isVoipTokenFallbackDisabled(privateData = {}) {
-  return Boolean(privateData.voipTokensClearedAt) &&
+  return hasVoipTokensCleared(privateData) &&
     !hasPrivateVoipTokens(privateData);
+}
+
+function buildReadOnlyVoipTokenState({
+  privateData = {},
+  legacyUserData = {},
+} = {}) {
+  if (isVoipTokenFallbackDisabled(privateData)) {
+    return {
+      hasUsableToken: false,
+      source: "cleared",
+      hasFcmToken: false,
+      hasVoipPushToken: false,
+    };
+  }
+
+  const privatePushToken = normalizeVoipToken(privateData.voipPushToken);
+  const privateFcmToken = normalizeVoipToken(privateData.voipToken);
+  const legacyAllowed = !hasVoipTokensCleared(privateData);
+  const legacyPushToken = legacyAllowed ?
+    normalizeVoipToken(legacyUserData.voipPushToken) :
+    "";
+  const legacyFcmToken = legacyAllowed ?
+    normalizeVoipToken(legacyUserData.voipToken) :
+    "";
+  const hasVoipPushToken = Boolean(privatePushToken || legacyPushToken);
+  const hasFcmToken = Boolean(privateFcmToken || legacyFcmToken);
+  const hasPrivateToken = Boolean(privatePushToken || privateFcmToken);
+  const hasLegacyToken = Boolean(legacyPushToken || legacyFcmToken);
+
+  return {
+    hasUsableToken: Boolean(hasFcmToken || hasVoipPushToken),
+    source: hasPrivateToken ? "private" : hasLegacyToken ? "legacy" : "none",
+    hasFcmToken,
+    hasVoipPushToken,
+  };
 }
 
 function buildPrivateTokenDataFromLegacy(legacyData = {}) {
@@ -107,13 +146,14 @@ function buildPrivateTokenDataFromLegacy(legacyData = {}) {
   return update;
 }
 
-async function readLegacyUserVoipTokenFields(userId) {
-  const userSnap = await userRef(userId).get();
-  return userSnap.exists ? userSnap.data() || {} : {};
-}
-
-async function preserveLegacyCompanionToken(userId, update) {
-  const legacyData = await readLegacyUserVoipTokenFields(userId);
+function preserveLegacyCompanionToken(
+  update,
+  legacyData = {},
+  privateData = {},
+) {
+  if (hasVoipTokensCleared(privateData)) {
+    return;
+  }
   if (update.voipToken && !update.voipPushToken) {
     const legacyPushToken = normalizeVoipToken(legacyData.voipPushToken);
     if (legacyPushToken) {
@@ -147,19 +187,25 @@ async function deleteLegacyUserVoipTokenFields(userId) {
 }
 
 async function saveUserVoipToken(userId, tokenType, token) {
-  const update = buildVoipTokenUpdate(tokenType, token);
-  if (!update) {
+  const baseUpdate = buildVoipTokenUpdate(tokenType, token);
+  if (!baseUpdate) {
     return false;
   }
 
-  await preserveLegacyCompanionToken(userId, update);
-  update.voipTokensClearedAt = admin.firestore.FieldValue.delete();
-
   const firestore = admin.firestore();
   await firestore.runTransaction(async (transaction) => {
+    const update = {...baseUpdate};
     const legacyUserRef = userRef(userId, firestore);
+    const privateRef = privateTokenRef(userId, firestore);
     const legacyUserSnap = await transaction.get(legacyUserRef);
-    transaction.set(privateTokenRef(userId, firestore), update, { merge: true });
+    const privateSnap = await transaction.get(privateRef);
+    preserveLegacyCompanionToken(
+      update,
+      legacyUserSnap.exists ? legacyUserSnap.data() || {} : {},
+      privateSnap.exists ? privateSnap.data() || {} : {},
+    );
+    update.voipTokensClearedAt = admin.firestore.FieldValue.delete();
+    transaction.set(privateRef, update, { merge: true });
     if (legacyUserSnap.exists) {
       transaction.update(legacyUserRef, LEGACY_USER_TOKEN_DELETE_FIELDS);
     }
@@ -233,6 +279,7 @@ async function migrateLegacyVoipTokensForUser(
 async function getUserVoipTokens(userId, legacyUserData = {}) {
   const privateSnap = await privateTokenRef(userId).get();
   const privateData = privateSnap.exists ? privateSnap.data() || {} : {};
+  const legacyAllowed = !hasVoipTokensCleared(privateData);
   if (isVoipTokenFallbackDisabled(privateData)) {
     if (hasLegacyVoipTokens(legacyUserData)) {
       await deleteLegacyUserVoipTokenFields(userId);
@@ -243,23 +290,44 @@ async function getUserVoipTokens(userId, legacyUserData = {}) {
     };
   }
 
-  if (hasLegacyVoipTokens(legacyUserData) && !hasPrivateVoipTokens(privateData)) {
+  if (
+    legacyAllowed &&
+    hasLegacyVoipTokens(legacyUserData) &&
+    !hasPrivateVoipTokens(privateData)
+  ) {
     await migrateLegacyVoipTokensForUser(userId, legacyUserData, privateData);
   }
 
   return {
     voipPushToken:
       normalizeVoipToken(privateData.voipPushToken) ||
-      normalizeVoipToken(legacyUserData.voipPushToken),
+      (legacyAllowed ? normalizeVoipToken(legacyUserData.voipPushToken) : ""),
     voipToken:
       normalizeVoipToken(privateData.voipToken) ||
-      normalizeVoipToken(legacyUserData.voipToken),
+      (legacyAllowed ? normalizeVoipToken(legacyUserData.voipToken) : ""),
   };
+}
+
+async function getReadOnlyUserVoipTokenState(
+  userId,
+  legacyUserData = {},
+  firestore = admin.firestore(),
+) {
+  const privateSnap = await privateTokenRef(userId, firestore).get();
+  const privateData = privateSnap.exists ? privateSnap.data() || {} : {};
+
+  return buildReadOnlyVoipTokenState({
+    privateData,
+    legacyUserData,
+  });
 }
 
 async function migrateLegacyVoipTokensBatch(limit = DEFAULT_MIGRATION_LIMIT) {
   const firestore = admin.firestore();
-  const safeLimit = Math.max(1, Math.min(Number(limit) || DEFAULT_MIGRATION_LIMIT, 500));
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || DEFAULT_MIGRATION_LIMIT, 500),
+  );
   const seenUserIds = new Set();
   const users = [];
 
@@ -292,12 +360,15 @@ async function migrateLegacyVoipTokensBatch(limit = DEFAULT_MIGRATION_LIMIT) {
 }
 
 module.exports = {
+  buildReadOnlyVoipTokenState,
   buildVoipTokenUpdate,
   clearUserVoipTokens,
+  getReadOnlyUserVoipTokenState,
   getUserVoipTokens,
   migrateLegacyVoipTokensBatch,
   migrateLegacyVoipTokensForUser,
   normalizeVoipToken,
   normalizeVoipTokenType,
+  preserveLegacyCompanionToken,
   saveUserVoipToken,
 };

@@ -16,6 +16,9 @@ const { isSupportedSessionRole } = require("./video_sessions_shared");
 const {
   createIncomingCallNotificationInTransaction,
 } = require("./call_notifications");
+const {
+  findNextCallableCandidateInTransaction,
+} = require("./call_candidate_tokens");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -117,11 +120,22 @@ exports.declineCall = functions
         console.log("📝 Updating tried tutors list:", triedTutors);
 
         const availableTutors = sessionData.availableTutors || [];
-        const nextTutor = availableTutors.find(
-          (candidateId) => !triedTutors.includes(candidateId),
-        );
+        const nextCandidate = await findNextCallableCandidateInTransaction({
+          db,
+          transaction,
+          candidateIds: availableTutors,
+          triedCandidateIds: triedTutors,
+        });
+        const nextTutor = nextCandidate.candidateId;
+        const nextTriedTutors = nextCandidate.triedCandidateIds;
+        if (nextCandidate.skippedCandidateIds.length > 0) {
+          console.log(
+            "⏭️ Skipped non-callable candidates:",
+            nextCandidate.skippedCandidateIds,
+          );
+        }
         const sessionUpdate = {
-          triedTutors,
+          triedTutors: nextTriedTutors,
           currentTutorId: nextTutor || admin.firestore.FieldValue.delete(),
         };
         if (!nextTutor) {
@@ -136,7 +150,7 @@ exports.declineCall = functions
             recipientId: nextTutor,
             sessionData: {
               ...sessionData,
-              triedTutors,
+              triedTutors: nextTriedTutors,
               currentTutorId: nextTutor,
             },
             studentNameFallback: "Студент",
@@ -149,13 +163,13 @@ exports.declineCall = functions
           dailyRoomName: nextTutor ? null : resolveDailyRoomName(sessionData),
           nextSessionData: {
             ...sessionData,
-            triedTutors,
+            triedTutors: nextTriedTutors,
             currentTutorId: nextTutor || null,
             status: nextTutor ? sessionData.status : "no_tutors_available",
           },
           nextTutor: nextTutor || null,
           sessionData,
-          triedTutors,
+          triedTutors: nextTriedTutors,
           notificationId: notification?.notificationId || null,
           pushPayload: notification?.pushPayload || null,
         };

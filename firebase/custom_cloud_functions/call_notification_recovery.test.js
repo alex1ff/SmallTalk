@@ -139,6 +139,7 @@ test("tutor assignment paths create notification docs in the assignment transact
   for (const [name, source] of Object.entries(sources)) {
     assert.match(source, /createIncomingCallNotificationInTransaction/);
     assert.doesNotMatch(source, /collection\("notifications"\)\.add/);
+    assert.match(source, /findNextCallableCandidateInTransaction/);
 
     const helperIndex = source.indexOf(
       "createIncomingCallNotificationInTransaction({",

@@ -14,6 +14,9 @@ const {
   loadSameDayRepeatCandidateIds,
 } = require("./match_repeat_prevention");
 const {
+  getReadOnlyUserVoipTokenState,
+} = require("./voip_tokens");
+const {
   checkUsageLimits,
   hasActiveSubscription,
   readUsage,
@@ -136,6 +139,7 @@ function buildDirectCallStatusDecision({
   targetData = null,
   language,
   sameDayRepeatBlocked = false,
+  targetHasCallToken = true,
   now = new Date(),
   checkedAtMillis = Date.now(),
 }) {
@@ -212,6 +216,10 @@ function buildDirectCallStatusDecision({
 
   const availabilityCheck = evaluateTutorAvailabilityWindow(targetData, now);
   if (!availabilityCheck.isAvailable || targetData.isInCall === true) {
+    return buildUnavailableStatus(targetUserId, checkedAtMillis);
+  }
+
+  if (!targetHasCallToken) {
     return buildUnavailableStatus(targetUserId, checkedAtMillis);
   }
 
@@ -310,6 +318,30 @@ exports.getDirectCallStatus = functions.https.onCall(async (data, context) => {
   });
   if (!status.canStartDirectCall) {
     return status;
+  }
+
+  const targetTokenState = await getReadOnlyUserVoipTokenState(
+    targetUserId,
+    targetData,
+    db,
+  );
+  const targetHasCallToken =
+    targetTokenState.hasUsableToken === true &&
+    (
+      targetTokenState.hasFcmToken === true ||
+      targetTokenState.hasVoipPushToken === true
+    );
+  if (!targetHasCallToken) {
+    return buildDirectCallStatusDecision({
+      requesterId,
+      requesterData,
+      requesterRole,
+      targetUserId,
+      targetData,
+      language: payload.language,
+      targetHasCallToken: false,
+      checkedAtMillis,
+    });
   }
 
   const repeatPreventionContext = await loadSameDayRepeatCandidateIds(

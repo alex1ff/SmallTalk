@@ -172,6 +172,10 @@ test("direct call status collapses target-side denials to unavailable", () => {
     decision({sameDayRepeatBlocked: true}).callability,
     "unavailable",
   );
+  assert.equal(
+    decision({targetHasCallToken: false}).callability,
+    "unavailable",
+  );
 });
 
 test("direct call status callable is exported and does not edit public projection", () => {
@@ -203,4 +207,6 @@ test("direct call status source checks access and target role before live state"
   assert.ok(targetRoleGateIndex > 0);
   assert.ok(availabilityIndex > targetRoleGateIndex);
   assert.ok(availabilityIndex > targetApprovalGateIndex);
+  assert.match(source, /getReadOnlyUserVoipTokenState/);
+  assert.match(source, /targetHasCallToken:\s*false/);
 });

@@ -15,6 +15,9 @@ const {
 const {
   createIncomingCallNotificationInTransaction,
 } = require("./call_notifications");
+const {
+  findNextCallableCandidateInTransaction,
+} = require("./call_candidate_tokens");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -156,15 +159,20 @@ async function processExpiredNotification(notificationDoc) {
         }
 
         const availableTutors = freshSessionData.availableTutors || [];
-        const nextTutor = availableTutors.find(
-          (tutorId) => !triedTutors.includes(tutorId),
-        );
+        const nextCandidate = await findNextCallableCandidateInTransaction({
+          db,
+          transaction,
+          candidateIds: availableTutors,
+          triedCandidateIds: triedTutors,
+        });
+        const nextTutor = nextCandidate.candidateId;
+        const nextTriedTutors = nextCandidate.triedCandidateIds;
 
         transaction.update(notificationDoc.ref, expireNotificationUpdate);
 
         if (!nextTutor) {
           transaction.update(sessionRef, {
-            triedTutors,
+            triedTutors: nextTriedTutors,
             currentTutorId: admin.firestore.FieldValue.delete(),
             status: "no_tutors_available",
           });
@@ -176,7 +184,7 @@ async function processExpiredNotification(notificationDoc) {
             dailyRoomName: resolveDailyRoomName(freshSessionData),
             sessionData: {
               ...freshSessionData,
-              triedTutors,
+              triedTutors: nextTriedTutors,
               currentTutorId: null,
               status: "no_tutors_available",
             },
@@ -185,7 +193,7 @@ async function processExpiredNotification(notificationDoc) {
 
         const nextSessionData = {
           ...freshSessionData,
-          triedTutors,
+          triedTutors: nextTriedTutors,
           currentTutorId: nextTutor,
         };
         const notification = createIncomingCallNotificationInTransaction({
@@ -198,7 +206,7 @@ async function processExpiredNotification(notificationDoc) {
         });
 
         transaction.update(sessionRef, {
-          triedTutors,
+          triedTutors: nextTriedTutors,
           currentTutorId: nextTutor,
         });
 

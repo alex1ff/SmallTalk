@@ -11,6 +11,9 @@ const {
   readLanguageCode,
   supportsConversationLanguage,
 } = require("./video_sessions_shared");
+const {
+  getReadOnlyUserVoipTokenState,
+} = require("./voip_tokens");
 
 const USER_COLLECTION = "users";
 const DEFAULT_STUDENT_QUERY_LIMIT = 50;
@@ -349,6 +352,16 @@ function buildTeacherAvailabilityCandidateFromDoc({
   };
 }
 
+function buildCandidateTokenState(tokenState = {}) {
+  const hasFcmToken = tokenState.hasFcmToken === true;
+  const hasVoipPushToken = tokenState.hasVoipPushToken === true;
+  return {
+    hasFcmToken,
+    hasVoipPushToken,
+    source: normalizeString(tokenState.source) || "none",
+  };
+}
+
 function compareNeutralCandidateOrder(left, right) {
   const leftJoinedAt = Number.isFinite(Number(left.joinedPoolAtMillis)) ?
     Number(left.joinedPoolAtMillis) :
@@ -516,6 +529,7 @@ async function collectStudentQueueCandidates({
 }
 
 async function collectTeacherAvailabilityCandidates({
+  db,
   query,
   language = "",
   now,
@@ -523,6 +537,7 @@ async function collectTeacherAvailabilityCandidates({
   candidateLimit = DEFAULT_TEACHER_QUERY_LIMIT,
   pageSize = DEFAULT_SCAN_PAGE_SIZE,
   maxPages = DEFAULT_SCAN_MAX_PAGES,
+  tokenReader = getReadOnlyUserVoipTokenState,
 }) {
   const targetCount = normalizePositiveInteger(
     candidateLimit,
@@ -551,20 +566,44 @@ async function collectTeacherAvailabilityCandidates({
     }
 
     scannedCount += userDocs.length;
-    userDocs.forEach((userDoc) => {
-      if (candidates.length >= targetCount) {
-        return;
-      }
+    const pageCandidates = [];
+    for (const userDoc of userDocs) {
       const candidate = buildTeacherAvailabilityCandidateFromDoc({
         userDoc,
         language,
         now,
         nowMillis,
       });
-      if (candidate) {
-        candidates.push(candidate);
+      if (!candidate) {
+        continue;
       }
-    });
+      pageCandidates.push({candidate, userDoc});
+    }
+
+    const tokenStates = await Promise.all(
+      pageCandidates.map(({candidate, userDoc}) =>
+        tokenReader(candidate.userId, readDocData(userDoc) || {}, db),
+      ),
+    );
+    for (
+      let index = 0;
+      index < pageCandidates.length && candidates.length < targetCount;
+      index += 1
+    ) {
+      const tokenState = tokenStates[index] || {};
+      const candidateTokenState = buildCandidateTokenState(tokenState);
+      if (
+        tokenState.hasUsableToken !== true ||
+        !candidateTokenState.hasFcmToken &&
+        !candidateTokenState.hasVoipPushToken
+      ) {
+        continue;
+      }
+      candidates.push({
+        ...pageCandidates[index].candidate,
+        tokenState: candidateTokenState,
+      });
+    }
 
     lastDoc = userDocs[userDocs.length - 1];
     if (userDocs.length < scanPageSize) {
@@ -600,6 +639,7 @@ async function collectMatchCandidatePool({
       maxPages: studentMaxScanPages,
     }),
     collectTeacherAvailabilityCandidates({
+      db,
       query: buildAvailableTeachersQuery(db, {language}),
       language,
       now,

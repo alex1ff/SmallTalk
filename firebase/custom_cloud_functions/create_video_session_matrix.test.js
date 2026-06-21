@@ -6,6 +6,7 @@ const {
   __private__: {
     compareCandidateDetails,
     getTeacherBoostScore,
+    hasCallableTeacherToken,
     isTeacherBoostTargetLevel,
     orderCandidatesWithTeacherPriority,
   },
@@ -100,6 +101,56 @@ test("teacher boost applies only for Fluent approved-teacher ranking", () => {
   assert.equal(
     getTeacherBoostScore({ approvedTeacher: true }, false),
     0,
+  );
+});
+
+function fakePrivateTokenDb(privateTokenDocsById = {}) {
+  return {
+    collection: (name) => {
+      assert.equal(name, "userPrivateTokens");
+      return {
+        doc: (id) => ({
+          get: async () => privateTokenDocsById[id] || {
+            exists: false,
+            data: () => null,
+          },
+        }),
+      };
+    },
+  };
+}
+
+test("callable teacher token check applies only to teachers", async () => {
+  const throwingDb = {
+    collection: () => {
+      throw new Error("student candidates must not read tokens");
+    },
+  };
+
+  assert.equal(
+    await hasCallableTeacherToken("student-a", {role: "student"}, throwingDb),
+    true,
+  );
+  assert.equal(
+    await hasCallableTeacherToken(
+      "teacher-a",
+      {role: "native_speaker"},
+      fakePrivateTokenDb(),
+    ),
+    false,
+  );
+  assert.equal(
+    await hasCallableTeacherToken(
+      "teacher-a",
+      {role: "native_speaker"},
+      fakePrivateTokenDb({
+        "teacher-a": {
+          exists: true,
+          data: () => ({voipPushToken: " push-token "}),
+        },
+      }),
+    ),
+    true,
   );
 });
 
@@ -238,6 +289,15 @@ test(
 
   assert.match(source, /if \(!isSupportedSessionRole\(requesterRole\)\)/);
   assert.match(source, /if \(!isSupportedSessionRole\(tutorRole\)/);
+  assert.match(source, /getReadOnlyUserVoipTokenState/);
+  assert.match(
+    source,
+    /await hasCallableTeacherToken\(directTutorId,\s*tutorData,\s*db\)/,
+  );
+  assert.match(
+    source,
+    /await hasCallableTeacherToken\(tutorId,\s*tutorData,\s*db\)/,
+  );
   assert.match(source, /teacherBoostRankingApplied = isTeacherBoostTargetLevel/);
   assert.match(
     source,

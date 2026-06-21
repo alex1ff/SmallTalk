@@ -55,7 +55,12 @@ function fakeQuery(docs, {limitCount = null, startAfterId = ""} = {}) {
   };
 }
 
-function fakeDb({studentRequestDocs = [], teacherDocs = [], userDocsById = {}}) {
+function fakeDb({
+  studentRequestDocs = [],
+  teacherDocs = [],
+  userDocsById = {},
+  privateTokenDocsById = {},
+}) {
   return {
     collection: (name) => {
       if (name === "searchRequests") {
@@ -66,6 +71,13 @@ function fakeDb({studentRequestDocs = [], teacherDocs = [], userDocsById = {}}) 
           ...fakeQuery(teacherDocs),
           doc: (id) => ({
             get: async () => userDocsById[id] || doc(id, null, false),
+          }),
+        };
+      }
+      if (name === "userPrivateTokens") {
+        return {
+          doc: (id) => ({
+            get: async () => privateTokenDocsById[id] || doc(id, null, false),
           }),
         };
       }
@@ -119,6 +131,13 @@ function teacherData(overrides = {}) {
     isAvailable: true,
     created_time: timestampFromMillis(fixedNowMillis - 300 * 1000),
     availableSince: timestampFromMillis(fixedNowMillis - 240 * 1000),
+    ...overrides,
+  };
+}
+
+function privateTokenData(overrides = {}) {
+  return {
+    voipToken: "teacher-fcm",
     ...overrides,
   };
 }
@@ -576,6 +595,9 @@ test("collectMatchCandidatePool combines queue students and teachers", async () 
     userDocsById: {
       "student-a": doc("student-a", studentData()),
     },
+    privateTokenDocsById: {
+      "teacher-a": doc("teacher-a", privateTokenData()),
+    },
   });
 
   const result = await collectMatchCandidatePool({
@@ -605,6 +627,9 @@ test("collectMatchCandidatePool excludes requester from unified pool", async () 
     userDocsById: {
       "student-a": doc("student-a", studentData()),
     },
+    privateTokenDocsById: {
+      "teacher-a": doc("teacher-a", privateTokenData()),
+    },
   });
 
   const result = await collectMatchCandidatePool({
@@ -620,6 +645,127 @@ test("collectMatchCandidatePool excludes requester from unified pool", async () 
     ["student-a"],
   );
   assert.equal(result.stats.totalCandidates, 1);
+});
+
+test("collectMatchCandidatePool excludes teachers without usable token", async () => {
+  const db = fakeDb({
+    teacherDocs: [
+      doc("teacher-empty", teacherData()),
+      doc("teacher-whitespace", teacherData()),
+    ],
+    privateTokenDocsById: {
+      "teacher-whitespace": doc("teacher-whitespace", {
+        voipPushToken: "   ",
+        voipToken: "",
+      }),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(result.candidates, []);
+  assert.equal(result.stats.teacherUsersScanned, 2);
+  assert.equal(result.stats.teacherCandidates, 0);
+});
+
+test(
+  "collectMatchCandidatePool accepts private and legacy teacher tokens",
+  async () => {
+    const db = fakeDb({
+      teacherDocs: [
+        doc("teacher-private-push", teacherData({
+          availableSince: timestampFromMillis(fixedNowMillis - 280 * 1000),
+        })),
+        doc("teacher-private-fcm", teacherData({
+          availableSince: timestampFromMillis(fixedNowMillis - 240 * 1000),
+        })),
+        doc("teacher-legacy-fcm", teacherData({
+          availableSince: timestampFromMillis(fixedNowMillis - 220 * 1000),
+          voipToken: " legacy-fcm ",
+        })),
+        doc("teacher-legacy-push", teacherData({
+          availableSince: timestampFromMillis(fixedNowMillis - 200 * 1000),
+          voipPushToken: " legacy-push ",
+        })),
+        doc("teacher-cleared", teacherData({
+          availableSince: timestampFromMillis(fixedNowMillis - 300 * 1000),
+          voipToken: "stale-legacy-fcm",
+        })),
+      ],
+      privateTokenDocsById: {
+        "teacher-private-push": doc("teacher-private-push", {
+          voipPushToken: " private-push ",
+        }),
+        "teacher-private-fcm": doc("teacher-private-fcm", {
+          voipToken: " private-fcm ",
+        }),
+        "teacher-cleared": doc("teacher-cleared", {
+          voipTokensClearedAt: timestampFromMillis(fixedNowMillis - 1000),
+        }),
+      },
+    });
+
+    const result = await collectMatchCandidatePool({
+      db,
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+    });
+
+    assert.deepEqual(
+      result.candidates.map((candidate) => candidate.userId),
+      [
+        "teacher-private-push",
+        "teacher-private-fcm",
+        "teacher-legacy-fcm",
+        "teacher-legacy-push",
+      ],
+    );
+    assert.deepEqual(result.candidates.map((candidate) => candidate.tokenState), [
+      {hasFcmToken: false, hasVoipPushToken: true, source: "private"},
+      {hasFcmToken: true, hasVoipPushToken: false, source: "private"},
+      {hasFcmToken: true, hasVoipPushToken: false, source: "legacy"},
+      {hasFcmToken: false, hasVoipPushToken: true, source: "legacy"},
+    ]);
+    result.candidates.forEach((candidate) => {
+      assert.equal(candidate.voipToken, undefined);
+      assert.equal(candidate.voipPushToken, undefined);
+    });
+  },
+);
+
+test("collectMatchCandidatePool scans past tokenless teachers", async () => {
+  const db = fakeDb({
+    teacherDocs: [
+      doc("teacher-tokenless", teacherData()),
+      doc("teacher-a", teacherData()),
+    ],
+    privateTokenDocsById: {
+      "teacher-a": doc("teacher-a", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+    teacherLimit: 1,
+    teacherScanPageSize: 1,
+    teacherMaxScanPages: 3,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-a"],
+  );
+  assert.equal(result.stats.teacherUsersScanned, 2);
+  assert.equal(result.stats.teacherCandidates, 1);
 });
 
 test("collectMatchCandidatePool scans past invalid first page docs", async () => {
@@ -639,6 +785,9 @@ test("collectMatchCandidatePool scans past invalid first page docs", async () =>
     userDocsById: {
       "student-stale": doc("student-stale", studentData()),
       "student-a": doc("student-a", studentData()),
+    },
+    privateTokenDocsById: {
+      "teacher-a": doc("teacher-a", privateTokenData()),
     },
   });
 

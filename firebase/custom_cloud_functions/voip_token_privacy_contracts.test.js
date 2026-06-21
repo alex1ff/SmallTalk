@@ -3,8 +3,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
+  buildReadOnlyVoipTokenState,
   buildVoipTokenUpdate,
   normalizeVoipTokenType,
+  preserveLegacyCompanionToken,
 } = require("./voip_tokens");
 
 function readSource(relativePath) {
@@ -79,4 +81,97 @@ test("VoIP token helper accepts only known token types", () => {
   assert.equal(buildVoipTokenUpdate("fcm", " token ")?.voipToken, "token");
   assert.equal(buildVoipTokenUpdate("pushkit", " token ")?.voipPushToken, "token");
   assert.equal(buildVoipTokenUpdate("fcm", ""), null);
+});
+
+test("VoIP token registration does not revive cleared legacy companions", () => {
+  const update = buildVoipTokenUpdate("fcm", " private-fcm ");
+
+  preserveLegacyCompanionToken(
+    update,
+    {voipPushToken: " legacy-push "},
+    {voipTokensClearedAt: true},
+  );
+
+  assert.equal(update.voipToken, "private-fcm");
+  assert.equal(update.voipPushToken, undefined);
+});
+
+test("read-only VoIP token state does not expose token strings", () => {
+  assert.deepEqual(
+    buildReadOnlyVoipTokenState({
+      privateData: {voipToken: " private-fcm "},
+      legacyUserData: {voipPushToken: " legacy-push "},
+    }),
+    {
+      hasUsableToken: true,
+      source: "private",
+      hasFcmToken: true,
+      hasVoipPushToken: true,
+    },
+  );
+  assert.deepEqual(
+    buildReadOnlyVoipTokenState({
+      privateData: {voipTokensClearedAt: true},
+      legacyUserData: {
+        voipPushToken: "legacy-push",
+        voipToken: "legacy-fcm",
+      },
+    }),
+    {
+      hasUsableToken: false,
+      source: "cleared",
+      hasFcmToken: false,
+      hasVoipPushToken: false,
+    },
+  );
+  assert.deepEqual(
+    buildReadOnlyVoipTokenState({
+      privateData: {
+        voipTokensClearedAt: true,
+        voipToken: " private-fcm ",
+      },
+      legacyUserData: {
+        voipPushToken: "legacy-push",
+      },
+    }),
+    {
+      hasUsableToken: true,
+      source: "private",
+      hasFcmToken: true,
+      hasVoipPushToken: false,
+    },
+  );
+  assert.deepEqual(
+    buildReadOnlyVoipTokenState({
+      legacyUserData: {voipPushToken: " legacy-push "},
+    }),
+    {
+      hasUsableToken: true,
+      source: "legacy",
+      hasFcmToken: false,
+      hasVoipPushToken: true,
+    },
+  );
+  assert.deepEqual(
+    buildReadOnlyVoipTokenState({
+      privateData: {voipPushToken: " private-push "},
+    }),
+    {
+      hasUsableToken: true,
+      source: "private",
+      hasFcmToken: false,
+      hasVoipPushToken: true,
+    },
+  );
+  assert.deepEqual(
+    buildReadOnlyVoipTokenState({
+      legacyUserData: {voipToken: " legacy-fcm "},
+    }),
+    {
+      hasUsableToken: true,
+      source: "legacy",
+      hasFcmToken: true,
+      hasVoipPushToken: false,
+    },
+  );
 });

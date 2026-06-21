@@ -1,7 +1,10 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
-const { getUserVoipTokens } = require("./voip_tokens");
+const {
+  getReadOnlyUserVoipTokenState,
+  getUserVoipTokens,
+} = require("./voip_tokens");
 const {
   createDailyRoom,
   deleteDailyRoom,
@@ -44,6 +47,9 @@ const {
 const {
   createIncomingCallNotificationInTransaction,
 } = require("./call_notifications");
+const {
+  findNextCallableCandidateInTransaction,
+} = require("./call_candidate_tokens");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -153,6 +159,22 @@ function orderCandidatesWithTeacherPriority(
   return ordered;
 }
 
+async function hasCallableTeacherToken(
+  userId,
+  userData = {},
+  db = admin.firestore(),
+) {
+  if (normalizeRole(userData.role) !== "native_speaker") {
+    return true;
+  }
+  const tokenState = await getReadOnlyUserVoipTokenState(userId, userData, db);
+  return tokenState.hasUsableToken === true &&
+    (
+      tokenState.hasFcmToken === true ||
+      tokenState.hasVoipPushToken === true
+    );
+}
+
 function compareCandidateDetails(leftId, rightId, detailsById) {
   const left = detailsById[leftId] || {};
   const right = detailsById[rightId] || {};
@@ -227,6 +249,7 @@ exports.createVideoSession = functions
         sameDayRepeat: 0,
         languageMismatch: 0,
         unapprovedTeacher: 0,
+        missingCallToken: 0,
         missingLevel: 0,
         levelMismatch: 0,
         missingCountry: 0,
@@ -538,6 +561,18 @@ exports.createVideoSession = functions
             message: "Selected partner is not available right now",
           };
         }
+        if (!(await hasCallableTeacherToken(directTutorId, tutorData, db))) {
+          tutorFilterStats.missingCallToken += 1;
+          addTutorSample({
+            tutorId: directTutorId,
+            outcome: "skip",
+            reason: "missing_call_token",
+          });
+          return {
+            status: "no_tutors_available",
+            message: "Selected partner is not available right now",
+          };
+        }
 
         availableTutors.push(directTutorId);
         tutorFilterStats.matched = 1;
@@ -761,6 +796,15 @@ exports.createVideoSession = functions
             });
             continue;
           }
+          if (!(await hasCallableTeacherToken(tutorId, tutorData, db))) {
+            tutorFilterStats.missingCallToken += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "missing_call_token",
+            });
+            continue;
+          }
 
           availableTutors.push(tutorId);
           tutorFilterStats.matched += 1;
@@ -814,6 +858,7 @@ exports.createVideoSession = functions
           sameDayRepeat: tutorFilterStats.sameDayRepeat,
           languageMismatch: tutorFilterStats.languageMismatch,
           unapprovedTeacher: tutorFilterStats.unapprovedTeacher,
+          missingCallToken: tutorFilterStats.missingCallToken,
           missingLevel: tutorFilterStats.missingLevel,
           levelMismatch: tutorFilterStats.levelMismatch,
           missingCountry: tutorFilterStats.missingCountry,
@@ -1157,6 +1202,7 @@ exports.__private__ = {
   buildCreateSessionPolicyFields,
   compareCandidateDetails,
   getTeacherBoostScore,
+  hasCallableTeacherToken,
   isTeacherBoostTargetLevel,
   orderCandidatesWithTeacherPriority,
 };
@@ -1196,12 +1242,18 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
 
         const availableTutors = freshSessionData.availableTutors || [];
         const triedTutors = freshSessionData.triedTutors || [];
-        const nextTutor = availableTutors.find(
-          (tutorId) => !triedTutors.includes(tutorId),
-        );
+        const nextCandidate = await findNextCallableCandidateInTransaction({
+          db,
+          transaction,
+          candidateIds: availableTutors,
+          triedCandidateIds: triedTutors,
+        });
+        const nextTutor = nextCandidate.candidateId;
+        const nextTriedTutors = nextCandidate.triedCandidateIds;
 
         if (!nextTutor) {
           transaction.update(sessionRef, {
+            triedTutors: nextTriedTutors,
             status: "no_tutors_available",
           });
           return {
@@ -1215,18 +1267,27 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
           transaction,
           sessionId,
           recipientId: nextTutor,
-          sessionData: freshSessionData,
+          sessionData: {
+            ...freshSessionData,
+            triedTutors: nextTriedTutors,
+            currentTutorId: nextTutor,
+          },
           studentNameFallback: "Student",
         });
 
         transaction.update(sessionRef, {
+          triedTutors: nextTriedTutors,
           currentTutorId: nextTutor,
         });
 
         return {
           shouldNotify: true,
           nextTutor,
-          sessionData: freshSessionData,
+          sessionData: {
+            ...freshSessionData,
+            triedTutors: nextTriedTutors,
+            currentTutorId: nextTutor,
+          },
           notificationId: notification.notificationId,
           pushPayload: notification.pushPayload,
         };
