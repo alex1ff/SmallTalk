@@ -119,6 +119,19 @@ void main() {
     expect(handlerSource, contains('StudentDashboardSearchState.idle'));
   });
 
+  test('active search sends backend heartbeat every thirty seconds', () {
+    final source = File(
+            'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
+        .readAsStringSync();
+
+    expect(source, contains("httpsCallable('startSearch')"));
+    expect(source, contains("httpsCallable('heartbeatSearch')"));
+    expect(source, contains('Duration(seconds: 30)'));
+    expect(source, contains('Timer.periodic('));
+    expect(source, contains('_activeSearchRequestId'));
+    expect(source, contains("'requestId': requestId"));
+  });
+
   test('student dashboard maps active video session status to search UI', () {
     final source = File(
             'lib/students_pages/students_dashboard/students_dashboard_widget.dart')

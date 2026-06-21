@@ -145,6 +145,10 @@ void main() {
       return false;
     };
     StudentsDashboardWidget.debugActiveSessionReader = (_) async => null;
+    StudentsDashboardWidget.debugStartSearchRequest = (_) async {
+      return <String, dynamic>{'requestId': 'request-debug'};
+    };
+    StudentsDashboardWidget.debugHeartbeatSearchRequest = (_) async {};
     StudentsDashboardWidget.debugStopSearchRequest = (_) async {};
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -181,6 +185,8 @@ void main() {
         .setMockMethodCallHandler(_permissionsChannel, null);
     StudentsDashboardWidget.debugUsageLimitReachedChecker = null;
     StudentsDashboardWidget.debugActiveSessionReader = null;
+    StudentsDashboardWidget.debugStartSearchRequest = null;
+    StudentsDashboardWidget.debugHeartbeatSearchRequest = null;
     StudentsDashboardWidget.debugStopSearchRequest = null;
     currentUser = null;
     currentUserDocument = null;
@@ -599,6 +605,148 @@ void main() {
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(_checkPermissionStatusCallCount, permissionChecksAfterStart);
     expect(_requestPermissionsCallCount, permissionRequestsAfterStart);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard sends search heartbeat every thirty seconds',
+      (tester) async {
+    setActiveStudent('student-heartbeat-test');
+    final startPayloads = <Map<String, dynamic>>[];
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (payload) async {
+            startPayloads.add(Map<String, dynamic>.from(payload));
+            return <String, dynamic>{'requestId': 'request-heartbeat-test'};
+          },
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(startPayloads, hasLength(1));
+    expect(startPayloads.single['appState'], 'foreground');
+    expect(startPayloads.single['language'], 'en');
+    expect(heartbeatPayloads, isEmpty);
+
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(1));
+    expect(heartbeatPayloads.single, <String, dynamic>{
+      'requestId': 'request-heartbeat-test',
+      'appState': 'foreground',
+    });
+
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(2));
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(2));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard handles start search response without request id',
+      (tester) async {
+    setActiveStudent('student-start-search-missing-request-id-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (_) async => <String, dynamic>{},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Не удалось начать поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('active session transition stops search heartbeat',
+      (tester) async {
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(
+      'student-active-session-stops-heartbeat-test',
+      currentSessionId: 'session-active-stops-heartbeat-test',
+    );
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+          startSearchRequest: (_) async {
+            return <String, dynamic>{'requestId': 'request-active-test'};
+          },
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+
+    activeSessionController.add(
+      sessionFixture('session-active-stops-heartbeat-test', 'active'),
+    );
+    await tester.pump();
+
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+
+    expect(heartbeatPayloads, isEmpty);
+    expect(find.text('Ищем собеседника'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
