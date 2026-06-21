@@ -12,8 +12,15 @@ const STALE_CLEANUP_STATUSES = Object.freeze([
   SEARCH_REQUEST_STATUS.LEGACY_SEARCHING,
 ]);
 
+const EXPIRED_CLEANUP_STATUSES = Object.freeze([
+  SEARCH_REQUEST_STATUS.ACTIVE,
+  SEARCH_REQUEST_STATUS.MATCHING,
+  SEARCH_REQUEST_STATUS.LEGACY_SEARCHING,
+]);
+
 const STALE_SEARCH_CLEANUP_LIMIT = 200;
 const STALE_SEARCH_FALLBACK_CLEANUP_LIMIT = 200;
+const EXPIRED_SEARCH_CLEANUP_LIMIT = 200;
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -49,7 +56,22 @@ function isStaleSearchRequest(requestData = {}, nowMillis = Date.now()) {
     heartbeatAtMillis < staleCutoffMillisFor(nowMillis);
 }
 
-function buildStaleSearchRequestCleanupUpdate({
+function isExpiredUnmatchedSearchRequest(
+  requestData = {},
+  nowMillis = Date.now(),
+) {
+  const status = normalizeString(requestData.status);
+  if (!EXPIRED_CLEANUP_STATUSES.includes(status)) {
+    return false;
+  }
+
+  const expiresAtMillis = timestampToMillis(requestData.expiresAt);
+  return expiresAtMillis !== null && expiresAtMillis <= nowMillis;
+}
+
+function buildSearchRequestCleanupUpdate({
+  stopReason,
+  errorMessage,
   serverTimestamp,
   fieldDelete,
 }) {
@@ -57,7 +79,7 @@ function buildStaleSearchRequestCleanupUpdate({
     status: SEARCH_REQUEST_STATUS.EXPIRED,
     updatedAt: serverTimestamp,
     stoppedAt: serverTimestamp,
-    stopReason: "heartbeat_stale",
+    stopReason,
     currentSessionId: null,
     matchedUserId: null,
     matchedRole: null,
@@ -66,13 +88,37 @@ function buildStaleSearchRequestCleanupUpdate({
     lockOwner: null,
     lockExpiresAt: null,
     lastError: {
-      code: "heartbeat_stale",
-      message: "Search request heartbeat is stale",
+      code: stopReason,
+      message: errorMessage,
     },
     activeSessionId: fieldDelete,
     matchedSessionId: fieldDelete,
     matchedResponderId: fieldDelete,
   };
+}
+
+function buildStaleSearchRequestCleanupUpdate({
+  serverTimestamp,
+  fieldDelete,
+}) {
+  return buildSearchRequestCleanupUpdate({
+    stopReason: "heartbeat_stale",
+    errorMessage: "Search request heartbeat is stale",
+    serverTimestamp,
+    fieldDelete,
+  });
+}
+
+function buildExpiredSearchRequestCleanupUpdate({
+  serverTimestamp,
+  fieldDelete,
+}) {
+  return buildSearchRequestCleanupUpdate({
+    stopReason: "search_timeout",
+    errorMessage: "Search request expired without a match",
+    serverTimestamp,
+    fieldDelete,
+  });
 }
 
 function queueStaleSearchRequestCleanup({
@@ -102,16 +148,44 @@ function queueStaleSearchRequestCleanup({
   };
 }
 
+function queueExpiredSearchRequestCleanup({
+  writer,
+  doc,
+  nowMillis = Date.now(),
+  serverTimestamp,
+  fieldDelete,
+}) {
+  const requestData = doc.data() || {};
+  if (!isExpiredUnmatchedSearchRequest(requestData, nowMillis)) {
+    return {
+      cleaned: false,
+      requestId: normalizeString(requestData.requestId) || null,
+    };
+  }
+
+  writer.update(doc.ref, buildExpiredSearchRequestCleanupUpdate({
+    requestData,
+    serverTimestamp,
+    fieldDelete,
+  }));
+
+  return {
+    cleaned: true,
+    requestId: normalizeString(requestData.requestId) || null,
+  };
+}
+
 function docKey(doc = {}) {
   return normalizeString(doc.ref && doc.ref.path) || normalizeString(doc.id);
 }
 
-async function cleanupStaleSearchRequestDocs({
+async function cleanupSearchRequestDocs({
   db,
   docs = [],
   nowMillis,
   serverTimestamp,
   fieldDelete,
+  queueCleanup,
   seenDocKeys = new Set(),
 }) {
   let cleanedCount = 0;
@@ -131,7 +205,7 @@ async function cleanupStaleSearchRequestDocs({
         return {cleaned: false};
       }
 
-      return queueStaleSearchRequestCleanup({
+      return queueCleanup({
         writer: transaction,
         doc: {
           id: doc.id,
@@ -152,6 +226,20 @@ async function cleanupStaleSearchRequestDocs({
   return cleanedCount;
 }
 
+async function cleanupStaleSearchRequestDocs(options) {
+  return await cleanupSearchRequestDocs({
+    ...options,
+    queueCleanup: queueStaleSearchRequestCleanup,
+  });
+}
+
+async function cleanupExpiredSearchRequestDocs(options) {
+  return await cleanupSearchRequestDocs({
+    ...options,
+    queueCleanup: queueExpiredSearchRequestCleanup,
+  });
+}
+
 exports.cleanupStaleSearchRequests = functions.pubsub
   .schedule("every 1 minutes")
   .onRun(async () => {
@@ -164,6 +252,7 @@ exports.cleanupStaleSearchRequests = functions.pubsub
       const staleCutoff = admin.firestore.Timestamp.fromMillis(
         staleCutoffMillisFor(nowMillis),
       );
+      const expiresCutoff = now;
       const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
       const fieldDelete = admin.firestore.FieldValue.delete();
       const staleQuery = await db
@@ -180,8 +269,15 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         .orderBy("updatedAt")
         .limit(STALE_SEARCH_FALLBACK_CLEANUP_LIMIT)
         .get();
+      const expiredQuery = await db
+        .collection(SEARCH_REQUEST_COLLECTION)
+        .where("status", "in", EXPIRED_CLEANUP_STATUSES)
+        .where("expiresAt", "<=", expiresCutoff)
+        .orderBy("expiresAt")
+        .limit(EXPIRED_SEARCH_CLEANUP_LIMIT)
+        .get();
 
-      if (staleQuery.empty && staleFallbackQuery.empty) {
+      if (staleQuery.empty && staleFallbackQuery.empty && expiredQuery.empty) {
         console.log("📭 No stale search requests found");
         return null;
       }
@@ -203,9 +299,18 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         fieldDelete,
         seenDocKeys,
       });
-      const cleanedCount = cleanedByHeartbeat + cleanedByFallback;
+      const cleanedByExpiry = await cleanupExpiredSearchRequestDocs({
+        db,
+        docs: expiredQuery.docs,
+        nowMillis,
+        serverTimestamp,
+        fieldDelete,
+        seenDocKeys,
+      });
+      const cleanedCount =
+        cleanedByHeartbeat + cleanedByFallback + cleanedByExpiry;
 
-      console.log(`✅ Stale search requests marked expired: ${cleanedCount}`);
+      console.log(`✅ Search requests marked expired: ${cleanedCount}`);
       return null;
     } catch (error) {
       console.error("❌ Error cleaning up stale search requests:", error);
@@ -214,12 +319,20 @@ exports.cleanupStaleSearchRequests = functions.pubsub
   });
 
 exports.__private__ = {
+  EXPIRED_CLEANUP_STATUSES,
+  EXPIRED_SEARCH_CLEANUP_LIMIT,
   STALE_CLEANUP_STATUSES,
   STALE_SEARCH_FALLBACK_CLEANUP_LIMIT,
   STALE_SEARCH_CLEANUP_LIMIT,
+  buildExpiredSearchRequestCleanupUpdate,
+  buildSearchRequestCleanupUpdate,
   buildStaleSearchRequestCleanupUpdate,
+  cleanupExpiredSearchRequestDocs,
+  cleanupSearchRequestDocs,
   cleanupStaleSearchRequestDocs,
+  isExpiredUnmatchedSearchRequest,
   isStaleSearchRequest,
+  queueExpiredSearchRequestCleanup,
   queueStaleSearchRequestCleanup,
   staleCutoffMillisFor,
   timestampToMillis,

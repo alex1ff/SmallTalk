@@ -8,9 +8,12 @@ const {
 } = require("./search_requests");
 const {
   __private__: {
+    buildExpiredSearchRequestCleanupUpdate,
     buildStaleSearchRequestCleanupUpdate,
     cleanupStaleSearchRequestDocs,
+    isExpiredUnmatchedSearchRequest,
     isStaleSearchRequest,
+    queueExpiredSearchRequestCleanup,
     queueStaleSearchRequestCleanup,
   },
 } = require("./cleanup_stale_search_requests");
@@ -102,6 +105,64 @@ test("stale search request cleanup marks request expired and clears locks", () =
   });
 });
 
+test("expired unmatched search request cleanup uses expiresAt cutoff", () => {
+  assert.equal(
+    isExpiredUnmatchedSearchRequest(activeRequest({
+      expiresAt: timestampFromMillis(fixedNowMillis),
+    }), fixedNowMillis),
+    true,
+  );
+  assert.equal(
+    isExpiredUnmatchedSearchRequest(activeRequest({
+      expiresAt: timestampFromMillis(fixedNowMillis + 1),
+    }), fixedNowMillis),
+    false,
+  );
+  assert.equal(
+    isExpiredUnmatchedSearchRequest(activeRequest({
+      status: "matched",
+      expiresAt: timestampFromMillis(fixedNowMillis - 1),
+    }), fixedNowMillis),
+    false,
+  );
+  assert.equal(
+    isExpiredUnmatchedSearchRequest(activeRequest({
+      status: "stopped",
+      expiresAt: timestampFromMillis(fixedNowMillis - 1),
+    }), fixedNowMillis),
+    false,
+  );
+});
+
+test("expired unmatched cleanup marks request expired and clears locks", () => {
+  const update = buildExpiredSearchRequestCleanupUpdate({
+    requestData: activeRequest({status: "matching"}),
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.deepEqual(update, {
+    status: "expired",
+    updatedAt: serverTimestamp,
+    stoppedAt: serverTimestamp,
+    stopReason: "search_timeout",
+    currentSessionId: null,
+    matchedUserId: null,
+    matchedRole: null,
+    pairAttemptId: null,
+    attemptExcludedCandidateIds: [],
+    lockOwner: null,
+    lockExpiresAt: null,
+    lastError: {
+      code: "search_timeout",
+      message: "Search request expired without a match",
+    },
+    activeSessionId: fieldDelete,
+    matchedSessionId: fieldDelete,
+    matchedResponderId: fieldDelete,
+  });
+});
+
 test("queue stale cleanup writes only stale active request", () => {
   const writerOperations = [];
   const writer = {
@@ -168,6 +229,68 @@ test("queue stale cleanup writes only stale active request", () => {
   assert.equal(writerOperations[1].data.stopReason, "heartbeat_stale");
 });
 
+test("queue expired cleanup writes only expired unmatched request", () => {
+  const writerOperations = [];
+  const writer = {
+    update(ref, data) {
+      writerOperations.push({type: "update", ref, data});
+    },
+  };
+
+  const result = queueExpiredSearchRequestCleanup({
+    writer,
+    doc: {
+      id: "student-a",
+      ref: {path: "searchRequests/student-a"},
+      data: () => activeRequest({
+        status: "matching",
+        expiresAt: timestampFromMillis(fixedNowMillis),
+      }),
+    },
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(result.cleaned, true);
+  assert.equal(result.requestId, "request-a");
+  assert.equal(writerOperations.length, 1);
+  assert.equal(writerOperations[0].data.status, "expired");
+  assert.equal(writerOperations[0].data.stopReason, "search_timeout");
+
+  const freshResult = queueExpiredSearchRequestCleanup({
+    writer,
+    doc: {
+      id: "student-b",
+      ref: {path: "searchRequests/student-b"},
+      data: () => activeRequest({
+        expiresAt: timestampFromMillis(fixedNowMillis + 1),
+      }),
+    },
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+  });
+  const matchedResult = queueExpiredSearchRequestCleanup({
+    writer,
+    doc: {
+      id: "student-c",
+      ref: {path: "searchRequests/student-c"},
+      data: () => activeRequest({
+        status: "matched",
+        expiresAt: timestampFromMillis(fixedNowMillis - 1),
+      }),
+    },
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(freshResult.cleaned, false);
+  assert.equal(matchedResult.cleaned, false);
+  assert.equal(writerOperations.length, 1);
+});
+
 test("cleanup stale docs rereads transaction data and dedupes fallback hits", async () => {
   const updates = [];
   const staleDoc = {
@@ -229,6 +352,7 @@ test("cleanupStaleSearchRequests is scheduled every minute", () => {
   assert.match(source, /where\("status", "in"/);
   assert.match(source, /where\("heartbeatAt", "<"/);
   assert.match(source, /where\("updatedAt", "<"/);
+  assert.match(source, /where\("expiresAt", "<="/);
 });
 
 test("Firestore indexes support stale search request cleanup query", () => {
@@ -249,6 +373,7 @@ test("Firestore indexes support stale search request cleanup query", () => {
 
   assert.ok(hasSearchRequestIndex("heartbeatAt"));
   assert.ok(hasSearchRequestIndex("updatedAt"));
+  assert.ok(hasSearchRequestIndex("expiresAt"));
 });
 
 test("deploy script includes stale cleanup indexes", () => {
