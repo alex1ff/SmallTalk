@@ -91,12 +91,18 @@ function readRequestUserId(requestDoc, requestData = {}) {
 }
 
 function searchRequestOwnerMatchesDoc(requestDoc, requestData = {}) {
-  const requestUserId = readRequestUserId(requestDoc, requestData);
-  const ownerIds = [
+  const explicitOwnerIds = [
     requestData[SEARCH_REQUEST_FIELD.USER_ID],
     readReferenceId(requestData[SEARCH_REQUEST_FIELD.USER_REF]),
-    readDocId(requestDoc),
   ].map(normalizeString).filter(Boolean);
+  if (explicitOwnerIds.length === 0) {
+    return false;
+  }
+
+  const requestUserId = explicitOwnerIds[0];
+  const ownerIds = [...explicitOwnerIds, readDocId(requestDoc)]
+    .map(normalizeString)
+    .filter(Boolean);
 
   return Boolean(requestUserId) &&
     ownerIds.every((ownerId) => ownerId === requestUserId);
@@ -109,12 +115,17 @@ function hasOpenMatchState(requestData = {}) {
       requestData[SEARCH_REQUEST_FIELD.MATCHED_SESSION_ID] ||
       requestData[SEARCH_REQUEST_FIELD.MATCHED_USER_ID] ||
       requestData[SEARCH_REQUEST_FIELD.MATCHED_RESPONDER_ID] ||
+      requestData[SEARCH_REQUEST_FIELD.MATCHED_ROLE] ||
       requestData[SEARCH_REQUEST_FIELD.PAIR_ATTEMPT_ID] ||
-      requestData[SEARCH_REQUEST_FIELD.LOCK_OWNER],
+      requestData[SEARCH_REQUEST_FIELD.LOCK_OWNER] ||
+      requestData[SEARCH_REQUEST_FIELD.LOCK_EXPIRES_AT],
   );
 }
 
-function isActiveStudentSearchRequest(requestData = {}, nowMillis = Date.now()) {
+function validateActiveStudentSearchRequest(
+  requestData = {},
+  nowMillis = Date.now(),
+) {
   const safeNowMillis = Number.isFinite(Number(nowMillis)) ?
     Number(nowMillis) :
     Date.now();
@@ -122,36 +133,36 @@ function isActiveStudentSearchRequest(requestData = {}, nowMillis = Date.now()) 
     normalizeString(requestData[SEARCH_REQUEST_FIELD.STATUS]) !==
     SEARCH_REQUEST_STATUS.ACTIVE
   ) {
-    return false;
+    return {valid: false, reason: "inactive_status"};
   }
   if (normalizeRole(requestData[SEARCH_REQUEST_FIELD.ROLE]) !== "student") {
-    return false;
+    return {valid: false, reason: "not_student"};
   }
   if (!readLanguageCode(requestData[SEARCH_REQUEST_FIELD.LANGUAGE])) {
-    return false;
+    return {valid: false, reason: "missing_language"};
   }
   if (hasOpenMatchState(requestData)) {
-    return false;
+    return {valid: false, reason: "open_match_state"};
   }
 
   const heartbeatAtMillis = timestampToMillis(
     requestData[SEARCH_REQUEST_FIELD.HEARTBEAT_AT],
   );
   if (heartbeatAtMillis === null) {
-    return false;
+    return {valid: false, reason: "missing_heartbeat"};
   }
   const staleCutoffMillis =
     safeNowMillis -
     SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
   if (heartbeatAtMillis < staleCutoffMillis) {
-    return false;
+    return {valid: false, reason: "stale_heartbeat"};
   }
 
   const expiresAtMillis = timestampToMillis(
     requestData[SEARCH_REQUEST_FIELD.EXPIRES_AT],
   );
   if (expiresAtMillis === null || expiresAtMillis <= safeNowMillis) {
-    return false;
+    return {valid: false, reason: "expired_request"};
   }
 
   const appState = normalizeString(
@@ -162,13 +173,17 @@ function isActiveStudentSearchRequest(requestData = {}, nowMillis = Date.now()) 
   );
   if (
     appState === "background" &&
-    backgroundExpiresAtMillis !== null &&
-    backgroundExpiresAtMillis <= safeNowMillis
+    (backgroundExpiresAtMillis === null ||
+      backgroundExpiresAtMillis <= safeNowMillis)
   ) {
-    return false;
+    return {valid: false, reason: "background_expired"};
   }
 
-  return true;
+  return {valid: true, reason: "active"};
+}
+
+function isActiveStudentSearchRequest(requestData = {}, nowMillis = Date.now()) {
+  return validateActiveStudentSearchRequest(requestData, nowMillis).valid;
 }
 
 function isAvailableAfterInFuture(userData = {}, now = new Date()) {
@@ -199,7 +214,11 @@ function buildStudentQueueCandidateFromDocs({
   if (!requestData || !userData) {
     return null;
   }
-  if (!isActiveStudentSearchRequest(requestData, nowMillis)) {
+  const requestValidation = validateActiveStudentSearchRequest(
+    requestData,
+    nowMillis,
+  );
+  if (!requestValidation.valid) {
     return null;
   }
 
@@ -247,6 +266,7 @@ function buildStudentQueueCandidateFromDocs({
     availability: {
       isAvailable: true,
       reason: "active_search_request",
+      searchRequestValidationReason: requestValidation.reason,
     },
     createdAtMillis,
     heartbeatAtMillis,
@@ -625,4 +645,5 @@ module.exports = {
   isActiveStudentSearchRequest,
   mergeCandidatePools,
   timestampToMillis,
+  validateActiveStudentSearchRequest,
 };

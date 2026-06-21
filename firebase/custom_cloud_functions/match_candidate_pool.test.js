@@ -11,6 +11,7 @@ const {
   collectMatchCandidatePool,
   isActiveStudentSearchRequest,
   mergeCandidatePools,
+  validateActiveStudentSearchRequest,
 } = require("./match_candidate_pool");
 const {
   SEARCH_REQUEST_STATUS,
@@ -123,15 +124,49 @@ function teacherData(overrides = {}) {
 }
 
 test("active student candidates come only from fresh active search requests", () => {
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest(), fixedNowMillis),
+    {valid: true, reason: "active"},
+  );
   assert.equal(
     isActiveStudentSearchRequest(activeRequest(), fixedNowMillis),
     true,
+  );
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
+      status: SEARCH_REQUEST_STATUS.MATCHING,
+    }), fixedNowMillis),
+    {valid: false, reason: "inactive_status"},
+  );
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
+      role: "native_speaker",
+    }), fixedNowMillis),
+    {valid: false, reason: "not_student"},
+  );
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
+      language: "",
+    }), fixedNowMillis),
+    {valid: false, reason: "missing_language"},
+  );
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
+      heartbeatAt: null,
+    }), fixedNowMillis),
+    {valid: false, reason: "missing_heartbeat"},
   );
   assert.equal(
     isActiveStudentSearchRequest(activeRequest({
       status: SEARCH_REQUEST_STATUS.MATCHING,
     }), fixedNowMillis),
     false,
+  );
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
+      heartbeatAt: timestampFromMillis(fixedNowMillis - 91 * 1000),
+    }), fixedNowMillis),
+    {valid: false, reason: "stale_heartbeat"},
   );
   assert.equal(
     isActiveStudentSearchRequest(activeRequest({
@@ -141,9 +176,55 @@ test("active student candidates come only from fresh active search requests", ()
   );
   assert.equal(
     isActiveStudentSearchRequest(activeRequest({
+      heartbeatAt: timestampFromMillis(fixedNowMillis - 90 * 1000),
+    }), fixedNowMillis),
+    true,
+  );
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
+      expiresAt: timestampFromMillis(fixedNowMillis),
+    }), fixedNowMillis),
+    {valid: false, reason: "expired_request"},
+  );
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
+      expiresAt: null,
+    }), fixedNowMillis),
+    {valid: false, reason: "expired_request"},
+  );
+  assert.equal(
+    isActiveStudentSearchRequest(activeRequest({
       expiresAt: timestampFromMillis(fixedNowMillis),
     }), fixedNowMillis),
     false,
+  );
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
+      appState: "background",
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis - 1),
+    }), fixedNowMillis),
+    {valid: false, reason: "background_expired"},
+  );
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
+      appState: "background",
+      backgroundExpiresAt: null,
+    }), fixedNowMillis),
+    {valid: false, reason: "background_expired"},
+  );
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
+      appState: "background",
+      backgroundExpiresAt: "not-a-date",
+    }), fixedNowMillis),
+    {valid: false, reason: "background_expired"},
+  );
+  assert.equal(
+    isActiveStudentSearchRequest(activeRequest({
+      appState: "background",
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 1),
+    }), fixedNowMillis),
+    true,
   );
   assert.equal(
     isActiveStudentSearchRequest(activeRequest({
@@ -152,12 +233,35 @@ test("active student candidates come only from fresh active search requests", ()
     }), fixedNowMillis),
     false,
   );
-  assert.equal(
-    isActiveStudentSearchRequest(activeRequest({
+  assert.deepEqual(
+    validateActiveStudentSearchRequest(activeRequest({
       lockOwner: "matcher-a",
     }), fixedNowMillis),
-    false,
+    {valid: false, reason: "open_match_state"},
   );
+});
+
+[
+  "activeSessionId",
+  "currentSessionId",
+  "matchedSessionId",
+  "matchedUserId",
+  "matchedResponderId",
+  "matchedRole",
+  "pairAttemptId",
+  "lockOwner",
+  "lockExpiresAt",
+].forEach((fieldName) => {
+  test(`student active request rejects open state field ${fieldName}`, () => {
+    assert.deepEqual(
+      validateActiveStudentSearchRequest(activeRequest({
+        [fieldName]: fieldName === "lockExpiresAt" ?
+          timestampFromMillis(fixedNowMillis + 30 * 1000) :
+          "value",
+      }), fixedNowMillis),
+      {valid: false, reason: "open_match_state"},
+    );
+  });
 });
 
 test("student queue candidate carries neutral pool shape", () => {
@@ -178,6 +282,7 @@ test("student queue candidate carries neutral pool shape", () => {
   assert.equal(candidate.searchRequestDocId, "student-a");
   assert.equal(candidate.language, "en");
   assert.equal(candidate.availability.reason, "active_search_request");
+  assert.equal(candidate.availability.searchRequestValidationReason, "active");
   assert.equal(candidate.profile.role, "student");
 });
 
@@ -202,6 +307,28 @@ test("student queue candidate rejects missing user and changed role", () => {
     buildStudentQueueCandidateFromDocs({
       requestDoc: doc("student-a", activeRequest({
         userRef: {id: "student-b"},
+      })),
+      userDoc: doc("student-a", studentData()),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-a", activeRequest({
+        userId: "student-b",
+        userRef: undefined,
+      })),
+      userDoc: doc("student-b", studentData()),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-a", activeRequest({
+        userId: undefined,
+        userRef: undefined,
       })),
       userDoc: doc("student-a", studentData()),
       nowMillis: fixedNowMillis,
