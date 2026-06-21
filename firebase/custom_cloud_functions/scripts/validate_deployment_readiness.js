@@ -32,6 +32,7 @@ const REQUIRED_FUNCTIONS = [
     trigger: "callable",
     secrets: DAILY_SECRETS,
   },
+  {id: "heartbeatSearch", trigger: "callable"},
   {
     id: "endSession",
     trigger: "callable",
