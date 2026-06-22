@@ -14,6 +14,9 @@ const {
     dailyPresenceHasAcceptedParticipants,
   },
 } = require("./daily_room");
+const {
+  stopSessionSearchRequestsInTransaction,
+} = require("./match_pair_lock");
 
 const dailyWebhookSecret = defineSecret("DAILY_WEBHOOK_SECRET");
 const dailyApiSecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -319,6 +322,39 @@ function findCandidateSessionDoc(querySnapshot, event, nowMillis = Date.now()) {
   return candidates.length === 1 ? candidates[0] : null;
 }
 
+async function applyDailyWebhookSessionUpdateWritesInTransaction({
+  db,
+  transaction,
+  sessionRef,
+  sessionId,
+  sessionData = {},
+  decision = {},
+  serverTimestamp = admin.firestore.FieldValue.serverTimestamp(),
+  fieldDelete = admin.firestore.FieldValue.delete(),
+  stopSearchRequests = stopSessionSearchRequestsInTransaction,
+}) {
+  const shouldStopSearchRequests =
+    decision.update?.status === VIDEO_SESSION_STATUS.ACTIVE;
+  if (shouldStopSearchRequests) {
+    await stopSearchRequests({
+      db,
+      transaction,
+      sessionId,
+      sessionData,
+      serverTimestamp,
+      fieldDelete,
+      stopReason: "call_started",
+    });
+  }
+
+  transaction.update(sessionRef, decision.update);
+
+  return {
+    stoppedSearchRequests: shouldStopSearchRequests,
+    updatedSession: true,
+  };
+}
+
 exports.dailyWebhook = functions
   .runWith({
     secrets: [dailyWebhookSecret, ...dailyApiSecrets],
@@ -405,16 +441,24 @@ exports.dailyWebhook = functions
           return {updated: false, reason: "session_missing"};
         }
 
+        const freshData = freshSnapshot.data() || {};
         const decision = buildDailyWebhookSessionUpdate({
           event,
-          sessionData: freshSnapshot.data() || {},
+          sessionData: freshData,
           presenceData,
         });
         if (!decision.ok) {
           return {updated: false, reason: decision.reason};
         }
 
-        transaction.update(candidate.ref, decision.update);
+        await applyDailyWebhookSessionUpdateWritesInTransaction({
+          db,
+          transaction,
+          sessionRef: candidate.ref,
+          sessionId: candidate.id,
+          sessionData: freshData,
+          decision,
+        });
         return {
           updated: true,
           reason: decision.reason,
@@ -440,6 +484,7 @@ exports.dailyWebhook = functions
 
 exports.__private__ = {
   DAILY_WEBHOOK_REPLAY_WINDOW_MS,
+  applyDailyWebhookSessionUpdateWritesInTransaction,
   buildDailyWebhookSessionUpdate,
   computeDailyWebhookSignature,
   findCandidateSessionDoc,

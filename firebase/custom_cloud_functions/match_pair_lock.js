@@ -396,6 +396,8 @@ function getSessionParticipantIds(sessionData = {}) {
     sessionData.currentResponderId,
     sessionData.responderId,
     sessionData.tutorId,
+    sessionData.matchContext?.requesterId,
+    sessionData.matchContext?.acceptedResponderId,
   ].map(normalizeDocumentId).filter(Boolean))).sort();
 }
 
@@ -586,6 +588,33 @@ async function readPairLockReleaseTargetsInTransaction({
   }));
 }
 
+async function readSearchRequestReleaseTargetsInTransaction({
+  db,
+  transaction,
+  sessionData = {},
+  participantIds = [],
+}) {
+  const ids = Array.from(new Set([
+    ...getSessionParticipantIds(sessionData),
+    ...participantIds.map(normalizeDocumentId).filter(Boolean),
+  ])).sort();
+  const refs = ids.map((participantId) => ({
+    participantId,
+    searchRef: db.collection(SEARCH_REQUEST_COLLECTION).doc(participantId),
+  }));
+  const snapshots = await Promise.all(refs.map(async (target) => ({
+    ...target,
+    searchSnap: await transaction.get(target.searchRef),
+  })));
+
+  return snapshots.map((target) => ({
+    ...target,
+    searchData: target.searchSnap.exists ?
+      target.searchSnap.data() || {} :
+      {},
+  }));
+}
+
 function applyPairLockReleaseWrites({
   transaction,
   targets = [],
@@ -622,6 +651,51 @@ function applyPairLockReleaseWrites({
       }));
     }
   }
+}
+
+async function stopSessionSearchRequestsInTransaction({
+  db,
+  transaction,
+  sessionId,
+  sessionData = {},
+  participantIds = [],
+  serverTimestamp,
+  fieldDelete = admin.firestore.FieldValue.delete(),
+  stopReason = "call_started",
+}) {
+  const normalizedSessionId = normalizeDocumentId(sessionId);
+  if (!normalizedSessionId) {
+    return {stopped: false, reason: "invalid_session_id"};
+  }
+
+  const targets = await readSearchRequestReleaseTargetsInTransaction({
+    db,
+    transaction,
+    sessionData,
+    participantIds,
+  });
+  const stoppedParticipantIds = [];
+  for (const target of targets) {
+    if (
+      target.searchSnap.exists &&
+      searchRequestMatchesSession(target.searchData, normalizedSessionId)
+    ) {
+      transaction.update(target.searchRef, buildSearchRequestPairLockReleaseUpdate({
+        status: SEARCH_REQUEST_STATUS.STOPPED,
+        stopReason,
+        serverTimestamp,
+        fieldDelete,
+      }));
+      stoppedParticipantIds.push(target.participantId);
+    }
+  }
+
+  return {
+    stopped: true,
+    reason: "stopped",
+    participantIds: targets.map((target) => target.participantId),
+    stoppedParticipantIds,
+  };
 }
 
 async function releaseSessionPairLocksInTransaction({
@@ -1333,6 +1407,7 @@ module.exports = {
   reserveDirectPairInTransaction,
   reserveMatchPair,
   reserveMatchPairInTransaction,
+  stopSessionSearchRequestsInTransaction,
   validateSearchRequestForPairLock,
   validateUserForPairLock,
 };

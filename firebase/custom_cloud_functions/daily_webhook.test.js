@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   __private__: {
+    applyDailyWebhookSessionUpdateWritesInTransaction,
     buildDailyWebhookSessionUpdate,
     computeDailyWebhookSignature,
     findCandidateSessionDoc,
@@ -484,4 +485,67 @@ test("daily webhook receiver keeps a strict private webhook contract", () => {
   assert.match(source, /isCredentialSessionJoinable/);
   assert.match(source, /callConnectedAtSource\s*=\s*"dailyWebhookTwoParty"/);
   assert.match(indexSource, /exports\.dailyWebhook\s*=/);
+});
+
+test("daily webhook write helper stops search only on active promotion", async () => {
+  const writes = [];
+  const stopCalls = [];
+  const sessionRef = {path: "videoSessions/session-a"};
+  const transaction = {
+    update(ref, data) {
+      writes.push({ref, data});
+    },
+  };
+  const activeDecision = {
+    update: {status: "active"},
+  };
+
+  const activeResult =
+    await applyDailyWebhookSessionUpdateWritesInTransaction({
+      db: {},
+      transaction,
+      sessionRef,
+      sessionId: "session-a",
+      sessionData: activeSession(),
+      decision: activeDecision,
+      serverTimestamp: "serverTimestamp",
+      fieldDelete: "fieldDelete",
+      stopSearchRequests: async (args) => {
+        stopCalls.push(args);
+      },
+    });
+
+  assert.deepEqual(activeResult, {
+    stoppedSearchRequests: true,
+    updatedSession: true,
+  });
+  assert.equal(stopCalls.length, 1);
+  assert.equal(stopCalls[0].sessionId, "session-a");
+  assert.equal(stopCalls[0].stopReason, "call_started");
+  assert.deepEqual(writes, [{ref: sessionRef, data: activeDecision.update}]);
+
+  writes.length = 0;
+  stopCalls.length = 0;
+  const advisoryDecision = {
+    update: {sessionMetadata: {dailyWebhookParticipantSignals: {}}},
+  };
+  const advisoryResult =
+    await applyDailyWebhookSessionUpdateWritesInTransaction({
+      db: {},
+      transaction,
+      sessionRef,
+      sessionId: "session-a",
+      sessionData: activeSession(),
+      decision: advisoryDecision,
+      stopSearchRequests: async (args) => {
+        stopCalls.push(args);
+      },
+    });
+
+  assert.deepEqual(advisoryResult, {
+    stoppedSearchRequests: false,
+    updatedSession: true,
+  });
+  assert.equal(stopCalls.length, 0);
+  assert.deepEqual(writes, [{ref: sessionRef, data: advisoryDecision.update}]);
 });

@@ -10,6 +10,7 @@ const {
   releaseSessionPairLocksInTransaction,
   reserveDirectPairInTransaction,
   reserveMatchPair,
+  stopSessionSearchRequestsInTransaction,
   validateSearchRequestForPairLock,
 } = require("./match_pair_lock");
 
@@ -1600,4 +1601,84 @@ test("releaseSessionPairLocks clears users and search requests for session", asy
   assert.equal(store.get("searchRequests/student-a").lockOwner, null);
   assert.equal(store.get("searchRequests/student-b").status, SEARCH_REQUEST_STATUS.STOPPED);
   assert.equal(store.get("searchRequests/student-b").matchedUserId, null);
+});
+
+test("stopSessionSearchRequests stops search without clearing active call users", async () => {
+  const {db, store} = createFakeFirestore({
+    ...seedExistingStudentSession(),
+    "users/student-a": studentUser({
+      currentSessionId: "session-ab",
+      isInCall: true,
+    }),
+    "users/student-b": studentUser({
+      currentSessionId: "session-ab",
+      isInCall: true,
+    }),
+  });
+
+  const result = await db.runTransaction((transaction) =>
+    stopSessionSearchRequestsInTransaction({
+      db,
+      transaction,
+      sessionId: "session-ab",
+      sessionData: store.get("videoSessions/session-ab"),
+      serverTimestamp,
+      fieldDelete,
+    }));
+
+  assert.equal(result.stopped, true);
+  assert.deepEqual(result.stoppedParticipantIds, ["student-a", "student-b"]);
+  assert.equal(store.get("users/student-a").currentSessionId, "session-ab");
+  assert.equal(store.get("users/student-a").isInCall, true);
+  assert.equal(store.get("users/student-b").currentSessionId, "session-ab");
+  assert.equal(store.get("users/student-b").isInCall, true);
+  assert.equal(store.get("searchRequests/student-a").status, SEARCH_REQUEST_STATUS.STOPPED);
+  assert.equal(store.get("searchRequests/student-a").stopReason, "call_started");
+  assert.equal(store.get("searchRequests/student-a").currentSessionId, null);
+  assert.equal(store.get("searchRequests/student-a").matchedSessionId, fieldDelete);
+  assert.equal(store.get("searchRequests/student-a").matchedUserId, null);
+  assert.equal(store.get("searchRequests/student-b").status, SEARCH_REQUEST_STATUS.STOPPED);
+  assert.equal(store.get("searchRequests/student-b").stopReason, "call_started");
+});
+
+test("stopSessionSearchRequests uses accepted match context participant fallback", async () => {
+  const {db, store} = createFakeFirestore({
+    "searchRequests/student-a": activeSearchRequest("student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      currentSessionId: "session-ab",
+      matchedSessionId: "session-ab",
+      matchedUserId: "student-b",
+      matchedResponderId: "student-b",
+      matchedRole: "student",
+    }),
+    "searchRequests/student-b": activeSearchRequest("student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      currentSessionId: "session-ab",
+      matchedSessionId: "session-ab",
+      matchedUserId: "student-a",
+      matchedResponderId: "student-b",
+      matchedRole: "student",
+    }),
+    "videoSessions/session-ab": {
+      status: "active",
+      matchContext: {
+        requesterId: "student-a",
+        acceptedResponderId: "student-b",
+      },
+    },
+  });
+
+  const result = await db.runTransaction((transaction) =>
+    stopSessionSearchRequestsInTransaction({
+      db,
+      transaction,
+      sessionId: "session-ab",
+      sessionData: store.get("videoSessions/session-ab"),
+      serverTimestamp,
+      fieldDelete,
+    }));
+
+  assert.deepEqual(result.stoppedParticipantIds, ["student-a", "student-b"]);
+  assert.equal(store.get("searchRequests/student-a").status, SEARCH_REQUEST_STATUS.STOPPED);
+  assert.equal(store.get("searchRequests/student-b").status, SEARCH_REQUEST_STATUS.STOPPED);
 });

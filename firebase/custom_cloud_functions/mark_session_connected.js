@@ -13,6 +13,9 @@ const {
     dailyPresenceHasAcceptedParticipants,
   },
 } = require("./daily_room");
+const {
+  stopSessionSearchRequestsInTransaction,
+} = require("./match_pair_lock");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const MAX_SESSION_ID_LENGTH = 128;
@@ -228,6 +231,42 @@ function throwCallableError(decision) {
   throw new functions.https.HttpsError(decision.code, decision.message);
 }
 
+async function applyVerifiedConnectedSessionWritesInTransaction({
+  db,
+  transaction,
+  sessionRef,
+  sessionId,
+  sessionData = {},
+  decision = {},
+  serverTimestamp = admin.firestore.FieldValue.serverTimestamp(),
+  fieldDelete = admin.firestore.FieldValue.delete(),
+  stopSearchRequests = stopSessionSearchRequestsInTransaction,
+}) {
+  const shouldStopSearchRequests =
+    decision.update?.status === VIDEO_SESSION_STATUS.ACTIVE ||
+    decision.response?.status === "already_marked";
+  if (shouldStopSearchRequests) {
+    await stopSearchRequests({
+      db,
+      transaction,
+      sessionId,
+      sessionData,
+      serverTimestamp,
+      fieldDelete,
+      stopReason: "call_started",
+    });
+  }
+
+  if (decision.update) {
+    transaction.update(sessionRef, decision.update);
+  }
+
+  return {
+    stoppedSearchRequests: shouldStopSearchRequests,
+    updatedSession: Boolean(decision.update),
+  };
+}
+
 exports.markSessionConnected = functions
   .runWith({ secrets: dailySecrets })
   .https
@@ -260,17 +299,23 @@ exports.markSessionConnected = functions
         );
       }
 
+      const sessionData = snapshot.data() || {};
       const decision = buildMarkSessionConnectedDecision({
-        sessionData: snapshot.data() || {},
+        sessionData,
         userId,
       });
       if (!decision.ok) {
         throwCallableError(decision);
       }
 
-      if (decision.update) {
-        transaction.update(sessionRef, decision.update);
-      }
+      await applyVerifiedConnectedSessionWritesInTransaction({
+        db,
+        transaction,
+        sessionRef,
+        sessionId,
+        sessionData,
+        decision,
+      });
 
       return {
         sessionId,
@@ -324,9 +369,15 @@ exports.markSessionConnected = functions
         throwCallableError(decision);
       }
 
-      if (decision.update) {
-        transaction.update(sessionRef, decision.update);
-      }
+      const freshData = freshSnapshot.data() || {};
+      await applyVerifiedConnectedSessionWritesInTransaction({
+        db,
+        transaction,
+        sessionRef,
+        sessionId,
+        sessionData: freshData,
+        decision,
+      });
 
       return {
         sessionId,
@@ -338,6 +389,7 @@ exports.markSessionConnected = functions
   });
 
 exports.__private__ = {
+  applyVerifiedConnectedSessionWritesInTransaction,
   buildDailyPresenceConnectedDecision,
   buildMarkSessionConnectedDecision,
   dailyPresenceHasAcceptedParticipants,

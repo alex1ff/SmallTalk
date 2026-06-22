@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   __private__: {
+    applyVerifiedConnectedSessionWritesInTransaction,
     buildDailyPresenceConnectedDecision,
     buildMarkSessionConnectedDecision,
     dailyPresenceHasAcceptedParticipants,
@@ -370,6 +371,98 @@ test("markSessionConnected source keeps strict callable contract", () => {
   assert.match(source, /connectedParticipantSignalsComplete/);
   assert.doesNotMatch(source, /isSessionParticipant\(sessionData,\s*userId\)/);
   assert.doesNotMatch(source, /HttpsError\("not-found",\s*"Session not found"/);
+});
+
+test("connected write helper stops search only for Daily verified start", async () => {
+  const writes = [];
+  const stopCalls = [];
+  const sessionRef = {path: "videoSessions/session-a"};
+  const transaction = {
+    update(ref, data) {
+      writes.push({ref, data});
+    },
+  };
+  const activeDecision = {
+    update: {status: "active"},
+    response: {status: "marked"},
+  };
+
+  const activeResult =
+    await applyVerifiedConnectedSessionWritesInTransaction({
+      db: {},
+      transaction,
+      sessionRef,
+      sessionId: "session-a",
+      sessionData: acceptedSession(),
+      decision: activeDecision,
+      serverTimestamp: "serverTimestamp",
+      fieldDelete: "fieldDelete",
+      stopSearchRequests: async (args) => {
+        stopCalls.push(args);
+      },
+    });
+
+  assert.deepEqual(activeResult, {
+    stoppedSearchRequests: true,
+    updatedSession: true,
+  });
+  assert.equal(stopCalls.length, 1);
+  assert.equal(stopCalls[0].sessionId, "session-a");
+  assert.equal(stopCalls[0].stopReason, "call_started");
+  assert.deepEqual(writes, [{ref: sessionRef, data: activeDecision.update}]);
+
+  writes.length = 0;
+  stopCalls.length = 0;
+  const signalDecision = {
+    update: {sessionMetadata: {connectedParticipantSignals: {}}},
+    response: {status: "signal_recorded"},
+  };
+  const signalResult =
+    await applyVerifiedConnectedSessionWritesInTransaction({
+      db: {},
+      transaction,
+      sessionRef,
+      sessionId: "session-a",
+      sessionData: acceptedSession(),
+      decision: signalDecision,
+      stopSearchRequests: async (args) => {
+        stopCalls.push(args);
+      },
+    });
+
+  assert.deepEqual(signalResult, {
+    stoppedSearchRequests: false,
+    updatedSession: true,
+  });
+  assert.equal(stopCalls.length, 0);
+  assert.deepEqual(writes, [{ref: sessionRef, data: signalDecision.update}]);
+
+  writes.length = 0;
+  stopCalls.length = 0;
+  const alreadyMarkedDecision = {
+    update: null,
+    response: {status: "already_marked"},
+  };
+  const alreadyMarkedResult =
+    await applyVerifiedConnectedSessionWritesInTransaction({
+      db: {},
+      transaction,
+      sessionRef,
+      sessionId: "session-a",
+      sessionData: acceptedSession(),
+      decision: alreadyMarkedDecision,
+      stopSearchRequests: async (args) => {
+        stopCalls.push(args);
+      },
+    });
+
+  assert.deepEqual(alreadyMarkedResult, {
+    stoppedSearchRequests: true,
+    updatedSession: false,
+  });
+  assert.equal(stopCalls.length, 1);
+  assert.equal(stopCalls[0].sessionId, "session-a");
+  assert.deepEqual(writes, []);
 });
 
 test("index exports markSessionConnected callable", () => {
