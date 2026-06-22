@@ -51,6 +51,13 @@ enum StudentDashboardSearchErrorReason {
 typedef SearchRequestInvoker = Future<dynamic> Function(
   Map<String, dynamic> payload,
 );
+typedef StudentCallNavigator = FutureOr<void> Function(
+  BuildContext context,
+  DocumentReference videoDocRef, {
+  String? roomUrl,
+  String? meetingToken,
+  String? roomName,
+});
 
 class StudentsDashboardWidget extends StatefulWidget {
   const StudentsDashboardWidget({
@@ -84,10 +91,16 @@ class StudentsDashboardWidget extends StatefulWidget {
   static SearchRequestInvoker? debugHeartbeatSearchRequest;
   static Future<dynamic> Function(String? activeSessionId)?
       debugStopSearchRequest;
+  static Future<dynamic> Function(String sessionId)? debugAcceptCallRequest;
+  static Future<dynamic> Function(String sessionId)?
+      debugGetSessionTokensRequest;
+  static StudentCallNavigator? debugAutoOpenSessionNavigator;
+  static bool debugDisableAutoOpenSessionNavigation = false;
   static const Duration startSearchRequestTimeout = Duration(seconds: 10);
   static const Duration heartbeatSearchInterval = Duration(seconds: 30);
   static const Duration heartbeatSearchRequestTimeout = Duration(seconds: 10);
   static const Duration stopSearchRequestTimeout = Duration(seconds: 10);
+  static const Duration acceptCallRequestTimeout = Duration(seconds: 20);
 
   static String routeName = 'Students_Dashboard';
   static String routePath = '/studentsDashboard';
@@ -122,9 +135,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   Timer? _searchTimeoutTimer;
   Timer? _searchHeartbeatTimer;
   String? _activeSearchRequestId;
+  String? _matchedSearchSessionId;
   bool _searchHeartbeatInFlight = false;
   bool _pendingLifecycleSearchHeartbeat = false;
   String _searchAppState = 'foreground';
+  String? _autoOpenedSessionId;
+  final Set<String> _foregroundAcceptStartedSessionIds = <String>{};
+  final Set<String> _autoOpenCredentialStartedSessionIds = <String>{};
   StudentDashboardSearchErrorReason? _searchErrorReason;
   StudentDashboardSearchState _lastActiveSessionSearchState =
       StudentDashboardSearchState.idle;
@@ -146,6 +163,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return null;
     }
     return normalizedSessionId;
+  }
+
+  String? _normalizedNonEmptyString(Object? value) {
+    final normalizedValue = value?.toString().trim();
+    if (normalizedValue == null || normalizedValue.isEmpty) {
+      return null;
+    }
+    return normalizedValue;
   }
 
   String? _stopSessionIdFor(String? visibleSessionId) {
@@ -312,6 +337,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     safeSetState(() {
       _searchState = StudentDashboardSearchState.error;
       _searchErrorReason = reason;
+      _matchedSearchSessionId = null;
       _suppressedActiveSessionId = null;
       _suppressedActiveSearchUserId = null;
     });
@@ -327,6 +353,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       _clearSearchHeartbeatTimer();
       safeSetState(() {
         _searchState = StudentDashboardSearchState.noMatchFound;
+        _matchedSearchSessionId = null;
       });
     });
   }
@@ -387,6 +414,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
     safeSetState(() {
       _searchState = StudentDashboardSearchState.noMatchFound;
+      _matchedSearchSessionId = null;
     });
   }
 
@@ -430,6 +458,47 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         .httpsCallable('startSearch')
         .call(payload)
         .timeout(StudentsDashboardWidget.startSearchRequestTimeout);
+    return _normalizeCallableMap(response.data);
+  }
+
+  Future<Map<String, dynamic>> _acceptForegroundSessionRequest(
+    String sessionId,
+  ) async {
+    final acceptCallRequest = StudentsDashboardWidget.debugAcceptCallRequest;
+    if (acceptCallRequest != null) {
+      return _normalizeCallableMap(
+        await acceptCallRequest(
+          sessionId,
+        ).timeout(StudentsDashboardWidget.acceptCallRequestTimeout),
+      );
+    }
+
+    final response = await FirebaseFunctions.instance
+        .httpsCallable('acceptCall')
+        .call({'sessionId': sessionId}).timeout(
+      StudentsDashboardWidget.acceptCallRequestTimeout,
+    );
+    return _normalizeCallableMap(response.data);
+  }
+
+  Future<Map<String, dynamic>> _getAutoOpenSessionTokens(
+    String sessionId,
+  ) async {
+    final getSessionTokensRequest =
+        StudentsDashboardWidget.debugGetSessionTokensRequest;
+    if (getSessionTokensRequest != null) {
+      return _normalizeCallableMap(
+        await getSessionTokensRequest(
+          sessionId,
+        ).timeout(StudentsDashboardWidget.acceptCallRequestTimeout),
+      );
+    }
+
+    final response = await FirebaseFunctions.instance
+        .httpsCallable('getSessionTokens')
+        .call({'sessionId': sessionId}).timeout(
+      StudentsDashboardWidget.acceptCallRequestTimeout,
+    );
     return _normalizeCallableMap(response.data);
   }
 
@@ -523,6 +592,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
     _searchAppState = nextSearchAppState;
     _sendLifecycleSearchHeartbeat();
+    if (mounted) {
+      safeSetState(() {});
+    }
   }
 
   Stream<VideoSessionsRecord?> _activeSessionStreamFor(UsersRecord user) {
@@ -531,8 +603,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return override;
     }
 
-    final sessionId = user.currentSessionId.trim();
-    if (sessionId.isEmpty) {
+    final sessionId =
+        _normalizedSessionId(user.currentSessionId) ?? _matchedSearchSessionId;
+    if (sessionId == null) {
       return Stream<VideoSessionsRecord?>.value(null);
     }
 
@@ -1389,6 +1462,264 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
   }
 
+  bool _isVideoCallReadySession(VideoSessionsRecord session) {
+    final roomUrl = _normalizedNonEmptyString(session.dailyRoomUrl);
+    if (roomUrl == null) {
+      return false;
+    }
+
+    switch (session.status.trim()) {
+      case 'connecting':
+      case 'active':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  String? _sessionMatchContextString(
+    VideoSessionsRecord session,
+    String key,
+  ) {
+    final matchContext =
+        _normalizeCallableMap(session.snapshotData['matchContext']);
+    return _normalizedNonEmptyString(matchContext[key]);
+  }
+
+  String? _sessionRequesterId(VideoSessionsRecord session) {
+    return _normalizedNonEmptyString(session.snapshotData['requesterId']) ??
+        _normalizedNonEmptyString(session.snapshotData['studentId']) ??
+        _sessionMatchContextString(session, 'requesterId');
+  }
+
+  String? _sessionResponderId(VideoSessionsRecord session) {
+    return _normalizedNonEmptyString(
+            session.snapshotData['currentResponderId']) ??
+        _normalizedNonEmptyString(session.snapshotData['currentTutorId']) ??
+        _normalizedNonEmptyString(session.snapshotData['responderId']) ??
+        _sessionMatchContextString(session, 'currentResponderId') ??
+        _sessionMatchContextString(session, 'responderId') ??
+        _sessionMatchContextString(session, 'acceptedResponderId');
+  }
+
+  bool _isCurrentUserForegroundResponder(VideoSessionsRecord session) {
+    final userId = _normalizedNonEmptyString(currentUserUid);
+    if (userId == null || _searchAppState != 'foreground') {
+      return false;
+    }
+
+    final responderId = _sessionResponderId(session);
+    if (responderId != userId) {
+      return false;
+    }
+
+    return _sessionRequesterId(session) != userId;
+  }
+
+  void _handleForegroundActiveSession(VideoSessionsRecord? session) {
+    if (session == null ||
+        StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation) {
+      return;
+    }
+
+    final sessionId = _normalizedSessionId(session.reference.id);
+    if (sessionId == null ||
+        _searchAppState != 'foreground' ||
+        _isActiveSessionSuppressed(sessionId)) {
+      return;
+    }
+
+    if (session.status.trim() == 'pending_confirmation') {
+      _maybeAcceptForegroundStudentSession(session);
+      return;
+    }
+
+    if (_isVideoCallReadySession(session)) {
+      _maybeOpenReadyForegroundSession(session);
+    }
+  }
+
+  void _maybeOpenReadyForegroundSession(VideoSessionsRecord session) {
+    final sessionId = _normalizedSessionId(session.reference.id);
+    if (sessionId == null ||
+        _autoOpenedSessionId == sessionId ||
+        _autoOpenCredentialStartedSessionIds.contains(sessionId)) {
+      return;
+    }
+
+    _autoOpenCredentialStartedSessionIds.add(sessionId);
+    unawaited(_openReadyForegroundSessionWithTokens(session.reference));
+  }
+
+  Future<void> _openReadyForegroundSessionWithTokens(
+    DocumentReference videoDocRef,
+  ) async {
+    final sessionId = _normalizedSessionId(videoDocRef.id);
+    if (sessionId == null) {
+      return;
+    }
+
+    try {
+      final response = await _getAutoOpenSessionTokens(sessionId);
+      if (!mounted) {
+        return;
+      }
+      if (_isActiveSessionSuppressed(sessionId)) {
+        return;
+      }
+      if (_searchAppState != 'foreground') {
+        _autoOpenCredentialStartedSessionIds.remove(sessionId);
+        return;
+      }
+
+      final roomUrl = _normalizedResponseString(response, 'roomUrl');
+      final meetingToken = _normalizedResponseString(response, 'meetingToken');
+      if (roomUrl == null || meetingToken == null) {
+        _autoOpenCredentialStartedSessionIds.remove(sessionId);
+        return;
+      }
+
+      _scheduleAutoOpenSession(
+        videoDocRef,
+        roomUrl: roomUrl,
+        meetingToken: meetingToken,
+        roomName: _normalizedResponseString(response, 'roomName'),
+      );
+    } catch (error) {
+      _autoOpenCredentialStartedSessionIds.remove(sessionId);
+      debugPrint(
+        'StudentsDashboard: failed to prepare foreground session tokens: $error',
+      );
+    }
+  }
+
+  void _maybeAcceptForegroundStudentSession(VideoSessionsRecord session) {
+    final sessionId = _normalizedSessionId(session.reference.id);
+    if (sessionId == null ||
+        !_isCurrentUserForegroundResponder(session) ||
+        _foregroundAcceptStartedSessionIds.contains(sessionId)) {
+      return;
+    }
+
+    _foregroundAcceptStartedSessionIds.add(sessionId);
+    _clearSearchTimeoutTimer();
+    _clearSearchHeartbeatTimer();
+    unawaited(_acceptForegroundStudentSession(sessionId));
+  }
+
+  Future<void> _acceptForegroundStudentSession(String sessionId) async {
+    try {
+      final response = await _acceptForegroundSessionRequest(sessionId);
+      if (!mounted) {
+        return;
+      }
+      if (_isActiveSessionSuppressed(sessionId)) {
+        return;
+      }
+      if (_searchAppState != 'foreground') {
+        _foregroundAcceptStartedSessionIds.remove(sessionId);
+        return;
+      }
+
+      if (_normalizedResponseString(response, 'status') != 'connected') {
+        _foregroundAcceptStartedSessionIds.remove(sessionId);
+        return;
+      }
+
+      final roomUrl = _normalizedResponseString(response, 'roomUrl');
+      final meetingToken = _normalizedResponseString(response, 'meetingToken');
+      if (roomUrl == null || meetingToken == null) {
+        _foregroundAcceptStartedSessionIds.remove(sessionId);
+        return;
+      }
+
+      _scheduleAutoOpenSession(
+        VideoSessionsRecord.collection.doc(sessionId),
+        roomUrl: roomUrl,
+        meetingToken: meetingToken,
+        roomName: _normalizedResponseString(response, 'roomName'),
+      );
+    } catch (error) {
+      _foregroundAcceptStartedSessionIds.remove(sessionId);
+      debugPrint(
+        'StudentsDashboard: failed to accept foreground session: $error',
+      );
+    }
+  }
+
+  void _scheduleAutoOpenSession(
+    DocumentReference videoDocRef, {
+    String? roomUrl,
+    String? meetingToken,
+    String? roomName,
+  }) {
+    final sessionId = _normalizedSessionId(videoDocRef.id);
+    if (sessionId == null ||
+        _autoOpenedSessionId == sessionId ||
+        _searchAppState != 'foreground' ||
+        _isActiveSessionSuppressed(sessionId)) {
+      return;
+    }
+
+    _autoOpenedSessionId = sessionId;
+    _clearSearchTimeoutTimer();
+    _clearSearchHeartbeatTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _autoOpenedSessionId != sessionId) {
+        return;
+      }
+      if (_searchAppState != 'foreground') {
+        _autoOpenedSessionId = null;
+        _autoOpenCredentialStartedSessionIds.remove(sessionId);
+        return;
+      }
+      if (_isActiveSessionSuppressed(sessionId)) {
+        return;
+      }
+
+      final debugNavigator =
+          StudentsDashboardWidget.debugAutoOpenSessionNavigator;
+      if (debugNavigator != null) {
+        unawaited(
+          Future<void>.sync(
+            () => debugNavigator(
+              this.context,
+              videoDocRef,
+              roomUrl: roomUrl,
+              meetingToken: meetingToken,
+              roomName: roomName,
+            ),
+          ).catchError((Object error) {
+            debugPrint(
+              'StudentsDashboard: failed to auto-open debug session: $error',
+            );
+          }),
+        );
+        return;
+      }
+
+      final router = GoRouter.of(this.context);
+      if (router
+          .getCurrentLocation()
+          .startsWith(VideoCallPageWidget.routePath)) {
+        return;
+      }
+
+      this.context.goNamed(
+            VideoCallPageWidget.routeName,
+            queryParameters: {
+              'videoDocRef': serializeParam(
+                videoDocRef,
+                ParamType.DocumentReference,
+              ),
+              'roomUrl': serializeParam(roomUrl, ParamType.String),
+              'meetingToken': serializeParam(meetingToken, ParamType.String),
+              'roomName': serializeParam(roomName, ParamType.String),
+            }.withoutNulls,
+          );
+    });
+  }
+
   Future<VideoSessionsRecord?> _readActiveSessionOnce(String sessionId) {
     final sessionRef = VideoSessionsRecord.collection.doc(sessionId);
     final reader = StudentsDashboardWidget.debugActiveSessionReader;
@@ -1569,6 +1900,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       safeSetState(() {
         _searchState = StudentDashboardSearchState.idle;
         _searchErrorReason = null;
+        _matchedSearchSessionId = null;
         _suppressedActiveSessionId = stopSessionId;
         _suppressedActiveSearchUserId =
             stopSessionId == null ? _currentSearchUserId() : null;
@@ -1644,6 +1976,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       safeSetState(() {
         _searchState = nextSearchState;
         _searchErrorReason = null;
+        _matchedSearchSessionId = sessionId;
         _suppressedActiveSessionId = null;
         _suppressedActiveSearchUserId = null;
       });
@@ -2159,7 +2492,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                         stream: _activeSessionStreamFor(user),
                         builder: (context, activeSessionSnapshot) {
                           final activeSessionIdFromUser =
-                              user.currentSessionId.trim();
+                              _normalizedSessionId(user.currentSessionId) ??
+                                  _matchedSearchSessionId ??
+                                  '';
                           final activeSession =
                               activeSessionSnapshot.data?.reference.id ==
                                       activeSessionIdFromUser
@@ -2205,6 +2540,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                               : _lastActiveSessionId;
                           final hasActiveCallSession =
                               _isActiveCallSession(activeSession);
+                          _handleForegroundActiveSession(activeSession);
 
                           return _buildReferenceSearchHero(
                             context,

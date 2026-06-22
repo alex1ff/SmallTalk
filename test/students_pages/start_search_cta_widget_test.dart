@@ -12,6 +12,8 @@ import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/components/no_balance_widget.dart';
 import 'package:small_talk/components/student_start_search_button.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
+import 'package:small_talk/flutter_flow/nav/nav.dart';
+import 'package:small_talk/shared_pages/video_call_page/video_call_page_widget.dart';
 import 'package:small_talk/students_pages/students_dashboard/students_dashboard_widget.dart';
 
 const MethodChannel _permissionsChannel =
@@ -48,6 +50,32 @@ Widget _buildDashboardTestApp(
     home: MediaQuery(
       data: MediaQueryData(textScaler: TextScaler.linear(textScaleFactor)),
       child: child,
+    ),
+  );
+}
+
+Widget _buildDashboardRouterTestApp(
+  GoRouter router, {
+  double textScaleFactor = 1.0,
+}) {
+  return MaterialApp.router(
+    locale: const Locale('ru'),
+    supportedLocales: const [
+      Locale('ru'),
+      Locale('en'),
+    ],
+    localizationsDelegates: const [
+      FFLocalizationsDelegate(),
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+      FallbackMaterialLocalizationDelegate(),
+      FallbackCupertinoLocalizationDelegate(),
+    ],
+    routerConfig: router,
+    builder: (context, child) => MediaQuery(
+      data: MediaQueryData(textScaler: TextScaler.linear(textScaleFactor)),
+      child: child ?? const SizedBox.shrink(),
     ),
   );
 }
@@ -150,6 +178,10 @@ void main() {
     };
     StudentsDashboardWidget.debugHeartbeatSearchRequest = (_) async {};
     StudentsDashboardWidget.debugStopSearchRequest = (_) async {};
+    StudentsDashboardWidget.debugAcceptCallRequest = null;
+    StudentsDashboardWidget.debugGetSessionTokensRequest = null;
+    StudentsDashboardWidget.debugAutoOpenSessionNavigator = null;
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = true;
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_permissionsChannel, (call) async {
@@ -188,15 +220,41 @@ void main() {
     StudentsDashboardWidget.debugStartSearchRequest = null;
     StudentsDashboardWidget.debugHeartbeatSearchRequest = null;
     StudentsDashboardWidget.debugStopSearchRequest = null;
+    StudentsDashboardWidget.debugAcceptCallRequest = null;
+    StudentsDashboardWidget.debugGetSessionTokensRequest = null;
+    StudentsDashboardWidget.debugAutoOpenSessionNavigator = null;
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
     currentUser = null;
     currentUserDocument = null;
   });
 
-  VideoSessionsRecord sessionFixture(String sessionId, String status) {
+  VideoSessionsRecord sessionFixture(
+    String sessionId,
+    String status, {
+    String? requesterId,
+    String? responderId,
+    String? dailyRoomUrl,
+    String? dailyRoomName,
+    String? meetingToken,
+  }) {
     return VideoSessionsRecord.getDocumentFromData(
       {
         'status': status,
         'participantIds': [currentUserUid],
+        if (requesterId != null) 'requesterId': requesterId,
+        if (requesterId != null) 'studentId': requesterId,
+        if (responderId != null) 'responderId': responderId,
+        if (responderId != null) 'currentResponderId': responderId,
+        if (responderId != null) 'currentTutorId': responderId,
+        if (requesterId != null || responderId != null)
+          'matchContext': {
+            if (requesterId != null) 'requesterId': requesterId,
+            if (responderId != null) 'responderId': responderId,
+            if (responderId != null) 'currentResponderId': responderId,
+          },
+        if (dailyRoomUrl != null) 'dailyRoomUrl': dailyRoomUrl,
+        if (dailyRoomName != null) 'dailyRoomName': dailyRoomName,
+        if (meetingToken != null) 'meetingToken': meetingToken,
       },
       VideoSessionsRecord.collection.doc(sessionId),
     );
@@ -1967,6 +2025,466 @@ void main() {
     expect(find.byType(NoBalanceWidget), findsNothing);
     expect(_checkPermissionStatusCallCount, 0);
     expect(_requestPermissionsCallCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('foreground responder accepts student pair and opens the call',
+      (tester) async {
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    const sessionId = 'session-foreground-responder-test';
+    const requesterId = 'student-foreground-requester-test';
+    const responderId = 'student-foreground-responder-test';
+    final acceptedSessionIds = <String>[];
+    final openedSessions = <Map<String, String?>>[];
+    StudentsDashboardWidget.debugAcceptCallRequest = (sessionId) async {
+      acceptedSessionIds.add(sessionId);
+      return <String, dynamic>{
+        'status': 'connected',
+        'sessionId': sessionId,
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    StudentsDashboardWidget.debugAutoOpenSessionNavigator = (
+      context,
+      videoDocRef, {
+      roomUrl,
+      meetingToken,
+      roomName,
+    }) {
+      openedSessions.add({
+        'sessionId': videoDocRef.id,
+        'roomUrl': roomUrl,
+        'meetingToken': meetingToken,
+        'roomName': roomName,
+      });
+    };
+    setActiveStudent(responderId, currentSessionId: sessionId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: requesterId,
+        responderId: responderId,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(acceptedSessionIds, [sessionId]);
+    expect(openedSessions, hasLength(1));
+    expect(openedSessions.single['sessionId'], sessionId);
+    expect(openedSessions.single['roomUrl'], 'https://daily.test/$sessionId');
+    expect(openedSessions.single['meetingToken'], 'token-$sessionId');
+    expect(openedSessions.single['roomName'], 'room-$sessionId');
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: requesterId,
+        responderId: responderId,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(acceptedSessionIds, [sessionId]);
+    expect(openedSessions, hasLength(1));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('foreground requester does not accept pending student pair',
+      (tester) async {
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    const sessionId = 'session-foreground-requester-pending-test';
+    const requesterId = 'student-foreground-requester-pending-test';
+    const responderId = 'student-foreground-responder-pending-test';
+    final acceptedSessionIds = <String>[];
+    StudentsDashboardWidget.debugAcceptCallRequest = (sessionId) async {
+      acceptedSessionIds.add(sessionId);
+      return <String, dynamic>{
+        'status': 'connected',
+        'roomUrl': 'https://daily.test/$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    setActiveStudent(requesterId, currentSessionId: sessionId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: requesterId,
+        responderId: responderId,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(acceptedSessionIds, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('foreground responder retries accept after transient failure',
+      (tester) async {
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    const sessionId = 'session-foreground-accept-retry-test';
+    const requesterId = 'student-foreground-accept-retry-requester-test';
+    const responderId = 'student-foreground-accept-retry-responder-test';
+    var acceptAttempts = 0;
+    final openedSessionIds = <String>[];
+    StudentsDashboardWidget.debugAcceptCallRequest = (sessionId) async {
+      acceptAttempts += 1;
+      if (acceptAttempts == 1) {
+        throw StateError('temporary accept failure');
+      }
+      return <String, dynamic>{
+        'status': 'connected',
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    StudentsDashboardWidget.debugAutoOpenSessionNavigator = (
+      context,
+      videoDocRef, {
+      roomUrl,
+      meetingToken,
+      roomName,
+    }) {
+      openedSessionIds.add(videoDocRef.id);
+    };
+    setActiveStudent(responderId, currentSessionId: sessionId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: requesterId,
+        responderId: responderId,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: requesterId,
+        responderId: responderId,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(acceptAttempts, 2);
+    expect(openedSessionIds, [sessionId]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('foreground ready student pair session routes to video call once',
+      (tester) async {
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    const sessionId = 'session-foreground-ready-route-test';
+    const requesterId = 'student-foreground-ready-requester-test';
+    const responderId = 'student-foreground-ready-responder-test';
+    final tokenSessionIds = <String>[];
+    StudentsDashboardWidget.debugGetSessionTokensRequest = (sessionId) async {
+      tokenSessionIds.add(sessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    setActiveStudent(requesterId, currentSessionId: sessionId);
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => StudentsDashboardWidget(
+            activeSessionStream: activeSessionController.stream,
+          ),
+        ),
+        GoRoute(
+          name: VideoCallPageWidget.routeName,
+          path: VideoCallPageWidget.routePath,
+          builder: (context, state) => const SizedBox(
+            key: Key('video-call-route'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'connecting',
+        requesterId: requesterId,
+        responderId: responderId,
+        dailyRoomUrl: 'https://daily.test/$sessionId',
+        dailyRoomName: 'room-$sessionId',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      router.getCurrentLocation(),
+      startsWith(VideoCallPageWidget.routePath),
+    );
+    expect(router.getCurrentLocation(), contains('videoDocRef='));
+    expect(router.getCurrentLocation(), contains('meetingToken='));
+    expect(tokenSessionIds, [sessionId]);
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'connecting',
+        requesterId: requesterId,
+        responderId: responderId,
+        dailyRoomUrl: 'https://daily.test/$sessionId',
+        dailyRoomName: 'room-$sessionId',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      router.getCurrentLocation(),
+      startsWith(VideoCallPageWidget.routePath),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('ready session ignores document token and fetches user token',
+      (tester) async {
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    const sessionId = 'session-ready-doc-token-test';
+    const requesterId = 'student-ready-doc-token-requester-test';
+    const responderId = 'student-ready-doc-token-responder-test';
+    final openedSessions = <Map<String, String?>>[];
+    StudentsDashboardWidget.debugGetSessionTokensRequest = (sessionId) async {
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'callable-token-$sessionId',
+      };
+    };
+    StudentsDashboardWidget.debugAutoOpenSessionNavigator = (
+      context,
+      videoDocRef, {
+      roomUrl,
+      meetingToken,
+      roomName,
+    }) {
+      openedSessions.add({
+        'sessionId': videoDocRef.id,
+        'meetingToken': meetingToken,
+      });
+    };
+    setActiveStudent(requesterId, currentSessionId: sessionId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'connecting',
+        requesterId: requesterId,
+        responderId: responderId,
+        dailyRoomUrl: 'https://daily.test/$sessionId',
+        dailyRoomName: 'room-$sessionId',
+        meetingToken: 'doc-token-$sessionId',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(openedSessions, hasLength(1));
+    expect(
+      openedSessions.single['meetingToken'],
+      'callable-token-$sessionId',
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('ready student pair session waits for meeting token',
+      (tester) async {
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    const sessionId = 'session-ready-no-token-test';
+    const requesterId = 'student-ready-no-token-requester-test';
+    const responderId = 'student-ready-no-token-responder-test';
+    final tokenSessionIds = <String>[];
+    StudentsDashboardWidget.debugGetSessionTokensRequest = (sessionId) async {
+      tokenSessionIds.add(sessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+      };
+    };
+    setActiveStudent(requesterId, currentSessionId: sessionId);
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => StudentsDashboardWidget(
+            activeSessionStream: activeSessionController.stream,
+          ),
+        ),
+        GoRoute(
+          name: VideoCallPageWidget.routeName,
+          path: VideoCallPageWidget.routePath,
+          builder: (context, state) => const SizedBox.shrink(),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'connecting',
+        requesterId: requesterId,
+        responderId: responderId,
+        dailyRoomUrl: 'https://daily.test/$sessionId',
+        dailyRoomName: 'room-$sessionId',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(tokenSessionIds, [sessionId]);
+    expect(router.getCurrentLocation(), StudentsDashboardWidget.routePath);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('background student pair session does not auto-open',
+      (tester) async {
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    const sessionId = 'session-background-pair-test';
+    const requesterId = 'student-background-requester-test';
+    const responderId = 'student-background-responder-test';
+    final acceptedSessionIds = <String>[];
+    final openedSessionIds = <String>[];
+    StudentsDashboardWidget.debugAcceptCallRequest = (sessionId) async {
+      acceptedSessionIds.add(sessionId);
+      return <String, dynamic>{
+        'status': 'connected',
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    StudentsDashboardWidget.debugAutoOpenSessionNavigator = (
+      context,
+      videoDocRef, {
+      roomUrl,
+      meetingToken,
+      roomName,
+    }) {
+      openedSessionIds.add(videoDocRef.id);
+    };
+    setActiveStudent(responderId, currentSessionId: sessionId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: requesterId,
+        responderId: responderId,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(acceptedSessionIds, isEmpty);
+    expect(openedSessionIds, isEmpty);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+
+    expect(acceptedSessionIds, [sessionId]);
+    expect(openedSessionIds, [sessionId]);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
