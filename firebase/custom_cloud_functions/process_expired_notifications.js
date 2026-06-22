@@ -18,6 +18,14 @@ const {
 const {
   findNextCallableCandidateInTransaction,
 } = require("./call_candidate_tokens");
+const {
+  SEARCH_REQUEST_STATUS,
+} = require("./search_requests");
+const {
+  applyPreparedPairLockWrites,
+  prepareExistingSessionNextResponderPairLockInTransaction,
+  releaseSessionPairLocksInTransaction,
+} = require("./match_pair_lock");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -152,26 +160,87 @@ async function processExpiredNotification(notificationDoc) {
             skipReason: "missing_timed_out_tutor",
           };
         }
-
         const triedTutors = [...(freshSessionData.triedTutors || [])];
         if (!triedTutors.includes(timedOutTutorId)) {
           triedTutors.push(timedOutTutorId);
         }
 
         const availableTutors = freshSessionData.availableTutors || [];
-        const nextCandidate = await findNextCallableCandidateInTransaction({
-          db,
-          transaction,
-          candidateIds: availableTutors,
-          triedCandidateIds: triedTutors,
-          language: freshSessionData.language,
-        });
-        const nextTutor = nextCandidate.candidateId;
-        const nextTriedTutors = nextCandidate.triedCandidateIds;
+        let nextTutor = null;
+        let nextTriedTutors = triedTutors;
+        let preparedPairLock = null;
+        const skippedCandidateIds = [];
+        const skippedLockCandidateIds = [];
+        while (true) {
+          const nextCandidate = await findNextCallableCandidateInTransaction({
+            db,
+            transaction,
+            candidateIds: availableTutors,
+            triedCandidateIds: nextTriedTutors,
+            language: freshSessionData.language,
+          });
+          skippedCandidateIds.push(...nextCandidate.skippedCandidateIds);
+          if (!nextCandidate.candidateId) {
+            nextTriedTutors = nextCandidate.triedCandidateIds;
+            break;
+          }
 
-        transaction.update(notificationDoc.ref, expireNotificationUpdate);
+          const lockExpiresAt = admin.firestore.Timestamp.fromMillis(
+            Date.now() + 45 * 1000,
+          );
+          const candidatePairLock =
+            await prepareExistingSessionNextResponderPairLockInTransaction({
+              db,
+              transaction,
+              sessionId,
+              sessionData: freshSessionData,
+              currentResponderId: timedOutTutorId,
+              responderId: nextCandidate.candidateId,
+              responderRole: nextCandidate.role,
+              expectedLanguage: freshSessionData.language,
+              triedTutors: nextCandidate.triedCandidateIds,
+              serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+              lockExpiresAt,
+              fieldDelete: admin.firestore.FieldValue.delete(),
+              currentResponderSearchRequestStatus:
+                SEARCH_REQUEST_STATUS.EXPIRED,
+              currentResponderStopReason: "response_timeout",
+            });
+          if (candidatePairLock.locked) {
+            nextTutor = nextCandidate.candidateId;
+            nextTriedTutors = nextCandidate.triedCandidateIds;
+            preparedPairLock = candidatePairLock;
+            break;
+          }
+
+          skippedLockCandidateIds.push({
+            candidateId: nextCandidate.candidateId,
+            reason: candidatePairLock.reason,
+          });
+          nextTriedTutors = Array.from(new Set([
+            ...nextCandidate.triedCandidateIds,
+            nextCandidate.candidateId,
+          ]));
+        }
+        if (skippedCandidateIds.length > 0) {
+          console.log("⏭️ Skipped non-callable candidates:", skippedCandidateIds);
+        }
+        if (skippedLockCandidateIds.length > 0) {
+          console.log("⏭️ Skipped locked candidates:", skippedLockCandidateIds);
+        }
 
         if (!nextTutor) {
+          await releaseSessionPairLocksInTransaction({
+            db,
+            transaction,
+            sessionId,
+            sessionData: freshSessionData,
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+            fieldDelete: admin.firestore.FieldValue.delete(),
+            searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+            stopReason: "no_available_responder_after_timeout",
+          });
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
           transaction.update(sessionRef, {
             triedTutors: nextTriedTutors,
             currentTutorId: admin.firestore.FieldValue.delete(),
@@ -192,8 +261,10 @@ async function processExpiredNotification(notificationDoc) {
           };
         }
 
+        transaction.update(notificationDoc.ref, expireNotificationUpdate);
         const nextSessionData = {
           ...freshSessionData,
+          ...(preparedPairLock?.writes?.sessionUpdate || {}),
           triedTutors: nextTriedTutors,
           currentTutorId: nextTutor,
         };
@@ -206,10 +277,7 @@ async function processExpiredNotification(notificationDoc) {
           studentNameFallback: "Student",
         });
 
-        transaction.update(sessionRef, {
-          triedTutors: nextTriedTutors,
-          currentTutorId: nextTutor,
-        });
+        applyPreparedPairLockWrites(transaction, preparedPairLock);
 
         return {
           shouldNotify: true,

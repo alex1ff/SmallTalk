@@ -26,6 +26,12 @@ const {
 const {
   deleteDailyRoomForSession,
 } = require("./daily_room_cleanup");
+const {
+  SEARCH_REQUEST_STATUS,
+} = require("./search_requests");
+const {
+  releaseSessionPairLocksInTransaction,
+} = require("./match_pair_lock");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 
@@ -405,21 +411,23 @@ exports.endSession = functions
           pairHistoryWrite.ref;
       }
 
+      await releaseSessionPairLocksInTransaction({
+        db,
+        transaction,
+        sessionId,
+        sessionData,
+        serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+        fieldDelete: admin.firestore.FieldValue.delete(),
+        searchRequestStatus: SEARCH_REQUEST_STATUS.STOPPED,
+        stopReason: "session_ended",
+        releaseCallState: true,
+        restoreLegacyAvailability: true,
+      });
+
       transaction.update(sessionRef, sessionUpdates);
       if (pairHistoryWrite) {
         transaction.set(pairHistoryWrite.ref, pairHistoryWrite.data, {
           merge: true,
-        });
-      }
-
-      if (sessionData.tutorId) {
-        console.log("👨‍🏫 Releasing tutor:", sessionData.tutorId);
-        transaction.update(db.collection("users").doc(sessionData.tutorId), {
-          isInCall: false,
-          isAvailable: true,
-          currentSessionId: admin.firestore.FieldValue.delete(),
-          lastCallEndedAt: admin.firestore.FieldValue.serverTimestamp(),
-          availableAfter: admin.firestore.FieldValue.delete(),
         });
       }
 

@@ -154,16 +154,41 @@ test("tutor assignment paths create notification docs in the assignment transact
     const helperIndex = source.indexOf(
       "createIncomingCallNotificationInTransaction({",
     );
-    const assignmentIndex = source.indexOf(
+    const sessionUpdateIndex = source.indexOf(
       "transaction.update(sessionRef",
       helperIndex,
     );
-    const pushIndex = source.indexOf("sendVoipPushToTutor", helperIndex);
+    const preparedLockApplyIndex = source.indexOf(
+      "applyPreparedPairLockWrites",
+      helperIndex,
+    );
+    const assignmentAfterHelperIndex = [
+      sessionUpdateIndex,
+      preparedLockApplyIndex,
+    ].filter((index) => index !== -1).sort((a, b) => a - b)[0] ?? -1;
+    const reserveBeforeHelperIndex = source.lastIndexOf(
+      "reserveMatchPairInTransaction({",
+      helperIndex,
+    );
+    const directReserveBeforeHelperIndex = source.lastIndexOf(
+      "reserveDirectPairInTransaction({",
+      helperIndex,
+    );
+    const sendVoipPushIndex = source.indexOf("sendVoipPushToTutor", helperIndex);
+    const sendVoipOrFcmIndex = source.indexOf("sendVoipOrFcm", helperIndex);
+    const pushIndex = Math.max(sendVoipPushIndex, sendVoipOrFcmIndex);
+    const reserveAssignmentIndex = Math.max(
+      reserveBeforeHelperIndex,
+      directReserveBeforeHelperIndex,
+    );
+    const assignmentIndex = reserveAssignmentIndex !== -1 ?
+      reserveAssignmentIndex :
+      assignmentAfterHelperIndex;
 
     assert.notEqual(helperIndex, -1, `${name} missing notification helper`);
     assert.ok(
-      assignmentIndex > helperIndex,
-      `${name} must create notification before assigning next tutor`,
+      assignmentIndex !== -1,
+      `${name} must assign the recipient in the transaction`,
     );
     assert.ok(
       pushIndex > assignmentIndex,

@@ -261,6 +261,10 @@ test(
     /orderCandidatesWithTeacherPriority\(/,
   );
   assert.match(source, /orderCandidatesByMatchQuality\(/);
+  assert.match(source, /reserveDirectPairInTransaction\(/);
+  assert.match(source, /reserveMatchPairInTransaction\(/);
+  assert.doesNotMatch(source, /transaction\.set\(sessionRef,\s*finalSessionData\)/);
+  assert.match(source, /requestId is required for search matching/);
   assert.doesNotMatch(source, /native_language_NS\.code/);
   assert.match(source, /loadSameDayRepeatCandidateIds\(\s*db,\s*requesterId,/);
   assert.match(source, /const sessionPolicyFields = buildCreateSessionPolicyFields\(\);/);

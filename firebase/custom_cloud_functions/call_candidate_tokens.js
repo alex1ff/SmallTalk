@@ -100,6 +100,7 @@ async function findNextCallableCandidateInTransaction({
     if (callability.callable) {
       return {
         candidateId,
+        role: callability.role || "",
         triedCandidateIds: Array.from(triedSet),
         skippedCandidateIds,
       };
@@ -111,6 +112,7 @@ async function findNextCallableCandidateInTransaction({
 
   return {
     candidateId: null,
+    role: "",
     triedCandidateIds: Array.from(triedSet),
     skippedCandidateIds,
   };

@@ -16,6 +16,7 @@ const {
     cleanupStaleSearchRequestDocs,
     isBackgroundExpiredSearchRequest,
     isExpiredUnmatchedSearchRequest,
+    isSessionBoundMatchingSearchRequest,
     isStaleSearchRequest,
     queueBackgroundExpiredSearchRequestCleanup,
     queueExpiredSearchRequestCleanup,
@@ -81,6 +82,14 @@ test("stale search request cleanup uses heartbeat cutoff", () => {
   );
   assert.equal(
     isStaleSearchRequest(activeRequest({
+      status: "matching",
+      currentSessionId: "session-a",
+      heartbeatAt: timestampFromMillis(cutoffMillis - 1),
+    }), fixedNowMillis),
+    false,
+  );
+  assert.equal(
+    isStaleSearchRequest(activeRequest({
       appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
       backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60 * 1000),
       heartbeatAt: timestampFromMillis(cutoffMillis - 1),
@@ -134,6 +143,14 @@ test("expired unmatched search request cleanup uses expiresAt cutoff", () => {
   assert.equal(
     isExpiredUnmatchedSearchRequest(activeRequest({
       status: "matched",
+      expiresAt: timestampFromMillis(fixedNowMillis - 1),
+    }), fixedNowMillis),
+    false,
+  );
+  assert.equal(
+    isExpiredUnmatchedSearchRequest(activeRequest({
+      status: "matching",
+      currentSessionId: "session-a",
       expiresAt: timestampFromMillis(fixedNowMillis - 1),
     }), fixedNowMillis),
     false,
@@ -204,6 +221,34 @@ test("background expired search request cleanup uses background deadline", () =>
       appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
       backgroundExpiresAt: timestampFromMillis(fixedNowMillis - 1),
     }), fixedNowMillis),
+    false,
+  );
+  assert.equal(
+    isBackgroundExpiredSearchRequest(activeRequest({
+      status: "matching",
+      currentSessionId: "session-a",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis - 1),
+    }), fixedNowMillis),
+    false,
+  );
+});
+
+test("session-bound matching requests are left to session lifecycle", () => {
+  assert.equal(
+    isSessionBoundMatchingSearchRequest(activeRequest({
+      status: "matching",
+      currentSessionId: "session-a",
+    })),
+    true,
+  );
+  assert.equal(
+    isSessionBoundMatchingSearchRequest(activeRequest({
+      status: "matching",
+      currentSessionId: null,
+      activeSessionId: null,
+      matchedSessionId: null,
+    })),
     false,
   );
 });
@@ -318,6 +363,9 @@ test("queue expired cleanup writes only expired unmatched request", () => {
       ref: {path: "searchRequests/student-a"},
       data: () => activeRequest({
         status: "matching",
+        currentSessionId: null,
+        activeSessionId: null,
+        matchedSessionId: null,
         expiresAt: timestampFromMillis(fixedNowMillis),
       }),
     },

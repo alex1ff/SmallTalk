@@ -59,9 +59,25 @@ function hasBackgroundSearchDeadline(requestData = {}) {
     timestampToMillis(requestData.backgroundExpiresAt) !== null;
 }
 
+function hasSessionBinding(requestData = {}) {
+  return [
+    requestData.currentSessionId,
+    requestData.activeSessionId,
+    requestData.matchedSessionId,
+  ].some((value) => Boolean(normalizeString(value)));
+}
+
+function isSessionBoundMatchingSearchRequest(requestData = {}) {
+  return normalizeString(requestData.status) === SEARCH_REQUEST_STATUS.MATCHING &&
+    hasSessionBinding(requestData);
+}
+
 function isStaleSearchRequest(requestData = {}, nowMillis = Date.now()) {
   const status = normalizeString(requestData.status);
   if (!STALE_CLEANUP_STATUSES.includes(status)) {
+    return false;
+  }
+  if (isSessionBoundMatchingSearchRequest(requestData)) {
     return false;
   }
 
@@ -82,6 +98,9 @@ function isExpiredUnmatchedSearchRequest(
   if (!EXPIRED_CLEANUP_STATUSES.includes(status)) {
     return false;
   }
+  if (isSessionBoundMatchingSearchRequest(requestData)) {
+    return false;
+  }
 
   const expiresAtMillis = timestampToMillis(requestData.expiresAt);
   return expiresAtMillis !== null && expiresAtMillis <= nowMillis;
@@ -93,6 +112,9 @@ function isBackgroundExpiredSearchRequest(
 ) {
   const status = normalizeString(requestData.status);
   if (!BACKGROUND_EXPIRED_CLEANUP_STATUSES.includes(status)) {
+    return false;
+  }
+  if (isSessionBoundMatchingSearchRequest(requestData)) {
     return false;
   }
   if (
@@ -446,8 +468,10 @@ exports.__private__ = {
   cleanupSearchRequestDocs,
   cleanupStaleSearchRequestDocs,
   hasBackgroundSearchDeadline,
+  hasSessionBinding,
   isBackgroundExpiredSearchRequest,
   isExpiredUnmatchedSearchRequest,
+  isSessionBoundMatchingSearchRequest,
   isStaleSearchRequest,
   queueBackgroundExpiredSearchRequestCleanup,
   queueExpiredSearchRequestCleanup,

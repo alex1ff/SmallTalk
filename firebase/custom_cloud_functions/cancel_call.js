@@ -10,6 +10,12 @@ const {
   CALL_EVENT_OUTCOME_CANCELLED,
   ensureConversationCallEventForSession,
 } = require("./chats_shared");
+const {
+  SEARCH_REQUEST_STATUS,
+} = require("./search_requests");
+const {
+  releaseSessionPairLocksInTransaction,
+} = require("./match_pair_lock");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 exports.cancelCall = functions
   .runWith({ secrets: dailySecrets })
@@ -78,6 +84,18 @@ exports.cancelCall = functions
           `Session cannot be cancelled. Current status: ${sessionData.status}`,
         );
       }
+
+      await releaseSessionPairLocksInTransaction({
+        db,
+        transaction,
+        sessionId,
+        sessionData,
+        serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+        fieldDelete: admin.firestore.FieldValue.delete(),
+        searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+        stopReason: "call_cancelled",
+        releaseCallState: true,
+      });
 
       transaction.update(sessionRef, {
         status: "cancelled",
@@ -151,28 +169,6 @@ exports.cancelCall = functions
       console.log("✅ Active notifications cancelled");
     } else {
       console.log("📭 No active notifications found");
-    }
-
-    // Если есть текущий преподаватель, освобождаем его
-    if (txResult.sessionData.currentTutorId) {
-      console.log(
-        "👨‍🏫 Releasing current tutor:",
-        txResult.sessionData.currentTutorId,
-      );
-      try {
-        await admin
-          .firestore()
-          .collection("users")
-          .doc(txResult.sessionData.currentTutorId)
-          .update({
-            currentSessionId: admin.firestore.FieldValue.delete(),
-          });
-      } catch (tutorUpdateError) {
-        console.log(
-          "⚠️ Could not update tutor status (non-critical):",
-          tutorUpdateError.message,
-        );
-      }
     }
 
     console.log("✅ Video session successfully cancelled");

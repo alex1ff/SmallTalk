@@ -12,6 +12,12 @@ const {
 const {
   buildCompletedPairHistoryWrite,
 } = require("./match_repeat_prevention");
+const {
+  SEARCH_REQUEST_STATUS,
+} = require("./search_requests");
+const {
+  releaseSessionPairLocksInTransaction,
+} = require("./match_pair_lock");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 /*
 АВТОМАТИЧЕСКАЯ ФУНКЦИЯ: cleanupExpiredSessions
@@ -74,6 +80,7 @@ function queueExpiredSessionCleanup({
   db,
   doc,
   endedAtMillis = Date.now(),
+  skipLegacyUserRelease = false,
 }) {
   const sessionData = doc.data();
   const sessionId = doc.id;
@@ -94,7 +101,7 @@ function queueExpiredSessionCleanup({
     );
   }
 
-  if (cleanupPayload.tutorId) {
+  if (cleanupPayload.tutorId && !skipLegacyUserRelease) {
     writer.update(db.collection("users").doc(cleanupPayload.tutorId), {
       isInCall: false,
       isAvailable: true,
@@ -153,6 +160,18 @@ exports.cleanupExpiredSessions = functions
           }
 
           console.log(`🔚 Auto-ending expired session: ${doc.id}`);
+          await releaseSessionPairLocksInTransaction({
+            db,
+            transaction,
+            sessionId: doc.id,
+            sessionData: freshData,
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+            fieldDelete: admin.firestore.FieldValue.delete(),
+            searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+            stopReason: "session_expired",
+            releaseCallState: true,
+            restoreLegacyAvailability: true,
+          });
           const cleanupPayload = queueExpiredSessionCleanup({
             writer: transaction,
             db,
@@ -162,6 +181,7 @@ exports.cleanupExpiredSessions = functions
               data: () => freshData,
             },
             endedAtMillis: expiresAtMillis || now.toMillis(),
+            skipLegacyUserRelease: true,
           });
 
           return {

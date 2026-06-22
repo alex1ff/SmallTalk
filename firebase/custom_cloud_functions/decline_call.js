@@ -19,6 +19,14 @@ const {
 const {
   findNextCallableCandidateInTransaction,
 } = require("./call_candidate_tokens");
+const {
+  SEARCH_REQUEST_STATUS,
+} = require("./search_requests");
+const {
+  applyPreparedPairLockWrites,
+  prepareExistingSessionNextResponderPairLockInTransaction,
+  releaseSessionPairLocksInTransaction,
+} = require("./match_pair_lock");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -120,20 +128,67 @@ exports.declineCall = functions
         console.log("📝 Updating tried tutors list:", triedTutors);
 
         const availableTutors = sessionData.availableTutors || [];
-        const nextCandidate = await findNextCallableCandidateInTransaction({
-          db,
-          transaction,
-          candidateIds: availableTutors,
-          triedCandidateIds: triedTutors,
-          language: sessionData.language,
-        });
-        const nextTutor = nextCandidate.candidateId;
-        const nextTriedTutors = nextCandidate.triedCandidateIds;
-        if (nextCandidate.skippedCandidateIds.length > 0) {
-          console.log(
-            "⏭️ Skipped non-callable candidates:",
-            nextCandidate.skippedCandidateIds,
+        let nextTutor = null;
+        let nextTriedTutors = triedTutors;
+        let preparedPairLock = null;
+        const skippedCandidateIds = [];
+        const skippedLockCandidateIds = [];
+        while (true) {
+          const nextCandidate = await findNextCallableCandidateInTransaction({
+            db,
+            transaction,
+            candidateIds: availableTutors,
+            triedCandidateIds: nextTriedTutors,
+            language: sessionData.language,
+          });
+          skippedCandidateIds.push(...nextCandidate.skippedCandidateIds);
+          if (!nextCandidate.candidateId) {
+            nextTriedTutors = nextCandidate.triedCandidateIds;
+            break;
+          }
+
+          const lockExpiresAt = admin.firestore.Timestamp.fromMillis(
+            Date.now() + 45 * 1000,
           );
+          const candidatePairLock =
+            await prepareExistingSessionNextResponderPairLockInTransaction({
+              db,
+              transaction,
+              sessionId,
+              sessionData,
+              currentResponderId: tutorId,
+              responderId: nextCandidate.candidateId,
+              responderRole: nextCandidate.role,
+              expectedLanguage: sessionData.language,
+              triedTutors: nextCandidate.triedCandidateIds,
+              serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+              lockExpiresAt,
+              fieldDelete: admin.firestore.FieldValue.delete(),
+              currentResponderSearchRequestStatus:
+                SEARCH_REQUEST_STATUS.CANCELLED,
+              currentResponderStopReason: "declined",
+            });
+          if (candidatePairLock.locked) {
+            nextTutor = nextCandidate.candidateId;
+            nextTriedTutors = nextCandidate.triedCandidateIds;
+            preparedPairLock = candidatePairLock;
+            break;
+          }
+
+          skippedLockCandidateIds.push({
+            candidateId: nextCandidate.candidateId,
+            reason: candidatePairLock.reason,
+          });
+          nextTriedTutors = Array.from(new Set([
+            ...nextCandidate.triedCandidateIds,
+            nextCandidate.candidateId,
+          ]));
+        }
+        if (skippedCandidateIds.length > 0) {
+          console.log("⏭️ Skipped non-callable candidates:", skippedCandidateIds);
+        }
+        if (skippedLockCandidateIds.length > 0) {
+          console.log("⏭️ Skipped locked candidates:", skippedLockCandidateIds);
         }
         const sessionUpdate = {
           triedTutors: nextTriedTutors,
@@ -151,6 +206,7 @@ exports.declineCall = functions
             recipientId: nextTutor,
             sessionData: {
               ...sessionData,
+              ...(preparedPairLock?.writes?.sessionUpdate || {}),
               triedTutors: nextTriedTutors,
               currentTutorId: nextTutor,
             },
@@ -158,7 +214,21 @@ exports.declineCall = functions
           })
           : null;
 
-        transaction.update(sessionRef, sessionUpdate);
+        if (preparedPairLock) {
+          applyPreparedPairLockWrites(transaction, preparedPairLock);
+        } else {
+          await releaseSessionPairLocksInTransaction({
+            db,
+            transaction,
+            sessionId,
+            sessionData,
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+            fieldDelete: admin.firestore.FieldValue.delete(),
+            searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+            stopReason: "no_available_responder_after_decline",
+          });
+          transaction.update(sessionRef, sessionUpdate);
+        }
 
         return {
           dailyRoomName: nextTutor ? null : resolveDailyRoomName(sessionData),

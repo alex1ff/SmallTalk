@@ -22,6 +22,9 @@ const {
   readUsage,
 } = require("./subscription_usage_shared");
 const { hasUsableGiftMinutes } = require("./gift_minutes_shared");
+const {
+  hasActiveCallState,
+} = require("./call_access");
 
 const DIRECT_CALL_STATUS_TTL_SECONDS = 15;
 const MAX_UID_LENGTH = 128;
@@ -215,7 +218,7 @@ function buildDirectCallStatusDecision({
   }
 
   const availabilityCheck = evaluateTutorAvailabilityWindow(targetData, now);
-  if (!availabilityCheck.isAvailable || targetData.isInCall === true) {
+  if (!availabilityCheck.isAvailable || hasActiveCallState(targetData)) {
     return buildUnavailableStatus(targetUserId, checkedAtMillis);
   }
 

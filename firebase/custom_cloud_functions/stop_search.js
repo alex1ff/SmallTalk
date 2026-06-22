@@ -8,8 +8,12 @@ const {
 } = require("./daily_room_cleanup");
 const {
   SEARCH_REQUEST_COLLECTION,
+  SEARCH_REQUEST_STATUS,
   SEARCH_REQUEST_TERMINAL_STATUSES,
 } = require("./search_requests");
+const {
+  releaseSessionPairLocksInTransaction,
+} = require("./match_pair_lock");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 
@@ -588,6 +592,19 @@ exports.stopSearch = functions
         throwCallableError(sessionDecision);
       }
 
+      if (sessionDecision.sessionUpdate && sessionRef) {
+        await releaseSessionPairLocksInTransaction({
+          db,
+          transaction,
+          sessionId: sessionIdForStop,
+          sessionData,
+          serverTimestamp,
+          fieldDelete,
+          searchRequestStatus: SEARCH_REQUEST_STATUS.STOPPED,
+          stopReason: "manual_stop_search",
+          releaseCallState: true,
+        });
+      }
       if (searchDecision.update) {
         transaction.update(searchRequestRef, searchDecision.update);
       }

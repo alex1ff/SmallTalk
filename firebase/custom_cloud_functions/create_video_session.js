@@ -50,6 +50,16 @@ const {
 const {
   findNextCallableCandidateInTransaction,
 } = require("./call_candidate_tokens");
+const {
+  hasActiveCallState,
+} = require("./call_access");
+const {
+  isActiveStudentSearchRequest,
+} = require("./match_candidate_pool");
+const {
+  reserveDirectPairInTransaction,
+  reserveMatchPairInTransaction,
+} = require("./match_pair_lock");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -161,13 +171,25 @@ exports.createVideoSession = functions
         language,
         preferredCountry,
         preferredPartnerLevel,
+        requestId: rawRequestId,
+        searchRequestId: rawSearchRequestId,
         directTutorId: rawDirectTutorId,
         directUserId: rawDirectUserId,
       } = data;
+      const requesterSearchRequestId = String(
+        rawSearchRequestId || rawRequestId || "",
+      ).trim();
       const directTutorId = String(
         rawDirectUserId || rawDirectTutorId || "",
       ).trim();
       const isDirectTutorCall = directTutorId.length > 0;
+      if (!isDirectTutorCall && !requesterSearchRequestId) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "requestId is required for search matching",
+          {reason: "request_id_required"},
+        );
+      }
       const shouldSampleTutorDebug = Math.random() < MATCH_DEBUG_SAMPLE_RATE;
       const tutorDebugSamples = [];
       const tutorFilterStats = {
@@ -399,7 +421,7 @@ exports.createVideoSession = functions
         const availabilityCheck = evaluateTutorAvailabilityWindow(tutorData);
         const isAvailable = availabilityCheck.isAvailable;
 
-        if (!isAvailable || tutorData.isInCall) {
+        if (!isAvailable || hasActiveCallState(tutorData)) {
           tutorFilterStats.unavailableOrInCall += 1;
           addTutorSample({
             tutorId: directTutorId,
@@ -407,6 +429,7 @@ exports.createVideoSession = functions
             reason: "unavailable_or_in_call",
             isAvailable: !!isAvailable,
             isInCall: !!tutorData.isInCall,
+            currentSessionId: tutorData.currentSessionId || null,
             availabilityReason: availabilityCheck.reason,
             tutorLocalTime: availabilityCheck.localTime || null,
             timezoneOffsetMinutes: availabilityCheck.timezoneOffsetMinutes ?? null,
@@ -557,6 +580,7 @@ exports.createVideoSession = functions
           };
         }
 
+
         repeatPreventionContext = await loadSameDayRepeatCandidateIds(
           db,
           requesterId,
@@ -621,6 +645,47 @@ exports.createVideoSession = functions
             continue;
           }
 
+          let candidateSearchRequestId = "";
+          if (tutorRole === "student") {
+            const candidateSearchRequestSnap = await db
+              .collection("searchRequests")
+              .doc(tutorId)
+              .get();
+            const candidateSearchRequestData =
+              candidateSearchRequestSnap.exists ?
+                candidateSearchRequestSnap.data() || {} :
+                {};
+            if (
+              !candidateSearchRequestSnap.exists ||
+              !isActiveStudentSearchRequest(
+                candidateSearchRequestData,
+                Date.now(),
+              ) ||
+              readLanguageCode(candidateSearchRequestData.language) !==
+                normalizedLanguage
+            ) {
+              tutorFilterStats.unavailableOrInCall += 1;
+              addTutorSample({
+                tutorId,
+                outcome: "skip",
+                reason: "student_not_in_active_queue_for_language",
+              });
+              continue;
+            }
+            candidateSearchRequestId = String(
+              candidateSearchRequestData.requestId || "",
+            ).trim();
+            if (!candidateSearchRequestId) {
+              tutorFilterStats.unavailableOrInCall += 1;
+              addTutorSample({
+                tutorId,
+                outcome: "skip",
+                reason: "missing_student_search_request_id",
+              });
+              continue;
+            }
+          }
+
           if (isAvailableAfterInFuture(tutorData)) {
             tutorFilterStats.availableAfterInFuture += 1;
             addTutorSample({
@@ -632,7 +697,7 @@ exports.createVideoSession = functions
           }
 
           const availabilityCheck = evaluateTutorAvailabilityWindow(tutorData);
-          if (!availabilityCheck.isAvailable || tutorData.isInCall) {
+          if (!availabilityCheck.isAvailable || hasActiveCallState(tutorData)) {
             tutorFilterStats.unavailableOrInCall += 1;
             addTutorSample({
               tutorId,
@@ -640,6 +705,7 @@ exports.createVideoSession = functions
               reason: "unavailable_or_in_call",
               isAvailable: !!availabilityCheck.isAvailable,
               isInCall: !!tutorData.isInCall,
+              currentSessionId: tutorData.currentSessionId || null,
               availabilityReason: availabilityCheck.reason,
               tutorLocalTime: availabilityCheck.localTime || null,
               timezoneOffsetMinutes:
@@ -740,6 +806,7 @@ exports.createVideoSession = functions
             ratingCount: tutorProfile.ratingCount,
             level: candidateLevel || null,
             legacyPriorityScore: readMatchPriorityScore(tutorData),
+            searchRequestId: candidateSearchRequestId || null,
             locationMatch:
               !normalizedPreferredCountry ||
               candidateCountry === normalizedPreferredCountry,
@@ -947,24 +1014,186 @@ exports.createVideoSession = functions
           };
         }
 
-        const finalSessionData = {
-          ...sessionData,
-          availableTutors: finalAvailableTutors,
-          matchContext: {
-            ...sessionData.matchContext,
-            candidatePoolSize: finalAvailableTutors.length,
-            candidateIds: finalAvailableTutors,
-            candidateRoleCounts: buildCandidateRoleCounts(
-              finalAvailableTutors,
-              tutorDetails,
+        if (isDirectTutorCall) {
+          const selectedResponderId = finalAvailableTutors[0] || "";
+          const selectedResponderRole =
+            tutorDetails[selectedResponderId]?.role || "";
+          const finalSessionData = {
+            ...sessionData,
+            availableTutors: finalAvailableTutors,
+            triedTutors: [],
+            currentTutorId: selectedResponderId,
+            matchContext: {
+              ...sessionData.matchContext,
+              candidatePoolSize: finalAvailableTutors.length,
+              candidateIds: finalAvailableTutors,
+              selectedResponderId,
+              selectedResponderRole,
+              candidateRoleCounts: buildCandidateRoleCounts(
+                finalAvailableTutors,
+                tutorDetails,
+              ),
+            },
+          };
+          const directLockNowMillis = Date.now();
+          const lockResult = await reserveDirectPairInTransaction({
+            db,
+            transaction,
+            requesterId,
+            responderId: selectedResponderId,
+            responderRole: selectedResponderRole,
+            sessionRef,
+            sessionData: finalSessionData,
+            nowMillis: directLockNowMillis,
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+            lockExpiresAt: admin.firestore.Timestamp.fromMillis(
+              directLockNowMillis + 45 * 1000,
             ),
-          },
-        };
-        transaction.set(sessionRef, finalSessionData);
+          });
+          if (!lockResult.locked) {
+            return {
+              created: false,
+              repeatPreventionContext: finalRepeatPreventionContext,
+              lockFailure: lockResult,
+            };
+          }
+
+          const notification = createIncomingCallNotificationInTransaction({
+            db,
+            transaction,
+            sessionId: sessionRef.id,
+            recipientId: selectedResponderId,
+            sessionData: finalSessionData,
+            studentNameFallback: "Student",
+          });
+          return {
+            created: true,
+            sessionData: finalSessionData,
+            matchedTutors: finalAvailableTutors.length,
+            selectedResponderId,
+            selectedResponderRole,
+            notificationId: notification.notificationId,
+            pushPayload: notification.pushPayload,
+            repeatPreventionContext: finalRepeatPreventionContext,
+          };
+        }
+
+        let selectedResponderId = "";
+        let selectedResponderRole = "";
+        let selectedTriedTutors = [];
+        let finalSessionData = null;
+        let nextTriedTutors = [];
+        let lockResult = null;
+        const skippedLockCandidateIds = [];
+        while (true) {
+          const nextCandidate = await findNextCallableCandidateInTransaction({
+            db,
+            transaction,
+            candidateIds: finalAvailableTutors,
+            triedCandidateIds: nextTriedTutors,
+            language: normalizedLanguage,
+          });
+          if (!nextCandidate.candidateId) {
+            lockResult = {
+              locked: false,
+              reason: "no_callable_candidates",
+            };
+            nextTriedTutors = nextCandidate.triedCandidateIds;
+            break;
+          }
+
+          const candidateResponderId = nextCandidate.candidateId;
+          const candidateResponderRole =
+            nextCandidate.role ||
+            tutorDetails[candidateResponderId]?.role ||
+            "";
+          const candidateSessionData = {
+            ...sessionData,
+            availableTutors: finalAvailableTutors,
+            triedTutors: nextCandidate.triedCandidateIds,
+            currentTutorId: candidateResponderId,
+            matchContext: {
+              ...sessionData.matchContext,
+              candidatePoolSize: finalAvailableTutors.length,
+              candidateIds: finalAvailableTutors,
+              selectedResponderId: candidateResponderId,
+              selectedResponderRole: candidateResponderRole || null,
+              candidateRoleCounts: buildCandidateRoleCounts(
+                finalAvailableTutors,
+                tutorDetails,
+              ),
+            },
+          };
+          const lockNowMillis = Date.now();
+          lockResult = await reserveMatchPairInTransaction({
+            db,
+            transaction,
+            requesterId,
+            responderId: candidateResponderId,
+            responderRole: candidateResponderRole,
+            requesterSearchRequestId,
+            responderSearchRequestId:
+              tutorDetails[candidateResponderId]?.searchRequestId || "",
+            expectedLanguage: normalizedLanguage,
+            sessionRef,
+            sessionData: candidateSessionData,
+            nowMillis: lockNowMillis,
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+            lockExpiresAt: admin.firestore.Timestamp.fromMillis(
+              lockNowMillis + 45 * 1000,
+            ),
+          });
+          if (lockResult.locked) {
+            selectedResponderId = candidateResponderId;
+            selectedResponderRole = candidateResponderRole;
+            selectedTriedTutors = nextCandidate.triedCandidateIds;
+            finalSessionData = candidateSessionData;
+            break;
+          }
+
+          if (String(lockResult.reason || "").startsWith("requester_")) {
+            break;
+          }
+          skippedLockCandidateIds.push({
+            candidateId: candidateResponderId,
+            reason: lockResult.reason,
+          });
+          nextTriedTutors = Array.from(new Set([
+            ...nextCandidate.triedCandidateIds,
+            candidateResponderId,
+          ]));
+        }
+        if (skippedLockCandidateIds.length > 0) {
+          console.log("⏭️ Skipped locked candidates:", skippedLockCandidateIds);
+        }
+        if (!lockResult?.locked || !selectedResponderId || !finalSessionData) {
+          return {
+            created: false,
+            repeatPreventionContext: finalRepeatPreventionContext,
+            lockFailure: lockResult || {
+              locked: false,
+              reason: "pair_lock_failed",
+            },
+          };
+        }
+
+        const notification = createIncomingCallNotificationInTransaction({
+          db,
+          transaction,
+          sessionId: sessionRef.id,
+          recipientId: selectedResponderId,
+          sessionData: finalSessionData,
+          studentNameFallback: "Student",
+        });
         return {
           created: true,
           sessionData: finalSessionData,
           matchedTutors: finalAvailableTutors.length,
+          selectedResponderId,
+          selectedResponderRole,
+          triedTutors: selectedTriedTutors,
+          notificationId: notification.notificationId,
+          pushPayload: notification.pushPayload,
           repeatPreventionContext: finalRepeatPreventionContext,
         };
       });
@@ -995,8 +1224,26 @@ exports.createVideoSession = functions
 
       console.log("✅ Video session created:", sessionRef.id);
 
-      // Уведомляем первого преподавателя
-      await sendNotificationToNextTutor(sessionRef.id, creation.sessionData);
+      if (creation.selectedResponderId && creation.pushPayload) {
+        const freshValidationSnap = await sessionRef.get();
+        const freshValidation = freshValidationSnap.exists ?
+          freshValidationSnap.data() || {} :
+          {};
+        if (
+          freshValidation.status === "searching" &&
+          freshValidation.currentTutorId === creation.selectedResponderId
+        ) {
+          await sendVoipPushToTutor(
+            creation.selectedResponderId,
+            creation.pushPayload,
+          );
+        }
+      } else {
+        console.log(
+          "⏭️ Skipping legacy tutor notification fallback for locked session",
+          sessionRef.id,
+        );
+      }
 
       return {
         status: "searching",

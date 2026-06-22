@@ -156,6 +156,7 @@ test("direct call status collapses target-side denials to unavailable", () => {
     availableTutor({teacherAccreditationStatus: "pending"}),
     availableTutor({availabilityToday: {enabled: false}, isAvailable: true}),
     availableTutor({isInCall: true}),
+    availableTutor({currentSessionId: "session-pending"}),
     availableTutor({availableAfter: futureTimestamp(10)}),
     availableTutor({blockedUsers: ["student-a"]}),
     availableTutor({language_instruction_NS: {code: "es"}}),
