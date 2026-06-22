@@ -7,6 +7,9 @@ const {
   ensureConversationCallEventForSession,
 } = require("./chats_shared");
 const {
+  hasActiveAcceptLockForResponder,
+} = require("./accept_lock_policy");
+const {
   resolveDailyRoomName,
 } = require("./daily_room");
 const {
@@ -203,6 +206,17 @@ async function processExpiredNotification(notificationDoc) {
             skipReason: "missing_timed_out_tutor",
           };
         }
+        if (
+          hasActiveAcceptLockForResponder({
+            sessionData: freshSessionData,
+            responderId: timedOutTutorId,
+          })
+        ) {
+          return {
+            shouldNotify: false,
+            skipReason: "accept_lock_active",
+          };
+        }
         const triedTutors = [...(freshSessionData.triedTutors || [])];
         if (!triedTutors.includes(timedOutTutorId)) {
           triedTutors.push(timedOutTutorId);
@@ -296,6 +310,9 @@ async function processExpiredNotification(notificationDoc) {
           transaction.update(sessionRef, {
             triedTutors: nextTriedTutors,
             currentTutorId: admin.firestore.FieldValue.delete(),
+            acceptingTutorId: admin.firestore.FieldValue.delete(),
+            acceptingAt: admin.firestore.FieldValue.delete(),
+            acceptAttemptId: admin.firestore.FieldValue.delete(),
             status: VIDEO_SESSION_STATUS.EXPIRED,
             endedAt: admin.firestore.FieldValue.serverTimestamp(),
             expiredAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -394,7 +411,15 @@ async function processExpiredNotification(notificationDoc) {
         transition.nextTutor,
       );
 
-      const freshValidationSnap = await sessionRef.get();
+      const validationReads = [sessionRef.get()];
+      if (transition.notificationId) {
+        validationReads.push(
+          db.collection("notifications").doc(transition.notificationId).get(),
+        );
+      }
+
+      const [freshValidationSnap, notificationValidationSnap] =
+        await Promise.all(validationReads);
       if (!freshValidationSnap.exists) {
         console.log(
           "⏭️ Skipping push because session disappeared after assignment",
@@ -411,6 +436,31 @@ async function processExpiredNotification(notificationDoc) {
           "⏭️ Skipping push because tutor assignment changed after transaction",
         );
         return;
+      }
+      if (
+        hasActiveAcceptLockForResponder({
+          sessionData: freshValidationData,
+          responderId: transition.nextTutor,
+        })
+      ) {
+        console.log(
+          "⏭️ Skipping push because tutor is already accepting the session",
+        );
+        return;
+      }
+      if (transition.notificationId) {
+        const notificationData = notificationValidationSnap?.data?.() || {};
+        if (
+          !notificationValidationSnap.exists ||
+          notificationData.status !== "sent" ||
+          notificationData.sessionId !== sessionId ||
+          notificationData.recipientId !== transition.nextTutor
+        ) {
+          console.log(
+            "⏭️ Skipping push because notification changed after assignment",
+          );
+          return;
+        }
       }
 
       try {

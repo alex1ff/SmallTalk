@@ -87,4 +87,5 @@ test("cancelCall passes restore options into pair-lock release", () => {
   assert.match(source, /restoreSearchParticipantIds,/);
   assert.match(source, /restoreSearchExcludedCandidateIdsByParticipantId:/);
   assert.match(source, /buildCancelRestoreSearchExcludedCandidateIdsByParticipantId\(\{/);
+  assert.match(source, /acceptAttemptId: admin\.firestore\.FieldValue\.delete\(\)/);
 });

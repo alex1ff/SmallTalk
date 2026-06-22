@@ -1031,6 +1031,9 @@ async function prepareExistingSessionNextResponderPairLockInTransaction({
     pairAttemptId: finalPairAttemptId,
     responseExpiresAt: lockExpiresAt,
     confirmationExpiresAt: lockExpiresAt,
+    acceptingTutorId: fieldDelete,
+    acceptingAt: fieldDelete,
+    acceptAttemptId: fieldDelete,
     searchRequestIds: {
       requester: normalizedRequesterSearchRequestId,
       responder: finalResponderSearchRequestId || null,

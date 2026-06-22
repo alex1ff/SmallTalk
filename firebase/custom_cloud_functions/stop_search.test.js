@@ -345,6 +345,8 @@ test("searching video session is cancelled and user pointers are cleared", () =>
   assert.equal(decision.sessionUpdate.cancelReason, "manual_stop_search");
   assert.equal(decision.sessionUpdate.currentTutorId, fieldDelete);
   assert.equal(decision.sessionUpdate.acceptingTutorId, fieldDelete);
+  assert.equal(decision.sessionUpdate.acceptingAt, fieldDelete);
+  assert.equal(decision.sessionUpdate.acceptAttemptId, fieldDelete);
   assert.equal(decision.requesterUpdate.currentSessionId, fieldDelete);
   assert.equal(decision.responderUpdate.currentSessionId, fieldDelete);
 });

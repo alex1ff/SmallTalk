@@ -412,6 +412,7 @@ function buildStopSessionDecision({
       currentTutorId: fieldDelete,
       acceptingTutorId: fieldDelete,
       acceptingAt: fieldDelete,
+      acceptAttemptId: fieldDelete,
       tutorNavigationTriggered: false,
       studentNavigationTriggered: false,
     },

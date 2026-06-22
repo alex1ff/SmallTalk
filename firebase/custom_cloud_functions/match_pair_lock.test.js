@@ -1143,6 +1143,11 @@ test("existing session handoff releases old responder and locks next", async () 
       currentSessionId: "session-ab",
     }),
     "users/student-c": namedStudentUser("Cara", "cara-photo"),
+    "videoSessions/session-ab": existingSearchingSession({
+      acceptingTutorId: "student-b",
+      acceptingAt: timestampFromMillis(fixedNowMillis - 5_000),
+      acceptAttemptId: "attempt-old",
+    }),
   });
 
   const result = await db.runTransaction(async (transaction) => {
@@ -1173,6 +1178,9 @@ test("existing session handoff releases old responder and locks next", async () 
   assert.equal(store.get("videoSessions/session-ab").responderId, "student-c");
   assert.equal(store.get("videoSessions/session-ab").scenario, "student_student");
   assert.equal(store.get("videoSessions/session-ab").tutorId, null);
+  assert.equal(store.get("videoSessions/session-ab").acceptingTutorId, fieldDelete);
+  assert.equal(store.get("videoSessions/session-ab").acceptingAt, fieldDelete);
+  assert.equal(store.get("videoSessions/session-ab").acceptAttemptId, fieldDelete);
   assert.deepEqual(store.get("videoSessions/session-ab").participantRoles, {
     "student-a": "student",
     "student-c": "student",

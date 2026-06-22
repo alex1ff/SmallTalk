@@ -7,6 +7,10 @@ const {
   ensureConversationCallEventForSession,
 } = require("./chats_shared");
 const {
+  assertNoActiveAcceptLockForResponderOrThrow,
+  hasActiveAcceptLockForResponder,
+} = require("./accept_lock_policy");
+const {
   resolveDailyRoomName,
 } = require("./daily_room");
 const {
@@ -161,6 +165,10 @@ exports.declineCall = functions
             "This session is not assigned to you",
           );
         }
+        assertNoActiveAcceptLockForResponderOrThrow({
+          sessionData,
+          responderId: tutorId,
+        });
 
         // Добавляем преподавателя в список попыток
         const triedTutors = Array.from(new Set([
@@ -241,6 +249,9 @@ exports.declineCall = functions
         const sessionUpdate = {
           triedTutors: nextTriedTutors,
           currentTutorId: nextTutor || admin.firestore.FieldValue.delete(),
+          acceptingTutorId: admin.firestore.FieldValue.delete(),
+          acceptingAt: admin.firestore.FieldValue.delete(),
+          acceptAttemptId: admin.firestore.FieldValue.delete(),
         };
         if (!nextTutor) {
           sessionUpdate.status = VIDEO_SESSION_STATUS.CANCELLED;
@@ -361,6 +372,7 @@ exports.declineCall = functions
           sessionId,
           {
             ...declineResult.nextSessionData,
+            notificationId: declineResult.notificationId,
             pushPayload: declineResult.pushPayload,
           },
         );
@@ -489,7 +501,8 @@ async function sendVoipPushToTutor(tutorId, callData) {
 // ОТПРАВКА УВЕДОМЛЕНИЯ СЛЕДУЮЩЕМУ ПРЕПОДАВАТЕЛЮ
 async function sendNotificationToNextTutor(sessionId, sessionData) {
   try {
-    const nextTutor = sessionData.currentTutorId;
+    const freshSessionData = sessionData || {};
+    const nextTutor = freshSessionData.currentTutorId;
     if (!nextTutor) {
       console.log(
         "⏭️ Skipping next tutor notification for session",
@@ -500,9 +513,64 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
       return;
     }
 
-    const freshSessionData = sessionData || {};
+    const db = admin.firestore();
+    const validationReads = [
+      db.collection("videoSessions").doc(sessionId).get(),
+    ];
+    const notificationId = freshSessionData.notificationId || null;
+    if (notificationId) {
+      validationReads.push(
+        db.collection("notifications").doc(notificationId).get(),
+      );
+    }
+
+    const [sessionSnap, notificationSnap] = await Promise.all(validationReads);
+    if (!sessionSnap.exists) {
+      console.log(
+        "⏭️ Skipping push because session disappeared after assignment",
+      );
+      return;
+    }
+
+    const validationSessionData = sessionSnap.data() || {};
+    if (
+      !DECLINABLE_SESSION_STATUSES.has(validationSessionData.status) ||
+      validationSessionData.currentTutorId !== nextTutor
+    ) {
+      console.log(
+        "⏭️ Skipping push because tutor assignment changed after transaction",
+      );
+      return;
+    }
+    if (
+      hasActiveAcceptLockForResponder({
+        sessionData: validationSessionData,
+        responderId: nextTutor,
+      })
+    ) {
+      console.log(
+        "⏭️ Skipping push because tutor is already accepting the session",
+      );
+      return;
+    }
+
+    if (notificationId) {
+      const notificationData = notificationSnap?.data?.() || {};
+      if (
+        !notificationSnap.exists ||
+        notificationData.status !== "sent" ||
+        notificationData.sessionId !== sessionId ||
+        notificationData.recipientId !== nextTutor
+      ) {
+        console.log(
+          "⏭️ Skipping push because notification changed after assignment",
+        );
+        return;
+      }
+    }
+
     const studentInfo = freshSessionData.studentInfo || {};
-    const pushPayload = sessionData.pushPayload || {
+    const pushPayload = freshSessionData.pushPayload || {
       sessionId,
       studentName: studentInfo.name || "Студент",
       studentId: freshSessionData.studentId,

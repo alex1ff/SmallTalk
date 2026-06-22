@@ -58,6 +58,9 @@ const {
   isActiveStudentSearchRequest,
 } = require("./match_candidate_pool");
 const {
+  hasActiveAcceptLockForResponder,
+} = require("./accept_lock_policy");
+const {
   reserveDirectPairInTransaction,
   reserveMatchPairInTransaction,
 } = require("./match_pair_lock");
@@ -1236,7 +1239,11 @@ exports.createVideoSession = functions
           {};
         if (
           PENDING_RESPONSE_SESSION_STATUSES.has(freshValidation.status) &&
-          freshValidation.currentTutorId === creation.selectedResponderId
+          freshValidation.currentTutorId === creation.selectedResponderId &&
+          !hasActiveAcceptLockForResponder({
+            sessionData: freshValidation,
+            responderId: creation.selectedResponderId,
+          })
         ) {
           await sendVoipPushToTutor(
             creation.selectedResponderId,
@@ -1493,7 +1500,11 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
     const freshValidation = freshValidationSnap.data() || {};
     if (
       !PENDING_RESPONSE_SESSION_STATUSES.has(freshValidation.status) ||
-      freshValidation.currentTutorId !== nextTutor
+      freshValidation.currentTutorId !== nextTutor ||
+      hasActiveAcceptLockForResponder({
+        sessionData: freshValidation,
+        responderId: nextTutor,
+      })
     ) {
       console.log(
         "⏭️ Skipping tutor notification after validation. reason:",

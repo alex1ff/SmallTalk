@@ -149,6 +149,9 @@ function buildExpiredSessionCleanupPayload({
     duration: duration,
     tutorNavigationTriggered: false,
     studentNavigationTriggered: false,
+    acceptingTutorId: admin.firestore.FieldValue.delete(),
+    acceptingAt: admin.firestore.FieldValue.delete(),
+    acceptAttemptId: admin.firestore.FieldValue.delete(),
     sessionMetadata: {
       ...(sessionData.sessionMetadata || {}),
       endReason: terminalStatus === VIDEO_SESSION_STATUS.EXPIRED ?

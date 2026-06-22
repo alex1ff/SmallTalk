@@ -55,6 +55,7 @@ test("connected expired sessions write same-day repeat history", () => {
   assert.equal(payload.tutorId, "teacher-b");
   assert.equal(payload.duration, 300);
   assert.equal(payload.sessionUpdate.status, "ended");
+  assert.notEqual(payload.sessionUpdate.acceptAttemptId, undefined);
   assert.equal(payload.sessionUpdate.sessionMetadata.endReason, "expired");
   assert.equal(
     payload.sessionUpdate["matchContext.completedPairId"],
@@ -135,6 +136,7 @@ test("never-connected connecting sessions expire instead of ending", () => {
   });
 
   assert.equal(payload.sessionUpdate.status, "expired");
+  assert.notEqual(payload.sessionUpdate.acceptAttemptId, undefined);
   assert.equal(payload.sessionUpdate.expireReason, "join_timeout");
   assert.equal(payload.sessionUpdate.sessionMetadata.endReason, "join_timeout");
   assert.equal(payload.pairHistoryWrite, null);

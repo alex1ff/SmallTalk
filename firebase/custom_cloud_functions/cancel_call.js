@@ -194,6 +194,7 @@ exports.cancelCall = functions
         currentTutorId: admin.firestore.FieldValue.delete(),
         acceptingTutorId: admin.firestore.FieldValue.delete(),
         acceptingAt: admin.firestore.FieldValue.delete(),
+        acceptAttemptId: admin.firestore.FieldValue.delete(),
         tutorNavigationTriggered: false,
         studentNavigationTriggered: false,
       });

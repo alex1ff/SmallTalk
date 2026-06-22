@@ -237,6 +237,7 @@ test("endSession source keeps the ignored_expired_end wrapper path", () => {
   assert.match(source, /teacherEarningUserId/);
   assert.match(source, /txResult\.teacherEligibleForPayout/);
   assert.match(source, /getConnectedCallStartMillis\(sessionData\)/);
+  assert.match(source, /acceptAttemptId: admin\.firestore\.FieldValue\.delete\(\)/);
   assert.doesNotMatch(source, /serverConnectedAt/);
   assert.match(source, /\.runWith\(\{\s*secrets:\s*dailySecrets\s*\}\)/);
   assert.match(source, /dailyRoomName:\s*resolveDailyRoomName\(sessionData\)/);

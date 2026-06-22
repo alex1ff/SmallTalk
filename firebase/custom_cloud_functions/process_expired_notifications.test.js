@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const {
   __private__: {
     buildTimeoutResponderFailureRouting,
@@ -35,6 +37,77 @@ test("notification timeout routes student-student failure to requester restore",
     routing.restoreSearchExcludedCandidateIdsByParticipantId,
     {"student-a": ["student-b"]},
   );
+});
+
+test("notification timeout skips sessions with active accept lock", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "process_expired_notifications.js"),
+    "utf8",
+  );
+  const timedOutTutorIndex = source.indexOf(
+    "const timedOutTutorId = currentTutorId || expiredTutorId;",
+  );
+  const acceptLockGuardIndex = source.indexOf(
+    "hasActiveAcceptLockForResponder({",
+    timedOutTutorIndex,
+  );
+  const skipReasonIndex = source.indexOf(
+    'skipReason: "accept_lock_active"',
+    acceptLockGuardIndex,
+  );
+  const expireNotificationIndex = source.indexOf(
+    "transaction.update(notificationDoc.ref, expireNotificationUpdate);",
+    acceptLockGuardIndex,
+  );
+  const acceptAttemptDeleteIndex = source.indexOf(
+    "acceptAttemptId: admin.firestore.FieldValue.delete()",
+    acceptLockGuardIndex,
+  );
+
+  assert.ok(acceptLockGuardIndex > timedOutTutorIndex);
+  assert.ok(skipReasonIndex > acceptLockGuardIndex);
+  assert.ok(acceptAttemptDeleteIndex > skipReasonIndex);
+  assert.ok(
+    expireNotificationIndex === -1 ||
+      expireNotificationIndex > skipReasonIndex,
+    "active accept lock must return before expiring notification",
+  );
+});
+
+test("notification timeout validates next assignment before sending push", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "process_expired_notifications.js"),
+    "utf8",
+  );
+  const shouldNotifyIndex = source.indexOf("if (transition.shouldNotify)");
+  const sessionReadIndex = source.indexOf("sessionRef.get()", shouldNotifyIndex);
+  const notificationReadIndex = source.indexOf(
+    'db.collection("notifications").doc(transition.notificationId).get()',
+    sessionReadIndex,
+  );
+  const assignmentGuardIndex = source.indexOf(
+    "freshValidationData.currentTutorId !== transition.nextTutor",
+    notificationReadIndex,
+  );
+  const activeAcceptLockIndex = source.indexOf(
+    "hasActiveAcceptLockForResponder({",
+    assignmentGuardIndex,
+  );
+  const notificationStatusIndex = source.indexOf(
+    'notificationData.status !== "sent"',
+    activeAcceptLockIndex,
+  );
+  const pushIndex = source.indexOf(
+    "await sendVoipPushToTutor(transition.nextTutor",
+    notificationStatusIndex,
+  );
+
+  assert.ok(sessionReadIndex > shouldNotifyIndex);
+  assert.ok(notificationReadIndex > sessionReadIndex);
+  assert.ok(assignmentGuardIndex > notificationReadIndex);
+  assert.ok(activeAcceptLockIndex > assignmentGuardIndex);
+  assert.ok(notificationStatusIndex > activeAcceptLockIndex);
+  assert.ok(pushIndex > notificationStatusIndex);
 });
 
 test("notification timeout keeps teacher handoff candidates", () => {

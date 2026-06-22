@@ -3,6 +3,12 @@ const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
 const { getUserVoipTokens } = require("./voip_tokens");
 const {
+  ACCEPT_LOCK_WINDOW_MS,
+  assertAcceptAttemptCanFinalizeOrThrow,
+  assertAcceptLockOwnedByAttemptOrThrow,
+  assertAcceptLockOwnedByResponderOrThrow,
+} = require("./accept_lock_policy");
+const {
   createDailyRoom,
   createMeetingToken,
   DAILY_ROOM_CONFIG_VERSION,
@@ -76,6 +82,104 @@ function buildAcceptedParticipantUserUpdate({
     currentSessionId: sessionId,
     updatedAt: serverTimestamp,
   };
+}
+
+function normalizeSessionId(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function assertUserCanJoinAcceptedSessionOrThrow(
+  userData = {},
+  userId = "",
+  sessionId = "",
+) {
+  const normalizedSessionId = normalizeSessionId(sessionId);
+  const currentSessionId = normalizeSessionId(userData.currentSessionId);
+  if (currentSessionId && currentSessionId !== normalizedSessionId) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      `User ${userId} is assigned to another session`,
+    );
+  }
+  if (userData.isInCall === true && currentSessionId !== normalizedSessionId) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      `User ${userId} is already in a call`,
+    );
+  }
+}
+
+function assertUserIsInAcceptedSessionOrThrow(
+  userData = {},
+  userId = "",
+  sessionId = "",
+) {
+  const normalizedSessionId = normalizeSessionId(sessionId);
+  const currentSessionId = normalizeSessionId(userData.currentSessionId);
+  if (currentSessionId !== normalizedSessionId || userData.isInCall !== true) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      `User ${userId} is not in the accepted session`,
+    );
+  }
+}
+
+function assertAcceptedSessionStillCurrentOrThrow({
+  sessionData = {},
+  requesterData = {},
+  responderData = {},
+  requesterId = "",
+  responderId = "",
+  sessionId = "",
+} = {}) {
+  const normalizedResponderId = normalizeSessionId(responderId);
+  const acceptedResponderId = normalizeSessionId(
+    sessionData.tutorId ||
+      sessionData.matchContext?.acceptedResponderId,
+  );
+  if (
+    !ACCEPTED_SESSION_STATUSES.has(sessionData.status) ||
+    acceptedResponderId !== normalizedResponderId ||
+    !sessionData.dailyRoomUrl
+  ) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Accepted session changed before response",
+    );
+  }
+  assertUserIsInAcceptedSessionOrThrow(requesterData, requesterId, sessionId);
+  assertUserIsInAcceptedSessionOrThrow(responderData, responderId, sessionId);
+}
+
+async function readAcceptedSessionStillCurrentOrThrow({
+  db,
+  sessionRef,
+  sessionId,
+  requesterId,
+  responderId,
+}) {
+  const usersCollection = db.collection("users");
+  const [sessionSnap, requesterSnap, responderSnap] = await Promise.all([
+    sessionRef.get(),
+    usersCollection.doc(requesterId).get(),
+    usersCollection.doc(responderId).get(),
+  ]);
+  if (!sessionSnap.exists || !requesterSnap.exists || !responderSnap.exists) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Accepted session validation failed",
+    );
+  }
+  const sessionData = sessionSnap.data() || {};
+  assertAcceptedSessionStillCurrentOrThrow({
+    sessionData,
+    requesterData: requesterSnap.data() || {},
+    responderData: responderSnap.data() || {},
+    requesterId,
+    responderId,
+    sessionId,
+  });
+  return sessionData;
 }
 
 function getDailyCredentialTtlOrThrow(sessionData = {}) {
@@ -161,6 +265,7 @@ exports.acceptCall = functions
 
     let tutorId = null;
     let sessionRef = null;
+    let acceptAttemptId = null;
     let lockAcquired = false;
     let transientDailyRoomName = null;
     try {
@@ -191,7 +296,11 @@ exports.acceptCall = functions
         .firestore()
         .collection("videoSessions")
         .doc(sessionId);
-      const acceptLockWindowMs = 30 * 1000;
+      acceptAttemptId = admin
+        .firestore()
+        .collection("acceptAttempts")
+        .doc().id;
+      const acceptLockWindowMs = ACCEPT_LOCK_WINDOW_MS;
       const initialSessionState = await admin
         .firestore()
         .runTransaction(async (transaction) => {
@@ -230,24 +339,17 @@ exports.acceptCall = functions
         const nowMs = Date.now();
         assertAcceptWindowOpenOrThrow(fresh, nowMs);
         const acceptingTutorId = fresh.acceptingTutorId || null;
-        const acceptingAtMs = fresh.acceptingAt?.toMillis?.() || 0;
-        if (
-          !acceptingTutorId ||
-          nowMs - acceptingAtMs > acceptLockWindowMs
-        ) {
+        const acceptingAtMs = timestampToMillis(fresh.acceptingAt);
+        const acceptingAt = admin.firestore.Timestamp.fromMillis(nowMs);
+        const isActiveAcceptLock =
+          acceptingTutorId &&
+          acceptingAtMs !== null &&
+          nowMs - acceptingAtMs <= acceptLockWindowMs;
+        if (!isActiveAcceptLock) {
           transaction.update(sessionRef, {
             acceptingTutorId: tutorId,
-            acceptingAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          lockAcquired = true;
-          return {
-            alreadyAccepted: false,
-            session: fresh,
-          };
-        }
-        if (acceptingTutorId === tutorId) {
-          transaction.update(sessionRef, {
-            acceptingAt: admin.firestore.FieldValue.serverTimestamp(),
+            acceptingAt,
+            acceptAttemptId,
           });
           lockAcquired = true;
           return {
@@ -281,6 +383,14 @@ exports.acceptCall = functions
       const tutorData = tutorDoc.data();
       validateResponderLanguageOrThrow(tutorId, tutorData, sessionData);
 
+      const requesterId = getRequesterId(sessionData);
+      if (!requesterId) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Session requester is missing",
+        );
+      }
+
       if (initialSessionState.alreadyAccepted) {
         console.log(
           "ℹ️ Session already active for this tutor, returning existing room",
@@ -311,6 +421,13 @@ exports.acceptCall = functions
             );
           }
         }
+        await readAcceptedSessionStillCurrentOrThrow({
+          db: admin.firestore(),
+          sessionRef,
+          sessionId,
+          requesterId,
+          responderId: tutorId,
+        });
 
         return {
           status: "connected",
@@ -321,14 +438,6 @@ exports.acceptCall = functions
           studentInfo: sessionData.studentInfo || null,
           sessionData: buildAcceptCallResponseSessionData(sessionData),
         };
-      }
-
-      const requesterId = getRequesterId(sessionData);
-      if (!requesterId) {
-        throw new functions.https.HttpsError(
-          "failed-precondition",
-          "Session requester is missing",
-        );
       }
 
       // === 3. ПОЛУЧЕНИЕ ДАННЫХ РЕСПОНДЕРА И ИНИЦИАТОРА (ПАРАЛЛЕЛЬНО) ===
@@ -572,7 +681,38 @@ exports.acceptCall = functions
               "Session is already active",
             );
           }
-          assertAcceptWindowOpenOrThrow(fresh);
+          assertAcceptAttemptCanFinalizeOrThrow({
+            sessionData: fresh,
+            responderId: tutorId,
+            acceptAttemptId,
+          });
+          const usersCollection = admin.firestore().collection("users");
+          const requesterUserRef = usersCollection.doc(requesterId);
+          const responderUserRef = usersCollection.doc(tutorId);
+          const requesterUserSnap = await transaction.get(requesterUserRef);
+          const responderUserSnap = await transaction.get(responderUserRef);
+          if (!requesterUserSnap.exists) {
+            throw new functions.https.HttpsError(
+              "not-found",
+              "Requester not found",
+            );
+          }
+          if (!responderUserSnap.exists) {
+            throw new functions.https.HttpsError(
+              "not-found",
+              "Responder not found",
+            );
+          }
+          assertUserCanJoinAcceptedSessionOrThrow(
+            requesterUserSnap.data() || {},
+            requesterId,
+            sessionId,
+          );
+          assertUserCanJoinAcceptedSessionOrThrow(
+            responderUserSnap.data() || {},
+            tutorId,
+            sessionId,
+          );
 
           // Обновляем сессию - добавляем данные для активной сессии
           const sessionUpdate = {
@@ -587,6 +727,7 @@ exports.acceptCall = functions
             expiresAt: activePolicyUpdate.sessionUpdateFields.expiresAt,
             acceptingTutorId: admin.firestore.FieldValue.delete(),
             acceptingAt: admin.firestore.FieldValue.delete(),
+            acceptAttemptId: admin.firestore.FieldValue.delete(),
 
             // Добавляем информацию о преподавателе
             tutorInfo: {
@@ -621,14 +762,8 @@ exports.acceptCall = functions
           });
 
           // Обновляем статус участников подтвержденного звонка
-          transaction.update(
-            admin.firestore().collection("users").doc(requesterId),
-            participantUserUpdate,
-          );
-          transaction.update(
-            admin.firestore().collection("users").doc(tutorId),
-            participantUserUpdate,
-          );
+          transaction.update(requesterUserRef, participantUserUpdate);
+          transaction.update(responderUserRef, participantUserUpdate);
 
           console.log("✅ Transaction completed successfully");
           return { alreadyAccepted: false };
@@ -665,6 +800,13 @@ exports.acceptCall = functions
             );
           }
         }
+        await readAcceptedSessionStillCurrentOrThrow({
+          db: admin.firestore(),
+          sessionRef,
+          sessionId,
+          requesterId,
+          responderId: tutorId,
+        });
 
         return {
           status: "connected",
@@ -678,6 +820,14 @@ exports.acceptCall = functions
       }
 
       transientDailyRoomName = null;
+      const acceptedLiveSession =
+        await readAcceptedSessionStillCurrentOrThrow({
+          db: admin.firestore(),
+          sessionRef,
+          sessionId,
+          requesterId,
+          responderId: tutorId,
+        });
 
       // 🔔 === ОТПРАВКА PUSH + ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ (ПАРАЛЛЕЛЬНО) ===
       console.log("📲 Sending push + updating notifications in parallel...");
@@ -719,8 +869,8 @@ exports.acceptCall = functions
             sessionData.studentInfo?.photo || studentData.photo_url || null,
         },
         sessionData: buildAcceptCallResponseSessionData({
-          language: sessionData.language,
-          startedAt: null,
+          language: acceptedLiveSession.language || sessionData.language,
+          startedAt: acceptedLiveSession.startedAt || null,
           sessionPolicy: activePolicyUpdate.policyState.sessionPolicy,
         }),
       };
@@ -743,10 +893,14 @@ exports.acceptCall = functions
             const snap = await transaction.get(sessionRef);
             if (!snap.exists) return;
             const data = snap.data();
-            if (data.acceptingTutorId === tutorId) {
+            if (
+              data.acceptingTutorId === tutorId &&
+              data.acceptAttemptId === acceptAttemptId
+            ) {
               transaction.update(sessionRef, {
                 acceptingTutorId: admin.firestore.FieldValue.delete(),
                 acceptingAt: admin.firestore.FieldValue.delete(),
+                acceptAttemptId: admin.firestore.FieldValue.delete(),
               });
             }
           });
@@ -981,9 +1135,17 @@ async function cancelOtherNotifications(sessionId, acceptedTutorId) {
 }
 
 exports.__private__ = {
+  assertAcceptAttemptCanFinalizeOrThrow,
+  assertAcceptLockOwnedByAttemptOrThrow,
+  assertAcceptLockOwnedByResponderOrThrow,
   assertAcceptWindowOpenOrThrow,
+  assertAcceptedSessionStillCurrentOrThrow,
+  assertUserCanJoinAcceptedSessionOrThrow,
+  assertUserIsInAcceptedSessionOrThrow,
   buildAcceptedParticipantUserUpdate,
   buildAcceptCallPolicyUpdateFields,
   buildAcceptCallResponseSessionData,
+  normalizeSessionId,
+  readAcceptedSessionStillCurrentOrThrow,
   timestampToMillis,
 };
