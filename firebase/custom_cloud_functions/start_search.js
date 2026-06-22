@@ -7,6 +7,7 @@ const {
   buildStudentCallAccessDecision,
 } = require("./call_access");
 const {
+  buildInitialSessionPolicyState,
   isSupportedSessionRole,
   normalizeRole,
   readCountryCode,
@@ -24,6 +25,16 @@ const {
   normalizeAppState,
   normalizeSearchRequestFilters,
 } = require("./search_requests");
+const {
+  MATCH_CANDIDATE_SOURCE,
+  collectMatchCandidatePool,
+} = require("./match_candidate_pool");
+const {
+  reserveMatchPair,
+} = require("./match_pair_lock");
+
+const STUDENT_REVIEW_FLAG_FIELD = "studentHasReviewed";
+const TUTOR_REVIEW_FLAG_FIELD = "tutorHasReviewed";
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -255,6 +266,230 @@ function buildStartSearchResponse({
   };
 }
 
+function canAttemptStudentPairForSearchRequest(requestData = {}) {
+  return [
+    SEARCH_REQUEST_STATUS.ACTIVE,
+  ].includes(normalizeString(requestData.status));
+}
+
+function buildMatchedStartSearchResponse({
+  userId,
+  requestData = {},
+  matchResult = {},
+  reused = false,
+}) {
+  return {
+    ...buildStartSearchResponse({
+      userId,
+      requestData: {
+        ...requestData,
+        status: SEARCH_REQUEST_STATUS.MATCHED,
+        currentSessionId: matchResult.sessionId,
+        matchedSessionId: matchResult.sessionId,
+        pairAttemptId: matchResult.pairAttemptId,
+      },
+      reused,
+    }),
+    matchedUserId: normalizeString(matchResult.responderId) || null,
+    matchedRole: normalizeString(matchResult.responderRole) || null,
+    scenario: "student_student",
+  };
+}
+
+function buildCurrentMatchedStartSearchResponse({
+  userId,
+  requestData = {},
+  reused = false,
+}) {
+  const matchedRole = normalizeString(requestData.matchedRole);
+  const scenario = matchedRole === "student" ?
+    "student_student" :
+    (matchedRole === "native_speaker" || matchedRole === "teacher" ?
+      "student_teacher" :
+      null);
+  return {
+    ...buildStartSearchResponse({
+      userId,
+      requestData,
+      reused,
+    }),
+    matchedUserId:
+      normalizeString(requestData.matchedUserId) ||
+      normalizeString(requestData.matchedResponderId) ||
+      null,
+    matchedRole: matchedRole || null,
+    scenario,
+  };
+}
+
+function hasCurrentMatchedSession(requestData = {}) {
+  return normalizeString(requestData.status) ===
+      SEARCH_REQUEST_STATUS.MATCHED &&
+    Boolean(
+      normalizeString(requestData.currentSessionId) ||
+      normalizeString(requestData.matchedSessionId) ||
+      normalizeString(requestData.activeSessionId),
+    );
+}
+
+async function tryReadCurrentMatchedStartSearchResponse({
+  db,
+  userId,
+  reused = false,
+}) {
+  const searchRequestSnapshot = await db
+    .collection(SEARCH_REQUEST_COLLECTION)
+    .doc(userId)
+    .get();
+  const requestData = searchRequestSnapshot.exists ?
+    searchRequestSnapshot.data() || {} :
+    {};
+
+  if (
+    !searchRequestSnapshot.exists ||
+    !searchRequestBelongsToUser(requestData, userId) ||
+    !hasCurrentMatchedSession(requestData)
+  ) {
+    return null;
+  }
+
+  return buildCurrentMatchedStartSearchResponse({
+    userId,
+    requestData,
+    reused,
+  });
+}
+
+function buildStudentPairSessionData({
+  requesterId = "",
+  requestData = {},
+  selectedCandidate = {},
+  studentCandidates = [],
+  candidateStats = {},
+  nowMillis = Date.now(),
+  timestampFromDate = admin.firestore.Timestamp.fromDate,
+}) {
+  const candidateIds = studentCandidates
+    .map((candidate) => normalizeString(candidate.userId))
+    .filter(Boolean);
+  const selectedResponderId = normalizeString(selectedCandidate.userId);
+  const sessionPolicyState = buildInitialSessionPolicyState(nowMillis);
+  return {
+    language: normalizeString(requestData.language),
+    expiresAt: timestampFromDate(sessionPolicyState.expiresAt),
+    sessionPolicy: sessionPolicyState.sessionPolicy,
+    [STUDENT_REVIEW_FLAG_FIELD]: false,
+    [TUTOR_REVIEW_FLAG_FIELD]: false,
+    availableTutors: candidateIds,
+    triedTutors: selectedResponderId ? [selectedResponderId] : [],
+    matchContext: {
+      requesterId,
+      requesterRole: "student",
+      requestedLanguage: normalizeString(requestData.language),
+      filters: readNestedObject(requestData.filters),
+      matcher: "startSearch",
+      candidatePoolSize: candidateIds.length,
+      candidateIds,
+      candidateStats,
+      selectedResponderId,
+      selectedResponderRole: "student",
+      selectedResponderSource:
+        normalizeString(selectedCandidate.source) || null,
+      selectedResponderSearchRequestId:
+        normalizeString(selectedCandidate.searchRequestId) || null,
+    },
+  };
+}
+
+async function tryCreateStudentPairForSearchRequest({
+  db,
+  userId,
+  requesterData = {},
+  requestData = {},
+  reused = false,
+}) {
+  if (!canAttemptStudentPairForSearchRequest(requestData)) {
+    return {
+      matched: false,
+      response: null,
+    };
+  }
+
+  const candidatePool = await collectMatchCandidatePool({
+    db,
+    requesterId: userId,
+    requesterEmail: normalizeString(requesterData.email),
+    language: requestData.language,
+    requesterFilters: requestData.filters || {},
+    requesterLevel: readLevelValue(requesterData.level),
+    now: new Date(),
+    nowMillis: Date.now(),
+    includeTeachers: false,
+  });
+  const studentCandidates = candidatePool.candidates.filter((candidate) =>
+    candidate.source === MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE &&
+      normalizeString(candidate.role) === "student" &&
+      normalizeString(candidate.userId) !== normalizeString(userId),
+  );
+
+  for (const candidate of studentCandidates) {
+    const lockNowMillis = Date.now();
+    const lockResult = await reserveMatchPair({
+      db,
+      requesterId: userId,
+      responderId: candidate.userId,
+      responderRole: "student",
+      requesterSearchRequestId: requestData.requestId,
+      responderSearchRequestId: candidate.searchRequestId,
+      expectedLanguage: requestData.language,
+      sessionData: buildStudentPairSessionData({
+        requesterId: userId,
+        requestData,
+        selectedCandidate: candidate,
+        studentCandidates,
+        candidateStats: candidatePool.stats,
+        nowMillis: lockNowMillis,
+      }),
+      nowMillis: lockNowMillis,
+    });
+
+    if (lockResult.locked) {
+      return {
+        matched: true,
+        response: buildMatchedStartSearchResponse({
+          userId,
+          requestData,
+          matchResult: lockResult,
+          reused,
+        }),
+        lockResult,
+      };
+    }
+
+    if (String(lockResult.reason || "").startsWith("requester_")) {
+      const currentMatchedResponse =
+        await tryReadCurrentMatchedStartSearchResponse({
+          db,
+          userId,
+          reused,
+        });
+      if (currentMatchedResponse) {
+        return {
+          matched: true,
+          response: currentMatchedResponse,
+          lockResult,
+        };
+      }
+      break;
+    }
+  }
+
+  return {
+    matched: false,
+    response: null,
+  };
+}
+
 function buildStartSearchRequestData({
   userId,
   userRef,
@@ -323,7 +558,7 @@ exports.startSearch = functions.https.onCall(async (data, context) => {
   const nowMillis = Date.now();
   const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
-  return db.runTransaction(async (transaction) => {
+  const startResult = await db.runTransaction(async (transaction) => {
     const requesterSnapshot = await transaction.get(userRef);
     if (!requesterSnapshot.exists) {
       throw new functions.https.HttpsError(
@@ -362,11 +597,27 @@ exports.startSearch = functions.https.onCall(async (data, context) => {
         nowMillis,
       })
     ) {
-      return buildStartSearchResponse({
-        userId,
+      const response = hasCurrentMatchedSession(existingRequestData) ?
+        buildCurrentMatchedStartSearchResponse({
+          userId,
+          requestData: existingRequestData,
+          reused: true,
+        }) :
+        buildStartSearchResponse({
+          userId,
+          requestData: existingRequestData,
+          reused: true,
+        });
+
+      return {
+        response,
         requestData: existingRequestData,
+        requesterData,
         reused: true,
-      });
+        shouldTryStudentPair:
+          accessDecision.allowed &&
+          canAttemptStudentPairForSearchRequest(existingRequestData),
+      };
     }
 
     throwAccessDecision(accessDecision);
@@ -382,22 +633,50 @@ exports.startSearch = functions.https.onCall(async (data, context) => {
     });
     transaction.set(searchRequestRef, nextRequestData);
 
-    return buildStartSearchResponse({
-      userId,
+    return {
+      response: buildStartSearchResponse({
+        userId,
+        requestData: nextRequestData,
+        reused: false,
+      }),
       requestData: nextRequestData,
+      requesterData,
       reused: false,
-    });
+      shouldTryStudentPair: true,
+    };
   });
+
+  if (startResult.shouldTryStudentPair) {
+    const matchResult = await tryCreateStudentPairForSearchRequest({
+      db,
+      userId,
+      requesterData: startResult.requesterData,
+      requestData: startResult.requestData,
+      reused: startResult.reused,
+    });
+    if (matchResult.matched) {
+      return matchResult.response;
+    }
+  }
+
+  return startResult.response;
 });
 
 exports.__private__ = {
   buildStartSearchAccessDecision,
   buildStartSearchFilters,
+  buildCurrentMatchedStartSearchResponse,
+  buildMatchedStartSearchResponse,
   buildStartSearchRequestData,
   buildStartSearchResponse,
+  buildStudentPairSessionData,
+  canAttemptStudentPairForSearchRequest,
+  hasCurrentMatchedSession,
   canReuseSearchRequestForUser,
   isReusableSearchRequest,
   normalizeStartSearchInput,
   searchRequestBelongsToUser,
   timestampToMillis,
+  tryReadCurrentMatchedStartSearchResponse,
+  tryCreateStudentPairForSearchRequest,
 };

@@ -1504,6 +1504,47 @@ test("collectMatchCandidatePool combines queue students and teachers", async () 
   });
 });
 
+test("collectMatchCandidatePool can scan only active students", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-a", activeRequest({
+        createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
+      })),
+    ],
+    teacherDocs: [
+      doc("teacher-a", teacherData({
+        availableSince: timestampFromMillis(fixedNowMillis - 240 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "student-a": doc("student-a", studentData()),
+    },
+    privateTokenDocsById: {
+      "teacher-a": doc("teacher-a", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+    includeTeachers: false,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-a"],
+  );
+  assert.deepEqual(result.stats, {
+    studentRequestsScanned: 1,
+    studentCandidates: 1,
+    teacherUsersScanned: 0,
+    teacherCandidates: 0,
+    totalCandidates: 1,
+  });
+});
+
 test("collectMatchCandidatePool excludes requester from unified pool", async () => {
   const db = fakeDb({
     studentRequestDocs: [doc("student-a", activeRequest())],

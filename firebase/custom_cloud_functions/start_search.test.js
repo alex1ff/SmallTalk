@@ -8,14 +8,20 @@ const {
 } = require("./search_requests");
 const {
   __private__: {
+    buildCurrentMatchedStartSearchResponse,
     buildStartSearchAccessDecision,
     buildStartSearchFilters,
+    buildMatchedStartSearchResponse,
     buildStartSearchRequestData,
     buildStartSearchResponse,
+    buildStudentPairSessionData,
+    canAttemptStudentPairForSearchRequest,
     canReuseSearchRequestForUser,
+    hasCurrentMatchedSession,
     isReusableSearchRequest,
     normalizeStartSearchInput,
     searchRequestBelongsToUser,
+    tryReadCurrentMatchedStartSearchResponse,
   },
 } = require("./start_search");
 
@@ -31,6 +37,10 @@ function timestampFromMillis(millis) {
 
 function futureTimestamp(minutes = 60) {
   return timestampFromMillis(fixedNowMillis + minutes * 60 * 1000);
+}
+
+function timestampFromDate(date) {
+  return timestampFromMillis(date.getTime());
 }
 
 function studentData(overrides = {}) {
@@ -198,6 +208,234 @@ test("active unexpired search request is reusable and returned unchanged", () =>
       errorCode: null,
       reused: true,
     },
+  );
+});
+
+test("matched start search response exposes created pair session", () => {
+  assert.deepEqual(
+    buildMatchedStartSearchResponse({
+      userId: "student-a",
+      requestData: {
+        status: SEARCH_REQUEST_STATUS.ACTIVE,
+        requestId: "request-a",
+        expiresAt: futureTimestamp(3),
+      },
+      matchResult: {
+        sessionId: "session-ab",
+        pairAttemptId: "pair-ab",
+        responderId: "student-b",
+        responderRole: "student",
+      },
+      reused: false,
+    }),
+    {
+      status: "matched",
+      searchRequestId: "student-a",
+      requestId: "request-a",
+      sessionId: "session-ab",
+      pairAttemptId: "pair-ab",
+      expiresAt: "2026-06-21T10:03:00.000Z",
+      errorCode: null,
+      reused: false,
+      matchedUserId: "student-b",
+      matchedRole: "student",
+      scenario: "student_student",
+    },
+  );
+});
+
+test("current matched search response can be rebuilt after match race", async () => {
+  const requestData = {
+    status: SEARCH_REQUEST_STATUS.MATCHED,
+    requestId: "request-a",
+    userId: "student-a",
+    currentSessionId: "session-ab",
+    matchedSessionId: "session-ab",
+    matchedUserId: "student-b",
+    matchedResponderId: "student-a",
+    matchedRole: "student",
+    pairAttemptId: "pair-ab",
+    expiresAt: futureTimestamp(3),
+  };
+  const fakeDb = {
+    collection: (collectionName) => {
+      assert.equal(collectionName, "searchRequests");
+      return {
+        doc: (docId) => {
+          assert.equal(docId, "student-a");
+          return {
+            get: async () => ({
+              exists: true,
+              data: () => requestData,
+            }),
+          };
+        },
+      };
+    },
+  };
+
+  assert.equal(hasCurrentMatchedSession(requestData), true);
+  assert.deepEqual(
+    buildCurrentMatchedStartSearchResponse({
+      userId: "student-a",
+      requestData,
+      reused: true,
+    }),
+    {
+      status: "matched",
+      searchRequestId: "student-a",
+      requestId: "request-a",
+      sessionId: "session-ab",
+      pairAttemptId: "pair-ab",
+      expiresAt: "2026-06-21T10:03:00.000Z",
+      errorCode: null,
+      reused: true,
+      matchedUserId: "student-b",
+      matchedRole: "student",
+      scenario: "student_student",
+    },
+  );
+  assert.deepEqual(
+    await tryReadCurrentMatchedStartSearchResponse({
+      db: fakeDb,
+      userId: "student-a",
+      reused: true,
+    }),
+    buildCurrentMatchedStartSearchResponse({
+      userId: "student-a",
+      requestData,
+      reused: true,
+    }),
+  );
+  assert.equal(hasCurrentMatchedSession({
+    ...requestData,
+    status: SEARCH_REQUEST_STATUS.ACTIVE,
+  }), false);
+});
+
+test("current matched search response maps teacher scenario", () => {
+  assert.deepEqual(
+    buildCurrentMatchedStartSearchResponse({
+      userId: "student-a",
+      requestData: {
+        status: SEARCH_REQUEST_STATUS.MATCHED,
+        requestId: "request-a",
+        currentSessionId: "session-at",
+        matchedUserId: "teacher-a",
+        matchedResponderId: "teacher-a",
+        matchedRole: "native_speaker",
+        pairAttemptId: "pair-at",
+        expiresAt: futureTimestamp(3),
+      },
+      reused: true,
+    }),
+    {
+      status: "matched",
+      searchRequestId: "student-a",
+      requestId: "request-a",
+      sessionId: "session-at",
+      pairAttemptId: "pair-at",
+      expiresAt: "2026-06-21T10:03:00.000Z",
+      errorCode: null,
+      reused: true,
+      matchedUserId: "teacher-a",
+      matchedRole: "native_speaker",
+      scenario: "student_teacher",
+    },
+  );
+  assert.equal(
+    buildCurrentMatchedStartSearchResponse({
+      userId: "student-a",
+      requestData: {
+        status: SEARCH_REQUEST_STATUS.MATCHED,
+        requestId: "request-a",
+        currentSessionId: "session-at",
+        matchedUserId: "teacher-a",
+        matchedRole: "teacher",
+      },
+      reused: true,
+    }).scenario,
+    "student_teacher",
+  );
+});
+
+test("student pair session data carries matching context", () => {
+  const sessionData = buildStudentPairSessionData({
+    requesterId: "student-a",
+    requestData: {
+      language: "en",
+      filters: {preferredLevel: "B1", levelRank: 3},
+    },
+    selectedCandidate: {
+      userId: "student-b",
+      source: "active_student_queue",
+      searchRequestId: "request-b",
+    },
+    studentCandidates: [
+      {userId: "student-b"},
+      {userId: "student-c"},
+    ],
+    candidateStats: {
+      studentRequestsScanned: 2,
+      studentCandidates: 2,
+      teacherUsersScanned: 0,
+      teacherCandidates: 0,
+      totalCandidates: 2,
+    },
+    nowMillis: fixedNowMillis,
+    timestampFromDate,
+  });
+
+  assert.equal(sessionData.language, "en");
+  assert.equal(
+    sessionData.expiresAt.toMillis(),
+    Date.parse("2026-06-21T10:05:00.000Z"),
+  );
+  assert.equal(sessionData.sessionPolicy.baseLimitSeconds, 300);
+  assert.equal(sessionData.sessionPolicy.warningLeadSeconds, 60);
+  assert.equal(sessionData.sessionPolicy.maxExtensionCount, 1);
+  assert.equal(sessionData.sessionPolicy.extensionSeconds, 300);
+  assert.equal(sessionData.sessionPolicy.effectiveLimitSeconds, 300);
+  assert.equal(sessionData.studentHasReviewed, false);
+  assert.equal(sessionData.tutorHasReviewed, false);
+  assert.deepEqual(sessionData.availableTutors, ["student-b", "student-c"]);
+  assert.deepEqual(sessionData.triedTutors, ["student-b"]);
+  assert.deepEqual(sessionData.matchContext.filters, {
+    preferredLevel: "B1",
+    levelRank: 3,
+  });
+  assert.equal(sessionData.matchContext.requesterId, "student-a");
+  assert.equal(sessionData.matchContext.selectedResponderId, "student-b");
+  assert.equal(sessionData.matchContext.selectedResponderRole, "student");
+  assert.equal(
+    sessionData.matchContext.selectedResponderSearchRequestId,
+    "request-b",
+  );
+  assert.equal(sessionData.matchContext.candidatePoolSize, 2);
+});
+
+test("student pair creation is attempted only for open search requests", () => {
+  assert.equal(
+    canAttemptStudentPairForSearchRequest({
+      status: SEARCH_REQUEST_STATUS.ACTIVE,
+    }),
+    true,
+  );
+  assert.equal(
+    canAttemptStudentPairForSearchRequest({status: "searching"}),
+    false,
+  );
+  assert.equal(
+    canAttemptStudentPairForSearchRequest({
+      status: SEARCH_REQUEST_STATUS.MATCHING,
+    }),
+    false,
+  );
+  assert.equal(
+    canAttemptStudentPairForSearchRequest({
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+    }),
+    false,
   );
 });
 
@@ -424,6 +662,13 @@ if (!hasFirestoreEmulator) {
     ].join("-");
   }
 
+  function cityKeyForUid(uid) {
+    return `city_${uid}`
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "_")
+      .slice(0, 80);
+  }
+
   function authContext(uid) {
     return {
       auth: {
@@ -464,7 +709,7 @@ if (!hasFirestoreEmulator) {
       learningLanguage: {code: "en"},
       level: "B1",
       Country_NS: {code: "US"},
-      profileCity: {key: "new_york"},
+      profileCity: {key: cityKeyForUid(uid)},
       giftMinutes: {
         minutes: 10,
         expiresAt: emulatorFutureTimestamp(60),
@@ -475,8 +720,29 @@ if (!hasFirestoreEmulator) {
     });
   }
 
+  async function seedTeacher(uid, overrides = {}) {
+    await userRef(uid).set({
+      role: "native_speaker",
+      display_name: "Teacher",
+      language_instruction_NS: {code: "en"},
+      level: "B1",
+      Country_NS: {code: "US"},
+      profileCity: {key: cityKeyForUid(uid)},
+      verif_NS: true,
+      isAvailable: true,
+      isInCall: false,
+      currentSessionId: "",
+      availableSince: admin.firestore.Timestamp.now(),
+      ...overrides,
+    });
+    await db.collection("userPrivateTokens").doc(uid).set({
+      voipToken: `voip-${uid}`,
+    });
+  }
+
   test("startSearch callable creates one active request document", async () => {
     const uid = uniqueId("student");
+    const cityKey = cityKeyForUid(uid);
     await deleteDoc(userRef(uid));
     await deleteDoc(searchRequestRef(uid));
     await seedStudent(uid);
@@ -508,7 +774,7 @@ if (!hasFirestoreEmulator) {
       preferredLevel: "B2",
       levelRank: 4,
       countryCode: "US",
-      cityKey: "new_york",
+      cityKey,
     });
     assert.equal(typeof requestData.createdAt.toMillis, "function");
     assert.equal(typeof requestData.updatedAt.toMillis, "function");
@@ -528,6 +794,7 @@ if (!hasFirestoreEmulator) {
 
   test("startSearch callable returns active request idempotently", async () => {
     const uid = uniqueId("student-idempotent");
+    const cityKey = cityKeyForUid(uid);
     await deleteDoc(userRef(uid));
     await deleteDoc(searchRequestRef(uid));
     await seedStudent(uid);
@@ -546,8 +813,182 @@ if (!hasFirestoreEmulator) {
       preferredLevel: "B1",
       levelRank: 3,
       countryCode: "US",
-      cityKey: "new_york",
+      cityKey,
     });
+  });
+
+  test("startSearch callable creates student-student session", async () => {
+    const waitingUid = uniqueId("student-waiting");
+    const joiningUid = uniqueId("student-joining");
+    const cityKey = cityKeyForUid(`${waitingUid}-${joiningUid}`);
+    await deleteDoc(userRef(waitingUid));
+    await deleteDoc(userRef(joiningUid));
+    await deleteDoc(searchRequestRef(waitingUid));
+    await deleteDoc(searchRequestRef(joiningUid));
+    await seedStudent(waitingUid, {
+      display_name: "Waiting Student",
+      photo_url: "waiting-photo",
+      profileCity: {key: cityKey},
+    });
+    await seedStudent(joiningUid, {
+      display_name: "Joining Student",
+      photo_url: "joining-photo",
+      profileCity: {key: cityKey},
+    });
+
+    const waitingResponse = await wrappedStartSearch({
+      preferredPartnerLevel: "B1",
+    }, authContext(waitingUid));
+    const joiningResponse = await wrappedStartSearch({
+      preferredPartnerLevel: "B1",
+    }, authContext(joiningUid));
+
+    assert.equal(waitingResponse.status, "active");
+    assert.equal(waitingResponse.sessionId, null);
+    assert.equal(joiningResponse.status, "matched");
+    assert.equal(joiningResponse.reused, false);
+    assert.equal(joiningResponse.matchedUserId, waitingUid);
+    assert.equal(joiningResponse.matchedRole, "student");
+    assert.equal(joiningResponse.scenario, "student_student");
+    assert.equal(typeof joiningResponse.sessionId, "string");
+    assert.equal(typeof joiningResponse.pairAttemptId, "string");
+
+    const sessionSnapshot = await db
+      .collection("videoSessions")
+      .doc(joiningResponse.sessionId)
+      .get();
+    const sessionData = sessionSnapshot.data();
+    const waitingRequest = (await searchRequestRef(waitingUid).get()).data();
+    const joiningRequest = (await searchRequestRef(joiningUid).get()).data();
+    const waitingUser = (await userRef(waitingUid).get()).data();
+    const joiningUser = (await userRef(joiningUid).get()).data();
+
+    assert.equal(sessionSnapshot.exists, true);
+    assert.equal(sessionData.status, "pending_confirmation");
+    assert.equal(sessionData.pairStatus, "pending_confirmation");
+    assert.equal(sessionData.scenario, "student_student");
+    assert.equal(sessionData.requesterId, joiningUid);
+    assert.equal(sessionData.responderId, waitingUid);
+    assert.equal(sessionData.currentResponderId, waitingUid);
+    assert.equal(sessionData.currentResponderRole, "student");
+    assert.equal(sessionData.currentTutorId, waitingUid);
+    assert.equal(sessionData.tutorId, null);
+    assert.equal(typeof sessionData.expiresAt.toMillis, "function");
+    assert.equal(sessionData.sessionPolicy.baseLimitSeconds, 300);
+    assert.equal(sessionData.sessionPolicy.warningLeadSeconds, 60);
+    assert.equal(sessionData.sessionPolicy.maxExtensionCount, 1);
+    assert.equal(sessionData.sessionPolicy.extensionSeconds, 300);
+    assert.equal(sessionData.sessionPolicy.effectiveLimitSeconds, 300);
+    assert.equal(sessionData.studentHasReviewed, false);
+    assert.equal(sessionData.tutorHasReviewed, false);
+    assert.deepEqual(
+      sessionData.participantIds.slice().sort(),
+      [joiningUid, waitingUid].sort(),
+    );
+    assert.deepEqual(sessionData.participantRoles, {
+      [joiningUid]: "student",
+      [waitingUid]: "student",
+    });
+    assert.deepEqual(sessionData.searchRequestIds, {
+      requester: joiningResponse.requestId,
+      responder: waitingResponse.requestId,
+    });
+    assert.equal(sessionData.matchContext.requesterId, joiningUid);
+    assert.equal(sessionData.matchContext.selectedResponderId, waitingUid);
+    assert.equal(
+      sessionData.matchContext.selectedResponderSearchRequestId,
+      waitingResponse.requestId,
+    );
+    assert.deepEqual(sessionData.availableTutors, [waitingUid]);
+    assert.deepEqual(sessionData.triedTutors, [waitingUid]);
+
+    assert.equal(waitingRequest.status, "matched");
+    assert.equal(waitingRequest.currentSessionId, joiningResponse.sessionId);
+    assert.equal(waitingRequest.matchedSessionId, joiningResponse.sessionId);
+    assert.equal(waitingRequest.matchedUserId, joiningUid);
+    assert.equal(waitingRequest.matchedResponderId, waitingUid);
+    assert.equal(waitingRequest.matchedRole, "student");
+    assert.equal(waitingRequest.pairAttemptId, joiningResponse.pairAttemptId);
+    assert.equal(joiningRequest.status, "matched");
+    assert.equal(joiningRequest.currentSessionId, joiningResponse.sessionId);
+    assert.equal(joiningRequest.matchedSessionId, joiningResponse.sessionId);
+    assert.equal(joiningRequest.matchedUserId, waitingUid);
+    assert.equal(joiningRequest.matchedResponderId, waitingUid);
+    assert.equal(joiningRequest.matchedRole, "student");
+    assert.equal(joiningRequest.pairAttemptId, joiningResponse.pairAttemptId);
+    assert.equal(waitingUser.currentSessionId, joiningResponse.sessionId);
+    assert.equal(joiningUser.currentSessionId, joiningResponse.sessionId);
+  });
+
+  test("startSearch callable does not match teachers", async () => {
+    const studentUid = uniqueId("student-no-teacher-match");
+    const teacherUid = uniqueId("teacher-no-start-search-match");
+    const cityKey = cityKeyForUid(`${studentUid}-${teacherUid}`);
+    await deleteDoc(userRef(studentUid));
+    await deleteDoc(userRef(teacherUid));
+    await deleteDoc(searchRequestRef(studentUid));
+    await deleteDoc(searchRequestRef(teacherUid));
+    await deleteDoc(db.collection("userPrivateTokens").doc(teacherUid));
+    await seedStudent(studentUid, {profileCity: {key: cityKey}});
+    await seedTeacher(teacherUid, {profileCity: {key: cityKey}});
+
+    const response = await wrappedStartSearch({
+      preferredPartnerLevel: "B1",
+    }, authContext(studentUid));
+    const requestData = (await searchRequestRef(studentUid).get()).data();
+
+    assert.equal(response.status, "active");
+    assert.equal(response.sessionId, null);
+    assert.equal(response.pairAttemptId, null);
+    assert.equal(requestData.status, "active");
+    assert.equal(requestData.currentSessionId, null);
+  });
+
+  test("startSearch callable creates one session under concurrent starts", async () => {
+    const firstUid = uniqueId("student-concurrent-a");
+    const secondUid = uniqueId("student-concurrent-b");
+    const cityKey = cityKeyForUid(`${firstUid}-${secondUid}`);
+    await deleteDoc(userRef(firstUid));
+    await deleteDoc(userRef(secondUid));
+    await deleteDoc(searchRequestRef(firstUid));
+    await deleteDoc(searchRequestRef(secondUid));
+    await seedStudent(firstUid, {
+      display_name: "First Student",
+      profileCity: {key: cityKey},
+    });
+    await seedStudent(secondUid, {
+      display_name: "Second Student",
+      profileCity: {key: cityKey},
+    });
+
+    const responses = await Promise.all([
+      wrappedStartSearch({preferredPartnerLevel: "B1"}, authContext(firstUid)),
+      wrappedStartSearch({preferredPartnerLevel: "B1"}, authContext(secondUid)),
+    ]);
+    const firstRequest = (await searchRequestRef(firstUid).get()).data();
+    const secondRequest = (await searchRequestRef(secondUid).get()).data();
+    const firstUser = (await userRef(firstUid).get()).data();
+    const secondUser = (await userRef(secondUid).get()).data();
+    const sessionIds = new Set([
+      ...responses.map((response) => response.sessionId),
+      firstRequest.currentSessionId,
+      secondRequest.currentSessionId,
+      firstUser.currentSessionId,
+      secondUser.currentSessionId,
+    ].filter(Boolean));
+
+    assert.equal(sessionIds.size, 1);
+    const [sessionId] = Array.from(sessionIds);
+    assert.equal(firstRequest.status, "matched");
+    assert.equal(secondRequest.status, "matched");
+    assert.equal(firstRequest.currentSessionId, sessionId);
+    assert.equal(secondRequest.currentSessionId, sessionId);
+    assert.equal(firstUser.currentSessionId, sessionId);
+    assert.equal(secondUser.currentSessionId, sessionId);
+    assert.equal(
+      responses.filter((response) => response.status === "matched").length >= 1,
+      true,
+    );
   });
 
   test("startSearch callable keeps a single active request under concurrency", async () => {
@@ -685,6 +1126,7 @@ if (!hasFirestoreEmulator) {
 
     for (const status of statuses) {
       const uid = uniqueId(`student-${status}`);
+      const cityKey = cityKeyForUid(uid);
       await deleteDoc(userRef(uid));
       await deleteDoc(searchRequestRef(uid));
       await seedStudent(uid);
@@ -694,7 +1136,12 @@ if (!hasFirestoreEmulator) {
         userRef: userRef(uid),
         role: "student",
         language: "en",
-        filters: {preferredLevel: "A2", levelRank: 2},
+        filters: {
+          preferredLevel: "A2",
+          levelRank: 2,
+          countryCode: "US",
+          cityKey,
+        },
         status,
         appState: "foreground",
         appStateUpdatedAt: admin.firestore.Timestamp.now(),
@@ -723,6 +1170,17 @@ if (!hasFirestoreEmulator) {
       assert.equal(response.reused, true);
       assert.equal(response.status, status);
       assert.equal(response.requestId, `request-${status}`);
+      if (status === "matched") {
+        assert.equal(response.sessionId, "session-a");
+        assert.equal(response.matchedUserId, "peer-a");
+        assert.equal(response.matchedRole, "student");
+        assert.equal(response.scenario, "student_student");
+      } else {
+        assert.equal(response.sessionId, null);
+        assert.equal(response.matchedUserId, undefined);
+        assert.equal(response.matchedRole, undefined);
+        assert.equal(response.scenario, undefined);
+      }
       assert.deepEqual(snapshot.data().excludedCandidateIds, [
         "kept-candidate",
       ]);

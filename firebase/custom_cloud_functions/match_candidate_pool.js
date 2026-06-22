@@ -1479,6 +1479,8 @@ async function collectMatchCandidatePool({
   teacherScanPageSize = DEFAULT_SCAN_PAGE_SIZE,
   studentMaxScanPages = DEFAULT_SCAN_MAX_PAGES,
   teacherMaxScanPages = DEFAULT_SCAN_MAX_PAGES,
+  includeStudents = true,
+  includeTeachers = true,
 }) {
   const effectiveNowMillis = resolveNowMillis(now, nowMillis);
   const normalizedLanguage = readLanguageCode(language);
@@ -1507,8 +1509,12 @@ async function collectMatchCandidatePool({
   const effectiveRequesterEmail =
     normalizeString(requesterEmail).toLowerCase() || requesterProfile.email;
 
+  const emptyPoolResult = {
+    candidates: [],
+    scannedCount: 0,
+  };
   const [studentResult, teacherResult] = await Promise.all([
-    collectStudentQueueCandidates({
+    includeStudents ? collectStudentQueueCandidates({
       db,
       query: buildActiveStudentSearchRequestsQuery(db, {
         language: normalizedLanguage,
@@ -1527,8 +1533,8 @@ async function collectMatchCandidatePool({
       requesterExcludedCandidateIds: requesterProfile.excludedCandidateIds,
       requesterEmail: effectiveRequesterEmail,
       repeatDayKey,
-    }),
-    collectTeacherAvailabilityCandidates({
+    }) : emptyPoolResult,
+    includeTeachers ? collectTeacherAvailabilityCandidates({
       db,
       query: buildAvailableTeachersQuery(db, {language: normalizedLanguage}),
       language: normalizedLanguage,
@@ -1544,7 +1550,7 @@ async function collectMatchCandidatePool({
       requesterExcludedCandidateIds: requesterProfile.excludedCandidateIds,
       requesterEmail: effectiveRequesterEmail,
       repeatDayKey,
-    }),
+    }) : emptyPoolResult,
   ]);
 
   const candidates = mergeCandidatePools({
