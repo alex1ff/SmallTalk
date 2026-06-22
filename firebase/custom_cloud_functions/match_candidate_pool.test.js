@@ -11,6 +11,7 @@ const {
   collectMatchCandidatePool,
   isActiveStudentSearchRequest,
   mergeCandidatePools,
+  readPreferredLevelRank,
   validateActiveStudentSearchRequest,
 } = require("./match_candidate_pool");
 const {
@@ -303,6 +304,117 @@ test("student queue candidate carries neutral pool shape", () => {
   assert.equal(candidate.availability.reason, "active_search_request");
   assert.equal(candidate.availability.searchRequestValidationReason, "active");
   assert.equal(candidate.profile.role, "student");
+});
+
+test("candidate level filter accepts exact and adjacent levels", () => {
+  const buildCandidate = (userId, level, preferredLevelRank) =>
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc(userId, activeRequest({
+        requestId: `request-${userId}`,
+        userId,
+        userRef: {id: userId},
+        filters: {},
+      })),
+      userDoc: doc(userId, studentData({level})),
+      language: "en",
+      nowMillis: fixedNowMillis,
+      preferredLevelRank,
+    });
+
+  const exact = buildCandidate("student-exact", {value: "B1"}, 3);
+  const lowerAdjacent = buildCandidate("student-lower", {value: "A2"}, 3);
+  const upperAdjacent = buildCandidate("student-upper", {value: "B2"}, 3);
+
+  assert.equal(exact.matchQuality.levelTier, "exact");
+  assert.equal(exact.matchQuality.levelDistance, 0);
+  assert.equal(lowerAdjacent.matchQuality.levelTier, "adjacent");
+  assert.equal(upperAdjacent.matchQuality.levelTier, "adjacent");
+  assert.equal(buildCandidate("student-low", {value: "A1"}, 3), null);
+  assert.equal(buildCandidate("student-high", {value: "C1"}, 3), null);
+  assert.equal(buildCandidate("student-missing", null, 3), null);
+
+  assert.equal(
+    buildCandidate("student-c2-exact", {value: "C2"}, 6).userId,
+    "student-c2-exact",
+  );
+  assert.equal(
+    buildCandidate("student-c2-adjacent", {value: "C1"}, 6).userId,
+    "student-c2-adjacent",
+  );
+  assert.equal(buildCandidate("student-c2-far", {value: "B2"}, 6), null);
+});
+
+test("candidate level filter normalizes legacy level shapes", () => {
+  const legacyName = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-basic", activeRequest({
+      requestId: "request-student-basic",
+      userId: "student-basic",
+      userRef: {id: "student-basic"},
+      filters: {},
+    })),
+    userDoc: doc("student-basic", studentData({level: "Basic"})),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLevelRank: 2,
+  });
+  const profileCode = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-c1", activeRequest({
+      requestId: "request-student-c1",
+      userId: "student-c1",
+      userRef: {id: "student-c1"},
+      filters: {},
+    })),
+    userDoc: doc("student-c1", studentData({
+      level: null,
+      matchProfile: {level: {code: "C1"}},
+    })),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLevelRank: 5,
+  });
+
+  assert.equal(legacyName.matchQuality.candidateLevel, "A2");
+  assert.equal(legacyName.matchQuality.levelTier, "exact");
+  assert.equal(profileCode.matchQuality.candidateLevel, "C1");
+  assert.equal(profileCode.matchQuality.levelTier, "exact");
+  assert.equal(readPreferredLevelRank({preferredLevel: "Basic"}), 2);
+  assert.equal(readPreferredLevelRank({levelRank: "4"}), 4);
+});
+
+test("student queue candidate honors candidate preferred level filter", () => {
+  const rejectedByCandidateFilter = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-strict", activeRequest({
+      requestId: "request-student-strict",
+      userId: "student-strict",
+      userRef: {id: "student-strict"},
+      filters: {preferredLevel: "B1", levelRank: 3},
+    })),
+    userDoc: doc("student-strict", studentData({level: {value: "B1"}})),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLevelRank: 3,
+    requesterLevelRank: 5,
+  });
+  const acceptedByCandidateFilter = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-flexible", activeRequest({
+      requestId: "request-student-flexible",
+      userId: "student-flexible",
+      userRef: {id: "student-flexible"},
+      filters: {preferredLevel: "B2", levelRank: 4},
+    })),
+    userDoc: doc("student-flexible", studentData({level: {value: "B1"}})),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLevelRank: 3,
+    requesterLevelRank: 5,
+  });
+
+  assert.equal(rejectedByCandidateFilter, null);
+  assert.equal(acceptedByCandidateFilter.userId, "student-flexible");
+  assert.equal(
+    acceptedByCandidateFilter.matchQuality.requesterLevelTier,
+    "adjacent",
+  );
 });
 
 test("student queue candidate rejects missing user and changed role", () => {
@@ -611,6 +723,57 @@ test("candidate pool merge is ordered by waiting time, not role", () => {
   );
 });
 
+test("candidate pool merge ranks exact level before adjacent level", () => {
+  const candidates = mergeCandidatePools({
+    studentCandidates: [
+      {
+        userId: "student-exact",
+        role: "student",
+        source: MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE,
+        joinedPoolAtMillis: fixedNowMillis - 60 * 1000,
+        matchQuality: {levelDistance: 0},
+      },
+    ],
+    teacherCandidates: [
+      {
+        userId: "teacher-adjacent",
+        role: "native_speaker",
+        source: MATCH_CANDIDATE_SOURCE.TEACHER_AVAILABILITY,
+        joinedPoolAtMillis: fixedNowMillis - 120 * 1000,
+        matchQuality: {levelDistance: 1},
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.userId),
+    ["student-exact", "teacher-adjacent"],
+  );
+});
+
+test("candidate pool merge treats null level distance as no level ranking", () => {
+  const candidates = mergeCandidatePools({
+    studentCandidates: [
+      {
+        userId: "student-null-level",
+        joinedPoolAtMillis: fixedNowMillis - 60 * 1000,
+        matchQuality: {levelDistance: null},
+      },
+    ],
+    teacherCandidates: [
+      {
+        userId: "teacher-older",
+        joinedPoolAtMillis: fixedNowMillis - 120 * 1000,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.userId),
+    ["teacher-older", "student-null-level"],
+  );
+});
+
 test("candidate pool merge excludes requester and dedupes by user", () => {
   const candidates = mergeCandidatePools({
     requesterId: "student-a",
@@ -784,6 +947,181 @@ test("collectMatchCandidatePool excludes wrong-language candidates", async () =>
   );
 });
 
+test("collectMatchCandidatePool ranks exact level before older adjacent", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-exact", activeRequest({
+        requestId: "request-student-exact",
+        userId: "student-exact",
+        userRef: {id: "student-exact"},
+        filters: {},
+        createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
+      })),
+    ],
+    teacherDocs: [
+      doc("teacher-adjacent", teacherData({
+        level: {value: "A2"},
+        availableSince: timestampFromMillis(fixedNowMillis - 300 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "student-exact": doc("student-exact", studentData({
+        level: {value: "B1"},
+      })),
+    },
+    privateTokenDocsById: {
+      "teacher-adjacent": doc("teacher-adjacent", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    requesterFilters: {preferredLevel: "B1"},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-exact", "teacher-adjacent"],
+  );
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.matchQuality.levelTier),
+    ["exact", "adjacent"],
+  );
+});
+
+test("collectMatchCandidatePool scans beyond limit for exact student level", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-adjacent", activeRequest({
+        requestId: "request-student-adjacent",
+        userId: "student-adjacent",
+        userRef: {id: "student-adjacent"},
+        filters: {},
+        createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
+      })),
+      doc("student-exact", activeRequest({
+        requestId: "request-student-exact",
+        userId: "student-exact",
+        userRef: {id: "student-exact"},
+        filters: {},
+        createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "student-adjacent": doc(
+        "student-adjacent",
+        studentData({level: {value: "A2"}}),
+      ),
+      "student-exact": doc(
+        "student-exact",
+        studentData({level: {value: "B1"}}),
+      ),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    requesterFilters: {preferredLevel: "B1"},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+    studentLimit: 1,
+    studentScanPageSize: 1,
+    studentMaxScanPages: 3,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-exact"],
+  );
+  assert.equal(result.stats.studentRequestsScanned, 2);
+  assert.equal(result.stats.studentCandidates, 1);
+});
+
+test("collectMatchCandidatePool scans beyond limit for exact teacher level", async () => {
+  const db = fakeDb({
+    teacherDocs: [
+      doc("teacher-adjacent", teacherData({
+        level: {value: "A2"},
+        availableSince: timestampFromMillis(fixedNowMillis - 120 * 1000),
+      })),
+      doc("teacher-exact", teacherData({
+        level: {value: "B1"},
+        availableSince: timestampFromMillis(fixedNowMillis - 60 * 1000),
+      })),
+    ],
+    privateTokenDocsById: {
+      "teacher-adjacent": doc("teacher-adjacent", privateTokenData()),
+      "teacher-exact": doc("teacher-exact", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    requesterFilters: {preferredLevel: "B1"},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+    teacherLimit: 1,
+    teacherScanPageSize: 1,
+    teacherMaxScanPages: 3,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-exact"],
+  );
+  assert.equal(result.stats.teacherUsersScanned, 2);
+  assert.equal(result.stats.teacherCandidates, 1);
+});
+
+test("collectMatchCandidatePool reads requester level for mutual student filter", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-strict", activeRequest({
+        requestId: "request-student-strict",
+        userId: "student-strict",
+        userRef: {id: "student-strict"},
+        filters: {preferredLevel: "B1", levelRank: 3},
+      })),
+      doc("student-flexible", activeRequest({
+        requestId: "request-student-flexible",
+        userId: "student-flexible",
+        userRef: {id: "student-flexible"},
+        filters: {preferredLevel: "B2", levelRank: 4},
+      })),
+    ],
+    userDocsById: {
+      "requester-a": doc("requester-a", studentData({
+        level: {value: "C1"},
+      })),
+      "student-strict": doc("student-strict", studentData({
+        level: {value: "B1"},
+      })),
+      "student-flexible": doc("student-flexible", studentData({
+        level: {value: "B1"},
+      })),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "requester-a",
+    language: "en",
+    requesterFilters: {preferredLevel: "B1"},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-flexible"],
+  );
+});
+
 test("collectMatchCandidatePool excludes teachers without usable token", async () => {
   const db = fakeDb({
     teacherDocs: [
@@ -949,6 +1287,50 @@ test("collectMatchCandidatePool scans past invalid first page docs", async () =>
   assert.equal(result.stats.teacherUsersScanned, 2);
   assert.equal(result.stats.studentCandidates, 1);
   assert.equal(result.stats.teacherCandidates, 1);
+});
+
+test("collectMatchCandidatePool scans past level mismatches", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-far", activeRequest({
+        requestId: "request-student-far",
+        userId: "student-far",
+        userRef: {id: "student-far"},
+        filters: {},
+      })),
+      doc("student-exact", activeRequest({
+        requestId: "request-student-exact",
+        userId: "student-exact",
+        userRef: {id: "student-exact"},
+        filters: {},
+      })),
+    ],
+    userDocsById: {
+      "student-far": doc("student-far", studentData({level: {value: "C1"}})),
+      "student-exact": doc(
+        "student-exact",
+        studentData({level: {value: "B1"}}),
+      ),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    requesterFilters: {preferredLevel: "B1"},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+    studentLimit: 1,
+    studentScanPageSize: 1,
+    studentMaxScanPages: 3,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-exact"],
+  );
+  assert.equal(result.stats.studentRequestsScanned, 2);
+  assert.equal(result.stats.studentCandidates, 1);
 });
 
 test("candidate pool queries use canonical active queue and teacher sources", () => {

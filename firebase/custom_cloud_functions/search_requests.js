@@ -92,6 +92,12 @@ const SEARCH_REQUEST_LEVEL_RANK = Object.freeze({
   C1: 5,
   C2: 6,
 });
+const SEARCH_REQUEST_LEVEL_ALIASES = Object.freeze({
+  BEGINNER: "A1",
+  BASIC: "A2",
+  INTERMEDIATE: "B1",
+  FLUENT: "C1",
+});
 
 const SEARCH_REQUEST_REQUIRED_FIELDS = Object.freeze([
   SEARCH_REQUEST_FIELD.REQUEST_ID,
@@ -203,8 +209,16 @@ function normalizeAppState(appState) {
 }
 
 function normalizeSearchRequestLevel(level) {
-  const normalized = typeof level === "string" ? level.trim().toUpperCase() : "";
-  return Object.hasOwn(SEARCH_REQUEST_LEVEL_RANK, normalized) ? normalized : "";
+  const rawLevel = typeof level === "string" ?
+    level :
+    (level && typeof level === "object" ?
+      level.code || level.value || level.name || "" :
+      "");
+  const normalized = String(rawLevel || "").trim().toUpperCase();
+  if (Object.hasOwn(SEARCH_REQUEST_LEVEL_RANK, normalized)) {
+    return normalized;
+  }
+  return SEARCH_REQUEST_LEVEL_ALIASES[normalized] || "";
 }
 
 function normalizeSearchRequestRank(rank) {

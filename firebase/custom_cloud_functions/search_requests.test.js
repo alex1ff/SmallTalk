@@ -91,6 +91,18 @@ test("search request filters are whitelisted and normalized", () => {
     [SEARCH_REQUEST_FILTER_FIELD.PREFERRED_LEVEL]: "C2",
     [SEARCH_REQUEST_FILTER_FIELD.LEVEL_RANK]: 6,
   });
+  assert.deepEqual(normalizeSearchRequestFilters({
+    preferredLevel: "Basic",
+  }), {
+    [SEARCH_REQUEST_FILTER_FIELD.PREFERRED_LEVEL]: "A2",
+    [SEARCH_REQUEST_FILTER_FIELD.LEVEL_RANK]: 2,
+  });
+  assert.deepEqual(normalizeSearchRequestFilters({
+    preferredLevel: {name: "Fluent"},
+  }), {
+    [SEARCH_REQUEST_FILTER_FIELD.PREFERRED_LEVEL]: "C1",
+    [SEARCH_REQUEST_FILTER_FIELD.LEVEL_RANK]: 5,
+  });
   assert.deepEqual(normalizeSearchRequestFilters(null), {});
 });
 

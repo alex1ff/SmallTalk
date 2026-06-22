@@ -2,13 +2,17 @@ const { evaluateTutorAvailabilityWindow } = require("./availability");
 const {
   SEARCH_REQUEST_COLLECTION,
   SEARCH_REQUEST_FIELD,
+  SEARCH_REQUEST_FILTER_FIELD,
+  SEARCH_REQUEST_LEVEL_RANK,
   SEARCH_REQUEST_STATUS,
   SEARCH_REQUEST_TIMING,
+  normalizeSearchRequestLevel,
 } = require("./search_requests");
 const {
   buildMatchProfile,
   normalizeRole,
   readLanguageCode,
+  readMatchLevelValue,
   supportsConversationLanguage,
 } = require("./video_sessions_shared");
 const {
@@ -70,6 +74,92 @@ function normalizePositiveInteger(value, fallback) {
     return fallback;
   }
   return Math.floor(number);
+}
+
+function normalizeLevelRank(rank) {
+  const normalizedRank = typeof rank === "number" ?
+    rank :
+    Number.parseInt(String(rank || "").trim(), 10);
+  return Number.isInteger(normalizedRank) &&
+    normalizedRank >= 1 &&
+    normalizedRank <= 6 ?
+    normalizedRank :
+    null;
+}
+
+function readLevelRankFromLevel(value) {
+  const level = normalizeSearchRequestLevel(value);
+  return level ? SEARCH_REQUEST_LEVEL_RANK[level] : null;
+}
+
+function readCandidateLevelValue(userData = {}) {
+  const matchProfile = userData.matchProfile &&
+    typeof userData.matchProfile === "object" &&
+    !Array.isArray(userData.matchProfile) ?
+    userData.matchProfile :
+    {};
+  return readMatchLevelValue(userData) ||
+    userData.level ||
+    matchProfile.level ||
+    "";
+}
+
+function readPreferredLevelRank(filters = {}) {
+  if (!filters || typeof filters !== "object" || Array.isArray(filters)) {
+    return null;
+  }
+  const preferredLevelRank = readLevelRankFromLevel(
+    filters[SEARCH_REQUEST_FILTER_FIELD.PREFERRED_LEVEL] ||
+      filters.level ||
+      filters.preferredLevel,
+  );
+  if (preferredLevelRank !== null) {
+    return preferredLevelRank;
+  }
+
+  return normalizeLevelRank(
+    filters[SEARCH_REQUEST_FILTER_FIELD.LEVEL_RANK] ||
+      filters.levelRank,
+  );
+}
+
+function buildLevelMatch({
+  candidateLevelRank = null,
+  preferredLevelRank = null,
+}) {
+  if (preferredLevelRank === null) {
+    return {
+      valid: true,
+      applied: false,
+      distance: null,
+      tier: null,
+    };
+  }
+  if (candidateLevelRank === null) {
+    return {
+      valid: false,
+      applied: true,
+      distance: null,
+      tier: "missing",
+    };
+  }
+
+  const distance = Math.abs(candidateLevelRank - preferredLevelRank);
+  if (distance > 1) {
+    return {
+      valid: false,
+      applied: true,
+      distance,
+      tier: "out_of_range",
+    };
+  }
+
+  return {
+    valid: true,
+    applied: true,
+    distance,
+    tier: distance === 0 ? "exact" : "adjacent",
+  };
 }
 
 function readDocData(doc) {
@@ -206,11 +296,59 @@ function readTeacherJoinedPoolMillis(userData = {}, nowMillis = Date.now()) {
     nowMillis;
 }
 
+function buildCandidateMatchQuality({
+  userData = {},
+  preferredLevelRank = null,
+  requesterLevelRank = null,
+  candidateFilters = {},
+}) {
+  const candidateLevel = normalizeSearchRequestLevel(
+    readCandidateLevelValue(userData),
+  );
+  const candidateLevelRank = candidateLevel ?
+    SEARCH_REQUEST_LEVEL_RANK[candidateLevel] :
+    null;
+  const levelMatch = buildLevelMatch({
+    candidateLevelRank,
+    preferredLevelRank,
+  });
+  if (!levelMatch.valid) {
+    return {valid: false, reason: "level_mismatch"};
+  }
+
+  const candidatePreferredLevelRank = requesterLevelRank === null ?
+    null :
+    readPreferredLevelRank(candidateFilters);
+  const requesterLevelMatch = buildLevelMatch({
+    candidateLevelRank: requesterLevelRank,
+    preferredLevelRank: candidatePreferredLevelRank,
+  });
+  if (!requesterLevelMatch.valid) {
+    return {valid: false, reason: "requester_level_mismatch"};
+  }
+
+  return {
+    valid: true,
+    matchQuality: {
+      levelApplied: levelMatch.applied,
+      levelDistance: levelMatch.distance,
+      levelTier: levelMatch.tier,
+      candidateLevel,
+      candidateLevelRank,
+      requesterLevelApplied: requesterLevelMatch.applied,
+      requesterLevelDistance: requesterLevelMatch.distance,
+      requesterLevelTier: requesterLevelMatch.tier,
+    },
+  };
+}
+
 function buildStudentQueueCandidateFromDocs({
   requestDoc,
   userDoc,
   language = "",
   nowMillis = Date.now(),
+  preferredLevelRank = null,
+  requesterLevelRank = null,
 }) {
   const requestData = readDocData(requestDoc);
   const userData = readDocData(userDoc);
@@ -251,6 +389,17 @@ function buildStudentQueueCandidateFromDocs({
     return null;
   }
 
+  const filters = requestData[SEARCH_REQUEST_FIELD.FILTERS] || {};
+  const matchQuality = buildCandidateMatchQuality({
+    userData,
+    preferredLevelRank,
+    requesterLevelRank,
+    candidateFilters: filters,
+  });
+  if (!matchQuality.valid) {
+    return null;
+  }
+
   const createdAtMillis = timestampToMillis(
     requestData[SEARCH_REQUEST_FIELD.CREATED_AT],
   );
@@ -267,8 +416,9 @@ function buildStudentQueueCandidateFromDocs({
       normalizeString(requestData[SEARCH_REQUEST_FIELD.REQUEST_ID]) ||
       readDocId(requestDoc),
     searchRequestDocId: readDocId(requestDoc),
-    filters: requestData[SEARCH_REQUEST_FIELD.FILTERS] || {},
+    filters,
     profile: buildMatchProfile(requestUserId, userData, normalizedLanguage),
+    matchQuality: matchQuality.matchQuality,
     availability: {
       isAvailable: true,
       reason: "active_search_request",
@@ -288,6 +438,7 @@ function buildTeacherAvailabilityCandidateFromDoc({
   language = "",
   now = new Date(),
   nowMillis = null,
+  preferredLevelRank = null,
 }) {
   const effectiveNowMillis = resolveNowMillis(now, nowMillis);
   const userData = readDocData(userDoc);
@@ -311,6 +462,13 @@ function buildTeacherAvailabilityCandidateFromDoc({
   }
 
   const profile = buildMatchProfile(userId, userData, normalizedLanguage);
+  const matchQuality = buildCandidateMatchQuality({
+    userData,
+    preferredLevelRank,
+  });
+  if (!matchQuality.valid) {
+    return null;
+  }
   if (!profile.approvedTeacher) {
     return null;
   }
@@ -338,6 +496,7 @@ function buildTeacherAvailabilityCandidateFromDoc({
     searchRequestDocId: null,
     filters: {},
     profile,
+    matchQuality: matchQuality.matchQuality,
     availability: {
       isAvailable: true,
       reason: availabilityCheck.reason,
@@ -366,6 +525,22 @@ function buildCandidateTokenState(tokenState = {}) {
 }
 
 function compareNeutralCandidateOrder(left, right) {
+  const leftLevelDistance = left.matchQuality?.levelDistance;
+  const rightLevelDistance = right.matchQuality?.levelDistance;
+  const leftHasLevelDistance =
+    typeof leftLevelDistance === "number" &&
+    Number.isFinite(leftLevelDistance);
+  const rightHasLevelDistance =
+    typeof rightLevelDistance === "number" &&
+    Number.isFinite(rightLevelDistance);
+  if (leftHasLevelDistance && rightHasLevelDistance &&
+      leftLevelDistance !== rightLevelDistance) {
+    return leftLevelDistance - rightLevelDistance;
+  }
+  if (leftHasLevelDistance !== rightHasLevelDistance) {
+    return leftHasLevelDistance ? -1 : 1;
+  }
+
   const leftJoinedAt = Number.isFinite(Number(left.joinedPoolAtMillis)) ?
     Number(left.joinedPoolAtMillis) :
     Number.MAX_SAFE_INTEGER;
@@ -377,6 +552,19 @@ function compareNeutralCandidateOrder(left, right) {
   }
 
   return String(left.userId).localeCompare(String(right.userId));
+}
+
+function limitQualityRankedCandidates({
+  candidates = [],
+  targetCount = 0,
+  qualityRankingEnabled = false,
+}) {
+  if (!qualityRankingEnabled) {
+    return candidates;
+  }
+  return [...candidates]
+    .sort(compareNeutralCandidateOrder)
+    .slice(0, targetCount);
 }
 
 function mergeCandidatePools({
@@ -473,6 +661,8 @@ async function collectStudentQueueCandidates({
   candidateLimit = DEFAULT_STUDENT_QUERY_LIMIT,
   pageSize = DEFAULT_SCAN_PAGE_SIZE,
   maxPages = DEFAULT_SCAN_MAX_PAGES,
+  preferredLevelRank = null,
+  requesterLevelRank = null,
 }) {
   const targetCount = normalizePositiveInteger(
     candidateLimit,
@@ -486,10 +676,12 @@ async function collectStudentQueueCandidates({
   const candidates = [];
   let scannedCount = 0;
   let lastDoc = null;
+  const qualityRankingEnabled = preferredLevelRank !== null;
 
   for (
     let page = 0;
-    page < scanMaxPages && candidates.length < targetCount;
+    page < scanMaxPages &&
+      (qualityRankingEnabled || candidates.length < targetCount);
     page += 1
   ) {
     const requestDocs = await readQueryPage(query, {
@@ -506,7 +698,7 @@ async function collectStudentQueueCandidates({
       .filter(Boolean);
     const studentUserDocsById = await readUserDocsById(db, studentUserIds);
     requestDocs.forEach((requestDoc) => {
-      if (candidates.length >= targetCount) {
+      if (!qualityRankingEnabled && candidates.length >= targetCount) {
         return;
       }
       const requestData = readDocData(requestDoc) || {};
@@ -516,6 +708,8 @@ async function collectStudentQueueCandidates({
         userDoc: studentUserDocsById.get(userId),
         language,
         nowMillis,
+        preferredLevelRank,
+        requesterLevelRank,
       });
       if (candidate) {
         candidates.push(candidate);
@@ -528,7 +722,14 @@ async function collectStudentQueueCandidates({
     }
   }
 
-  return {candidates, scannedCount};
+  return {
+    candidates: limitQualityRankedCandidates({
+      candidates,
+      targetCount,
+      qualityRankingEnabled,
+    }),
+    scannedCount,
+  };
 }
 
 async function collectTeacherAvailabilityCandidates({
@@ -541,6 +742,7 @@ async function collectTeacherAvailabilityCandidates({
   pageSize = DEFAULT_SCAN_PAGE_SIZE,
   maxPages = DEFAULT_SCAN_MAX_PAGES,
   tokenReader = getReadOnlyUserVoipTokenState,
+  preferredLevelRank = null,
 }) {
   const targetCount = normalizePositiveInteger(
     candidateLimit,
@@ -554,10 +756,12 @@ async function collectTeacherAvailabilityCandidates({
   const candidates = [];
   let scannedCount = 0;
   let lastDoc = null;
+  const qualityRankingEnabled = preferredLevelRank !== null;
 
   for (
     let page = 0;
-    page < scanMaxPages && candidates.length < targetCount;
+    page < scanMaxPages &&
+      (qualityRankingEnabled || candidates.length < targetCount);
     page += 1
   ) {
     const userDocs = await readQueryPage(query, {
@@ -576,6 +780,7 @@ async function collectTeacherAvailabilityCandidates({
         language,
         now,
         nowMillis,
+        preferredLevelRank,
       });
       if (!candidate) {
         continue;
@@ -590,7 +795,8 @@ async function collectTeacherAvailabilityCandidates({
     );
     for (
       let index = 0;
-      index < pageCandidates.length && candidates.length < targetCount;
+      index < pageCandidates.length &&
+        (qualityRankingEnabled || candidates.length < targetCount);
       index += 1
     ) {
       const tokenState = tokenStates[index] || {};
@@ -614,13 +820,43 @@ async function collectTeacherAvailabilityCandidates({
     }
   }
 
-  return {candidates, scannedCount};
+  return {
+    candidates: limitQualityRankedCandidates({
+      candidates,
+      targetCount,
+      qualityRankingEnabled,
+    }),
+    scannedCount,
+  };
+}
+
+async function readRequesterLevelRank(db, requesterId, requesterLevel = "") {
+  const explicitRank = readLevelRankFromLevel(requesterLevel);
+  if (explicitRank !== null) {
+    return explicitRank;
+  }
+
+  const normalizedRequesterId = normalizeString(requesterId);
+  if (!normalizedRequesterId || !db || typeof db.collection !== "function") {
+    return null;
+  }
+
+  const requesterDoc = await db
+    .collection(USER_COLLECTION)
+    .doc(normalizedRequesterId)
+    .get();
+  const requesterData = readDocData(requesterDoc);
+  return requesterData ?
+    readLevelRankFromLevel(readCandidateLevelValue(requesterData)) :
+    null;
 }
 
 async function collectMatchCandidatePool({
   db,
   language = "",
   requesterId = "",
+  requesterFilters = {},
+  requesterLevel = "",
   now = new Date(),
   nowMillis = null,
   studentLimit = DEFAULT_STUDENT_QUERY_LIMIT,
@@ -645,6 +881,13 @@ async function collectMatchCandidatePool({
     };
   }
 
+  const preferredLevelRank = readPreferredLevelRank(requesterFilters);
+  const requesterLevelRank = await readRequesterLevelRank(
+    db,
+    requesterId,
+    requesterLevel,
+  );
+
   const [studentResult, teacherResult] = await Promise.all([
     collectStudentQueueCandidates({
       db,
@@ -656,6 +899,8 @@ async function collectMatchCandidatePool({
       candidateLimit: studentLimit,
       pageSize: studentScanPageSize,
       maxPages: studentMaxScanPages,
+      preferredLevelRank,
+      requesterLevelRank,
     }),
     collectTeacherAvailabilityCandidates({
       db,
@@ -666,6 +911,7 @@ async function collectMatchCandidatePool({
       candidateLimit: teacherLimit,
       pageSize: teacherScanPageSize,
       maxPages: teacherMaxScanPages,
+      preferredLevelRank,
     }),
   ]);
 
@@ -701,6 +947,7 @@ module.exports = {
   collectTeacherAvailabilityCandidates,
   collectMatchCandidatePool,
   compareNeutralCandidateOrder,
+  readPreferredLevelRank,
   isActiveStudentSearchRequest,
   mergeCandidatePools,
   timestampToMillis,
