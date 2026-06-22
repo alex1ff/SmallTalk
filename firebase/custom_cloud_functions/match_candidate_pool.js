@@ -968,37 +968,56 @@ function buildCandidateTokenState(tokenState = {}) {
   };
 }
 
-function compareNeutralCandidateOrder(left, right) {
-  const leftLevelDistance = left.matchQuality?.levelDistance;
-  const rightLevelDistance = right.matchQuality?.levelDistance;
-  const leftHasLevelDistance =
-    typeof leftLevelDistance === "number" &&
-    Number.isFinite(leftLevelDistance);
-  const rightHasLevelDistance =
-    typeof rightLevelDistance === "number" &&
-    Number.isFinite(rightLevelDistance);
-  if (leftHasLevelDistance && rightHasLevelDistance &&
-      leftLevelDistance !== rightLevelDistance) {
-    return leftLevelDistance - rightLevelDistance;
-  }
-  if (leftHasLevelDistance !== rightHasLevelDistance) {
-    return leftHasLevelDistance ? -1 : 1;
+function compareOptionalDistance(leftValue, rightValue) {
+  const leftHasDistance =
+    typeof leftValue === "number" &&
+    Number.isFinite(leftValue);
+  const rightHasDistance =
+    typeof rightValue === "number" &&
+    Number.isFinite(rightValue);
+
+  if (leftHasDistance && rightHasDistance && leftValue !== rightValue) {
+    return leftValue - rightValue;
   }
 
-  const leftLocationDistance = left.matchQuality?.locationDistance;
-  const rightLocationDistance = right.matchQuality?.locationDistance;
-  const leftHasLocationDistance =
-    typeof leftLocationDistance === "number" &&
-    Number.isFinite(leftLocationDistance);
-  const rightHasLocationDistance =
-    typeof rightLocationDistance === "number" &&
-    Number.isFinite(rightLocationDistance);
-  if (leftHasLocationDistance && rightHasLocationDistance &&
-      leftLocationDistance !== rightLocationDistance) {
-    return leftLocationDistance - rightLocationDistance;
+  if (leftHasDistance !== rightHasDistance) {
+    return leftHasDistance ? -1 : 1;
   }
-  if (leftHasLocationDistance !== rightHasLocationDistance) {
-    return leftHasLocationDistance ? -1 : 1;
+
+  return 0;
+}
+
+function compareNeutralCandidateOrder(left, right) {
+  const levelDistanceOrder = compareOptionalDistance(
+    left.matchQuality?.levelDistance,
+    right.matchQuality?.levelDistance,
+  );
+  if (levelDistanceOrder !== 0) {
+    return levelDistanceOrder;
+  }
+
+  const requesterLevelDistanceOrder = compareOptionalDistance(
+    left.matchQuality?.requesterLevelDistance,
+    right.matchQuality?.requesterLevelDistance,
+  );
+  if (requesterLevelDistanceOrder !== 0) {
+    return requesterLevelDistanceOrder;
+  }
+
+  const locationDistanceOrder = compareOptionalDistance(
+    left.matchQuality?.locationDistance,
+    right.matchQuality?.locationDistance,
+  );
+  if (locationDistanceOrder !== 0) {
+    return locationDistanceOrder;
+  }
+
+  const requesterLocationDistanceOrder = compareOptionalDistance(
+    left.matchQuality?.requesterLocationDistance,
+    right.matchQuality?.requesterLocationDistance,
+  );
+  if (requesterLocationDistanceOrder !== 0) {
+    return requesterLocationDistanceOrder;
   }
 
   const leftJoinedAt = Number.isFinite(Number(left.joinedPoolAtMillis)) ?
@@ -1160,7 +1179,10 @@ async function collectStudentQueueCandidates({
   let scannedCount = 0;
   let lastDoc = null;
   const qualityRankingEnabled =
-    preferredLevelRank !== null || hasLocationFilter(preferredLocation);
+    preferredLevelRank !== null ||
+    hasLocationFilter(preferredLocation) ||
+    requesterLevelRank !== null ||
+    hasLocationFilter(requesterLocation || {});
 
   for (
     let page = 0;

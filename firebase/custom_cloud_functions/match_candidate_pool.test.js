@@ -1299,6 +1299,34 @@ test("candidate pool merge ranks exact level before adjacent level", () => {
   );
 });
 
+test("candidate pool merge ranks mutual requester filter quality before waiting", () => {
+  const candidates = mergeCandidatePools({
+    studentCandidates: [
+      {
+        userId: "student-mutual-adjacent",
+        joinedPoolAtMillis: fixedNowMillis - 120 * 1000,
+        matchQuality: {
+          levelDistance: 0,
+          requesterLevelDistance: 1,
+        },
+      },
+      {
+        userId: "student-mutual-exact",
+        joinedPoolAtMillis: fixedNowMillis - 60 * 1000,
+        matchQuality: {
+          levelDistance: 0,
+          requesterLevelDistance: 0,
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.userId),
+    ["student-mutual-exact", "student-mutual-adjacent"],
+  );
+});
+
 test("candidate pool merge treats null level distance as no level ranking", () => {
   const candidates = mergeCandidatePools({
     studentCandidates: [
@@ -1562,6 +1590,113 @@ test("collectMatchCandidatePool ranks exact level before older adjacent", async 
     result.candidates.map((candidate) => candidate.matchQuality.levelTier),
     ["exact", "adjacent"],
   );
+});
+
+test("collectMatchCandidatePool ranks mutual student filter quality", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-mutual-adjacent", activeRequest({
+        requestId: "request-student-mutual-adjacent",
+        userId: "student-mutual-adjacent",
+        userRef: {id: "student-mutual-adjacent"},
+        filters: {preferredLevel: "B2", levelRank: 4},
+        createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
+      })),
+      doc("student-mutual-exact", activeRequest({
+        requestId: "request-student-mutual-exact",
+        userId: "student-mutual-exact",
+        userRef: {id: "student-mutual-exact"},
+        filters: {preferredLevel: "B1", levelRank: 3},
+        createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "requester-a": doc("requester-a", studentData({
+        level: {value: "B1"},
+      })),
+      "student-mutual-adjacent": doc(
+        "student-mutual-adjacent",
+        studentData({level: {value: "B1"}}),
+      ),
+      "student-mutual-exact": doc(
+        "student-mutual-exact",
+        studentData({level: {value: "B1"}}),
+      ),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "requester-a",
+    language: "en",
+    requesterFilters: {preferredLevel: "B1"},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-mutual-exact", "student-mutual-adjacent"],
+  );
+  assert.deepEqual(
+    result.candidates.map((candidate) =>
+      candidate.matchQuality.requesterLevelTier),
+    ["exact", "adjacent"],
+  );
+});
+
+test("collectMatchCandidatePool scans beyond limit for mutual student quality", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-mutual-adjacent", activeRequest({
+        requestId: "request-student-mutual-adjacent",
+        userId: "student-mutual-adjacent",
+        userRef: {id: "student-mutual-adjacent"},
+        filters: {preferredLevel: "B2", levelRank: 4},
+        createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
+      })),
+      doc("student-mutual-exact", activeRequest({
+        requestId: "request-student-mutual-exact",
+        userId: "student-mutual-exact",
+        userRef: {id: "student-mutual-exact"},
+        filters: {preferredLevel: "B1", levelRank: 3},
+        createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "requester-a": doc("requester-a", studentData({
+        level: {value: "B1"},
+      })),
+      "student-mutual-adjacent": doc(
+        "student-mutual-adjacent",
+        studentData({level: {value: "B1"}}),
+      ),
+      "student-mutual-exact": doc(
+        "student-mutual-exact",
+        studentData({level: {value: "B1"}}),
+      ),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "requester-a",
+    language: "en",
+    requesterFilters: {},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+    studentLimit: 1,
+    studentScanPageSize: 1,
+    studentMaxScanPages: 3,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-mutual-exact"],
+  );
+  assert.equal(result.stats.studentRequestsScanned, 2);
+  assert.equal(result.stats.studentCandidates, 1);
+  assert.equal(result.candidates[0].matchQuality.requesterLevelTier, "exact");
 });
 
 test("collectMatchCandidatePool scans beyond limit for exact student level", async () => {
