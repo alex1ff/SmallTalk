@@ -258,6 +258,13 @@ function buildParticipantInfo(userData = {}) {
   };
 }
 
+function buildLegacySessionUserInfo(participantInfo = {}, fallbackName) {
+  return {
+    name: normalizeString(participantInfo.displayName) || fallbackName,
+    photo: normalizeString(participantInfo.photoUrl) || null,
+  };
+}
+
 function buildSearchRequestPairLockUpdate({
   sessionId,
   pairAttemptId,
@@ -307,6 +314,10 @@ function buildVideoSessionPairLockData({
   const availableTutors = Array.isArray(sessionData.availableTutors) ?
     sessionData.availableTutors :
     [responderId];
+  const requesterInfo =
+    participantInfos[requesterId] || {};
+  const responderInfo =
+    participantInfos[responderId] || {};
 
   return {
     ...sessionData,
@@ -326,8 +337,16 @@ function buildVideoSessionPairLockData({
       [responderId]: responderRole,
     },
     participantInfos,
+    requesterInfo,
+    responderInfo,
     studentId: requesterId,
+    studentInfo:
+      sessionData.studentInfo ||
+      buildLegacySessionUserInfo(requesterInfo, "Student"),
     tutorId: responderRole === "native_speaker" ? responderId : null,
+    tutorInfo:
+      sessionData.tutorInfo ||
+      buildLegacySessionUserInfo(responderInfo, "Partner"),
     scenario,
     pairAttemptId,
     responseExpiresAt: lockExpiresAt,
@@ -801,13 +820,13 @@ async function prepareExistingSessionNextResponderPairLockInTransaction({
     normalizedRequesterId,
     normalizedResponderId,
   );
+  const requesterInfo = buildParticipantInfo(requesterUserData);
+  const responderInfo = buildParticipantInfo(responderUserData);
   const participantInfos = {
-    ...(sessionData.participantInfos || {}),
-    [normalizedRequesterId]: buildParticipantInfo(requesterUserData),
-    [normalizedResponderId]: buildParticipantInfo(responderUserData),
+    [normalizedRequesterId]: requesterInfo,
+    [normalizedResponderId]: responderInfo,
   };
   const participantRoles = {
-    ...(sessionData.participantRoles || {}),
     [normalizedRequesterId]: "student",
     [normalizedResponderId]: normalizedResponderRole,
   };
@@ -827,6 +846,10 @@ async function prepareExistingSessionNextResponderPairLockInTransaction({
     participantIds,
     participantRoles,
     participantInfos,
+    requesterInfo,
+    responderInfo,
+    studentInfo: buildLegacySessionUserInfo(requesterInfo, "Student"),
+    tutorInfo: buildLegacySessionUserInfo(responderInfo, "Partner"),
     tutorId: normalizedResponderRole === "native_speaker" ?
       normalizedResponderId :
       null,
@@ -1151,7 +1174,7 @@ async function reserveDirectPairInTransaction({
     !normalizedRequesterId ||
     !normalizedResponderId ||
     normalizedRequesterId === normalizedResponderId ||
-    !["student", "native_speaker"].includes(normalizedResponderRole)
+    normalizedResponderRole !== "native_speaker"
   ) {
     return buildPairLockFailure("invalid_pair_lock_input");
   }

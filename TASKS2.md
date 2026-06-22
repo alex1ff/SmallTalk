@@ -243,7 +243,7 @@
 Цель этапа: безопасно создавать пару и не допускать двойных звонков.
 
 - [x] Реализовать атомарную блокировку двух участников при создании пары.
-- [ ] Создавать `videoSession` для student-student.
+- [x] Создавать `videoSession` для student-student.
 - [ ] Создавать или переиспользовать `videoSession` для student-teacher.
 - [ ] Поддержать статусы `searching`, `pending_confirmation`, `connecting`, `active`, `cancelled`, `expired`, `ended`.
 - [ ] Переводить заявки поиска в состояние найденной пары.

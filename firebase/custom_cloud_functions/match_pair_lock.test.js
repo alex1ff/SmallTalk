@@ -64,6 +64,14 @@ function studentUser(overrides = {}) {
   };
 }
 
+function namedStudentUser(name, photoUrl, overrides = {}) {
+  return studentUser({
+    display_name: name,
+    photo_url: photoUrl,
+    ...overrides,
+  });
+}
+
 function teacherUser(overrides = {}) {
   return {
     role: "native_speaker",
@@ -475,7 +483,11 @@ test("invalid explicit session id does not create an auto session", async () => 
 });
 
 test("reserveMatchPair atomically locks two student participants", async () => {
-  const {db, reads, store, writes} = createFakeFirestore(seedStudentPair());
+  const {db, reads, store, writes} = createFakeFirestore({
+    ...seedStudentPair(),
+    "users/student-a": namedStudentUser("Ana", "ana-photo"),
+    "users/student-b": namedStudentUser("Ben", "ben-photo"),
+  });
 
   const result = await reserveMatchPair({
     db,
@@ -517,10 +529,15 @@ test("reserveMatchPair atomically locks two student participants", async () => {
   assert.equal(session.pairStatus, "pending_confirmation");
   assert.equal(session.scenario, "student_student");
   assert.deepEqual(session.participantIds, ["student-a", "student-b"]);
+  assert.deepEqual(session.participantRoles, {
+    "student-a": "student",
+    "student-b": "student",
+  });
   assert.equal(session.matchLock.owner, result.pairAttemptId);
   assert.equal(session.currentResponderId, "student-b");
   assert.equal(session.currentResponderRole, "student");
   assert.equal(session.currentTutorId, "student-b");
+  assert.equal(session.tutorId, null);
   assert.equal(session.responseExpiresAt.toMillis(), fixedNowMillis + 45_000);
   assert.deepEqual(session.searchRequestIds, {
     requester: "request-student-a",
@@ -528,13 +545,29 @@ test("reserveMatchPair atomically locks two student participants", async () => {
   });
   assert.deepEqual(session.participantInfos, {
     "student-a": {
-      displayName: "Student",
-      photoUrl: "student-photo",
+      displayName: "Ana",
+      photoUrl: "ana-photo",
     },
     "student-b": {
-      displayName: "Student",
-      photoUrl: "student-photo",
+      displayName: "Ben",
+      photoUrl: "ben-photo",
     },
+  });
+  assert.deepEqual(session.requesterInfo, {
+    displayName: "Ana",
+    photoUrl: "ana-photo",
+  });
+  assert.deepEqual(session.responderInfo, {
+    displayName: "Ben",
+    photoUrl: "ben-photo",
+  });
+  assert.deepEqual(session.studentInfo, {
+    name: "Ana",
+    photo: "ana-photo",
+  });
+  assert.deepEqual(session.tutorInfo, {
+    name: "Ben",
+    photo: "ben-photo",
   });
   assert.equal(session.language, "en");
 
@@ -586,6 +619,36 @@ test("reserveMatchPair locks teacher through user document", async () => {
   assert.equal(store.get("videoSessions/session-at").scenario, "student_teacher");
   assert.equal(store.get("videoSessions/session-at").tutorId, "teacher-a");
   assert.equal(store.get("videoSessions/session-at").currentTutorId, "teacher-a");
+  assert.deepEqual(store.get("videoSessions/session-at").participantRoles, {
+    "student-a": "student",
+    "teacher-a": "native_speaker",
+  });
+  assert.deepEqual(store.get("videoSessions/session-at").participantInfos, {
+    "student-a": {
+      displayName: "Student",
+      photoUrl: "student-photo",
+    },
+    "teacher-a": {
+      displayName: "Teacher",
+      photoUrl: "teacher-photo",
+    },
+  });
+  assert.deepEqual(store.get("videoSessions/session-at").requesterInfo, {
+    displayName: "Student",
+    photoUrl: "student-photo",
+  });
+  assert.deepEqual(store.get("videoSessions/session-at").responderInfo, {
+    displayName: "Teacher",
+    photoUrl: "teacher-photo",
+  });
+  assert.deepEqual(store.get("videoSessions/session-at").studentInfo, {
+    name: "Student",
+    photo: "student-photo",
+  });
+  assert.deepEqual(store.get("videoSessions/session-at").tutorInfo, {
+    name: "Teacher",
+    photo: "teacher-photo",
+  });
   assert.deepEqual(store.get("videoSessions/session-at").searchRequestIds, {
     requester: "request-student-a",
     responder: null,
@@ -628,12 +691,70 @@ test("reserveDirectPair locks requester and teacher without search requests", as
   );
   assert.equal(store.get("videoSessions/session-direct").currentTutorId, "teacher-a");
   assert.equal(store.get("videoSessions/session-direct").tutorId, "teacher-a");
+  assert.equal(store.get("videoSessions/session-direct").scenario, "student_teacher");
+  assert.deepEqual(store.get("videoSessions/session-direct").participantRoles, {
+    "student-a": "student",
+    "teacher-a": "native_speaker",
+  });
+  assert.deepEqual(store.get("videoSessions/session-direct").participantInfos, {
+    "student-a": {
+      displayName: "Student",
+      photoUrl: "student-photo",
+    },
+    "teacher-a": {
+      displayName: "Teacher",
+      photoUrl: "teacher-photo",
+    },
+  });
+  assert.deepEqual(store.get("videoSessions/session-direct").requesterInfo, {
+    displayName: "Student",
+    photoUrl: "student-photo",
+  });
+  assert.deepEqual(store.get("videoSessions/session-direct").responderInfo, {
+    displayName: "Teacher",
+    photoUrl: "teacher-photo",
+  });
+  assert.deepEqual(store.get("videoSessions/session-direct").studentInfo, {
+    name: "Student",
+    photo: "student-photo",
+  });
+  assert.deepEqual(store.get("videoSessions/session-direct").tutorInfo, {
+    name: "Teacher",
+    photo: "teacher-photo",
+  });
   assert.deepEqual(store.get("videoSessions/session-direct").searchRequestIds, {
     requester: null,
     responder: null,
   });
   assert.equal(store.get("users/student-a").currentSessionId, "session-direct");
   assert.equal(store.get("users/teacher-a").currentSessionId, "session-direct");
+});
+
+test("reserveDirectPair refuses student responder without search requests", async () => {
+  const {db, store, writes} = createFakeFirestore({
+    "users/student-a": studentUser(),
+    "users/student-b": studentUser(),
+  });
+  const result = await db.runTransaction((transaction) =>
+    reserveDirectPairInTransaction({
+      db,
+      transaction,
+      requesterId: "student-a",
+      responderId: "student-b",
+      responderRole: "student",
+      sessionRef: db.collection("videoSessions").doc("session-direct"),
+      sessionData: {language: "en"},
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+    }));
+
+  assert.deepEqual(result, {
+    locked: false,
+    reason: "invalid_pair_lock_input",
+  });
+  assert.equal(writes.length, 0);
+  assert.equal(store.get("videoSessions/session-direct"), undefined);
 });
 
 test("reserveDirectPair refuses locked direct responder", async () => {
@@ -844,7 +965,14 @@ test("existing session handoff refuses an already locked responder", async () =>
 });
 
 test("existing session handoff releases old responder and locks next", async () => {
-  const {db, store, writes} = createFakeFirestore(seedExistingStudentSession());
+  const {db, store, writes} = createFakeFirestore({
+    ...seedExistingStudentSession(),
+    "users/student-a": namedStudentUser("Ana", "ana-photo"),
+    "users/student-b": namedStudentUser("Ben", "ben-photo", {
+      currentSessionId: "session-ab",
+    }),
+    "users/student-c": namedStudentUser("Cara", "cara-photo"),
+  });
 
   const result = await db.runTransaction(async (transaction) => {
     const prepared =
@@ -872,6 +1000,38 @@ test("existing session handoff releases old responder and locks next", async () 
   assert.equal(result.responderId, "student-c");
   assert.equal(store.get("videoSessions/session-ab").currentTutorId, "student-c");
   assert.equal(store.get("videoSessions/session-ab").responderId, "student-c");
+  assert.equal(store.get("videoSessions/session-ab").scenario, "student_student");
+  assert.equal(store.get("videoSessions/session-ab").tutorId, null);
+  assert.deepEqual(store.get("videoSessions/session-ab").participantRoles, {
+    "student-a": "student",
+    "student-c": "student",
+  });
+  assert.deepEqual(store.get("videoSessions/session-ab").participantInfos, {
+    "student-a": {
+      displayName: "Ana",
+      photoUrl: "ana-photo",
+    },
+    "student-c": {
+      displayName: "Cara",
+      photoUrl: "cara-photo",
+    },
+  });
+  assert.deepEqual(store.get("videoSessions/session-ab").requesterInfo, {
+    displayName: "Ana",
+    photoUrl: "ana-photo",
+  });
+  assert.deepEqual(store.get("videoSessions/session-ab").responderInfo, {
+    displayName: "Cara",
+    photoUrl: "cara-photo",
+  });
+  assert.deepEqual(store.get("videoSessions/session-ab").studentInfo, {
+    name: "Ana",
+    photo: "ana-photo",
+  });
+  assert.deepEqual(store.get("videoSessions/session-ab").tutorInfo, {
+    name: "Cara",
+    photo: "cara-photo",
+  });
   assert.deepEqual(store.get("videoSessions/session-ab").participantIds, [
     "student-a",
     "student-c",
@@ -887,6 +1047,10 @@ test("existing session handoff releases old responder and locks next", async () 
     store.get("searchRequests/student-c").currentSessionId,
     "session-ab",
   );
+  assert.deepEqual(store.get("videoSessions/session-ab").searchRequestIds, {
+    requester: "request-student-a",
+    responder: "request-student-c",
+  });
   assert.equal(store.get("searchRequests/student-c").matchedUserId, "student-a");
   assert.deepEqual(
     writes.map((write) => write.path),
