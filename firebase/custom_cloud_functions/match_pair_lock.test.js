@@ -83,6 +83,14 @@ function teacherUser(overrides = {}) {
   };
 }
 
+function namedTeacherUser(name, photoUrl, overrides = {}) {
+  return teacherUser({
+    display_name: name,
+    photo_url: photoUrl,
+    ...overrides,
+  });
+}
+
 function createFakeFirestore(seed = {}, {
   maxTransactionAttempts = 5,
   onBeforeCommit = null,
@@ -619,6 +627,23 @@ test("reserveMatchPair locks teacher through user document", async () => {
   assert.equal(store.get("videoSessions/session-at").scenario, "student_teacher");
   assert.equal(store.get("videoSessions/session-at").tutorId, "teacher-a");
   assert.equal(store.get("videoSessions/session-at").currentTutorId, "teacher-a");
+  assert.equal(store.get("videoSessions/session-at").responderId, "teacher-a");
+  assert.equal(
+    store.get("videoSessions/session-at").responderRole,
+    "native_speaker",
+  );
+  assert.equal(
+    store.get("videoSessions/session-at").currentResponderId,
+    "teacher-a",
+  );
+  assert.equal(
+    store.get("videoSessions/session-at").currentResponderRole,
+    "native_speaker",
+  );
+  assert.deepEqual(store.get("videoSessions/session-at").participantIds, [
+    "student-a",
+    "teacher-a",
+  ]);
   assert.deepEqual(store.get("videoSessions/session-at").participantRoles, {
     "student-a": "student",
     "teacher-a": "native_speaker",
@@ -653,7 +678,41 @@ test("reserveMatchPair locks teacher through user document", async () => {
     requester: "request-student-a",
     responder: null,
   });
-  assert.equal(store.get("searchRequests/student-a").matchedRole, "native_speaker");
+  assert.equal(
+    store.get("searchRequests/student-a").currentSessionId,
+    "session-at",
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").matchedSessionId,
+    "session-at",
+  );
+  assert.equal(store.get("searchRequests/student-a").matchedUserId, "teacher-a");
+  assert.equal(
+    store.get("searchRequests/student-a").matchedResponderId,
+    "teacher-a",
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").matchedRole,
+    "native_speaker",
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").pairAttemptId,
+    result.pairAttemptId,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").lockOwner,
+    result.pairAttemptId,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").lockExpiresAt.toMillis(),
+    fixedNowMillis + 45_000,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.MATCHING,
+  );
+  assert.equal(store.get("searchRequests/student-a").updatedAt, serverTimestamp);
+  assert.equal(store.get("searchRequests/student-a").lastError, null);
   assert.equal(store.get("users/teacher-a").currentSessionId, "session-at");
 });
 
@@ -692,6 +751,23 @@ test("reserveDirectPair locks requester and teacher without search requests", as
   assert.equal(store.get("videoSessions/session-direct").currentTutorId, "teacher-a");
   assert.equal(store.get("videoSessions/session-direct").tutorId, "teacher-a");
   assert.equal(store.get("videoSessions/session-direct").scenario, "student_teacher");
+  assert.equal(store.get("videoSessions/session-direct").responderId, "teacher-a");
+  assert.equal(
+    store.get("videoSessions/session-direct").responderRole,
+    "native_speaker",
+  );
+  assert.equal(
+    store.get("videoSessions/session-direct").currentResponderId,
+    "teacher-a",
+  );
+  assert.equal(
+    store.get("videoSessions/session-direct").currentResponderRole,
+    "native_speaker",
+  );
+  assert.deepEqual(store.get("videoSessions/session-direct").participantIds, [
+    "student-a",
+    "teacher-a",
+  ]);
   assert.deepEqual(store.get("videoSessions/session-direct").participantRoles, {
     "student-a": "student",
     "teacher-a": "native_speaker",
@@ -1062,6 +1138,324 @@ test("existing session handoff releases old responder and locks next", async () 
       "users/student-a",
       "users/student-c",
       "searchRequests/student-c",
+    ],
+  );
+});
+
+test("existing session handoff reuses session for next teacher", async () => {
+  const {db, store, writes} = createFakeFirestore({
+    "users/student-a": namedStudentUser("Ana", "ana-photo", {
+      currentSessionId: "session-at",
+    }),
+    "users/teacher-a": namedTeacherUser("Tia", "tia-photo", {
+      currentSessionId: "session-at",
+    }),
+    "users/teacher-b": namedTeacherUser("Bea", "bea-photo"),
+    "searchRequests/student-a": activeSearchRequest("student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHING,
+      currentSessionId: "session-at",
+      matchedSessionId: "session-at",
+      matchedUserId: "teacher-a",
+      matchedResponderId: "teacher-a",
+      matchedRole: "native_speaker",
+      pairAttemptId: "pair-session-at-student-a-teacher-a",
+      lockOwner: "pair-session-at-student-a-teacher-a",
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 10_000),
+    }),
+    "videoSessions/session-at": existingSearchingSession({
+      currentTutorId: "teacher-a",
+      currentResponderId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      responderId: "teacher-a",
+      responderRole: "native_speaker",
+      tutorId: "teacher-a",
+      scenario: "student_teacher",
+      participantIds: ["student-a", "teacher-a"],
+      participantRoles: {
+        "student-a": "student",
+        "teacher-a": "native_speaker",
+      },
+      searchRequestIds: {
+        requester: "request-student-a",
+        responder: null,
+      },
+      triedTutors: ["teacher-a"],
+      availableTutors: ["teacher-a", "teacher-b"],
+    }),
+  });
+
+  const result = await db.runTransaction(async (transaction) => {
+    const prepared =
+      await prepareExistingSessionNextResponderPairLockInTransaction({
+        db,
+        transaction,
+        sessionId: "session-at",
+        sessionData: store.get("videoSessions/session-at"),
+        currentResponderId: "teacher-a",
+        responderId: "teacher-b",
+        responderRole: "native_speaker",
+        triedTutors: ["teacher-a"],
+        nowMillis: fixedNowMillis,
+        serverTimestamp,
+        lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+        fieldDelete,
+        currentResponderStopReason: "declined",
+      });
+    applyPreparedPairLockWrites(transaction, prepared);
+    return prepared;
+  });
+
+  const session = store.get("videoSessions/session-at");
+  assert.equal(result.locked, true);
+  assert.equal(result.responderId, "teacher-b");
+  assert.equal(result.responderRole, "native_speaker");
+  assert.equal(session.scenario, "student_teacher");
+  assert.equal(session.currentTutorId, "teacher-b");
+  assert.equal(session.currentResponderId, "teacher-b");
+  assert.equal(session.currentResponderRole, "native_speaker");
+  assert.equal(session.responderId, "teacher-b");
+  assert.equal(session.responderRole, "native_speaker");
+  assert.equal(session.tutorId, "teacher-b");
+  assert.deepEqual(session.participantIds, ["student-a", "teacher-b"]);
+  assert.deepEqual(session.participantRoles, {
+    "student-a": "student",
+    "teacher-b": "native_speaker",
+  });
+  assert.deepEqual(session.participantInfos, {
+    "student-a": {
+      displayName: "Ana",
+      photoUrl: "ana-photo",
+    },
+    "teacher-b": {
+      displayName: "Bea",
+      photoUrl: "bea-photo",
+    },
+  });
+  assert.deepEqual(session.requesterInfo, {
+    displayName: "Ana",
+    photoUrl: "ana-photo",
+  });
+  assert.deepEqual(session.responderInfo, {
+    displayName: "Bea",
+    photoUrl: "bea-photo",
+  });
+  assert.deepEqual(session.studentInfo, {
+    name: "Ana",
+    photo: "ana-photo",
+  });
+  assert.deepEqual(session.tutorInfo, {
+    name: "Bea",
+    photo: "bea-photo",
+  });
+  assert.deepEqual(session.searchRequestIds, {
+    requester: "request-student-a",
+    responder: null,
+  });
+  assert.equal(store.get("users/teacher-a").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/teacher-b").currentSessionId, "session-at");
+  assert.equal(
+    store.get("searchRequests/student-a").currentSessionId,
+    "session-at",
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").matchedSessionId,
+    "session-at",
+  );
+  assert.equal(store.get("searchRequests/student-a").matchedUserId, "teacher-b");
+  assert.equal(
+    store.get("searchRequests/student-a").matchedResponderId,
+    "teacher-b",
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").matchedRole,
+    "native_speaker",
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").pairAttemptId,
+    result.pairAttemptId,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").lockOwner,
+    result.pairAttemptId,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").lockExpiresAt.toMillis(),
+    fixedNowMillis + 45_000,
+  );
+  assert.equal(store.get("searchRequests/teacher-b"), undefined);
+  assert.deepEqual(
+    writes.map((write) => write.path),
+    [
+      "users/teacher-a",
+      "videoSessions/session-at",
+      "searchRequests/student-a",
+      "users/student-a",
+      "users/teacher-b",
+    ],
+  );
+});
+
+test("existing session handoff reuses student session for next teacher", async () => {
+  const existingStudentSessionSeed = seedExistingStudentSession();
+  const {db, store, writes} = createFakeFirestore({
+    ...existingStudentSessionSeed,
+    "users/student-a": namedStudentUser("Ana", "ana-photo", {
+      currentSessionId: "session-ab",
+    }),
+    "users/student-b": namedStudentUser("Ben", "ben-photo", {
+      currentSessionId: "session-ab",
+    }),
+    "users/teacher-b": namedTeacherUser("Bea", "bea-photo"),
+    "searchRequests/student-a": {
+      ...existingStudentSessionSeed["searchRequests/student-a"],
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 10_000),
+    },
+    "videoSessions/session-ab": existingSearchingSession({
+      availableTutors: ["student-b", "teacher-b"],
+    }),
+  });
+
+  const result = await db.runTransaction(async (transaction) => {
+    const prepared =
+      await prepareExistingSessionNextResponderPairLockInTransaction({
+        db,
+        transaction,
+        sessionId: "session-ab",
+        sessionData: store.get("videoSessions/session-ab"),
+        currentResponderId: "student-b",
+        responderId: "teacher-b",
+        responderRole: "native_speaker",
+        triedTutors: ["student-b"],
+        nowMillis: fixedNowMillis,
+        serverTimestamp,
+        lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+        fieldDelete,
+        currentResponderSearchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+        currentResponderStopReason: "declined",
+      });
+    applyPreparedPairLockWrites(transaction, prepared);
+    return prepared;
+  });
+
+  const session = store.get("videoSessions/session-ab");
+  assert.equal(result.locked, true);
+  assert.equal(result.responderId, "teacher-b");
+  assert.equal(result.responderRole, "native_speaker");
+  assert.equal(session.scenario, "student_teacher");
+  assert.equal(session.currentTutorId, "teacher-b");
+  assert.equal(session.currentResponderId, "teacher-b");
+  assert.equal(session.currentResponderRole, "native_speaker");
+  assert.equal(session.responderId, "teacher-b");
+  assert.equal(session.responderRole, "native_speaker");
+  assert.equal(session.tutorId, "teacher-b");
+  assert.deepEqual(session.participantIds, ["student-a", "teacher-b"]);
+  assert.deepEqual(session.participantRoles, {
+    "student-a": "student",
+    "teacher-b": "native_speaker",
+  });
+  assert.deepEqual(session.participantInfos, {
+    "student-a": {
+      displayName: "Ana",
+      photoUrl: "ana-photo",
+    },
+    "teacher-b": {
+      displayName: "Bea",
+      photoUrl: "bea-photo",
+    },
+  });
+  assert.deepEqual(session.requesterInfo, {
+    displayName: "Ana",
+    photoUrl: "ana-photo",
+  });
+  assert.deepEqual(session.responderInfo, {
+    displayName: "Bea",
+    photoUrl: "bea-photo",
+  });
+  assert.deepEqual(session.studentInfo, {
+    name: "Ana",
+    photo: "ana-photo",
+  });
+  assert.deepEqual(session.tutorInfo, {
+    name: "Bea",
+    photo: "bea-photo",
+  });
+  assert.deepEqual(session.searchRequestIds, {
+    requester: "request-student-a",
+    responder: null,
+  });
+  assert.equal(store.get("users/student-b").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/teacher-b").currentSessionId, "session-ab");
+  assert.equal(
+    store.get("searchRequests/student-b").status,
+    SEARCH_REQUEST_STATUS.CANCELLED,
+  );
+  assert.equal(store.get("searchRequests/student-b").stopReason, "declined");
+  assert.equal(store.get("searchRequests/student-b").stoppedAt, serverTimestamp);
+  assert.equal(store.get("searchRequests/student-b").updatedAt, serverTimestamp);
+  assert.equal(
+    store.get("searchRequests/student-b").activeSessionId,
+    fieldDelete,
+  );
+  assert.equal(store.get("searchRequests/student-b").currentSessionId, null);
+  assert.equal(
+    store.get("searchRequests/student-b").matchedSessionId,
+    fieldDelete,
+  );
+  assert.equal(store.get("searchRequests/student-b").matchedUserId, null);
+  assert.equal(
+    store.get("searchRequests/student-b").matchedResponderId,
+    fieldDelete,
+  );
+  assert.equal(store.get("searchRequests/student-b").matchedRole, null);
+  assert.equal(store.get("searchRequests/student-b").pairAttemptId, null);
+  assert.deepEqual(
+    store.get("searchRequests/student-b").attemptExcludedCandidateIds,
+    [],
+  );
+  assert.equal(store.get("searchRequests/student-b").lockOwner, null);
+  assert.equal(store.get("searchRequests/student-b").lockExpiresAt, null);
+  assert.equal(store.get("searchRequests/student-b").lastError, null);
+  assert.equal(store.get("searchRequests/student-b").errorCode, fieldDelete);
+  assert.equal(store.get("searchRequests/student-b").errorMessage, fieldDelete);
+  assert.equal(
+    store.get("searchRequests/student-a").currentSessionId,
+    "session-ab",
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").matchedSessionId,
+    "session-ab",
+  );
+  assert.equal(store.get("searchRequests/student-a").matchedUserId, "teacher-b");
+  assert.equal(
+    store.get("searchRequests/student-a").matchedResponderId,
+    "teacher-b",
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").matchedRole,
+    "native_speaker",
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").pairAttemptId,
+    result.pairAttemptId,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").lockOwner,
+    result.pairAttemptId,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").lockExpiresAt.toMillis(),
+    fixedNowMillis + 45_000,
+  );
+  assert.equal(store.get("searchRequests/teacher-b"), undefined);
+  assert.deepEqual(
+    writes.map((write) => write.path),
+    [
+      "users/student-b",
+      "searchRequests/student-b",
+      "videoSessions/session-ab",
+      "searchRequests/student-a",
+      "users/student-a",
+      "users/teacher-b",
     ],
   );
 });
