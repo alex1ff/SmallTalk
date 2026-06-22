@@ -11,6 +11,7 @@ const {
 const {
   __private__: {
     assertAcceptWindowOpenOrThrow,
+    buildAcceptedParticipantUserUpdate,
     buildAcceptCallPolicyUpdateFields,
     buildAcceptCallResponseSessionData,
   },
@@ -107,6 +108,22 @@ test("acceptCall live helpers preserve legacy fallback without policy", () => {
   });
 });
 
+test("acceptCall confirmed participant update marks active call state", () => {
+  const serverTimestamp = Symbol("serverTimestamp");
+
+  assert.deepEqual(
+    buildAcceptedParticipantUserUpdate({
+      sessionId: "session-confirmed",
+      serverTimestamp,
+    }),
+    {
+      isInCall: true,
+      currentSessionId: "session-confirmed",
+      updatedAt: serverTimestamp,
+    },
+  );
+});
+
 test("acceptCall rejects stale response confirmation windows", () => {
   const nowMillis = Date.parse("2026-04-14T10:00:45Z");
   assert.throws(
@@ -163,4 +180,79 @@ test("acceptCall live response paths use policy-backed response builder", () => 
   ) || [];
   assert.ok(responseBuilderUses.length >= 3);
   assert.doesNotMatch(source, /maxDuration:\s*3600000/);
+});
+
+test("acceptCall marks requester and responder in-call after confirmation", () => {
+  const source = readFunctionSource("accept_call.js");
+  const tokenGuardIndex = source.indexOf(
+    'console.error("❌ Daily meeting token creation failed");',
+  );
+  const finalTransactionIndex = source.indexOf(
+    "const txnResult = await admin",
+    tokenGuardIndex,
+  );
+  const connectingStatusIndex = source.indexOf(
+    "status: VIDEO_SESSION_STATUS.CONNECTING",
+    finalTransactionIndex,
+  );
+  const sessionUpdateIndex = source.indexOf(
+    "transaction.update(sessionRef, sessionUpdate);",
+    connectingStatusIndex,
+  );
+  const participantUpdateIndex = source.indexOf(
+    "const participantUserUpdate = buildAcceptedParticipantUserUpdate({",
+    sessionUpdateIndex,
+  );
+  const requesterUpdate = [
+    "transaction.update(",
+    '            admin.firestore().collection("users").doc(requesterId),',
+    "            participantUserUpdate,",
+    "          );",
+  ].join("\n");
+  const responderUpdate = [
+    "transaction.update(",
+    '            admin.firestore().collection("users").doc(tutorId),',
+    "            participantUserUpdate,",
+    "          );",
+  ].join("\n");
+  const requesterUpdateIndex = source.indexOf(
+    requesterUpdate,
+    participantUpdateIndex,
+  );
+  const responderUpdateIndex = source.indexOf(
+    responderUpdate,
+    participantUpdateIndex,
+  );
+  const transactionSuccessIndex = source.indexOf(
+    "return { alreadyAccepted: false };",
+    participantUpdateIndex,
+  );
+
+  assert.notEqual(tokenGuardIndex, -1);
+  assert.notEqual(finalTransactionIndex, -1);
+  assert.ok(
+    finalTransactionIndex > tokenGuardIndex,
+    "acceptCall must start the final transaction only after Daily token exists",
+  );
+  assert.notEqual(connectingStatusIndex, -1);
+  assert.ok(
+    connectingStatusIndex > finalTransactionIndex,
+    "acceptCall must mark the session connecting in the final transaction",
+  );
+  assert.notEqual(sessionUpdateIndex, -1);
+  assert.notEqual(participantUpdateIndex, -1);
+  assert.ok(
+    participantUpdateIndex > sessionUpdateIndex,
+    "participant in-call writes must happen in the same transaction after the session update",
+  );
+  assert.ok(
+    requesterUpdateIndex > participantUpdateIndex &&
+      requesterUpdateIndex < transactionSuccessIndex,
+    "acceptCall must mark requester in-call after confirmation",
+  );
+  assert.ok(
+    responderUpdateIndex > participantUpdateIndex &&
+      responderUpdateIndex < transactionSuccessIndex,
+    "acceptCall must mark responder in-call after confirmation",
+  );
 });

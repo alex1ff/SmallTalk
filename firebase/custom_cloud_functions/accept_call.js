@@ -67,6 +67,17 @@ function buildAcceptCallResponseSessionData(sessionData = {}) {
   };
 }
 
+function buildAcceptedParticipantUserUpdate({
+  sessionId,
+  serverTimestamp = admin.firestore.FieldValue.serverTimestamp(),
+}) {
+  return {
+    isInCall: true,
+    currentSessionId: sessionId,
+    updatedAt: serverTimestamp,
+  };
+}
+
 function getDailyCredentialTtlOrThrow(sessionData = {}) {
   if (!isCredentialSessionJoinable(sessionData)) {
     throw new functions.https.HttpsError(
@@ -604,13 +615,19 @@ exports.acceptCall = functions
 
           transaction.update(sessionRef, sessionUpdate);
 
-          // Обновляем статус преподавателя
+          const participantUserUpdate = buildAcceptedParticipantUserUpdate({
+            sessionId,
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // Обновляем статус участников подтвержденного звонка
+          transaction.update(
+            admin.firestore().collection("users").doc(requesterId),
+            participantUserUpdate,
+          );
           transaction.update(
             admin.firestore().collection("users").doc(tutorId),
-            {
-              isInCall: true,
-              currentSessionId: sessionId,
-            },
+            participantUserUpdate,
           );
 
           console.log("✅ Transaction completed successfully");
@@ -965,6 +982,7 @@ async function cancelOtherNotifications(sessionId, acceptedTutorId) {
 
 exports.__private__ = {
   assertAcceptWindowOpenOrThrow,
+  buildAcceptedParticipantUserUpdate,
   buildAcceptCallPolicyUpdateFields,
   buildAcceptCallResponseSessionData,
   timestampToMillis,
