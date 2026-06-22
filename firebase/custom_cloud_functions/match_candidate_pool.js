@@ -1,5 +1,9 @@
 const { evaluateTutorAvailabilityWindow } = require("./availability");
 const {
+  buildStudentCallAccessDecision,
+  hasActiveCallState,
+} = require("./call_access");
+const {
   SEARCH_REQUEST_COLLECTION,
   SEARCH_REQUEST_FIELD,
   SEARCH_REQUEST_FILTER_FIELD,
@@ -21,6 +25,9 @@ const {
 const {
   getReadOnlyUserVoipTokenState,
 } = require("./voip_tokens");
+const {
+  usageDocRef,
+} = require("./subscription_usage_shared");
 
 const USER_COLLECTION = "users";
 const DEFAULT_STUDENT_QUERY_LIMIT = 50;
@@ -390,11 +397,6 @@ function buildBlockMatch({
   return {valid: true, reason: "not_blocked"};
 }
 
-function hasActiveCallState(userData = {}) {
-  return userData.isInCall === true ||
-    Boolean(normalizeString(userData.currentSessionId));
-}
-
 function readRequestUserId(requestDoc, requestData = {}) {
   return normalizeString(requestData[SEARCH_REQUEST_FIELD.USER_ID]) ||
     readReferenceId(requestData[SEARCH_REQUEST_FIELD.USER_REF]) ||
@@ -602,6 +604,7 @@ function buildStudentQueueCandidateFromDocs({
   requesterLocation = null,
   requesterId = "",
   requesterBlockedIds = [],
+  usageData = null,
 }) {
   const requestData = readDocData(requestDoc);
   const userData = readDocData(userDoc);
@@ -624,10 +627,17 @@ function buildStudentQueueCandidateFromDocs({
   if (userDocId && userDocId !== requestUserId) {
     return null;
   }
-  if (normalizeRole(userData.role || requestData.role) !== "student") {
+  const userRole = normalizeRole(userData.role);
+  if (userRole !== "student") {
     return null;
   }
-  if (hasActiveCallState(userData)) {
+  const accessDecision = buildStudentCallAccessDecision({
+    userRole,
+    userData,
+    usageData,
+    nowMillis,
+  });
+  if (!accessDecision.allowed) {
     return null;
   }
 
@@ -947,6 +957,20 @@ async function readUserDocsById(db, userIds = []) {
   return new Map(userDocs.map((doc) => [readDocId(doc), doc]));
 }
 
+async function readUsageDataByUserId(db, userIds = []) {
+  const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
+  const usageDocs = await Promise.all(
+    uniqueUserIds.map(async (userId) => {
+      const usageDoc = await usageDocRef(db, userId).get();
+      return [
+        userId,
+        usageDoc && usageDoc.exists ? usageDoc.data() || null : null,
+      ];
+    }),
+  );
+  return new Map(usageDocs);
+}
+
 async function collectStudentQueueCandidates({
   db,
   query,
@@ -995,7 +1019,10 @@ async function collectStudentQueueCandidates({
     const studentUserIds = requestDocs
       .map((doc) => readRequestUserId(doc, readDocData(doc) || {}))
       .filter(Boolean);
-    const studentUserDocsById = await readUserDocsById(db, studentUserIds);
+    const [studentUserDocsById, usageDataByUserId] = await Promise.all([
+      readUserDocsById(db, studentUserIds),
+      readUsageDataByUserId(db, studentUserIds),
+    ]);
     requestDocs.forEach((requestDoc) => {
       if (!qualityRankingEnabled && candidates.length >= targetCount) {
         return;
@@ -1013,6 +1040,7 @@ async function collectStudentQueueCandidates({
         requesterLocation,
         requesterId,
         requesterBlockedIds,
+        usageData: usageDataByUserId.get(userId) || null,
       });
       if (candidate) {
         candidates.push(candidate);

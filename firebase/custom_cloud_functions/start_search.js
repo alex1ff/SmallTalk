@@ -1,13 +1,11 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
-  hasUsableGiftMinutes,
-} = require("./gift_minutes_shared");
-const {
-  checkUsageLimits,
-  hasActiveSubscription,
   usageDocRef,
 } = require("./subscription_usage_shared");
+const {
+  buildStudentCallAccessDecision,
+} = require("./call_access");
 const {
   isSupportedSessionRole,
   normalizeRole,
@@ -101,58 +99,12 @@ function buildStartSearchAccessDecision({
   usageData = null,
   nowMillis = Date.now(),
 }) {
-  if (requesterRole !== "student") {
-    return {
-      allowed: false,
-      code: "permission-denied",
-      reason: "student_required",
-      message: "Only students can start search",
-    };
-  }
-
-  if (
-    requesterData.isInCall === true ||
-    normalizeString(requesterData.currentSessionId)
-  ) {
-    return {
-      allowed: false,
-      code: "failed-precondition",
-      reason: "active_call",
-      message: "Active call must finish before starting search",
-    };
-  }
-
-  const hasSubscription = hasActiveSubscription(requesterData, nowMillis);
-  const hasGift = hasUsableGiftMinutes(requesterData, nowMillis);
-  if (!hasSubscription && !hasGift) {
-    return {
-      allowed: false,
-      code: "failed-precondition",
-      reason: "no_active_access",
-      message: "Active subscription or gift minutes are required",
-    };
-  }
-
-  if (hasSubscription) {
-    const usageCheck = checkUsageLimits(usageData, new Date(nowMillis));
-    if (!usageCheck.allowed) {
-      return {
-        allowed: false,
-        code: "resource-exhausted",
-        reason: usageCheck.reason,
-        message: usageCheck.reason === "daily_limit_reached" ?
-          "Daily subscription call limit reached" :
-          "Weekly subscription call limit reached",
-      };
-    }
-  }
-
-  return {
-    allowed: true,
-    code: null,
-    reason: "ready",
-    message: "",
-  };
+  return buildStudentCallAccessDecision({
+    userRole: requesterRole,
+    userData: requesterData,
+    usageData,
+    nowMillis,
+  });
 }
 
 function throwAccessDecision(decision) {

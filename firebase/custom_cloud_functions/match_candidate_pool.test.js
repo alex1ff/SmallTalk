@@ -60,6 +60,7 @@ function fakeDb({
   studentRequestDocs = [],
   teacherDocs = [],
   userDocsById = {},
+  usageDocsById = {},
   privateTokenDocsById = {},
 }) {
   return {
@@ -72,6 +73,26 @@ function fakeDb({
           ...fakeQuery(teacherDocs),
           doc: (id) => ({
             get: async () => userDocsById[id] || doc(id, null, false),
+            collection: (subcollectionName) => {
+              if (subcollectionName !== "usage") {
+                throw new Error(
+                  `Unexpected user subcollection: ${subcollectionName}`,
+                );
+              }
+              return {
+                doc: (docId) => {
+                  if (docId !== "current") {
+                    throw new Error(`Unexpected usage doc: ${docId}`);
+                  }
+                  return {
+                    get: async () =>
+                      usageDocsById[id] ?
+                        doc("current", usageDocsById[id]) :
+                        doc("current", null, false),
+                  };
+                },
+              };
+            },
           }),
         };
       }
@@ -118,6 +139,10 @@ function studentData(overrides = {}) {
     display_name: "Student A",
     learningLanguage: {code: "en"},
     level: {value: "B1"},
+    giftMinutes: {
+      minutes: 10,
+      expiresAt: timestampFromMillis(fixedNowMillis + 60 * 60 * 1000),
+    },
     ...overrides,
   };
 }
@@ -140,6 +165,21 @@ function privateTokenData(overrides = {}) {
   return {
     voipToken: "teacher-fcm",
     ...overrides,
+  };
+}
+
+function activeSubscriptionData() {
+  return {
+    expiresAt: timestampFromMillis(fixedNowMillis + 60 * 60 * 1000),
+  };
+}
+
+function dailyLimitUsageData() {
+  return {
+    dayKey: "2026-01-01",
+    dayDurationSeconds: 60 * 60,
+    weekKey: "2026-W01",
+    weekDurationSeconds: 60 * 60,
   };
 }
 
@@ -746,6 +786,42 @@ test("student queue candidate rejects users already in call", () => {
   );
 });
 
+test("student queue candidate rejects users without call access", () => {
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-no-access", activeRequest({
+        requestId: "request-student-no-access",
+        userId: "student-no-access",
+        userRef: {id: "student-no-access"},
+      })),
+      userDoc: doc("student-no-access", studentData({
+        giftMinutes: null,
+        subscription: null,
+      })),
+      language: "en",
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-limit", activeRequest({
+        requestId: "request-student-limit",
+        userId: "student-limit",
+        userRef: {id: "student-limit"},
+      })),
+      userDoc: doc("student-limit", studentData({
+        giftMinutes: null,
+        subscription: activeSubscriptionData(),
+      })),
+      language: "en",
+      nowMillis: fixedNowMillis,
+      usageData: dailyLimitUsageData(),
+    }),
+    null,
+  );
+});
+
 test("student queue candidate rejects missing user and changed role", () => {
   assert.equal(
     buildStudentQueueCandidateFromDocs({
@@ -759,6 +835,14 @@ test("student queue candidate rejects missing user and changed role", () => {
     buildStudentQueueCandidateFromDocs({
       requestDoc: doc("student-a", activeRequest()),
       userDoc: doc("student-a", studentData({role: "native_speaker"})),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-a", activeRequest({role: "student"})),
+      userDoc: doc("student-a", studentData({role: ""})),
       nowMillis: fixedNowMillis,
     }),
     null,
@@ -837,7 +921,10 @@ test("student queue candidate rejects missing user and changed role", () => {
 
 test("teacher availability candidate requires approved available teacher", () => {
   const candidate = buildTeacherAvailabilityCandidateFromDoc({
-    userDoc: doc("teacher-a", teacherData()),
+    userDoc: doc("teacher-a", teacherData({
+      giftMinutes: null,
+      subscription: null,
+    })),
     language: "en",
     now: new Date(fixedNowMillis),
     nowMillis: fixedNowMillis,
@@ -2011,6 +2098,62 @@ test("collectMatchCandidatePool scans past users already in call", async () => {
   assert.equal(result.stats.teacherUsersScanned, 3);
   assert.equal(result.stats.studentCandidates, 1);
   assert.equal(result.stats.teacherCandidates, 1);
+});
+
+test("collectMatchCandidatePool scans past students without call access", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-no-access", activeRequest({
+        requestId: "request-student-no-access",
+        userId: "student-no-access",
+        userRef: {id: "student-no-access"},
+        createdAt: timestampFromMillis(fixedNowMillis - 180 * 1000),
+      })),
+      doc("student-limit", activeRequest({
+        requestId: "request-student-limit",
+        userId: "student-limit",
+        userRef: {id: "student-limit"},
+        createdAt: timestampFromMillis(fixedNowMillis - 160 * 1000),
+      })),
+      doc("student-a", activeRequest({
+        requestId: "request-student-a",
+        userId: "student-a",
+        userRef: {id: "student-a"},
+        createdAt: timestampFromMillis(fixedNowMillis - 140 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "student-no-access": doc("student-no-access", studentData({
+        giftMinutes: null,
+        subscription: null,
+      })),
+      "student-limit": doc("student-limit", studentData({
+        giftMinutes: null,
+        subscription: activeSubscriptionData(),
+      })),
+      "student-a": doc("student-a", studentData()),
+    },
+    usageDocsById: {
+      "student-limit": dailyLimitUsageData(),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+    studentLimit: 1,
+    studentScanPageSize: 1,
+    studentMaxScanPages: 4,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-a"],
+  );
+  assert.equal(result.stats.studentRequestsScanned, 3);
+  assert.equal(result.stats.studentCandidates, 1);
 });
 
 test("collectMatchCandidatePool scans past invalid first page docs", async () => {
