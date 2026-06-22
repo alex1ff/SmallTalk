@@ -247,6 +247,7 @@ test("second Daily participant signal marks server-verified connected state", ()
   assert.equal(decision.ok, true);
   assert.equal(decision.reason, "daily_connected_marked");
   assert.equal(decision.connectedMarked, true);
+  assert.equal(decision.update.status, "active");
   assert.equal(decision.update.startedAt.toMillis(), (NOW_SECONDS + 8) * 1000);
   assert.equal(
     decision.update.sessionMetadata.callConnectedAt.toMillis(),
@@ -264,6 +265,41 @@ test("second Daily participant signal marks server-verified connected state", ()
     decision.update.sessionMetadata.dailyWebhookConnectedEventIds,
     ["ptcpt-join-event-a", "ptcpt-join-event-b"],
   );
+});
+
+test("Daily webhook promotes connecting sessions to active after both join", () => {
+  const event = parseDailyWebhookEvent(dailyEvent({
+    id: "ptcpt-join-event-b",
+    payload: {
+      user_id: "teacher-b",
+      session_id: "daily-session-b",
+      joined_at: NOW_SECONDS + 8,
+    },
+    event_ts: NOW_SECONDS + 8,
+  }));
+  const decision = buildDailyWebhookSessionUpdate({
+    event,
+    sessionData: activeSession({
+      status: "connecting",
+      sessionMetadata: {
+        dailyWebhookParticipantSignals: {
+          "student-a": {
+            eventId: "ptcpt-join-event-a",
+            joinedAt: {
+              toMillis: () => (NOW_SECONDS + 1) * 1000,
+            },
+            source: "dailyWebhook",
+          },
+        },
+      },
+    }),
+    presenceData: twoPartyPresence(),
+    nowMillis: NOW_MILLIS,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.update.status, "active");
+  assert.equal(decision.connectedMarked, true);
 });
 
 test("second Daily participant signal stays advisory without current presence", () => {

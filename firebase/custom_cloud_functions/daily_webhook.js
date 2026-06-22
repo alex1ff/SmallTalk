@@ -6,6 +6,7 @@ const {
   getAcceptedSessionCredentialParticipantIds,
   isAcceptedSessionCredentialParticipant,
   isCredentialSessionJoinable,
+  VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
   getDailyRoomPresence,
@@ -281,6 +282,9 @@ function buildDailyWebhookSessionUpdate({
   const update = {
     sessionMetadata: nextMetadata,
   };
+  if (hasVerifiedDailyPresence) {
+    update.status = VIDEO_SESSION_STATUS.ACTIVE;
+  }
   if (hasVerifiedDailyPresence && !sessionData.startedAt) {
     update.startedAt = connectedAt;
   }

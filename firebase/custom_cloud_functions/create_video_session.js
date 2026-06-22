@@ -26,6 +26,7 @@ const {
   readMatchPriorityScore,
   resolveActiveConversationLanguage,
   supportsConversationLanguage,
+  VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
   buildCandidateRoleCounts,
@@ -65,6 +66,10 @@ const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const STUDENT_REVIEW_FLAG_FIELD = "studentHasReviewed";
 const TUTOR_REVIEW_FLAG_FIELD = "tutorHasReviewed";
+const PENDING_RESPONSE_SESSION_STATUSES = new Set([
+  VIDEO_SESSION_STATUS.SEARCHING,
+  VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+]);
 const matchDebugSampleRateRaw = Number.parseFloat(
   process.env.MATCH_DEBUG_SAMPLE_RATE || "0.1",
 );
@@ -1230,7 +1235,7 @@ exports.createVideoSession = functions
           freshValidationSnap.data() || {} :
           {};
         if (
-          freshValidation.status === "searching" &&
+          PENDING_RESPONSE_SESSION_STATUSES.has(freshValidation.status) &&
           freshValidation.currentTutorId === creation.selectedResponderId
         ) {
           await sendVoipPushToTutor(
@@ -1389,7 +1394,7 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
 
         const freshSessionData = freshSessionSnap.data() || {};
         const status = freshSessionData.status || "unknown";
-        if (status !== "searching") {
+        if (status !== VIDEO_SESSION_STATUS.SEARCHING) {
           return {
             shouldNotify: false,
             skipReason: `status_${status}`,
@@ -1418,7 +1423,10 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
         if (!nextTutor) {
           transaction.update(sessionRef, {
             triedTutors: nextTriedTutors,
-            status: "no_tutors_available",
+            status: VIDEO_SESSION_STATUS.CANCELLED,
+            endedAt: admin.firestore.FieldValue.serverTimestamp(),
+            cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+            cancelReason: "no_available_responder",
           });
           return {
             shouldNotify: false,
@@ -1442,6 +1450,7 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
         transaction.update(sessionRef, {
           triedTutors: nextTriedTutors,
           currentTutorId: nextTutor,
+          status: VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
         });
 
         return {
@@ -1451,6 +1460,7 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
             ...freshSessionData,
             triedTutors: nextTriedTutors,
             currentTutorId: nextTutor,
+            status: VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
           },
           notificationId: notification.notificationId,
           pushPayload: notification.pushPayload,
@@ -1482,7 +1492,7 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
 
     const freshValidation = freshValidationSnap.data() || {};
     if (
-      freshValidation.status !== "searching" ||
+      !PENDING_RESPONSE_SESSION_STATUSES.has(freshValidation.status) ||
       freshValidation.currentTutorId !== nextTutor
     ) {
       console.log(

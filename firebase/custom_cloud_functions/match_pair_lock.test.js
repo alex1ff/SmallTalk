@@ -533,7 +533,7 @@ test("reserveMatchPair atomically locks two student participants", async () => {
   );
 
   const session = store.get("videoSessions/session-ab");
-  assert.equal(session.status, "searching");
+  assert.equal(session.status, "pending_confirmation");
   assert.equal(session.pairStatus, "pending_confirmation");
   assert.equal(session.scenario, "student_student");
   assert.deepEqual(session.participantIds, ["student-a", "student-b"]);
@@ -802,6 +802,10 @@ test("reserveDirectPair locks requester and teacher without search requests", as
     requester: null,
     responder: null,
   });
+  assert.equal(
+    store.get("videoSessions/session-direct").status,
+    "pending_confirmation",
+  );
   assert.equal(store.get("users/student-a").currentSessionId, "session-direct");
   assert.equal(store.get("users/teacher-a").currentSessionId, "session-direct");
 });

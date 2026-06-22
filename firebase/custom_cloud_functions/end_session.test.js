@@ -5,7 +5,9 @@ const path = require("node:path");
 const {
   __private__: {
     buildStudentCallCharge,
+    hasConnectedCallEvidence,
     hasActiveSubscription,
+    isExpiredEndReason,
     resolveTeacherEarningUserId,
     shouldProcessExpiredEndReason,
   },
@@ -60,6 +62,17 @@ test("manual end reasons bypass the expiry guard", () => {
   });
 
   assert.equal(shouldProcess, true);
+});
+
+test("pre-active session helper requires connected call evidence", () => {
+  assert.equal(hasConnectedCallEvidence({}), false);
+  assert.equal(hasConnectedCallEvidence({
+    sessionMetadata: {
+      callConnectedAtTimestamp: Date.parse("2026-04-14T10:00:00Z"),
+    },
+  }), true);
+  assert.equal(isExpiredEndReason("expired"), true);
+  assert.equal(isExpiredEndReason("user_ended"), false);
 });
 
 test("buildStudentCallCharge debits gift minutes for non-subscribers", () => {
@@ -187,6 +200,9 @@ test("endSession source keeps the ignored_expired_end wrapper path", () => {
 
   assert.match(source, /shouldProcessExpiredEndReason\(\{/);
   assert.match(source, /status:\s*"ignored_expired_end"/);
+  assert.match(source, /isPreActiveConnecting/);
+  assert.match(source, /status:\s*terminalStatus/);
+  assert.match(source, /source:\s*"endSession_pre_active_terminal"/);
   assert.match(source, /acceptedResponderRole === "student"/);
   assert.match(source, /acceptedResponderRole === "native_speaker"/);
   assert.match(source, /teacherEarningUserId/);

@@ -9,6 +9,7 @@ const {
 const {
   readLanguageCode,
   normalizeRole,
+  VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 
 const USER_COLLECTION = "users";
@@ -307,7 +308,7 @@ function buildVideoSessionPairLockData({
   const scenario = responderRole === "student" ?
     "student_student" :
     "student_teacher";
-  const sessionStatus = normalizeString(sessionData.status) || "searching";
+  const sessionStatus = VIDEO_SESSION_STATUS.PENDING_CONFIRMATION;
   const triedTutors = Array.isArray(sessionData.triedTutors) ?
     sessionData.triedTutors :
     [];
@@ -322,7 +323,7 @@ function buildVideoSessionPairLockData({
   return {
     ...sessionData,
     status: sessionStatus,
-    pairStatus: "pending_confirmation",
+    pairStatus: VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
     sessionId,
     requesterId,
     responderId,
@@ -834,8 +835,8 @@ async function prepareExistingSessionNextResponderPairLockInTransaction({
     "student_student" :
     "student_teacher";
   const sessionUpdate = {
-    status: "searching",
-    pairStatus: "pending_confirmation",
+    status: VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+    pairStatus: VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
     requesterId: normalizedRequesterId,
     requesterRole: "student",
     responderId: normalizedResponderId,

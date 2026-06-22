@@ -245,7 +245,7 @@
 - [x] Реализовать атомарную блокировку двух участников при создании пары.
 - [x] Создавать `videoSession` для student-student.
 - [x] Создавать или переиспользовать `videoSession` для student-teacher.
-- [ ] Поддержать статусы `searching`, `pending_confirmation`, `connecting`, `active`, `cancelled`, `expired`, `ended`.
+- [x] Поддержать статусы `searching`, `pending_confirmation`, `connecting`, `active`, `cancelled`, `expired`, `ended`.
 - [ ] Переводить заявки поиска в состояние найденной пары.
 - [ ] Помечать участников как находящихся в звонке после подтверждения.
 - [ ] Снимать участников с активного поиска после начала звонка.

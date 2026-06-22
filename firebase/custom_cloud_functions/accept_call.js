@@ -23,11 +23,20 @@ const {
   normalizeRole,
   readLanguageCode,
   supportsConversationLanguage,
+  VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const PRECREATED_ROOM_VALIDATION_WINDOW_MS = 60 * 1000;
+const ACCEPTABLE_PENDING_SESSION_STATUSES = new Set([
+  VIDEO_SESSION_STATUS.SEARCHING,
+  VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+]);
+const ACCEPTED_SESSION_STATUSES = new Set([
+  VIDEO_SESSION_STATUS.CONNECTING,
+  VIDEO_SESSION_STATUS.ACTIVE,
+]);
 
 function buildAcceptCallPolicyUpdateFields(
   sessionData = {},
@@ -73,6 +82,44 @@ function getDailyCredentialTtlOrThrow(sessionData = {}) {
     );
   }
   return credentialTtlSeconds;
+}
+
+function timestampToMillis(value) {
+  if (!value) return null;
+  if (typeof value.toMillis === "function") {
+    const millis = Number(value.toMillis());
+    return Number.isFinite(millis) ? millis : null;
+  }
+  if (typeof value.toDate === "function") {
+    const millis = value.toDate().getTime();
+    return Number.isFinite(millis) ? millis : null;
+  }
+  if (value instanceof Date) {
+    const millis = value.getTime();
+    return Number.isFinite(millis) ? millis : null;
+  }
+  const millis = Number(value);
+  return Number.isFinite(millis) ? millis : null;
+}
+
+function assertAcceptWindowOpenOrThrow(sessionData = {}, nowMillis = Date.now()) {
+  const responseDeadlineMillis = timestampToMillis(
+    sessionData.responseExpiresAt || sessionData.confirmationExpiresAt,
+  );
+  if (responseDeadlineMillis !== null && responseDeadlineMillis <= nowMillis) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Session response window has expired",
+    );
+  }
+
+  const sessionExpiresAtMillis = timestampToMillis(sessionData.expiresAt);
+  if (sessionExpiresAtMillis !== null && sessionExpiresAtMillis <= nowMillis) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Session has expired",
+    );
+  }
 }
 
 function validateResponderLanguageOrThrow(
@@ -145,7 +192,7 @@ exports.acceptCall = functions
           );
         }
         const fresh = freshSnap.data() || {};
-        if (["active", "connecting"].includes(fresh.status)) {
+        if (ACCEPTED_SESSION_STATUSES.has(fresh.status)) {
           if (fresh.tutorId === tutorId && fresh.dailyRoomUrl) {
             return {
               alreadyAccepted: true,
@@ -157,7 +204,7 @@ exports.acceptCall = functions
             "Session is already active",
           );
         }
-        if (fresh.status !== "searching") {
+        if (!ACCEPTABLE_PENDING_SESSION_STATUSES.has(fresh.status)) {
           throw new functions.https.HttpsError(
             "invalid-argument",
             "Session is not available for acceptance",
@@ -169,15 +216,10 @@ exports.acceptCall = functions
             "This session is not assigned to you",
           );
         }
-        if (fresh.expiresAt && fresh.expiresAt.toDate() < new Date()) {
-          throw new functions.https.HttpsError(
-            "invalid-argument",
-            "Session has expired",
-          );
-        }
+        const nowMs = Date.now();
+        assertAcceptWindowOpenOrThrow(fresh, nowMs);
         const acceptingTutorId = fresh.acceptingTutorId || null;
         const acceptingAtMs = fresh.acceptingAt?.toMillis?.() || 0;
-        const nowMs = Date.now();
         if (
           !acceptingTutorId ||
           nowMs - acceptingAtMs > acceptLockWindowMs
@@ -286,7 +328,23 @@ exports.acceptCall = functions
         .doc(requesterId)
         .get();
 
-      const availabilityCheck = evaluateTutorAvailabilityWindow(tutorData);
+      if (!isSupportedSessionRole(tutorData.role)) {
+        console.log("❌ User role cannot accept calls:", tutorData.role);
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "This user role cannot accept calls",
+        );
+      }
+
+      const tutorRole = normalizeRole(tutorData.role);
+      const availabilityCheck = tutorRole === "native_speaker" ?
+        evaluateTutorAvailabilityWindow(tutorData) :
+        {
+          isAvailable: true,
+          reason: "active_search_responder",
+          localTime: null,
+          timezoneOffsetMinutes: null,
+        };
       const isAvailable = availabilityCheck.isAvailable;
 
       console.log("👨‍🏫 Tutor data:", {
@@ -300,15 +358,6 @@ exports.acceptCall = functions
         timezoneOffsetMinutes: availabilityCheck.timezoneOffsetMinutes ?? null,
       });
 
-      if (!isSupportedSessionRole(tutorData.role)) {
-        console.log("❌ User role cannot accept calls:", tutorData.role);
-        throw new functions.https.HttpsError(
-          "permission-denied",
-          "This user role cannot accept calls",
-        );
-      }
-
-      const tutorRole = normalizeRole(tutorData.role);
       if (tutorRole === "native_speaker" && !isApprovedTeacher(tutorData)) {
         console.log("❌ Teacher cannot accept calls before approval:", tutorId);
         throw new functions.https.HttpsError(
@@ -349,7 +398,7 @@ exports.acceptCall = functions
       const activePolicyUpdate =
         buildAcceptCallPolicyUpdateFields(sessionData);
       const acceptedSessionCredentialData = {
-        status: "active",
+        status: VIDEO_SESSION_STATUS.CONNECTING,
         expiresAt: activePolicyUpdate.sessionUpdateFields.expiresAt,
       };
       const readAcceptedCredentialTtlSeconds = () =>
@@ -497,11 +546,11 @@ exports.acceptCall = functions
           }
           const fresh = freshSnap.data();
           if (
-            fresh.status !== "searching" ||
+            !ACCEPTABLE_PENDING_SESSION_STATUSES.has(fresh.status) ||
             fresh.currentTutorId !== tutorId
           ) {
             if (
-              ["active", "connecting"].includes(fresh.status) &&
+              ACCEPTED_SESSION_STATUSES.has(fresh.status) &&
               fresh.tutorId === tutorId &&
               fresh.dailyRoomUrl
             ) {
@@ -512,12 +561,13 @@ exports.acceptCall = functions
               "Session is already active",
             );
           }
+          assertAcceptWindowOpenOrThrow(fresh);
 
           // Обновляем сессию - добавляем данные для активной сессии
           const sessionUpdate = {
             // Обновляем основные поля
             tutorId: tutorId,
-            status: "active",
+            status: VIDEO_SESSION_STATUS.CONNECTING,
             acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
 
             // Добавляем данные Daily.co
@@ -914,6 +964,8 @@ async function cancelOtherNotifications(sessionId, acceptedTutorId) {
 }
 
 exports.__private__ = {
+  assertAcceptWindowOpenOrThrow,
   buildAcceptCallPolicyUpdateFields,
   buildAcceptCallResponseSessionData,
+  timestampToMillis,
 };

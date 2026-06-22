@@ -13,6 +13,7 @@ const {
   getRequesterId,
   isSessionParticipant,
   normalizeRole,
+  VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
   incrementUsageInTransaction,
@@ -78,6 +79,14 @@ function shouldProcessExpiredEndReason({
   }
 
   return requestTimestamp + clockSkewGraceMs >= expiresAtMillis;
+}
+
+function hasConnectedCallEvidence(sessionData = {}) {
+  return getConnectedCallStartMillis(sessionData) > 0;
+}
+
+function isExpiredEndReason(endReason) {
+  return String(endReason || "").trim() === "expired";
 }
 
 // Returns true if the user has a flat-rate subscription that is still active
@@ -196,8 +205,8 @@ exports.endSession = functions
     const requestTimestamp = Date.now();
 
     // ─── MAIN TRANSACTION (CAS + billing guard) ─────────────────────────────
-    // Read session INSIDE transaction and only allow transition:
-    // connecting|active -> ended. This makes endSession idempotent under races.
+      // Read session INSIDE transaction and only allow transition:
+      // connecting|active -> terminal. This makes endSession idempotent under races.
     const txResult = await db.runTransaction(async (transaction) => {
       const sessionDoc = await transaction.get(sessionRef);
       if (!sessionDoc.exists) {
@@ -219,10 +228,16 @@ exports.endSession = functions
         );
       }
 
-      if (sessionData.status === "ended") {
+      if ([
+        VIDEO_SESSION_STATUS.ENDED,
+        VIDEO_SESSION_STATUS.CANCELLED,
+        VIDEO_SESSION_STATUS.EXPIRED,
+      ].includes(sessionData.status)) {
         return {
-          status: "already_ended",
-          message: "Session was already ended",
+          status: sessionData.status === VIDEO_SESSION_STATUS.ENDED ?
+            "already_ended" :
+            `already_${sessionData.status}`,
+          message: "Session was already terminal",
           dailyRoomName: resolveDailyRoomName(sessionData),
           endedAt:
             sessionData.endedAt?.toMillis?.() ||
@@ -231,7 +246,10 @@ exports.endSession = functions
         };
       }
 
-      if (!["connecting", "active"].includes(sessionData.status)) {
+      if (![
+        VIDEO_SESSION_STATUS.CONNECTING,
+        VIDEO_SESSION_STATUS.ACTIVE,
+      ].includes(sessionData.status)) {
         console.log(
           "❌ Session cannot be ended, current status:",
           sessionData.status,
@@ -240,6 +258,63 @@ exports.endSession = functions
           "invalid-argument",
           `Session cannot be ended. Current status: ${sessionData.status}`,
         );
+      }
+
+      const isPreActiveConnecting =
+        sessionData.status === VIDEO_SESSION_STATUS.CONNECTING &&
+        !hasConnectedCallEvidence(sessionData);
+      if (isPreActiveConnecting) {
+        const terminalStatus = isExpiredEndReason(endReason) ?
+          VIDEO_SESSION_STATUS.EXPIRED :
+          VIDEO_SESSION_STATUS.CANCELLED;
+        const searchRequestStatus =
+          terminalStatus === VIDEO_SESSION_STATUS.EXPIRED ?
+            SEARCH_REQUEST_STATUS.EXPIRED :
+            SEARCH_REQUEST_STATUS.CANCELLED;
+        const stopReason =
+          terminalStatus === VIDEO_SESSION_STATUS.EXPIRED ?
+            "pre_active_expired" :
+            "pre_active_cancelled";
+        const sessionUpdates = {
+          status: terminalStatus,
+          endedAt: admin.firestore.FieldValue.serverTimestamp(),
+          tutorNavigationTriggered: false,
+          studentNavigationTriggered: false,
+          "sessionMetadata.endReason": stopReason,
+          "sessionMetadata.endedAtTimestamp": requestTimestamp,
+        };
+        if (terminalStatus === VIDEO_SESSION_STATUS.EXPIRED) {
+          sessionUpdates.expiredAt =
+            admin.firestore.FieldValue.serverTimestamp();
+          sessionUpdates.expireReason = stopReason;
+        } else {
+          sessionUpdates.cancelledAt =
+            admin.firestore.FieldValue.serverTimestamp();
+          sessionUpdates.cancelledBy = userId;
+          sessionUpdates.cancelReason = stopReason;
+        }
+
+        await releaseSessionPairLocksInTransaction({
+          db,
+          transaction,
+          sessionId,
+          sessionData,
+          serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+          fieldDelete: admin.firestore.FieldValue.delete(),
+          searchRequestStatus,
+          stopReason,
+          releaseCallState: true,
+          restoreLegacyAvailability: true,
+        });
+        transaction.update(sessionRef, sessionUpdates);
+
+        return {
+          status: terminalStatus,
+          message: "Pre-active session closed",
+          sessionId,
+          endedAt: requestTimestamp,
+          dailyRoomName: resolveDailyRoomName(sessionData),
+        };
       }
 
       if (
@@ -384,7 +459,7 @@ exports.endSession = functions
         completedAtMillis: requestTimestamp,
       });
       const sessionUpdates = {
-        status: "ended",
+        status: VIDEO_SESSION_STATUS.ENDED,
         endedAt: admin.firestore.FieldValue.serverTimestamp(),
         duration: duration,
         durationMinutes: tutorDurationMinutes,
@@ -487,7 +562,22 @@ exports.endSession = functions
       return txResult;
     }
 
-    if (txResult.status !== "ended") {
+    if ([
+      VIDEO_SESSION_STATUS.CANCELLED,
+      VIDEO_SESSION_STATUS.EXPIRED,
+    ].includes(txResult.status)) {
+      if (txResult.dailyRoomName) {
+        await deleteDailyRoomForSession({
+          db,
+          sessionId,
+          roomName: txResult.dailyRoomName,
+          source: "endSession_pre_active_terminal",
+        });
+      }
+      return txResult;
+    }
+
+    if (txResult.status !== VIDEO_SESSION_STATUS.ENDED) {
       return txResult;
     }
 
@@ -804,7 +894,9 @@ async function cancelAllSessionNotifications(sessionId) {
 
 exports.__private__ = {
   buildStudentCallCharge,
+  hasConnectedCallEvidence,
   hasActiveSubscription,
+  isExpiredEndReason,
   remainingGiftMinutes,
   resolveTeacherEarningUserId,
   shouldProcessExpiredEndReason,

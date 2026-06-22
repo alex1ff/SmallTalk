@@ -106,6 +106,36 @@ test("never-connected expired sessions do not write same-day repeat history", ()
   assert.equal(payload.pairHistoryWrite, null);
 });
 
+test("never-connected connecting sessions expire instead of ending", () => {
+  const db = admin.firestore();
+  const endedAtMillis = Date.parse("2026-04-14T11:05:00Z");
+  const sessionRef = db.collection("videoSessions").doc("connecting-timeout");
+  const sessionData = {
+    status: "connecting",
+    studentId: "student-a",
+    tutorId: "teacher-b",
+    createdAt: admin.firestore.Timestamp.fromMillis(
+      endedAtMillis - 60 * 1000,
+    ),
+    matchContext: {
+      requesterId: "student-a",
+    },
+  };
+
+  const payload = buildExpiredSessionCleanupPayload({
+    db,
+    sessionId: sessionRef.id,
+    sessionRef,
+    sessionData,
+    endedAtMillis,
+  });
+
+  assert.equal(payload.sessionUpdate.status, "expired");
+  assert.equal(payload.sessionUpdate.expireReason, "join_timeout");
+  assert.equal(payload.sessionUpdate.sessionMetadata.endReason, "join_timeout");
+  assert.equal(payload.pairHistoryWrite, null);
+});
+
 test("client-signal-only expired sessions do not write repeat history", () => {
   const db = admin.firestore();
   const endedAtMillis = Date.parse("2026-04-14T11:30:00Z");
@@ -176,6 +206,37 @@ test("Daily-verified expired sessions write repeat history", () => {
 
   assert.ok(payload.pairHistoryWrite);
   assert.equal(payload.pairHistoryWrite.pairId, "student-a_teacher-b");
+});
+
+test("legacy connected timestamp keeps connecting cleanup as ended", () => {
+  const db = admin.firestore();
+  const endedAtMillis = Date.parse("2026-04-14T11:50:00Z");
+  const sessionRef = db.collection("videoSessions").doc("legacy-connected");
+  const sessionData = {
+    status: "connecting",
+    studentId: "student-a",
+    tutorId: "teacher-b",
+    createdAt: admin.firestore.Timestamp.fromMillis(
+      endedAtMillis - 10 * 60 * 1000,
+    ),
+    startedAt: admin.firestore.Timestamp.fromMillis(
+      endedAtMillis - 5 * 60 * 1000,
+    ),
+    sessionMetadata: {
+      callConnectedAtTimestamp: endedAtMillis - 5 * 60 * 1000,
+    },
+  };
+
+  const payload = buildExpiredSessionCleanupPayload({
+    db,
+    sessionId: sessionRef.id,
+    sessionRef,
+    sessionData,
+    endedAtMillis,
+  });
+
+  assert.equal(payload.sessionUpdate.status, "ended");
+  assert.equal(payload.sessionUpdate.sessionMetadata.endReason, "expired");
 });
 
 test("queueExpiredSessionCleanup writes repeat history and release updates", () => {

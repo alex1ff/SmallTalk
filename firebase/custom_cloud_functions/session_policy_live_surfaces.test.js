@@ -10,6 +10,7 @@ const {
 } = require("./create_video_session");
 const {
   __private__: {
+    assertAcceptWindowOpenOrThrow,
     buildAcceptCallPolicyUpdateFields,
     buildAcceptCallResponseSessionData,
   },
@@ -104,6 +105,44 @@ test("acceptCall live helpers preserve legacy fallback without policy", () => {
     startedAt: null,
     maxDuration: 3600000,
   });
+});
+
+test("acceptCall rejects stale response confirmation windows", () => {
+  const nowMillis = Date.parse("2026-04-14T10:00:45Z");
+  assert.throws(
+    () => assertAcceptWindowOpenOrThrow(
+      {
+        responseExpiresAt: admin.firestore.Timestamp.fromMillis(nowMillis),
+        expiresAt: admin.firestore.Timestamp.fromMillis(nowMillis + 60_000),
+      },
+      nowMillis,
+    ),
+    (error) =>
+      error.code === "invalid-argument" &&
+      /response window has expired/.test(error.message),
+  );
+  assert.doesNotThrow(() => assertAcceptWindowOpenOrThrow(
+    {
+      responseExpiresAt: admin.firestore.Timestamp.fromMillis(nowMillis + 1),
+      expiresAt: admin.firestore.Timestamp.fromMillis(nowMillis + 60_000),
+    },
+    nowMillis,
+  ));
+});
+
+test("acceptCall rejects stale legacy session expiry", () => {
+  const nowMillis = Date.parse("2026-04-14T10:05:00Z");
+  assert.throws(
+    () => assertAcceptWindowOpenOrThrow(
+      {
+        expiresAt: admin.firestore.Timestamp.fromMillis(nowMillis),
+      },
+      nowMillis,
+    ),
+    (error) =>
+      error.code === "invalid-argument" &&
+      /Session has expired/.test(error.message),
+  );
 });
 
 test("createVideoSession live write path uses policy field builder", () => {

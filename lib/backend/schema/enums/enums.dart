@@ -15,10 +15,12 @@ enum NotificationType {
 
 enum CallStatus {
   searching,
+  pending_confirmation,
   connecting,
   active,
-  ended,
   cancelled,
+  expired,
+  ended,
   no_tutors_available,
 }
 

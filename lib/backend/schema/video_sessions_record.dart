@@ -44,12 +44,13 @@ class VideoSessionsRecord extends FirestoreRecord {
   String? _status;
 
   /// ## Статусы сессии:
-  /// - `searching` - ищем преподавателя (аналог pending в callRequests)
-  /// - `connecting` - преподаватель принял, создается комната
-  /// - `active` - активная сессия
-  /// - `ended` - сессия завершена
-  /// - `cancelled` - отменена студентом
-  /// - `no_tutors_available` - не найдено преподавателей
+  /// - `searching` - сессия создана, пара еще не подтверждается
+  /// - `pending_confirmation` - пара найдена, ожидается ответ участника
+  /// - `connecting` - участники подтверждены, идет вход в комнату
+  /// - `active` - оба участника вошли в комнату
+  /// - `cancelled` - пара отменена до начала звонка
+  /// - `expired` - истек таймаут ответа или входа
+  /// - `ended` - звонок завершен
   String get status => _status ?? '';
   bool hasStatus() => _status != null;
 

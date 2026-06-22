@@ -429,8 +429,9 @@ void main() {
       expect(
           source, contains('_dateTimeFromFirestoreValue(data[\'expiresAt\'])'));
       expect(source, contains("collection('videoSessions').doc(sessionId)"));
+      expect(source, contains("status == 'pending_confirmation'"));
       expect(source,
-          contains("status != 'searching' || currentTutorId != userId"));
+          contains("!isPendingIncomingSession || currentTutorId != userId"));
       expect(
         source,
         contains('Firestore incoming call notification received'),
@@ -458,9 +459,14 @@ void main() {
         waitingSource,
         contains('roomName: refreshedRoomName ?? roomName'),
       );
+      expect(waitingSource, contains('final isJoinable'));
+      expect(waitingSource, contains("status == 'pending_confirmation'"));
+      expect(waitingSource, contains("status == 'expired'"));
 
       expect(dailyWidgetSource, contains('String? _dynamicRoomUrl;'));
       expect(dailyWidgetSource, contains('_effectiveRoomUrl()'));
+      expect(dailyWidgetSource, contains("normalized == 'expired'"));
+      expect(dailyWidgetSource, contains("status == 'expired'"));
       expect(
         dailyWidgetSource,
         contains('await WidgetsBinding.instance.endOfFrame;'),
@@ -492,6 +498,7 @@ void main() {
           widgetSource,
           contains(
               'VoIPService().endCurrentCall(sessionId: terminalSessionId)'));
+      expect(widgetSource, contains("sessionStatus == 'expired'"));
       expect(widgetSource, contains('sessionRefOverride: terminalSessionRef'));
 
       expect(

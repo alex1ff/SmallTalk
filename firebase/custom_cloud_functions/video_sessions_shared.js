@@ -28,6 +28,24 @@ const UNIVERSAL_SESSION_POLICY = Object.freeze({
   effectiveLimitSeconds: 5 * 60,
 });
 const LEGACY_ACTIVE_SESSION_MAX_DURATION_MS = 60 * 60 * 1000;
+const VIDEO_SESSION_STATUS = Object.freeze({
+  SEARCHING: "searching",
+  PENDING_CONFIRMATION: "pending_confirmation",
+  CONNECTING: "connecting",
+  ACTIVE: "active",
+  CANCELLED: "cancelled",
+  EXPIRED: "expired",
+  ENDED: "ended",
+});
+const VIDEO_SESSION_CREDENTIAL_STATUSES = Object.freeze([
+  VIDEO_SESSION_STATUS.CONNECTING,
+  VIDEO_SESSION_STATUS.ACTIVE,
+]);
+const VIDEO_SESSION_TERMINAL_STATUSES = Object.freeze([
+  VIDEO_SESSION_STATUS.CANCELLED,
+  VIDEO_SESSION_STATUS.EXPIRED,
+  VIDEO_SESSION_STATUS.ENDED,
+]);
 
 function readPositiveInteger(value, fallback) {
   const number = Number(value);
@@ -734,7 +752,11 @@ function isAcceptedSessionCredentialParticipant(sessionData = {}, userId) {
 }
 
 function isCredentialSessionStatus(status) {
-  return ["active", "connecting"].includes(normalizeCode(status));
+  return VIDEO_SESSION_CREDENTIAL_STATUSES.includes(normalizeCode(status));
+}
+
+function isVideoSessionStatus(status) {
+  return Object.values(VIDEO_SESSION_STATUS).includes(normalizeCode(status));
 }
 
 function readTimestampMillis(value) {
@@ -839,6 +861,7 @@ module.exports = {
   isRequesterForSession,
   isSessionParticipant,
   isSupportedSessionRole,
+  isVideoSessionStatus,
   normalizeRole,
   readCountryCode,
   readLanguageCode,
@@ -856,4 +879,7 @@ module.exports = {
   resolveConversationLanguages,
   resolveRoleConversationLanguages,
   supportsConversationLanguage,
+  VIDEO_SESSION_CREDENTIAL_STATUSES,
+  VIDEO_SESSION_STATUS,
+  VIDEO_SESSION_TERMINAL_STATUSES,
 };

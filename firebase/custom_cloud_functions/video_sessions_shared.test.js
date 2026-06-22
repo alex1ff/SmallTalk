@@ -12,6 +12,10 @@ const {
   isAcceptedSessionCredentialParticipant,
   isCredentialSessionJoinable,
   isCredentialSessionStatus,
+  isVideoSessionStatus,
+  VIDEO_SESSION_CREDENTIAL_STATUSES,
+  VIDEO_SESSION_STATUS,
+  VIDEO_SESSION_TERMINAL_STATUSES,
 } = require("./video_sessions_shared");
 
 test("buildUniversalSessionPolicy returns the V2 default session contract", () => {
@@ -164,12 +168,42 @@ test("credential participants exclude assigned-but-unaccepted current tutor", ()
 });
 
 test("credential session status is limited to joinable live sessions", () => {
-  assert.equal(isCredentialSessionStatus("active"), true);
-  assert.equal(isCredentialSessionStatus("connecting"), true);
-  assert.equal(isCredentialSessionStatus("searching"), false);
-  assert.equal(isCredentialSessionStatus("ended"), false);
-  assert.equal(isCredentialSessionStatus("cancelled"), false);
-  assert.equal(isCredentialSessionStatus("no_tutors_available"), false);
+  assert.deepEqual(VIDEO_SESSION_CREDENTIAL_STATUSES, [
+    VIDEO_SESSION_STATUS.CONNECTING,
+    VIDEO_SESSION_STATUS.ACTIVE,
+  ]);
+  assert.equal(isCredentialSessionStatus(VIDEO_SESSION_STATUS.ACTIVE), true);
+  assert.equal(
+    isCredentialSessionStatus(VIDEO_SESSION_STATUS.CONNECTING),
+    true,
+  );
+  assert.equal(
+    isCredentialSessionStatus(VIDEO_SESSION_STATUS.SEARCHING),
+    false,
+  );
+  assert.equal(
+    isCredentialSessionStatus(VIDEO_SESSION_STATUS.PENDING_CONFIRMATION),
+    false,
+  );
+  assert.equal(isCredentialSessionStatus(VIDEO_SESSION_STATUS.ENDED), false);
+  assert.equal(
+    isCredentialSessionStatus(VIDEO_SESSION_STATUS.CANCELLED),
+    false,
+  );
+  assert.equal(isCredentialSessionStatus(VIDEO_SESSION_STATUS.EXPIRED), false);
+});
+
+test("video session status contract includes only product lifecycle states", () => {
+  assert.deepEqual(VIDEO_SESSION_TERMINAL_STATUSES, [
+    VIDEO_SESSION_STATUS.CANCELLED,
+    VIDEO_SESSION_STATUS.EXPIRED,
+    VIDEO_SESSION_STATUS.ENDED,
+  ]);
+  for (const status of Object.values(VIDEO_SESSION_STATUS)) {
+    assert.equal(isVideoSessionStatus(status), true);
+  }
+  assert.equal(isVideoSessionStatus("no_tutors_available"), false);
+  assert.equal(isVideoSessionStatus("connected"), false);
 });
 
 test("credential session joinability requires an unexpired live session", () => {

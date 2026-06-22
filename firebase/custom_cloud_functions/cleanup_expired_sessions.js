@@ -18,6 +18,9 @@ const {
 const {
   releaseSessionPairLocksInTransaction,
 } = require("./match_pair_lock");
+const {
+  VIDEO_SESSION_STATUS,
+} = require("./video_sessions_shared");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 /*
 АВТОМАТИЧЕСКАЯ ФУНКЦИЯ: cleanupExpiredSessions
@@ -31,6 +34,14 @@ function buildExpiredSessionCleanupPayload({
   sessionData = {},
   endedAtMillis = Date.now(),
 }) {
+  const wasConnected = Boolean(
+    sessionData.sessionMetadata?.callConnectedAt ||
+    sessionData.sessionMetadata?.callConnectedAtTimestamp,
+  );
+  const terminalStatus =
+    sessionData.status === VIDEO_SESSION_STATUS.CONNECTING && !wasConnected ?
+      VIDEO_SESSION_STATUS.EXPIRED :
+      VIDEO_SESSION_STATUS.ENDED;
   const startTime =
     sessionData.startedAt?.toMillis?.() ||
     sessionData.createdAt?.toMillis?.() ||
@@ -47,18 +58,25 @@ function buildExpiredSessionCleanupPayload({
     completedAtMillis: endedAtMillis,
   });
   const sessionUpdate = {
-    status: "ended",
+    status: terminalStatus,
     endedAt: admin.firestore.FieldValue.serverTimestamp(),
     duration: duration,
     tutorNavigationTriggered: false,
     studentNavigationTriggered: false,
     sessionMetadata: {
       ...(sessionData.sessionMetadata || {}),
-      endReason: "expired",
+      endReason: terminalStatus === VIDEO_SESSION_STATUS.EXPIRED ?
+        "join_timeout" :
+        "expired",
       endedAtTimestamp: endedAtMillis,
       finalDuration: duration,
     },
   };
+
+  if (terminalStatus === VIDEO_SESSION_STATUS.EXPIRED) {
+    sessionUpdate.expiredAt = admin.firestore.FieldValue.serverTimestamp();
+    sessionUpdate.expireReason = "join_timeout";
+  }
 
   if (pairHistoryWrite) {
     sessionUpdate["matchContext.completedPairId"] = pairHistoryWrite.pairId;
@@ -128,7 +146,10 @@ exports.cleanupExpiredSessions = functions
       const expiredSessionsQuery = await admin
         .firestore()
         .collection("videoSessions")
-        .where("status", "in", ["active", "connecting"])
+        .where("status", "in", [
+          VIDEO_SESSION_STATUS.ACTIVE,
+          VIDEO_SESSION_STATUS.CONNECTING,
+        ])
         .where("expiresAt", "<=", now)
         .get();
 
@@ -149,7 +170,10 @@ exports.cleanupExpiredSessions = functions
           }
 
           const freshData = freshSnap.data() || {};
-          if (!["active", "connecting"].includes(freshData.status)) {
+          if (![
+            VIDEO_SESSION_STATUS.ACTIVE,
+            VIDEO_SESSION_STATUS.CONNECTING,
+          ].includes(freshData.status)) {
             return { cleaned: false, dailyRoomName: null, sessionData: null };
           }
 

@@ -1430,7 +1430,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   bool _isTerminalSessionStatus(String? status) {
     final normalized = status?.trim().toLowerCase();
-    return normalized == 'ended' || normalized == 'cancelled';
+    return normalized == 'ended' ||
+        normalized == 'cancelled' ||
+        normalized == 'expired';
   }
 
   Future<void> _persistOwnCallChatMessages() async {
@@ -3738,6 +3740,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (_userRequestedEnd ||
         status == 'ended' ||
         status == 'cancelled' ||
+        status == 'expired' ||
         !session_limit_ui.shouldAutoEndSession(
           expiresAt: widget.sessionExpiresAt,
           autoEndedForExpiresAt: _sessionLimitAutoEndedFor,
@@ -4177,7 +4180,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     final status = widget.sessionStatus?.trim().toLowerCase();
     final isStudent = widget.isStudent == true;
 
-    if (status == 'ended' || status == 'cancelled') {
+    if (status == 'ended' || status == 'cancelled' || status == 'expired') {
       return 'Звонок завершается...';
     }
 

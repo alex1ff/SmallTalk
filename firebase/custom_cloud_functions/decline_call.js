@@ -12,7 +12,10 @@ const {
 const {
   deleteDailyRoomForSession,
 } = require("./daily_room_cleanup");
-const { isSupportedSessionRole } = require("./video_sessions_shared");
+const {
+  isSupportedSessionRole,
+  VIDEO_SESSION_STATUS,
+} = require("./video_sessions_shared");
 const {
   createIncomingCallNotificationInTransaction,
 } = require("./call_notifications");
@@ -30,6 +33,10 @@ const {
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const DECLINABLE_SESSION_STATUSES = new Set([
+  VIDEO_SESSION_STATUS.SEARCHING,
+  VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+]);
 
 /*
 ОБНОВЛЕННАЯ ФУНКЦИЯ: declineCall
@@ -94,9 +101,9 @@ exports.declineCall = functions
         console.log("👤 Current tutor ID:", sessionData.currentTutorId);
 
         // Проверяем, что сессия в статусе поиска
-        if (sessionData.status !== "searching") {
+        if (!DECLINABLE_SESSION_STATUSES.has(sessionData.status)) {
           console.log(
-            "❌ Session is not in searching status:",
+            "❌ Session is not in a declinable status:",
             sessionData.status,
           );
           throw new functions.https.HttpsError(
@@ -195,7 +202,13 @@ exports.declineCall = functions
           currentTutorId: nextTutor || admin.firestore.FieldValue.delete(),
         };
         if (!nextTutor) {
-          sessionUpdate.status = "no_tutors_available";
+          sessionUpdate.status = VIDEO_SESSION_STATUS.CANCELLED;
+          sessionUpdate.endedAt =
+            admin.firestore.FieldValue.serverTimestamp();
+          sessionUpdate.cancelledAt =
+            admin.firestore.FieldValue.serverTimestamp();
+          sessionUpdate.cancelledBy = tutorId;
+          sessionUpdate.cancelReason = "no_available_responder_after_decline";
         }
 
         const notification = nextTutor
@@ -236,7 +249,9 @@ exports.declineCall = functions
             ...sessionData,
             triedTutors: nextTriedTutors,
             currentTutorId: nextTutor || null,
-            status: nextTutor ? sessionData.status : "no_tutors_available",
+            status: nextTutor ?
+              VIDEO_SESSION_STATUS.PENDING_CONFIRMATION :
+              VIDEO_SESSION_STATUS.CANCELLED,
           },
           nextTutor: nextTutor || null,
           sessionData,

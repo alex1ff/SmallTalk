@@ -459,12 +459,14 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         }
 
         // When the OTHER side calls endSession, the Firestore document
-        // status changes to "ended" / "cancelled". Detect this and
+        // status changes to "ended" / "cancelled" / "expired". Detect this and
         // navigate to summary immediately instead of waiting for the
         // Daily SDK participantLeft timer.
         // Also end the native CallKit/ConnectionService UI so the
         // iPhone call screen is dismissed.
-        if ((sessionStatus == 'ended' || sessionStatus == 'cancelled') &&
+        if ((sessionStatus == 'ended' ||
+                sessionStatus == 'cancelled' ||
+                sessionStatus == 'expired') &&
             !_didNavigateToSummary) {
           final terminalSessionRef = widget.videoDocRef;
           final terminalSessionId = terminalSessionRef?.id;

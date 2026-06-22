@@ -4,6 +4,7 @@ const {
   getAcceptedSessionCredentialParticipantIds,
   isAcceptedSessionCredentialParticipant,
   isCredentialSessionJoinable,
+  VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
   getDailyRoomPresence,
@@ -82,12 +83,15 @@ function buildMarkSessionConnectedDecision({
 
   const sessionMetadata = readSessionMetadata(sessionData);
   if (sessionMetadata.callConnectedAt) {
+    const update = sessionData.status === VIDEO_SESSION_STATUS.ACTIVE ?
+      null :
+      {status: VIDEO_SESSION_STATUS.ACTIVE};
     return {
       ok: true,
-      update: null,
+      update,
       response: {
         status: "already_marked",
-        updated: false,
+        updated: Boolean(update),
       },
     };
   }
@@ -159,12 +163,15 @@ function buildDailyPresenceConnectedDecision({
 
   const sessionMetadata = readSessionMetadata(sessionData);
   if (sessionMetadata.callConnectedAt) {
+    const update = sessionData.status === VIDEO_SESSION_STATUS.ACTIVE ?
+      null :
+      {status: VIDEO_SESSION_STATUS.ACTIVE};
     return {
       ok: true,
-      update: null,
+      update,
       response: {
         status: "already_marked",
-        updated: false,
+        updated: Boolean(update),
       },
     };
   }
@@ -188,6 +195,7 @@ function buildDailyPresenceConnectedDecision({
   }
 
   const update = {
+    status: VIDEO_SESSION_STATUS.ACTIVE,
     sessionMetadata: {
       ...sessionMetadata,
       callConnectedAt: serverTimestamp,

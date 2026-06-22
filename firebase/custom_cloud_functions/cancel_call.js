@@ -16,7 +16,15 @@ const {
 const {
   releaseSessionPairLocksInTransaction,
 } = require("./match_pair_lock");
+const {
+  VIDEO_SESSION_STATUS,
+} = require("./video_sessions_shared");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const CANCELLABLE_SESSION_STATUSES = new Set([
+  VIDEO_SESSION_STATUS.SEARCHING,
+  VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+  VIDEO_SESSION_STATUS.CONNECTING,
+]);
 exports.cancelCall = functions
   .runWith({ secrets: dailySecrets })
   .https.onCall(async (data, context) => {
@@ -74,7 +82,7 @@ exports.cancelCall = functions
       }
 
       // Проверяем, что сессию можно отменить
-      if (!["searching", "connecting"].includes(sessionData.status)) {
+      if (!CANCELLABLE_SESSION_STATUSES.has(sessionData.status)) {
         console.log(
           "❌ Session cannot be cancelled, current status:",
           sessionData.status,
@@ -98,7 +106,7 @@ exports.cancelCall = functions
       });
 
       transaction.update(sessionRef, {
-        status: "cancelled",
+        status: VIDEO_SESSION_STATUS.CANCELLED,
         endedAt: admin.firestore.FieldValue.serverTimestamp(),
         cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
         cancelledBy: studentId,

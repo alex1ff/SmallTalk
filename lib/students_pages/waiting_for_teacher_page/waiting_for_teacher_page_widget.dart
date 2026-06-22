@@ -171,6 +171,13 @@ class _WaitingForTeacherPageWidgetState
     String? fallbackMessage,
     String? errorCode,
   }) {
+    if (status == 'expired') {
+      return _localizedText(
+        ruText: 'Время ожидания истекло. Попробуйте начать поиск снова.',
+        enText: 'The waiting time expired. Please start matching again.',
+      );
+    }
+
     if (status == 'no_tutors_available') {
       if (_isDirectTutorCall) {
         return _localizedText(
@@ -457,17 +464,18 @@ class _WaitingForTeacherPageWidgetState
     final roomName = _nonEmpty(data['dailyRoomName'] as String?);
     final studentTriggered = data['studentNavigationTriggered'] == true;
 
-    final isActive = status == 'active' || status == 'connected';
+    final isJoinable =
+        status == 'active' || status == 'connected' || status == 'connecting';
 
-    // Navigate when session is active and we have room data
-    if ((isActive || studentTriggered) &&
+    // Navigate when session is joinable and we have room data.
+    if ((isJoinable || studentTriggered) &&
         roomUrl != null &&
         !_tokenFetchInProgress) {
       _fetchTokenAndNavigate(roomUrl: roomUrl, roomName: roomName);
     }
 
     // Auto-pop on terminal statuses
-    if (status == 'cancelled' || status == 'ended') {
+    if (status == 'cancelled' || status == 'expired' || status == 'ended') {
       _navigationHandled = true;
       _detachSessionListener();
       context.safePop();
@@ -593,8 +601,10 @@ class _WaitingForTeacherPageWidgetState
     final tutorInfoMap = tutorInfoRaw is Map ? _asMap(tutorInfoRaw) : null;
     final tutorName = _nonEmpty(tutorInfoMap?['name'] as String?);
     final tutorPhoto = _nonEmpty(tutorInfoMap?['photo'] as String?);
-    final isDialingTutor =
-        tutorName != null && (status == 'searching' || status == 'connecting');
+    final isDialingTutor = tutorName != null &&
+        (status == 'searching' ||
+            status == 'pending_confirmation' ||
+            status == 'connecting');
 
     String title;
     String subtitle;
@@ -632,7 +642,7 @@ class _WaitingForTeacherPageWidgetState
         ruText: 'Дозваниваемся до собеседника…',
         enText: 'Connecting to your partner…',
       );
-    } else if (status == 'searching') {
+    } else if (status == 'searching' || status == 'pending_confirmation') {
       title = _localizedText(
         ruText: _isDirectTutorCall ? 'Звоним собеседнику' : 'Дозваниваемся',
         enText: _isDirectTutorCall ? 'Calling your partner' : 'Connecting…',
@@ -654,7 +664,7 @@ class _WaitingForTeacherPageWidgetState
         ruText: 'Подключаемся к звонку…',
         enText: 'Connecting to the call…',
       );
-    } else if (status == 'no_tutors_available') {
+    } else if (status == 'no_tutors_available' || status == 'expired') {
       if (_isDirectTutorCall) {
         title = FFLocalizations.of(context).getVariableText(
           ruText: 'Собеседник недоступен',

@@ -16,6 +16,9 @@ const {
   createIncomingCallNotificationInTransaction,
 } = require("./call_notifications");
 const {
+  VIDEO_SESSION_STATUS,
+} = require("./video_sessions_shared");
+const {
   findNextCallableCandidateInTransaction,
 } = require("./call_candidate_tokens");
 const {
@@ -29,6 +32,10 @@ const {
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const PENDING_RESPONSE_SESSION_STATUSES = new Set([
+  VIDEO_SESSION_STATUS.SEARCHING,
+  VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+]);
 
 exports.processExpiredNotifications = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
@@ -130,7 +137,7 @@ async function processExpiredNotification(notificationDoc) {
 
         const freshSessionData = freshSessionSnap.data() || {};
         const status = freshSessionData.status || "unknown";
-        if (status !== "searching") {
+        if (!PENDING_RESPONSE_SESSION_STATUSES.has(status)) {
           transaction.update(notificationDoc.ref, expireNotificationUpdate);
           return {
             shouldNotify: false,
@@ -244,7 +251,10 @@ async function processExpiredNotification(notificationDoc) {
           transaction.update(sessionRef, {
             triedTutors: nextTriedTutors,
             currentTutorId: admin.firestore.FieldValue.delete(),
-            status: "no_tutors_available",
+            status: VIDEO_SESSION_STATUS.EXPIRED,
+            endedAt: admin.firestore.FieldValue.serverTimestamp(),
+            expiredAt: admin.firestore.FieldValue.serverTimestamp(),
+            expireReason: "response_timeout",
           });
           return {
             shouldNotify: false,
@@ -256,7 +266,7 @@ async function processExpiredNotification(notificationDoc) {
               ...freshSessionData,
               triedTutors: nextTriedTutors,
               currentTutorId: null,
-              status: "no_tutors_available",
+              status: VIDEO_SESSION_STATUS.EXPIRED,
             },
           };
         }
@@ -349,7 +359,7 @@ async function processExpiredNotification(notificationDoc) {
 
       const freshValidationData = freshValidationSnap.data() || {};
       if (
-        freshValidationData.status !== "searching" ||
+        !PENDING_RESPONSE_SESSION_STATUSES.has(freshValidationData.status) ||
         freshValidationData.currentTutorId !== transition.nextTutor
       ) {
         console.log(

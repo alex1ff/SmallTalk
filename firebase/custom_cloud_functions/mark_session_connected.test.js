@@ -237,6 +237,7 @@ test("Daily verified presence writes the connected marker", () => {
   });
 
   assert.equal(decision.ok, true);
+  assert.equal(decision.update.status, "active");
   assert.deepEqual(decision.response, {
     status: "marked",
     updated: true,
@@ -254,6 +255,30 @@ test("Daily verified presence writes the connected marker", () => {
     ["student-a", "teacher-b"],
   );
   assert.equal(decision.update.sessionMetadata.dailyPresenceRoomName, "room-a");
+});
+
+test("Daily verified presence promotes connecting sessions to active", () => {
+  const serverTimestamp = Symbol("serverTimestamp");
+  const decision = buildDailyPresenceConnectedDecision({
+    sessionData: acceptedSession({
+      status: "connecting",
+      dailyRoomName: "room-a",
+    }),
+    presenceData: {
+      "room-a": [
+        {user_id: "student-a"},
+        {userId: "teacher-b"},
+      ],
+    },
+    userId: "student-a",
+    nowMillis,
+    serverTimestamp,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.update.status, "active");
+  assert.equal(decision.update.startedAt, serverTimestamp);
+  assert.equal(decision.response.connectedMarked, true);
 });
 
 test("Daily presence miss remains fail-closed", () => {

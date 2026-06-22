@@ -367,7 +367,9 @@ class VoIPService {
 
       final status = _nonEmptyString(sessionData['status']);
       final currentTutorId = _nonEmptyString(sessionData['currentTutorId']);
-      if (status != 'searching' || currentTutorId != userId) {
+      final isPendingIncomingSession =
+          status == 'searching' || status == 'pending_confirmation';
+      if (!isPendingIncomingSession || currentTutorId != userId) {
         return null;
       }
 

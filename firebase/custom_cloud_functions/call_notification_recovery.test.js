@@ -242,6 +242,25 @@ test("expired notification handoff validates assignment before push", () => {
   );
 });
 
+test("incoming call push validation accepts pending confirmation sessions", () => {
+  const sources = {
+    createVideoSession: readFunctionSource("create_video_session.js"),
+    processExpiredNotifications: readFunctionSource("process_expired_notifications.js"),
+  };
+
+  for (const [name, source] of Object.entries(sources)) {
+    assert.match(
+      source,
+      /PENDING_RESPONSE_SESSION_STATUSES\.has\(freshValidation(?:Data)?\.status\)/,
+      `${name} must not require legacy searching status before push`,
+    );
+  }
+  assert.match(
+    sources.createVideoSession,
+    /status:\s*VIDEO_SESSION_STATUS\.PENDING_CONFIRMATION/,
+  );
+});
+
 test("acceptCall validates responder language before room credentials", () => {
   const source = readFunctionSource("accept_call.js");
   const languageIndex = source.indexOf(
