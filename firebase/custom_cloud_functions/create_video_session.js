@@ -70,9 +70,6 @@ const CANDIDATE_QUERY_BUILDERS = [
       .collection("users")
       .where("language_instruction_NS.code", "==", languageCode),
 ];
-const HIGH_LEVEL_TEACHER_PRIORITY_GROUP_SIZE = 5;
-const HIGH_LEVEL_TEACHER_PRIORITY_TEACHER_SLOTS = 4;
-
 function buildCreateSessionPolicyFields(nowMillis = Date.now()) {
   const sessionPolicyState = buildInitialSessionPolicyState(nowMillis);
   return {
@@ -92,71 +89,12 @@ function isAvailableAfterInFuture(userData = {}, now = new Date()) {
   return availableAfter.toDate() > now;
 }
 
-function isTeacherBoostTargetLevel(level) {
-  return readLevelValue(level).toLowerCase() === "fluent";
-}
-
-function getTeacherBoostScore(tutorProfile = {}, teacherBoostRankingApplied) {
-  return teacherBoostRankingApplied && tutorProfile.approvedTeacher ? 1 : 0;
-}
-
-function orderCandidatesWithTeacherPriority(
+function orderCandidatesByMatchQuality(
   candidateIds = [],
   detailsById = {},
-  teacherPriorityApplied = false,
 ) {
-  const sortedCandidateIds = [...candidateIds].sort((a, b) =>
+  return [...candidateIds].sort((a, b) =>
     compareCandidateDetails(a, b, detailsById));
-  if (!teacherPriorityApplied) {
-    return sortedCandidateIds;
-  }
-
-  const approvedTeachers = sortedCandidateIds.filter(
-    (id) => detailsById[id]?.approvedTeacher === true,
-  );
-  const otherCandidates = sortedCandidateIds.filter(
-    (id) => detailsById[id]?.approvedTeacher !== true,
-  );
-  if (approvedTeachers.length === 0 || otherCandidates.length === 0) {
-    return sortedCandidateIds;
-  }
-
-  const ordered = [];
-  let teacherIndex = 0;
-  let otherIndex = 0;
-  while (
-    teacherIndex < approvedTeachers.length ||
-    otherIndex < otherCandidates.length
-  ) {
-    for (
-      let slot = 0;
-      slot < HIGH_LEVEL_TEACHER_PRIORITY_TEACHER_SLOTS &&
-      teacherIndex < approvedTeachers.length;
-      slot += 1
-    ) {
-      ordered.push(approvedTeachers[teacherIndex]);
-      teacherIndex += 1;
-    }
-
-    const groupHasOtherSlot =
-      HIGH_LEVEL_TEACHER_PRIORITY_TEACHER_SLOTS <
-      HIGH_LEVEL_TEACHER_PRIORITY_GROUP_SIZE;
-    if (groupHasOtherSlot && otherIndex < otherCandidates.length) {
-      ordered.push(otherCandidates[otherIndex]);
-      otherIndex += 1;
-    }
-
-    if (teacherIndex >= approvedTeachers.length) {
-      ordered.push(...otherCandidates.slice(otherIndex));
-      break;
-    }
-    if (otherIndex >= otherCandidates.length) {
-      ordered.push(...approvedTeachers.slice(teacherIndex));
-      break;
-    }
-  }
-
-  return ordered;
 }
 
 async function hasCallableTeacherToken(
@@ -181,12 +119,6 @@ function compareCandidateDetails(leftId, rightId, detailsById) {
 
   if (left.locationMatch !== right.locationMatch) {
     return left.locationMatch ? -1 : 1;
-  }
-
-  const leftTeacherBoostScore = Number(left.teacherBoostScore) || 0;
-  const rightTeacherBoostScore = Number(right.teacherBoostScore) || 0;
-  if (leftTeacherBoostScore !== rightTeacherBoostScore) {
-    return rightTeacherBoostScore - leftTeacherBoostScore;
   }
 
   if (left.ratingAverage !== right.ratingAverage) {
@@ -351,9 +283,6 @@ exports.createVideoSession = functions
       const normalizedPreferredCountry = readCountryCode(preferredCountry);
       const normalizedPreferredPartnerLevel = readLevelValue(
         preferredPartnerLevel,
-      );
-      const teacherBoostRankingApplied = isTeacherBoostTargetLevel(
-        normalizedPreferredPartnerLevel,
       );
       const requesterBlockedIds = extractBlockedIds(requesterData.blockedUsers);
       const requesterInfo = buildSessionUserInfo(
@@ -583,10 +512,6 @@ exports.createVideoSession = functions
           ratingCount: tutorProfile.ratingCount,
           level: candidateLevel || null,
           legacyPriorityScore: readMatchPriorityScore(tutorData),
-          teacherBoostScore: getTeacherBoostScore(
-            tutorProfile,
-            teacherBoostRankingApplied,
-          ),
           locationMatch:
             !normalizedPreferredCountry ||
             candidateCountry === normalizedPreferredCountry,
@@ -815,10 +740,6 @@ exports.createVideoSession = functions
             ratingCount: tutorProfile.ratingCount,
             level: candidateLevel || null,
             legacyPriorityScore: readMatchPriorityScore(tutorData),
-            teacherBoostScore: getTeacherBoostScore(
-              tutorProfile,
-              teacherBoostRankingApplied,
-            ),
             locationMatch:
               !normalizedPreferredCountry ||
               candidateCountry === normalizedPreferredCountry,
@@ -893,10 +814,9 @@ exports.createVideoSession = functions
       }
 
       if (!isDirectTutorCall) {
-        const orderedTutors = orderCandidatesWithTeacherPriority(
+        const orderedTutors = orderCandidatesByMatchQuality(
           availableTutors,
           tutorDetails,
-          teacherBoostRankingApplied,
         );
         availableTutors.splice(0, availableTutors.length, ...orderedTutors);
         console.log("📊 Matched tutors after sorting", {
@@ -905,7 +825,6 @@ exports.createVideoSession = functions
             tutorId: id,
             locationMatch: tutorDetails[id].locationMatch,
             approvedTeacher: tutorDetails[id].approvedTeacher,
-            teacherBoostScore: tutorDetails[id].teacherBoostScore,
             ratingAverage: tutorDetails[id].ratingAverage,
             legacyPriorityScore: tutorDetails[id].legacyPriorityScore,
           })),
@@ -974,8 +893,7 @@ exports.createVideoSession = functions
             friendPriorityApplied: false,
             locationApplied: !!normalizedPreferredCountry,
             levelApplied: !!normalizedPreferredPartnerLevel,
-            teacherBoostApplied:
-              !isDirectTutorCall && teacherBoostRankingApplied,
+            rolePriorityApplied: false,
             internalRankingScore: 0,
             legacyPriorityUsedAsTiebreaker: true,
           },
@@ -1201,10 +1119,8 @@ async function sendVoipPushToTutor(tutorId, callData) {
 exports.__private__ = {
   buildCreateSessionPolicyFields,
   compareCandidateDetails,
-  getTeacherBoostScore,
   hasCallableTeacherToken,
-  isTeacherBoostTargetLevel,
-  orderCandidatesWithTeacherPriority,
+  orderCandidatesByMatchQuality,
 };
 
 async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) {

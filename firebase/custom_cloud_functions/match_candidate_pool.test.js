@@ -1327,6 +1327,77 @@ test("candidate pool merge ranks mutual requester filter quality before waiting"
   );
 });
 
+test("candidate pool merge does not rank role-only mutual fields", () => {
+  const candidates = mergeCandidatePools({
+    studentCandidates: [
+      {
+        userId: "student-mutual-exact",
+        role: "student",
+        source: MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE,
+        joinedPoolAtMillis: fixedNowMillis - 60 * 1000,
+        matchQuality: {
+          requesterLevelDistance: 0,
+        },
+      },
+    ],
+    teacherCandidates: [
+      {
+        userId: "teacher-no-mutual-filter",
+        role: "native_speaker",
+        source: MATCH_CANDIDATE_SOURCE.TEACHER_AVAILABILITY,
+        joinedPoolAtMillis: fixedNowMillis - 120 * 1000,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.userId),
+    ["teacher-no-mutual-filter", "student-mutual-exact"],
+  );
+});
+
+test("candidate pool merge keeps total order with mixed mutual fields", () => {
+  const candidates = mergeCandidatePools({
+    studentCandidates: [
+      {
+        userId: "student-mutual-adjacent",
+        role: "student",
+        source: MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE,
+        joinedPoolAtMillis: fixedNowMillis - 120 * 1000,
+        matchQuality: {
+          requesterLevelDistance: 1,
+        },
+      },
+      {
+        userId: "student-mutual-exact",
+        role: "student",
+        source: MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE,
+        joinedPoolAtMillis: fixedNowMillis - 60 * 1000,
+        matchQuality: {
+          requesterLevelDistance: 0,
+        },
+      },
+    ],
+    teacherCandidates: [
+      {
+        userId: "teacher-no-mutual-filter",
+        role: "native_speaker",
+        source: MATCH_CANDIDATE_SOURCE.TEACHER_AVAILABILITY,
+        joinedPoolAtMillis: fixedNowMillis - 90 * 1000,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.userId),
+    [
+      "student-mutual-adjacent",
+      "teacher-no-mutual-filter",
+      "student-mutual-exact",
+    ],
+  );
+});
+
 test("candidate pool merge treats null level distance as no level ranking", () => {
   const candidates = mergeCandidatePools({
     studentCandidates: [
@@ -1642,6 +1713,51 @@ test("collectMatchCandidatePool ranks mutual student filter quality", async () =
     result.candidates.map((candidate) =>
       candidate.matchQuality.requesterLevelTier),
     ["exact", "adjacent"],
+  );
+});
+
+test("collectMatchCandidatePool keeps role-neutral waiting order", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-mutual-exact", activeRequest({
+        requestId: "request-student-mutual-exact",
+        userId: "student-mutual-exact",
+        userRef: {id: "student-mutual-exact"},
+        filters: {preferredLevel: "B1", levelRank: 3},
+        createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
+      })),
+    ],
+    teacherDocs: [
+      doc("teacher-older", teacherData({
+        availableSince: timestampFromMillis(fixedNowMillis - 120 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "requester-a": doc("requester-a", studentData({
+        level: {value: "B1"},
+      })),
+      "student-mutual-exact": doc(
+        "student-mutual-exact",
+        studentData({level: {value: "B1"}}),
+      ),
+    },
+    privateTokenDocsById: {
+      "teacher-older": doc("teacher-older", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "requester-a",
+    language: "en",
+    requesterFilters: {},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-older", "student-mutual-exact"],
   );
 });
 

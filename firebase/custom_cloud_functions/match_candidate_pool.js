@@ -987,7 +987,31 @@ function compareOptionalDistance(leftValue, rightValue) {
   return 0;
 }
 
-function compareNeutralCandidateOrder(left, right) {
+function hasFiniteDistance(value) {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value)
+  );
+}
+
+function buildNeutralCandidateComparator(candidates = []) {
+  const includeRequesterLevelDistance = candidates.length > 0 &&
+    candidates.every((candidate) =>
+      hasFiniteDistance(candidate.matchQuality?.requesterLevelDistance));
+  const includeRequesterLocationDistance = candidates.length > 0 &&
+    candidates.every((candidate) =>
+      hasFiniteDistance(candidate.matchQuality?.requesterLocationDistance));
+
+  return (left, right) => compareNeutralCandidateOrder(left, right, {
+    includeRequesterLevelDistance,
+    includeRequesterLocationDistance,
+  });
+}
+
+function compareNeutralCandidateOrder(left, right, {
+  includeRequesterLevelDistance = true,
+  includeRequesterLocationDistance = true,
+} = {}) {
   const levelDistanceOrder = compareOptionalDistance(
     left.matchQuality?.levelDistance,
     right.matchQuality?.levelDistance,
@@ -996,12 +1020,14 @@ function compareNeutralCandidateOrder(left, right) {
     return levelDistanceOrder;
   }
 
-  const requesterLevelDistanceOrder = compareOptionalDistance(
-    left.matchQuality?.requesterLevelDistance,
-    right.matchQuality?.requesterLevelDistance,
-  );
-  if (requesterLevelDistanceOrder !== 0) {
-    return requesterLevelDistanceOrder;
+  if (includeRequesterLevelDistance) {
+    const requesterLevelDistanceOrder = compareOptionalDistance(
+      left.matchQuality?.requesterLevelDistance,
+      right.matchQuality?.requesterLevelDistance,
+    );
+    if (requesterLevelDistanceOrder !== 0) {
+      return requesterLevelDistanceOrder;
+    }
   }
 
   const locationDistanceOrder = compareOptionalDistance(
@@ -1012,12 +1038,14 @@ function compareNeutralCandidateOrder(left, right) {
     return locationDistanceOrder;
   }
 
-  const requesterLocationDistanceOrder = compareOptionalDistance(
-    left.matchQuality?.requesterLocationDistance,
-    right.matchQuality?.requesterLocationDistance,
-  );
-  if (requesterLocationDistanceOrder !== 0) {
-    return requesterLocationDistanceOrder;
+  if (includeRequesterLocationDistance) {
+    const requesterLocationDistanceOrder = compareOptionalDistance(
+      left.matchQuality?.requesterLocationDistance,
+      right.matchQuality?.requesterLocationDistance,
+    );
+    if (requesterLocationDistanceOrder !== 0) {
+      return requesterLocationDistanceOrder;
+    }
   }
 
   const leftJoinedAt = Number.isFinite(Number(left.joinedPoolAtMillis)) ?
@@ -1042,7 +1070,7 @@ function limitQualityRankedCandidates({
     return candidates;
   }
   return [...candidates]
-    .sort(compareNeutralCandidateOrder)
+    .sort(buildNeutralCandidateComparator(candidates))
     .slice(0, targetCount);
 }
 
@@ -1066,8 +1094,9 @@ function mergeCandidatePools({
       }
     });
 
-  return Array.from(candidatesById.values())
-    .sort(compareNeutralCandidateOrder)
+  const candidates = Array.from(candidatesById.values());
+  return candidates
+    .sort(buildNeutralCandidateComparator(candidates))
     .map(stripInternalCandidateFields);
 }
 
@@ -1549,7 +1578,6 @@ module.exports = {
   collectStudentQueueCandidates,
   collectTeacherAvailabilityCandidates,
   collectMatchCandidatePool,
-  compareNeutralCandidateOrder,
   readPreferredLevelRank,
   isActiveStudentSearchRequest,
   mergeCandidatePools,
