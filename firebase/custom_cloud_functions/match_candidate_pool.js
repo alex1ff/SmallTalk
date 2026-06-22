@@ -390,6 +390,11 @@ function buildBlockMatch({
   return {valid: true, reason: "not_blocked"};
 }
 
+function hasActiveCallState(userData = {}) {
+  return userData.isInCall === true ||
+    Boolean(normalizeString(userData.currentSessionId));
+}
+
 function readRequestUserId(requestDoc, requestData = {}) {
   return normalizeString(requestData[SEARCH_REQUEST_FIELD.USER_ID]) ||
     readReferenceId(requestData[SEARCH_REQUEST_FIELD.USER_REF]) ||
@@ -622,7 +627,7 @@ function buildStudentQueueCandidateFromDocs({
   if (normalizeRole(userData.role || requestData.role) !== "student") {
     return null;
   }
-  if (userData.isInCall === true || normalizeString(userData.currentSessionId)) {
+  if (hasActiveCallState(userData)) {
     return null;
   }
 
@@ -712,7 +717,7 @@ function buildTeacherAvailabilityCandidateFromDoc({
   if (normalizeRole(userData.role) !== "native_speaker") {
     return null;
   }
-  if (userData.isInCall === true || normalizeString(userData.currentSessionId)) {
+  if (hasActiveCallState(userData)) {
     return null;
   }
   const blockMatch = buildBlockMatch({

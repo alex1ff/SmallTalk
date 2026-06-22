@@ -715,6 +715,37 @@ test("student queue candidate normalizes path-form participant ids", () => {
   );
 });
 
+test("student queue candidate rejects users already in call", () => {
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-in-call", activeRequest({
+        requestId: "request-student-in-call",
+        userId: "student-in-call",
+        userRef: {id: "student-in-call"},
+      })),
+      userDoc: doc("student-in-call", studentData({isInCall: true})),
+      language: "en",
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-session", activeRequest({
+        requestId: "request-student-session",
+        userId: "student-session",
+        userRef: {id: "student-session"},
+      })),
+      userDoc: doc("student-session", studentData({
+        currentSessionId: "session-a",
+      })),
+      language: "en",
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+});
+
 test("student queue candidate rejects missing user and changed role", () => {
   assert.equal(
     buildStudentQueueCandidateFromDocs({
@@ -881,6 +912,29 @@ test("teacher availability candidate rejects requester and candidate blocklists"
       now: new Date(fixedNowMillis),
       nowMillis: fixedNowMillis,
       requesterId: "requester-a",
+    }),
+    null,
+  );
+});
+
+test("teacher availability candidate rejects users already in call", () => {
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-in-call", teacherData({isInCall: true})),
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-session", teacherData({
+        currentSessionId: "session-a",
+      })),
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
     }),
     null,
   );
@@ -1884,6 +1938,78 @@ test("collectMatchCandidatePool scans past tokenless teachers", async () => {
     ["teacher-a"],
   );
   assert.equal(result.stats.teacherUsersScanned, 2);
+  assert.equal(result.stats.teacherCandidates, 1);
+});
+
+test("collectMatchCandidatePool scans past users already in call", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-in-call", activeRequest({
+        requestId: "request-student-in-call",
+        userId: "student-in-call",
+        userRef: {id: "student-in-call"},
+        createdAt: timestampFromMillis(fixedNowMillis - 180 * 1000),
+      })),
+      doc("student-session", activeRequest({
+        requestId: "request-student-session",
+        userId: "student-session",
+        userRef: {id: "student-session"},
+        createdAt: timestampFromMillis(fixedNowMillis - 160 * 1000),
+      })),
+      doc("student-a", activeRequest({
+        requestId: "request-student-a",
+        userId: "student-a",
+        userRef: {id: "student-a"},
+        createdAt: timestampFromMillis(fixedNowMillis - 140 * 1000),
+      })),
+    ],
+    teacherDocs: [
+      doc("teacher-in-call", teacherData({
+        isInCall: true,
+        availableSince: timestampFromMillis(fixedNowMillis - 300 * 1000),
+      })),
+      doc("teacher-session", teacherData({
+        currentSessionId: "session-a",
+        availableSince: timestampFromMillis(fixedNowMillis - 280 * 1000),
+      })),
+      doc("teacher-a", teacherData({
+        availableSince: timestampFromMillis(fixedNowMillis - 260 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "student-in-call": doc("student-in-call", studentData({isInCall: true})),
+      "student-session": doc("student-session", studentData({
+        currentSessionId: "session-a",
+      })),
+      "student-a": doc("student-a", studentData()),
+    },
+    privateTokenDocsById: {
+      "teacher-in-call": doc("teacher-in-call", privateTokenData()),
+      "teacher-session": doc("teacher-session", privateTokenData()),
+      "teacher-a": doc("teacher-a", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+    studentLimit: 1,
+    teacherLimit: 1,
+    studentScanPageSize: 1,
+    teacherScanPageSize: 1,
+    studentMaxScanPages: 4,
+    teacherMaxScanPages: 4,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-a", "student-a"],
+  );
+  assert.equal(result.stats.studentRequestsScanned, 3);
+  assert.equal(result.stats.teacherUsersScanned, 3);
+  assert.equal(result.stats.studentCandidates, 1);
   assert.equal(result.stats.teacherCandidates, 1);
 });
 
