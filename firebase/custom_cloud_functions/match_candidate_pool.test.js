@@ -647,6 +647,74 @@ test("student queue candidate honors candidate preferred location filter", () =>
   );
 });
 
+test("student queue candidate rejects requester and candidate blocklists", () => {
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-blocked", activeRequest({
+        requestId: "request-student-blocked",
+        userId: "student-blocked",
+        userRef: {id: "student-blocked"},
+        filters: {},
+      })),
+      userDoc: doc("student-blocked", studentData()),
+      language: "en",
+      nowMillis: fixedNowMillis,
+      requesterId: "requester-a",
+      requesterBlockedIds: ["users/student-blocked"],
+    }),
+    null,
+  );
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-blocker", activeRequest({
+        requestId: "request-student-blocker",
+        userId: "student-blocker",
+        userRef: {id: "student-blocker"},
+        filters: {},
+      })),
+      userDoc: doc("student-blocker", studentData({
+        blockedUsers: [{id: "requester-a"}],
+      })),
+      language: "en",
+      nowMillis: fixedNowMillis,
+      requesterId: "requester-a",
+    }),
+    null,
+  );
+});
+
+test("student queue candidate normalizes path-form participant ids", () => {
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-blocker", activeRequest({
+        requestId: "request-student-blocker",
+        userId: "student-blocker",
+        userRef: {id: "student-blocker"},
+        filters: {},
+      })),
+      userDoc: doc("student-blocker", studentData({
+        blockedUsers: ["requester-a"],
+      })),
+      language: "en",
+      nowMillis: fixedNowMillis,
+      requesterId: "users/requester-a",
+    }),
+    null,
+  );
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-blocker", teacherData({
+        blockedUsers: ["requester-a"],
+      })),
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+      requesterId: "users/requester-a",
+    }),
+    null,
+  );
+});
+
 test("student queue candidate rejects missing user and changed role", () => {
   assert.equal(
     buildStudentQueueCandidateFromDocs({
@@ -787,6 +855,32 @@ test("teacher availability candidate requires approved available teacher", () =>
       userDoc: doc("teacher-a", teacherData()),
       now: new Date(fixedNowMillis),
       nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+});
+
+test("teacher availability candidate rejects requester and candidate blocklists", () => {
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-blocked", teacherData()),
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+      requesterId: "requester-a",
+      requesterBlockedIds: ["teacher-blocked"],
+    }),
+    null,
+  );
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-blocker", teacherData({
+        blockedUsers: ["users/requester-a"],
+      })),
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+      requesterId: "requester-a",
     }),
     null,
   );
@@ -1101,7 +1195,7 @@ test("collectMatchCandidatePool excludes requester from unified pool", async () 
 
   const result = await collectMatchCandidatePool({
     db,
-    requesterId: "teacher-a",
+    requesterId: "users/teacher-a",
     language: "en",
     now: new Date(fixedNowMillis),
     nowMillis: fixedNowMillis,
@@ -1573,6 +1667,102 @@ test("collectMatchCandidatePool reads requester location for mutual filter", asy
   assert.deepEqual(
     result.candidates.map((candidate) => candidate.userId),
     ["student-us-city"],
+  );
+});
+
+test("collectMatchCandidatePool filters blocklists in both directions", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-blocked", activeRequest({
+        requestId: "request-student-blocked",
+        userId: "student-blocked",
+        userRef: {id: "student-blocked"},
+        filters: {},
+      })),
+      doc("student-blocker", activeRequest({
+        requestId: "request-student-blocker",
+        userId: "student-blocker",
+        userRef: {id: "student-blocker"},
+        filters: {},
+      })),
+      doc("student-ok", activeRequest({
+        requestId: "request-student-ok",
+        userId: "student-ok",
+        userRef: {id: "student-ok"},
+        filters: {},
+      })),
+    ],
+    teacherDocs: [
+      doc("teacher-blocked", teacherData({
+        availableSince: timestampFromMillis(fixedNowMillis - 260 * 1000),
+      })),
+      doc("teacher-blocker", teacherData({
+        availableSince: timestampFromMillis(fixedNowMillis - 250 * 1000),
+        blockedUsers: [{id: "requester-a"}],
+      })),
+      doc("teacher-ok", teacherData({
+        availableSince: timestampFromMillis(fixedNowMillis - 240 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "requester-a": doc("requester-a", studentData({
+        blockedUsers: ["users/student-blocked", {id: "teacher-blocked"}],
+      })),
+      "student-blocked": doc("student-blocked", studentData()),
+      "student-blocker": doc("student-blocker", studentData({
+        blockedUsers: ["requester-a"],
+      })),
+      "student-ok": doc("student-ok", studentData()),
+    },
+    privateTokenDocsById: {
+      "teacher-blocked": doc("teacher-blocked", privateTokenData()),
+      "teacher-blocker": doc("teacher-blocker", privateTokenData()),
+      "teacher-ok": doc("teacher-ok", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "users/requester-a",
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-ok", "student-ok"],
+  );
+  assert.equal(result.stats.studentCandidates, 1);
+  assert.equal(result.stats.teacherCandidates, 1);
+});
+
+test("collectMatchCandidatePool keeps old callers working without requester doc", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-a", activeRequest({
+        requestId: "request-student-a",
+        userId: "student-a",
+        userRef: {id: "student-a"},
+        filters: {},
+      })),
+    ],
+    userDocsById: {
+      "student-a": doc("student-a", studentData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "missing-requester",
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-a"],
   );
 });
 

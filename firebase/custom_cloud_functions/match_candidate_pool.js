@@ -12,6 +12,7 @@ const {
 } = require("./search_requests");
 const {
   buildMatchProfile,
+  extractBlockedIds,
   normalizeRole,
   readLanguageCode,
   readMatchLevelValue,
@@ -349,6 +350,46 @@ function readReferenceId(value) {
   return value && typeof value.id === "string" ? value.id.trim() : "";
 }
 
+function normalizeBlockedUserId(value) {
+  const normalized = normalizeString(value);
+  if (!normalized.includes("/")) {
+    return normalized;
+  }
+  return normalized.split("/").filter(Boolean).pop() || "";
+}
+
+function readBlockedUserIds(userData = {}) {
+  return extractBlockedIds(userData.blockedUsers)
+    .map(normalizeBlockedUserId)
+    .filter(Boolean);
+}
+
+function buildBlockMatch({
+  requesterId = "",
+  requesterBlockedIds = [],
+  candidateId = "",
+  candidateData = {},
+}) {
+  const normalizedRequesterId = normalizeBlockedUserId(requesterId);
+  const normalizedCandidateId = normalizeBlockedUserId(candidateId);
+  const requesterBlockedSet = new Set(
+    requesterBlockedIds.map(normalizeBlockedUserId).filter(Boolean),
+  );
+  if (normalizedCandidateId && requesterBlockedSet.has(normalizedCandidateId)) {
+    return {valid: false, reason: "blocked_by_requester"};
+  }
+
+  if (!normalizedRequesterId) {
+    return {valid: true, reason: "not_blocked"};
+  }
+  const candidateBlockedSet = new Set(readBlockedUserIds(candidateData));
+  if (candidateBlockedSet.has(normalizedRequesterId)) {
+    return {valid: false, reason: "blocked_by_candidate"};
+  }
+
+  return {valid: true, reason: "not_blocked"};
+}
+
 function readRequestUserId(requestDoc, requestData = {}) {
   return normalizeString(requestData[SEARCH_REQUEST_FIELD.USER_ID]) ||
     readReferenceId(requestData[SEARCH_REQUEST_FIELD.USER_REF]) ||
@@ -554,6 +595,8 @@ function buildStudentQueueCandidateFromDocs({
   preferredLocation = {},
   requesterLevelRank = null,
   requesterLocation = null,
+  requesterId = "",
+  requesterBlockedIds = [],
 }) {
   const requestData = readDocData(requestDoc);
   const userData = readDocData(userDoc);
@@ -580,6 +623,16 @@ function buildStudentQueueCandidateFromDocs({
     return null;
   }
   if (userData.isInCall === true || normalizeString(userData.currentSessionId)) {
+    return null;
+  }
+
+  const blockMatch = buildBlockMatch({
+    requesterId,
+    requesterBlockedIds,
+    candidateId: requestUserId,
+    candidateData: userData,
+  });
+  if (!blockMatch.valid) {
     return null;
   }
 
@@ -647,6 +700,8 @@ function buildTeacherAvailabilityCandidateFromDoc({
   nowMillis = null,
   preferredLevelRank = null,
   preferredLocation = {},
+  requesterId = "",
+  requesterBlockedIds = [],
 }) {
   const effectiveNowMillis = resolveNowMillis(now, nowMillis);
   const userData = readDocData(userDoc);
@@ -658,6 +713,15 @@ function buildTeacherAvailabilityCandidateFromDoc({
     return null;
   }
   if (userData.isInCall === true || normalizeString(userData.currentSessionId)) {
+    return null;
+  }
+  const blockMatch = buildBlockMatch({
+    requesterId,
+    requesterBlockedIds,
+    candidateId: userId,
+    candidateData: userData,
+  });
+  if (!blockMatch.valid) {
     return null;
   }
 
@@ -797,13 +861,13 @@ function mergeCandidatePools({
   teacherCandidates = [],
   requesterId = "",
 }) {
-  const normalizedRequesterId = normalizeString(requesterId);
+  const normalizedRequesterId = normalizeBlockedUserId(requesterId);
   const candidatesById = new Map();
 
   [...studentCandidates, ...teacherCandidates]
     .filter(Boolean)
     .forEach((candidate) => {
-      const userId = normalizeString(candidate.userId);
+      const userId = normalizeBlockedUserId(candidate.userId);
       if (!userId || userId === normalizedRequesterId) {
         return;
       }
@@ -890,6 +954,8 @@ async function collectStudentQueueCandidates({
   preferredLocation = {},
   requesterLevelRank = null,
   requesterLocation = null,
+  requesterId = "",
+  requesterBlockedIds = [],
 }) {
   const targetCount = normalizePositiveInteger(
     candidateLimit,
@@ -940,6 +1006,8 @@ async function collectStudentQueueCandidates({
         preferredLocation,
         requesterLevelRank,
         requesterLocation,
+        requesterId,
+        requesterBlockedIds,
       });
       if (candidate) {
         candidates.push(candidate);
@@ -974,6 +1042,8 @@ async function collectTeacherAvailabilityCandidates({
   tokenReader = getReadOnlyUserVoipTokenState,
   preferredLevelRank = null,
   preferredLocation = {},
+  requesterId = "",
+  requesterBlockedIds = [],
 }) {
   const targetCount = normalizePositiveInteger(
     candidateLimit,
@@ -1014,6 +1084,8 @@ async function collectTeacherAvailabilityCandidates({
         nowMillis,
         preferredLevelRank,
         preferredLocation,
+        requesterId,
+        requesterBlockedIds,
       });
       if (!candidate) {
         continue;
@@ -1069,11 +1141,12 @@ async function readRequesterMatchQualityProfile(
   requesterLevel = "",
 ) {
   const explicitLevelRank = readLevelRankFromLevel(requesterLevel);
-  const normalizedRequesterId = normalizeString(requesterId);
+  const normalizedRequesterId = normalizeBlockedUserId(requesterId);
   if (!normalizedRequesterId || !db || typeof db.collection !== "function") {
     return {
       levelRank: explicitLevelRank,
       location: null,
+      blockedIds: [],
     };
   }
 
@@ -1086,6 +1159,7 @@ async function readRequesterMatchQualityProfile(
     return {
       levelRank: explicitLevelRank,
       location: null,
+      blockedIds: [],
     };
   }
 
@@ -1093,6 +1167,7 @@ async function readRequesterMatchQualityProfile(
     levelRank: explicitLevelRank ??
       readLevelRankFromLevel(readCandidateLevelValue(requesterData)),
     location: readCandidateLocation(requesterData),
+    blockedIds: readBlockedUserIds(requesterData),
   };
 }
 
@@ -1113,6 +1188,7 @@ async function collectMatchCandidatePool({
 }) {
   const effectiveNowMillis = resolveNowMillis(now, nowMillis);
   const normalizedLanguage = readLanguageCode(language);
+  const normalizedRequesterId = normalizeBlockedUserId(requesterId);
   if (!normalizedLanguage) {
     return {
       candidates: [],
@@ -1130,7 +1206,7 @@ async function collectMatchCandidatePool({
   const preferredLocation = readPreferredLocation(requesterFilters);
   const requesterProfile = await readRequesterMatchQualityProfile(
     db,
-    requesterId,
+    normalizedRequesterId,
     requesterLevel,
   );
 
@@ -1149,6 +1225,8 @@ async function collectMatchCandidatePool({
       preferredLocation,
       requesterLevelRank: requesterProfile.levelRank,
       requesterLocation: requesterProfile.location,
+      requesterId: normalizedRequesterId,
+      requesterBlockedIds: requesterProfile.blockedIds,
     }),
     collectTeacherAvailabilityCandidates({
       db,
@@ -1161,13 +1239,15 @@ async function collectMatchCandidatePool({
       maxPages: teacherMaxScanPages,
       preferredLevelRank,
       preferredLocation,
+      requesterId: normalizedRequesterId,
+      requesterBlockedIds: requesterProfile.blockedIds,
     }),
   ]);
 
   const candidates = mergeCandidatePools({
     studentCandidates: studentResult.candidates,
     teacherCandidates: teacherResult.candidates,
-    requesterId,
+    requesterId: normalizedRequesterId,
   });
 
   return {
