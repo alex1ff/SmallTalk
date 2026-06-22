@@ -417,6 +417,236 @@ test("student queue candidate honors candidate preferred level filter", () => {
   );
 });
 
+test("candidate location filter accepts country from profile fields", () => {
+  const countryMatch = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-us", activeRequest({
+      requestId: "request-student-us",
+      userId: "student-us",
+      userRef: {id: "student-us"},
+      filters: {},
+    })),
+    userDoc: doc("student-us", studentData({
+      Country_NS: {code: "us"},
+      profileCity: {key: "new_york"},
+    })),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLocation: {
+      countryCode: "US",
+      cityKey: "",
+      invalidCityFilter: false,
+    },
+  });
+  const countryFromMatchProfile = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-profile-country", activeRequest({
+      requestId: "request-student-profile-country",
+      userId: "student-profile-country",
+      userRef: {id: "student-profile-country"},
+      filters: {},
+    })),
+    userDoc: doc("student-profile-country", studentData({
+      Country_NS: null,
+      matchProfile: {country: {value: "US"}},
+    })),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLocation: {
+      countryCode: "US",
+      cityKey: "",
+      invalidCityFilter: false,
+    },
+  });
+  const countryMismatch = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-ca", activeRequest({
+      requestId: "request-student-ca",
+      userId: "student-ca",
+      userRef: {id: "student-ca"},
+      filters: {},
+    })),
+    userDoc: doc("student-ca", studentData({Country_NS: {code: "CA"}})),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLocation: {
+      countryCode: "US",
+      cityKey: "",
+      invalidCityFilter: false,
+    },
+  });
+
+  assert.equal(countryMatch.userId, "student-us");
+  assert.equal(countryMatch.matchQuality.locationTier, "country_exact");
+  assert.equal(countryMatch.matchQuality.locationDistance, 1);
+  assert.equal(countryFromMatchProfile.userId, "student-profile-country");
+  assert.equal(countryMismatch, null);
+});
+
+test("candidate location falls back after empty legacy country field", () => {
+  const candidate = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-profile-country", activeRequest({
+      requestId: "request-student-profile-country",
+      userId: "student-profile-country",
+      userRef: {id: "student-profile-country"},
+      filters: {},
+    })),
+    userDoc: doc("student-profile-country", studentData({
+      Country_NS: {},
+      matchProfile: {country: {code: "US"}},
+    })),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLocation: {
+      countryCode: "US",
+      cityKey: "",
+      invalidCityFilter: false,
+    },
+  });
+
+  assert.equal(candidate.userId, "student-profile-country");
+  assert.equal(candidate.matchQuality.candidateCountryCode, "US");
+});
+
+test("candidate location filter requires selected city and country pair", () => {
+  const selectedLocation = {
+    countryCode: "US",
+    cityKey: "new_york",
+    invalidCityFilter: false,
+  };
+  const cityMatch = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-ny", activeRequest({
+      requestId: "request-student-ny",
+      userId: "student-ny",
+      userRef: {id: "student-ny"},
+      filters: {},
+    })),
+    userDoc: doc("student-ny", studentData({
+      Country_NS: {code: "US"},
+      profileCity: {key: " New_York "},
+    })),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLocation: selectedLocation,
+  });
+  const sameCityKeyWrongCountry = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-ny-ca", activeRequest({
+      requestId: "request-student-ny-ca",
+      userId: "student-ny-ca",
+      userRef: {id: "student-ny-ca"},
+      filters: {},
+    })),
+    userDoc: doc("student-ny-ca", studentData({
+      Country_NS: {code: "US"},
+      profileCity: {countryCode: "CA", cityKey: "new_york"},
+    })),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLocation: selectedLocation,
+  });
+  const missingCity = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-us", activeRequest({
+      requestId: "request-student-us",
+      userId: "student-us",
+      userRef: {id: "student-us"},
+      filters: {},
+    })),
+    userDoc: doc("student-us", studentData({Country_NS: {code: "US"}})),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLocation: selectedLocation,
+  });
+
+  assert.equal(cityMatch.userId, "student-ny");
+  assert.equal(cityMatch.matchQuality.locationTier, "city_exact");
+  assert.equal(cityMatch.matchQuality.locationDistance, 0);
+  assert.equal(sameCityKeyWrongCountry, null);
+  assert.equal(missingCity, null);
+});
+
+test("candidate location keeps profileCity source atomic", () => {
+  const selectedLocation = {
+    countryCode: "US",
+    cityKey: "new_york",
+    invalidCityFilter: false,
+  };
+  const profileCityWins = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-profile-city", activeRequest({
+      requestId: "request-student-profile-city",
+      userId: "student-profile-city",
+      userRef: {id: "student-profile-city"},
+      filters: {},
+    })),
+    userDoc: doc("student-profile-city", studentData({
+      Country_NS: {code: "US"},
+      profileCity: {cityKey: "new_york"},
+      matchProfile: {
+        city: {countryCode: "CA", cityKey: "new_york"},
+      },
+    })),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLocation: selectedLocation,
+  });
+
+  assert.equal(profileCityWins.userId, "student-profile-city");
+  assert.equal(profileCityWins.matchQuality.candidateCityCountryCode, "US");
+});
+
+test("student queue candidate honors candidate preferred location filter", () => {
+  const rejectedByCandidateFilter = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-country-strict", activeRequest({
+      requestId: "request-student-country-strict",
+      userId: "student-country-strict",
+      userRef: {id: "student-country-strict"},
+      filters: {countryCode: "CA"},
+    })),
+    userDoc: doc("student-country-strict", studentData({
+      Country_NS: {code: "US"},
+    })),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLocation: {
+      countryCode: "US",
+      cityKey: "",
+      invalidCityFilter: false,
+    },
+    requesterLocation: {
+      countryCode: "US",
+      cityKey: "new_york",
+      cityCountryCode: "US",
+    },
+  });
+  const acceptedByCandidateFilter = buildStudentQueueCandidateFromDocs({
+    requestDoc: doc("student-city-flexible", activeRequest({
+      requestId: "request-student-city-flexible",
+      userId: "student-city-flexible",
+      userRef: {id: "student-city-flexible"},
+      filters: {countryCode: "US", cityKey: "new_york"},
+    })),
+    userDoc: doc("student-city-flexible", studentData({
+      Country_NS: {code: "US"},
+      profileCity: {countryCode: "US", cityKey: "new_york"},
+    })),
+    language: "en",
+    nowMillis: fixedNowMillis,
+    preferredLocation: {
+      countryCode: "US",
+      cityKey: "",
+      invalidCityFilter: false,
+    },
+    requesterLocation: {
+      countryCode: "US",
+      cityKey: "new_york",
+      cityCountryCode: "US",
+    },
+  });
+
+  assert.equal(rejectedByCandidateFilter, null);
+  assert.equal(acceptedByCandidateFilter.userId, "student-city-flexible");
+  assert.equal(
+    acceptedByCandidateFilter.matchQuality.requesterLocationTier,
+    "city_exact",
+  );
+});
+
 test("student queue candidate rejects missing user and changed role", () => {
   assert.equal(
     buildStudentQueueCandidateFromDocs({
@@ -774,6 +1004,30 @@ test("candidate pool merge treats null level distance as no level ranking", () =
   );
 });
 
+test("candidate pool merge ranks city match before country match", () => {
+  const candidates = mergeCandidatePools({
+    studentCandidates: [
+      {
+        userId: "student-country",
+        joinedPoolAtMillis: fixedNowMillis - 120 * 1000,
+        matchQuality: {locationDistance: 1},
+      },
+    ],
+    teacherCandidates: [
+      {
+        userId: "teacher-city",
+        joinedPoolAtMillis: fixedNowMillis - 60 * 1000,
+        matchQuality: {locationDistance: 0},
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.userId),
+    ["teacher-city", "student-country"],
+  );
+});
+
 test("candidate pool merge excludes requester and dedupes by user", () => {
   const candidates = mergeCandidatePools({
     requesterId: "student-a",
@@ -1119,6 +1373,206 @@ test("collectMatchCandidatePool reads requester level for mutual student filter"
   assert.deepEqual(
     result.candidates.map((candidate) => candidate.userId),
     ["student-flexible"],
+  );
+});
+
+test("collectMatchCandidatePool filters candidates by selected country", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-ca", activeRequest({
+        requestId: "request-student-ca",
+        userId: "student-ca",
+        userRef: {id: "student-ca"},
+        filters: {},
+      })),
+      doc("student-us", activeRequest({
+        requestId: "request-student-us",
+        userId: "student-us",
+        userRef: {id: "student-us"},
+        filters: {},
+      })),
+    ],
+    teacherDocs: [
+      doc("teacher-us", teacherData({Country_NS: {code: "us"}})),
+      doc("teacher-ca", teacherData({Country_NS: {code: "CA"}})),
+    ],
+    userDocsById: {
+      "student-ca": doc("student-ca", studentData({
+        Country_NS: {code: "CA"},
+      })),
+      "student-us": doc("student-us", studentData({
+        Country_NS: {code: "US"},
+      })),
+    },
+    privateTokenDocsById: {
+      "teacher-us": doc("teacher-us", privateTokenData()),
+      "teacher-ca": doc("teacher-ca", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    requesterFilters: {countryCode: "us"},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-us", "student-us"],
+  );
+});
+
+test("collectMatchCandidatePool filters candidates by selected city", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-ny-ca", activeRequest({
+        requestId: "request-student-ny-ca",
+        userId: "student-ny-ca",
+        userRef: {id: "student-ny-ca"},
+        filters: {},
+      })),
+      doc("student-ny-us", activeRequest({
+        requestId: "request-student-ny-us",
+        userId: "student-ny-us",
+        userRef: {id: "student-ny-us"},
+        filters: {},
+      })),
+    ],
+    teacherDocs: [
+      doc("teacher-us-other-city", teacherData({
+        Country_NS: {code: "US"},
+        profileCity: {countryCode: "US", cityKey: "los_angeles"},
+      })),
+      doc("teacher-ny-us", teacherData({
+        Country_NS: {code: "US"},
+        profileCity: {countryCode: "US", cityKey: "new_york"},
+      })),
+    ],
+    userDocsById: {
+      "student-ny-ca": doc("student-ny-ca", studentData({
+        Country_NS: {code: "US"},
+        profileCity: {countryCode: "CA", cityKey: "new_york"},
+      })),
+      "student-ny-us": doc("student-ny-us", studentData({
+        Country_NS: {code: "US"},
+        profileCity: {countryCode: "US", cityKey: "new_york"},
+      })),
+    },
+    privateTokenDocsById: {
+      "teacher-us-other-city": doc(
+        "teacher-us-other-city",
+        privateTokenData(),
+      ),
+      "teacher-ny-us": doc("teacher-ny-us", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    requesterFilters: {countryCode: "US", cityKey: "new_york"},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-ny-us", "student-ny-us"],
+  );
+  result.candidates.forEach((candidate) => {
+    assert.equal(candidate.matchQuality.locationTier, "city_exact");
+  });
+});
+
+test("collectMatchCandidatePool scans beyond limit for location match", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-ca", activeRequest({
+        requestId: "request-student-ca",
+        userId: "student-ca",
+        userRef: {id: "student-ca"},
+        filters: {},
+      })),
+      doc("student-us", activeRequest({
+        requestId: "request-student-us",
+        userId: "student-us",
+        userRef: {id: "student-us"},
+        filters: {},
+      })),
+    ],
+    userDocsById: {
+      "student-ca": doc("student-ca", studentData({
+        Country_NS: {code: "CA"},
+      })),
+      "student-us": doc("student-us", studentData({
+        Country_NS: {code: "US"},
+      })),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    language: "en",
+    requesterFilters: {countryCode: "US"},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+    studentLimit: 1,
+    studentScanPageSize: 1,
+    studentMaxScanPages: 3,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-us"],
+  );
+  assert.equal(result.stats.studentRequestsScanned, 2);
+  assert.equal(result.stats.studentCandidates, 1);
+});
+
+test("collectMatchCandidatePool reads requester location for mutual filter", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-ca-only", activeRequest({
+        requestId: "request-student-ca-only",
+        userId: "student-ca-only",
+        userRef: {id: "student-ca-only"},
+        filters: {countryCode: "CA"},
+      })),
+      doc("student-us-city", activeRequest({
+        requestId: "request-student-us-city",
+        userId: "student-us-city",
+        userRef: {id: "student-us-city"},
+        filters: {countryCode: "US", cityKey: "new_york"},
+      })),
+    ],
+    userDocsById: {
+      "requester-a": doc("requester-a", studentData({
+        Country_NS: {code: "US"},
+        profileCity: {countryCode: "US", cityKey: "new_york"},
+      })),
+      "student-ca-only": doc("student-ca-only", studentData({
+        Country_NS: {code: "US"},
+      })),
+      "student-us-city": doc("student-us-city", studentData({
+        Country_NS: {code: "US"},
+      })),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "requester-a",
+    language: "en",
+    requesterFilters: {countryCode: "US"},
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-us-city"],
   );
 });
 

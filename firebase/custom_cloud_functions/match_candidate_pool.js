@@ -6,6 +6,8 @@ const {
   SEARCH_REQUEST_LEVEL_RANK,
   SEARCH_REQUEST_STATUS,
   SEARCH_REQUEST_TIMING,
+  normalizeSearchRequestCityKey,
+  normalizeSearchRequestCountryCode,
   normalizeSearchRequestLevel,
 } = require("./search_requests");
 const {
@@ -92,16 +94,75 @@ function readLevelRankFromLevel(value) {
   return level ? SEARCH_REQUEST_LEVEL_RANK[level] : null;
 }
 
-function readCandidateLevelValue(userData = {}) {
-  const matchProfile = userData.matchProfile &&
-    typeof userData.matchProfile === "object" &&
-    !Array.isArray(userData.matchProfile) ?
-    userData.matchProfile :
+function readNestedObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ?
+    value :
     {};
+}
+
+function readCandidateLevelValue(userData = {}) {
+  const matchProfile = readNestedObject(userData.matchProfile);
   return readMatchLevelValue(userData) ||
     userData.level ||
     matchProfile.level ||
     "";
+}
+
+function readCityKeyValue(value) {
+  if (!value) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "object") {
+    return value.key || value.cityKey || value.value || "";
+  }
+  return "";
+}
+
+function readLocationCountryCode(value) {
+  if (!value) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return normalizeSearchRequestCountryCode(value);
+  }
+  if (typeof value === "object") {
+    return normalizeSearchRequestCountryCode(
+      value.countryCode ||
+        value.code ||
+        value.value ||
+        readLocationCountryCode(value.country),
+    );
+  }
+  return "";
+}
+
+function readCandidateLocation(userData = {}) {
+  const matchProfile = readNestedObject(userData.matchProfile);
+  const profileCity = readNestedObject(userData.profileCity);
+  const matchProfileCity = readNestedObject(matchProfile.city);
+  const countryCode = readLocationCountryCode(userData.Country_NS) ||
+    readLocationCountryCode(matchProfile.country);
+  const profileCityKey = normalizeSearchRequestCityKey(
+    readCityKeyValue(profileCity),
+  );
+  const matchProfileCityKey = normalizeSearchRequestCityKey(
+    readCityKeyValue(matchProfileCity),
+  );
+  const cityKey = profileCityKey || matchProfileCityKey;
+  const cityCountryCode = profileCityKey ?
+    (readLocationCountryCode(profileCity) || countryCode) :
+    (matchProfileCityKey ?
+      (readLocationCountryCode(matchProfileCity) || countryCode) :
+      "");
+
+  return {
+    countryCode,
+    cityKey,
+    cityCountryCode,
+  };
 }
 
 function readPreferredLevelRank(filters = {}) {
@@ -121,6 +182,35 @@ function readPreferredLevelRank(filters = {}) {
     filters[SEARCH_REQUEST_FILTER_FIELD.LEVEL_RANK] ||
       filters.levelRank,
   );
+}
+
+function readPreferredLocation(filters = {}) {
+  if (!filters || typeof filters !== "object" || Array.isArray(filters)) {
+    return {
+      countryCode: "",
+      cityKey: "",
+      invalidCityFilter: false,
+    };
+  }
+
+  const countryCode = readLocationCountryCode(
+    filters[SEARCH_REQUEST_FILTER_FIELD.COUNTRY_CODE] ||
+      filters.countryCode ||
+      filters.country,
+  );
+  const rawCityKey = normalizeSearchRequestCityKey(
+    readCityKeyValue(
+      filters[SEARCH_REQUEST_FILTER_FIELD.CITY_KEY] ||
+        filters.cityKey ||
+        filters.city,
+    ),
+  );
+
+  return {
+    countryCode,
+    cityKey: countryCode ? rawCityKey : "",
+    invalidCityFilter: Boolean(rawCityKey && !countryCode),
+  };
 }
 
 function buildLevelMatch({
@@ -160,6 +250,88 @@ function buildLevelMatch({
     distance,
     tier: distance === 0 ? "exact" : "adjacent",
   };
+}
+
+function hasLocationFilter(location = {}) {
+  return Boolean(
+    location.invalidCityFilter ||
+      location.countryCode ||
+      location.cityKey,
+  );
+}
+
+function buildLocationMatch({
+  candidateLocation = {},
+  preferredLocation = {},
+}) {
+  if (!hasLocationFilter(preferredLocation)) {
+    return {
+      valid: true,
+      applied: false,
+      distance: null,
+      tier: null,
+    };
+  }
+  if (preferredLocation.invalidCityFilter) {
+    return {
+      valid: false,
+      applied: true,
+      distance: null,
+      tier: "invalid_city_filter",
+    };
+  }
+
+  if (preferredLocation.cityKey) {
+    if (
+      !candidateLocation.cityKey ||
+      !candidateLocation.cityCountryCode
+    ) {
+      return {
+        valid: false,
+        applied: true,
+        distance: null,
+        tier: "missing_city",
+      };
+    }
+    const cityMatches =
+      candidateLocation.cityKey === preferredLocation.cityKey &&
+      candidateLocation.cityCountryCode === preferredLocation.countryCode;
+    return cityMatches ?
+      {
+        valid: true,
+        applied: true,
+        distance: 0,
+        tier: "city_exact",
+      } :
+      {
+        valid: false,
+        applied: true,
+        distance: null,
+        tier: "city_mismatch",
+      };
+  }
+
+  if (!candidateLocation.countryCode) {
+    return {
+      valid: false,
+      applied: true,
+      distance: null,
+      tier: "missing_country",
+    };
+  }
+  return candidateLocation.countryCode === preferredLocation.countryCode ?
+    {
+      valid: true,
+      applied: true,
+      distance: 1,
+      tier: "country_exact",
+    } :
+    {
+      valid: false,
+      applied: true,
+      distance: null,
+      tier: "country_mismatch",
+    };
 }
 
 function readDocData(doc) {
@@ -299,7 +471,9 @@ function readTeacherJoinedPoolMillis(userData = {}, nowMillis = Date.now()) {
 function buildCandidateMatchQuality({
   userData = {},
   preferredLevelRank = null,
+  preferredLocation = {},
   requesterLevelRank = null,
+  requesterLocation = {},
   candidateFilters = {},
 }) {
   const candidateLevel = normalizeSearchRequestLevel(
@@ -316,6 +490,15 @@ function buildCandidateMatchQuality({
     return {valid: false, reason: "level_mismatch"};
   }
 
+  const candidateLocation = readCandidateLocation(userData);
+  const locationMatch = buildLocationMatch({
+    candidateLocation,
+    preferredLocation,
+  });
+  if (!locationMatch.valid) {
+    return {valid: false, reason: "location_mismatch"};
+  }
+
   const candidatePreferredLevelRank = requesterLevelRank === null ?
     null :
     readPreferredLevelRank(candidateFilters);
@@ -327,6 +510,17 @@ function buildCandidateMatchQuality({
     return {valid: false, reason: "requester_level_mismatch"};
   }
 
+  const candidatePreferredLocation = requesterLocation === null ?
+    {} :
+    readPreferredLocation(candidateFilters);
+  const requesterLocationMatch = buildLocationMatch({
+    candidateLocation: requesterLocation || {},
+    preferredLocation: candidatePreferredLocation,
+  });
+  if (!requesterLocationMatch.valid) {
+    return {valid: false, reason: "requester_location_mismatch"};
+  }
+
   return {
     valid: true,
     matchQuality: {
@@ -335,9 +529,18 @@ function buildCandidateMatchQuality({
       levelTier: levelMatch.tier,
       candidateLevel,
       candidateLevelRank,
+      locationApplied: locationMatch.applied,
+      locationDistance: locationMatch.distance,
+      locationTier: locationMatch.tier,
+      candidateCountryCode: candidateLocation.countryCode || null,
+      candidateCityKey: candidateLocation.cityKey || null,
+      candidateCityCountryCode: candidateLocation.cityCountryCode || null,
       requesterLevelApplied: requesterLevelMatch.applied,
       requesterLevelDistance: requesterLevelMatch.distance,
       requesterLevelTier: requesterLevelMatch.tier,
+      requesterLocationApplied: requesterLocationMatch.applied,
+      requesterLocationDistance: requesterLocationMatch.distance,
+      requesterLocationTier: requesterLocationMatch.tier,
     },
   };
 }
@@ -348,7 +551,9 @@ function buildStudentQueueCandidateFromDocs({
   language = "",
   nowMillis = Date.now(),
   preferredLevelRank = null,
+  preferredLocation = {},
   requesterLevelRank = null,
+  requesterLocation = null,
 }) {
   const requestData = readDocData(requestDoc);
   const userData = readDocData(userDoc);
@@ -393,7 +598,9 @@ function buildStudentQueueCandidateFromDocs({
   const matchQuality = buildCandidateMatchQuality({
     userData,
     preferredLevelRank,
+    preferredLocation,
     requesterLevelRank,
+    requesterLocation,
     candidateFilters: filters,
   });
   if (!matchQuality.valid) {
@@ -439,6 +646,7 @@ function buildTeacherAvailabilityCandidateFromDoc({
   now = new Date(),
   nowMillis = null,
   preferredLevelRank = null,
+  preferredLocation = {},
 }) {
   const effectiveNowMillis = resolveNowMillis(now, nowMillis);
   const userData = readDocData(userDoc);
@@ -465,6 +673,7 @@ function buildTeacherAvailabilityCandidateFromDoc({
   const matchQuality = buildCandidateMatchQuality({
     userData,
     preferredLevelRank,
+    preferredLocation,
   });
   if (!matchQuality.valid) {
     return null;
@@ -539,6 +748,22 @@ function compareNeutralCandidateOrder(left, right) {
   }
   if (leftHasLevelDistance !== rightHasLevelDistance) {
     return leftHasLevelDistance ? -1 : 1;
+  }
+
+  const leftLocationDistance = left.matchQuality?.locationDistance;
+  const rightLocationDistance = right.matchQuality?.locationDistance;
+  const leftHasLocationDistance =
+    typeof leftLocationDistance === "number" &&
+    Number.isFinite(leftLocationDistance);
+  const rightHasLocationDistance =
+    typeof rightLocationDistance === "number" &&
+    Number.isFinite(rightLocationDistance);
+  if (leftHasLocationDistance && rightHasLocationDistance &&
+      leftLocationDistance !== rightLocationDistance) {
+    return leftLocationDistance - rightLocationDistance;
+  }
+  if (leftHasLocationDistance !== rightHasLocationDistance) {
+    return leftHasLocationDistance ? -1 : 1;
   }
 
   const leftJoinedAt = Number.isFinite(Number(left.joinedPoolAtMillis)) ?
@@ -662,7 +887,9 @@ async function collectStudentQueueCandidates({
   pageSize = DEFAULT_SCAN_PAGE_SIZE,
   maxPages = DEFAULT_SCAN_MAX_PAGES,
   preferredLevelRank = null,
+  preferredLocation = {},
   requesterLevelRank = null,
+  requesterLocation = null,
 }) {
   const targetCount = normalizePositiveInteger(
     candidateLimit,
@@ -676,7 +903,8 @@ async function collectStudentQueueCandidates({
   const candidates = [];
   let scannedCount = 0;
   let lastDoc = null;
-  const qualityRankingEnabled = preferredLevelRank !== null;
+  const qualityRankingEnabled =
+    preferredLevelRank !== null || hasLocationFilter(preferredLocation);
 
   for (
     let page = 0;
@@ -709,7 +937,9 @@ async function collectStudentQueueCandidates({
         language,
         nowMillis,
         preferredLevelRank,
+        preferredLocation,
         requesterLevelRank,
+        requesterLocation,
       });
       if (candidate) {
         candidates.push(candidate);
@@ -743,6 +973,7 @@ async function collectTeacherAvailabilityCandidates({
   maxPages = DEFAULT_SCAN_MAX_PAGES,
   tokenReader = getReadOnlyUserVoipTokenState,
   preferredLevelRank = null,
+  preferredLocation = {},
 }) {
   const targetCount = normalizePositiveInteger(
     candidateLimit,
@@ -756,7 +987,8 @@ async function collectTeacherAvailabilityCandidates({
   const candidates = [];
   let scannedCount = 0;
   let lastDoc = null;
-  const qualityRankingEnabled = preferredLevelRank !== null;
+  const qualityRankingEnabled =
+    preferredLevelRank !== null || hasLocationFilter(preferredLocation);
 
   for (
     let page = 0;
@@ -781,6 +1013,7 @@ async function collectTeacherAvailabilityCandidates({
         now,
         nowMillis,
         preferredLevelRank,
+        preferredLocation,
       });
       if (!candidate) {
         continue;
@@ -830,15 +1063,18 @@ async function collectTeacherAvailabilityCandidates({
   };
 }
 
-async function readRequesterLevelRank(db, requesterId, requesterLevel = "") {
-  const explicitRank = readLevelRankFromLevel(requesterLevel);
-  if (explicitRank !== null) {
-    return explicitRank;
-  }
-
+async function readRequesterMatchQualityProfile(
+  db,
+  requesterId,
+  requesterLevel = "",
+) {
+  const explicitLevelRank = readLevelRankFromLevel(requesterLevel);
   const normalizedRequesterId = normalizeString(requesterId);
   if (!normalizedRequesterId || !db || typeof db.collection !== "function") {
-    return null;
+    return {
+      levelRank: explicitLevelRank,
+      location: null,
+    };
   }
 
   const requesterDoc = await db
@@ -846,9 +1082,18 @@ async function readRequesterLevelRank(db, requesterId, requesterLevel = "") {
     .doc(normalizedRequesterId)
     .get();
   const requesterData = readDocData(requesterDoc);
-  return requesterData ?
-    readLevelRankFromLevel(readCandidateLevelValue(requesterData)) :
-    null;
+  if (!requesterData) {
+    return {
+      levelRank: explicitLevelRank,
+      location: null,
+    };
+  }
+
+  return {
+    levelRank: explicitLevelRank ??
+      readLevelRankFromLevel(readCandidateLevelValue(requesterData)),
+    location: readCandidateLocation(requesterData),
+  };
 }
 
 async function collectMatchCandidatePool({
@@ -882,7 +1127,8 @@ async function collectMatchCandidatePool({
   }
 
   const preferredLevelRank = readPreferredLevelRank(requesterFilters);
-  const requesterLevelRank = await readRequesterLevelRank(
+  const preferredLocation = readPreferredLocation(requesterFilters);
+  const requesterProfile = await readRequesterMatchQualityProfile(
     db,
     requesterId,
     requesterLevel,
@@ -900,7 +1146,9 @@ async function collectMatchCandidatePool({
       pageSize: studentScanPageSize,
       maxPages: studentMaxScanPages,
       preferredLevelRank,
-      requesterLevelRank,
+      preferredLocation,
+      requesterLevelRank: requesterProfile.levelRank,
+      requesterLocation: requesterProfile.location,
     }),
     collectTeacherAvailabilityCandidates({
       db,
@@ -912,6 +1160,7 @@ async function collectMatchCandidatePool({
       pageSize: teacherScanPageSize,
       maxPages: teacherMaxScanPages,
       preferredLevelRank,
+      preferredLocation,
     }),
   ]);
 

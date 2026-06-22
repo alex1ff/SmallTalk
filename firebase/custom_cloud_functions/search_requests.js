@@ -277,7 +277,7 @@ function normalizeSearchRequestFilters(filters = {}) {
   const cityKey = normalizeSearchRequestCityKey(
     filters[SEARCH_REQUEST_FILTER_FIELD.CITY_KEY],
   );
-  if (cityKey) {
+  if (countryCode && cityKey) {
     normalized[SEARCH_REQUEST_FILTER_FIELD.CITY_KEY] = cityKey;
   }
 
@@ -410,6 +410,8 @@ module.exports = {
   isActiveSearchRequestStatus,
   isTerminalSearchRequestStatus,
   normalizeAppState,
+  normalizeSearchRequestCityKey,
+  normalizeSearchRequestCountryCode,
   normalizeSearchRequestFilters,
   normalizeSearchRequestLevel,
   normalizeSearchRequestStatus,

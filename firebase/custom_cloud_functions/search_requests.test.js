@@ -103,6 +103,16 @@ test("search request filters are whitelisted and normalized", () => {
     [SEARCH_REQUEST_FILTER_FIELD.PREFERRED_LEVEL]: "C1",
     [SEARCH_REQUEST_FILTER_FIELD.LEVEL_RANK]: 5,
   });
+  assert.deepEqual(normalizeSearchRequestFilters({
+    cityKey: "new_york",
+  }), {});
+  assert.deepEqual(normalizeSearchRequestFilters({
+    countryCode: "us",
+    cityKey: "new_york",
+  }), {
+    [SEARCH_REQUEST_FILTER_FIELD.COUNTRY_CODE]: "US",
+    [SEARCH_REQUEST_FILTER_FIELD.CITY_KEY]: "new_york",
+  });
   assert.deepEqual(normalizeSearchRequestFilters(null), {});
 });
 
