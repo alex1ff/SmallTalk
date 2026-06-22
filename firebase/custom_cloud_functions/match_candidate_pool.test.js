@@ -58,15 +58,28 @@ function fakeQuery(docs, {limitCount = null, startAfterId = ""} = {}) {
 
 function fakeDb({
   studentRequestDocs = [],
+  searchRequestDocsById = {},
   teacherDocs = [],
   userDocsById = {},
   usageDocsById = {},
   privateTokenDocsById = {},
+  repeatCompletionPaths = new Set(),
 }) {
+  const repeatCompletionPathSet = repeatCompletionPaths instanceof Set ?
+    repeatCompletionPaths :
+    new Set(repeatCompletionPaths);
   return {
     collection: (name) => {
       if (name === "searchRequests") {
-        return fakeQuery(studentRequestDocs);
+        return {
+          ...fakeQuery(studentRequestDocs),
+          doc: (id) => ({
+            get: async () =>
+              searchRequestDocsById[id] ||
+              studentRequestDocs.find((entry) => entry.id === id) ||
+              doc(id, null, false),
+          }),
+        };
       }
       if (name === "users") {
         return {
@@ -101,6 +114,23 @@ function fakeDb({
           doc: (id) => ({
             get: async () => privateTokenDocsById[id] || doc(id, null, false),
           }),
+        };
+      }
+      if (name === "matchPairDailyCompletions") {
+        return {
+          doc: (id) => {
+            const docPath = `matchPairDailyCompletions/${id}`;
+            return {
+              id,
+              path: docPath,
+              get: async () => doc(
+                id,
+                {},
+                repeatCompletionPathSet.has(docPath) ||
+                  repeatCompletionPathSet.has(id),
+              ),
+            };
+          },
         };
       }
       throw new Error(`Unexpected collection: ${name}`);
@@ -181,6 +211,12 @@ function dailyLimitUsageData() {
     weekKey: "2026-W01",
     weekDurationSeconds: 60 * 60,
   };
+}
+
+function dailyCompletionPath(dayKey, leftUserId, rightUserId) {
+  return `matchPairDailyCompletions/${dayKey}_${[leftUserId, rightUserId]
+    .sort()
+    .join("_")}`;
 }
 
 test("active student candidates come only from fresh active search requests", () => {
@@ -822,6 +858,39 @@ test("student queue candidate rejects users without call access", () => {
   );
 });
 
+test("student queue candidate rejects search lifecycle exclusions", () => {
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-excluded", activeRequest({
+        requestId: "request-student-excluded",
+        userId: "student-excluded",
+        userRef: {id: "student-excluded"},
+      })),
+      userDoc: doc("student-excluded", studentData()),
+      language: "en",
+      nowMillis: fixedNowMillis,
+      requesterId: "requester-a",
+      requesterExcludedCandidateIds: [{path: "users/student-excluded"}],
+    }),
+    null,
+  );
+  assert.equal(
+    buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-excluding-requester", activeRequest({
+        requestId: "request-student-excluding-requester",
+        userId: "student-excluding-requester",
+        userRef: {id: "student-excluding-requester"},
+        attemptExcludedCandidateIds: [{id: "requester-a"}],
+      })),
+      userDoc: doc("student-excluding-requester", studentData()),
+      language: "en",
+      nowMillis: fixedNowMillis,
+      requesterId: "requester-a",
+    }),
+    null,
+  );
+});
+
 test("student queue candidate rejects missing user and changed role", () => {
   assert.equal(
     buildStudentQueueCandidateFromDocs({
@@ -1022,6 +1091,20 @@ test("teacher availability candidate rejects users already in call", () => {
       language: "en",
       now: new Date(fixedNowMillis),
       nowMillis: fixedNowMillis,
+    }),
+    null,
+  );
+});
+
+test("teacher availability candidate rejects requester lifecycle exclusions", () => {
+  assert.equal(
+    buildTeacherAvailabilityCandidateFromDoc({
+      userDoc: doc("teacher-excluded", teacherData()),
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+      requesterId: "requester-a",
+      requesterExcludedCandidateIds: ["users/teacher-excluded"],
     }),
     null,
   );
@@ -1877,6 +1960,269 @@ test("collectMatchCandidatePool filters blocklists in both directions", async ()
   assert.equal(result.stats.studentCandidates, 1);
   assert.equal(result.stats.teacherCandidates, 1);
 });
+
+test("collectMatchCandidatePool filters search lifecycle exclusions", async () => {
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-excluded", activeRequest({
+        requestId: "request-student-excluded",
+        userId: "student-excluded",
+        userRef: {id: "student-excluded"},
+        filters: {},
+      })),
+      doc("student-excluding-requester", activeRequest({
+        requestId: "request-student-excluding-requester",
+        userId: "student-excluding-requester",
+        userRef: {id: "student-excluding-requester"},
+        filters: {},
+        excludedCandidateIds: ["users/requester-a"],
+      })),
+      doc("student-ok", activeRequest({
+        requestId: "request-student-ok",
+        userId: "student-ok",
+        userRef: {id: "student-ok"},
+        filters: {},
+      })),
+    ],
+    searchRequestDocsById: {
+      "requester-a": doc("requester-a", activeRequest({
+        requestId: "request-requester-a",
+        userId: "requester-a",
+        userRef: {id: "requester-a"},
+        excludedCandidateIds: ["users/student-excluded"],
+        attemptExcludedCandidateIds: ["teacher-excluded"],
+      })),
+    },
+    teacherDocs: [
+      doc("teacher-excluded", teacherData({
+        availableSince: timestampFromMillis(fixedNowMillis - 260 * 1000),
+      })),
+      doc("teacher-ok", teacherData({
+        availableSince: timestampFromMillis(fixedNowMillis - 240 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "requester-a": doc("requester-a", studentData()),
+      "student-excluded": doc("student-excluded", studentData()),
+      "student-excluding-requester": doc(
+        "student-excluding-requester",
+        studentData(),
+      ),
+      "student-ok": doc("student-ok", studentData()),
+    },
+    privateTokenDocsById: {
+      "teacher-excluded": doc("teacher-excluded", privateTokenData()),
+      "teacher-ok": doc("teacher-ok", privateTokenData()),
+    },
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "users/requester-a",
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-ok", "student-ok"],
+  );
+  assert.equal(result.stats.studentCandidates, 1);
+  assert.equal(result.stats.teacherCandidates, 1);
+});
+
+test("collectMatchCandidatePool scans past same-day repeat history", async () => {
+  const dayKey = "2026-01-01";
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-repeat", activeRequest({
+        requestId: "request-student-repeat",
+        userId: "student-repeat",
+        userRef: {id: "student-repeat"},
+        filters: {},
+        createdAt: timestampFromMillis(fixedNowMillis - 180 * 1000),
+      })),
+      doc("student-ok", activeRequest({
+        requestId: "request-student-ok",
+        userId: "student-ok",
+        userRef: {id: "student-ok"},
+        filters: {},
+        createdAt: timestampFromMillis(fixedNowMillis - 140 * 1000),
+      })),
+    ],
+    teacherDocs: [
+      doc("teacher-repeat", teacherData({
+        availableSince: timestampFromMillis(fixedNowMillis - 300 * 1000),
+      })),
+      doc("teacher-ok", teacherData({
+        availableSince: timestampFromMillis(fixedNowMillis - 260 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "requester-a": doc("requester-a", studentData()),
+      "student-repeat": doc("student-repeat", studentData()),
+      "student-ok": doc("student-ok", studentData()),
+    },
+    privateTokenDocsById: {
+      "teacher-repeat": doc("teacher-repeat", privateTokenData()),
+      "teacher-ok": doc("teacher-ok", privateTokenData()),
+    },
+    repeatCompletionPaths: [
+      dailyCompletionPath(dayKey, "requester-a", "student-repeat"),
+      dailyCompletionPath(dayKey, "requester-a", "teacher-repeat"),
+    ],
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "requester-a",
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+    studentLimit: 1,
+    teacherLimit: 1,
+    studentScanPageSize: 1,
+    teacherScanPageSize: 1,
+    studentMaxScanPages: 3,
+    teacherMaxScanPages: 3,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-ok", "student-ok"],
+  );
+  assert.equal(result.stats.studentRequestsScanned, 2);
+  assert.equal(result.stats.teacherUsersScanned, 2);
+  assert.equal(result.stats.studentCandidates, 1);
+  assert.equal(result.stats.teacherCandidates, 1);
+});
+
+test("collectMatchCandidatePool honors same-day repeat email bypass", async () => {
+  const dayKey = "2026-01-01";
+  const db = fakeDb({
+    teacherDocs: [
+      doc("teacher-email-bypass", teacherData({
+        email: "nsk.muratov@gmail.com",
+        availableSince: timestampFromMillis(fixedNowMillis - 260 * 1000),
+      })),
+    ],
+    userDocsById: {
+      "requester-email": doc("requester-email", studentData({
+        email: "elena.alpatkina@gmail.com",
+      })),
+    },
+    privateTokenDocsById: {
+      "teacher-email-bypass": doc(
+        "teacher-email-bypass",
+        privateTokenData(),
+      ),
+    },
+    repeatCompletionPaths: [
+      dailyCompletionPath(dayKey, "requester-email", "teacher-email-bypass"),
+    ],
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "requester-email",
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["teacher-email-bypass"],
+  );
+  assert.equal(result.candidates[0].email, undefined);
+  assert.deepEqual(Object.getOwnPropertySymbols(result.candidates[0]), []);
+});
+
+test("collectMatchCandidatePool applies email bypass to student peers", async () => {
+  const dayKey = "2026-01-01";
+  const db = fakeDb({
+    studentRequestDocs: [
+      doc("student-email-bypass", activeRequest({
+        requestId: "request-student-email-bypass",
+        userId: "student-email-bypass",
+        userRef: {id: "student-email-bypass"},
+        filters: {},
+      })),
+    ],
+    userDocsById: {
+      "requester-email": doc("requester-email", studentData({
+        email: "elena.alpatkina@gmail.com",
+      })),
+      "student-email-bypass": doc("student-email-bypass", studentData({
+        email: "nsk.muratov@gmail.com",
+      })),
+    },
+    repeatCompletionPaths: [
+      dailyCompletionPath(
+        dayKey,
+        "requester-email",
+        "student-email-bypass",
+      ),
+    ],
+  });
+
+  const result = await collectMatchCandidatePool({
+    db,
+    requesterId: "requester-email",
+    language: "en",
+    now: new Date(fixedNowMillis),
+    nowMillis: fixedNowMillis,
+  });
+
+  assert.deepEqual(
+    result.candidates.map((candidate) => candidate.userId),
+    ["student-email-bypass"],
+  );
+  assert.equal(result.candidates[0].email, undefined);
+  assert.deepEqual(Object.getOwnPropertySymbols(result.candidates[0]), []);
+});
+
+test(
+  "collectMatchCandidatePool honors requester email parameter for repeat bypass",
+  async () => {
+    const dayKey = "2026-01-01";
+    const db = fakeDb({
+      teacherDocs: [
+        doc("teacher-email-bypass", teacherData({
+          email: "nsk.muratov@gmail.com",
+          availableSince: timestampFromMillis(fixedNowMillis - 260 * 1000),
+        })),
+      ],
+      userDocsById: {
+        "requester-email": doc("requester-email", studentData()),
+      },
+      privateTokenDocsById: {
+        "teacher-email-bypass": doc(
+          "teacher-email-bypass",
+          privateTokenData(),
+        ),
+      },
+      repeatCompletionPaths: [
+        dailyCompletionPath(dayKey, "requester-email", "teacher-email-bypass"),
+      ],
+    });
+
+    const result = await collectMatchCandidatePool({
+      db,
+      requesterId: "requester-email",
+      requesterEmail: "elena.alpatkina@gmail.com",
+      language: "en",
+      now: new Date(fixedNowMillis),
+      nowMillis: fixedNowMillis,
+    });
+
+    assert.deepEqual(
+      result.candidates.map((candidate) => candidate.userId),
+      ["teacher-email-bypass"],
+    );
+  },
+);
 
 test("collectMatchCandidatePool keeps old callers working without requester doc", async () => {
   const db = fakeDb({

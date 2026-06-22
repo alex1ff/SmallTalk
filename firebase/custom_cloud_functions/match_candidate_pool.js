@@ -28,6 +28,10 @@ const {
 const {
   usageDocRef,
 } = require("./subscription_usage_shared");
+const {
+  getUtcDayKey,
+  loadSameDayRepeatCandidateIds,
+} = require("./match_repeat_prevention");
 
 const USER_COLLECTION = "users";
 const DEFAULT_STUDENT_QUERY_LIMIT = 50;
@@ -38,6 +42,7 @@ const MATCH_CANDIDATE_SOURCE = Object.freeze({
   ACTIVE_STUDENT_QUEUE: "active_student_queue",
   TEACHER_AVAILABILITY: "teacher_availability",
 });
+const INTERNAL_REPEAT_EMAIL = Symbol("repeatPreventionEmail");
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -371,6 +376,36 @@ function readBlockedUserIds(userData = {}) {
     .filter(Boolean);
 }
 
+function readCandidateIdList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry) => {
+    if (typeof entry === "string") {
+      return normalizeBlockedUserId(entry);
+    }
+    if (entry && typeof entry.id === "string") {
+      return normalizeBlockedUserId(entry.id);
+    }
+    if (entry && typeof entry.path === "string") {
+      return normalizeBlockedUserId(entry.path);
+    }
+    return "";
+  }).filter(Boolean);
+}
+
+function readSearchRequestExcludedCandidateIds(requestData = {}) {
+  return Array.from(new Set([
+    ...readCandidateIdList(
+      requestData[SEARCH_REQUEST_FIELD.EXCLUDED_CANDIDATE_IDS],
+    ),
+    ...readCandidateIdList(
+      requestData[SEARCH_REQUEST_FIELD.ATTEMPT_EXCLUDED_CANDIDATE_IDS],
+    ),
+  ]));
+}
+
 function buildBlockMatch({
   requesterId = "",
   requesterBlockedIds = [],
@@ -395,6 +430,108 @@ function buildBlockMatch({
   }
 
   return {valid: true, reason: "not_blocked"};
+}
+
+function buildSearchLifecycleRepeatMatch({
+  requesterId = "",
+  requesterExcludedCandidateIds = [],
+  candidateId = "",
+  candidateRequestData = null,
+}) {
+  const normalizedRequesterId = normalizeBlockedUserId(requesterId);
+  const normalizedCandidateId = normalizeBlockedUserId(candidateId);
+  const requesterExcludedSet = new Set(
+    readCandidateIdList(requesterExcludedCandidateIds),
+  );
+
+  if (normalizedCandidateId && requesterExcludedSet.has(normalizedCandidateId)) {
+    return {valid: false, reason: "excluded_by_requester"};
+  }
+
+  if (!normalizedRequesterId || !candidateRequestData) {
+    return {valid: true, reason: "not_excluded"};
+  }
+
+  const candidateExcludedSet = new Set(
+    readSearchRequestExcludedCandidateIds(candidateRequestData),
+  );
+  if (candidateExcludedSet.has(normalizedRequesterId)) {
+    return {valid: false, reason: "excluded_by_candidate"};
+  }
+
+  return {valid: true, reason: "not_excluded"};
+}
+
+function readUserEmail(userData = {}) {
+  return normalizeString(
+    userData.email ||
+      userData.authEmail ||
+      userData.privateEmail ||
+      userData.emailAddress ||
+      "",
+  ).toLowerCase();
+}
+
+function withInternalRepeatEmail(candidate = {}, userData = {}) {
+  const email = readUserEmail(userData);
+  if (!email) {
+    return candidate;
+  }
+
+  return {
+    ...candidate,
+    [INTERNAL_REPEAT_EMAIL]: email,
+  };
+}
+
+function readInternalRepeatEmail(candidate = {}) {
+  return normalizeString(candidate[INTERNAL_REPEAT_EMAIL]).toLowerCase();
+}
+
+function stripInternalCandidateFields(candidate = {}) {
+  const publicCandidate = {...candidate};
+  delete publicCandidate[INTERNAL_REPEAT_EMAIL];
+  return publicCandidate;
+}
+
+function buildCandidateEmailMap(candidates = []) {
+  const emailsById = new Map();
+  candidates.forEach((candidate) => {
+    const userId = normalizeBlockedUserId(candidate.userId);
+    const email = readInternalRepeatEmail(candidate);
+    if (userId && email) {
+      emailsById.set(userId, email);
+    }
+  });
+  return emailsById;
+}
+
+async function filterSameDayRepeatCandidateObjects({
+  db,
+  requesterId = "",
+  requesterEmail = "",
+  candidates = [],
+  dayKey = getUtcDayKey(),
+}) {
+  const normalizedRequesterId = normalizeBlockedUserId(requesterId);
+  if (!normalizedRequesterId || candidates.length === 0) {
+    return candidates;
+  }
+
+  const repeatContext = await loadSameDayRepeatCandidateIds(
+    db,
+    normalizedRequesterId,
+    candidates.map((candidate) => normalizeBlockedUserId(candidate.userId)),
+    {
+      dayKey,
+      requesterEmail,
+      userEmailsById: buildCandidateEmailMap(candidates),
+    },
+  );
+  const excludedCandidateIds = repeatContext.excludedCandidateIds || new Set();
+  return candidates.filter((candidate) =>
+    !excludedCandidateIds.has(normalizeBlockedUserId(candidate.userId)),
+  );
 }
 
 function readRequestUserId(requestDoc, requestData = {}) {
@@ -604,6 +741,7 @@ function buildStudentQueueCandidateFromDocs({
   requesterLocation = null,
   requesterId = "",
   requesterBlockedIds = [],
+  requesterExcludedCandidateIds = [],
   usageData = null,
 }) {
   const requestData = readDocData(requestDoc);
@@ -638,6 +776,15 @@ function buildStudentQueueCandidateFromDocs({
     nowMillis,
   });
   if (!accessDecision.allowed) {
+    return null;
+  }
+  const repeatMatch = buildSearchLifecycleRepeatMatch({
+    requesterId,
+    requesterExcludedCandidateIds,
+    candidateId: requestUserId,
+    candidateRequestData: requestData,
+  });
+  if (!repeatMatch.valid) {
     return null;
   }
 
@@ -682,7 +829,7 @@ function buildStudentQueueCandidateFromDocs({
     requestData[SEARCH_REQUEST_FIELD.HEARTBEAT_AT],
   );
 
-  return {
+  return withInternalRepeatEmail({
     userId: requestUserId,
     role: "student",
     source: MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE,
@@ -705,7 +852,7 @@ function buildStudentQueueCandidateFromDocs({
       requestData[SEARCH_REQUEST_FIELD.EXPIRES_AT],
     ),
     joinedPoolAtMillis: createdAtMillis ?? heartbeatAtMillis ?? nowMillis,
-  };
+  }, userData);
 }
 
 function buildTeacherAvailabilityCandidateFromDoc({
@@ -717,6 +864,7 @@ function buildTeacherAvailabilityCandidateFromDoc({
   preferredLocation = {},
   requesterId = "",
   requesterBlockedIds = [],
+  requesterExcludedCandidateIds = [],
 }) {
   const effectiveNowMillis = resolveNowMillis(now, nowMillis);
   const userData = readDocData(userDoc);
@@ -728,6 +876,14 @@ function buildTeacherAvailabilityCandidateFromDoc({
     return null;
   }
   if (hasActiveCallState(userData)) {
+    return null;
+  }
+  const repeatMatch = buildSearchLifecycleRepeatMatch({
+    requesterId,
+    requesterExcludedCandidateIds,
+    candidateId: userId,
+  });
+  if (!repeatMatch.valid) {
     return null;
   }
   const blockMatch = buildBlockMatch({
@@ -775,7 +931,7 @@ function buildTeacherAvailabilityCandidateFromDoc({
     return null;
   }
 
-  return {
+  return withInternalRepeatEmail({
     userId,
     role: "native_speaker",
     source: MATCH_CANDIDATE_SOURCE.TEACHER_AVAILABILITY,
@@ -799,7 +955,7 @@ function buildTeacherAvailabilityCandidateFromDoc({
       userData,
       effectiveNowMillis,
     ),
-  };
+  }, userData);
 }
 
 function buildCandidateTokenState(tokenState = {}) {
@@ -891,7 +1047,9 @@ function mergeCandidatePools({
       }
     });
 
-  return Array.from(candidatesById.values()).sort(compareNeutralCandidateOrder);
+  return Array.from(candidatesById.values())
+    .sort(compareNeutralCandidateOrder)
+    .map(stripInternalCandidateFields);
 }
 
 function buildActiveStudentSearchRequestsQuery(db, {
@@ -985,6 +1143,9 @@ async function collectStudentQueueCandidates({
   requesterLocation = null,
   requesterId = "",
   requesterBlockedIds = [],
+  requesterExcludedCandidateIds = [],
+  requesterEmail = "",
+  repeatDayKey = getUtcDayKey(nowMillis),
 }) {
   const targetCount = normalizePositiveInteger(
     candidateLimit,
@@ -1023,6 +1184,7 @@ async function collectStudentQueueCandidates({
       readUserDocsById(db, studentUserIds),
       readUsageDataByUserId(db, studentUserIds),
     ]);
+    const pageCandidates = [];
     requestDocs.forEach((requestDoc) => {
       if (!qualityRankingEnabled && candidates.length >= targetCount) {
         return;
@@ -1040,12 +1202,26 @@ async function collectStudentQueueCandidates({
         requesterLocation,
         requesterId,
         requesterBlockedIds,
+        requesterExcludedCandidateIds,
         usageData: usageDataByUserId.get(userId) || null,
       });
       if (candidate) {
-        candidates.push(candidate);
+        pageCandidates.push(candidate);
       }
     });
+    const repeatFilteredCandidates = await filterSameDayRepeatCandidateObjects({
+      db,
+      requesterId,
+      requesterEmail,
+      candidates: pageCandidates,
+      dayKey: repeatDayKey,
+    });
+    for (const candidate of repeatFilteredCandidates) {
+      if (!qualityRankingEnabled && candidates.length >= targetCount) {
+        break;
+      }
+      candidates.push(candidate);
+    }
 
     lastDoc = requestDocs[requestDocs.length - 1];
     if (requestDocs.length < scanPageSize) {
@@ -1058,7 +1234,7 @@ async function collectStudentQueueCandidates({
       candidates,
       targetCount,
       qualityRankingEnabled,
-    }),
+    }).map(stripInternalCandidateFields),
     scannedCount,
   };
 }
@@ -1077,6 +1253,9 @@ async function collectTeacherAvailabilityCandidates({
   preferredLocation = {},
   requesterId = "",
   requesterBlockedIds = [],
+  requesterExcludedCandidateIds = [],
+  requesterEmail = "",
+  repeatDayKey = getUtcDayKey(nowMillis),
 }) {
   const targetCount = normalizePositiveInteger(
     candidateLimit,
@@ -1119,6 +1298,7 @@ async function collectTeacherAvailabilityCandidates({
         preferredLocation,
         requesterId,
         requesterBlockedIds,
+        requesterExcludedCandidateIds,
       });
       if (!candidate) {
         continue;
@@ -1131,10 +1311,10 @@ async function collectTeacherAvailabilityCandidates({
         tokenReader(candidate.userId, readDocData(userDoc) || {}, db),
       ),
     );
+    const tokenFilteredCandidates = [];
     for (
       let index = 0;
-      index < pageCandidates.length &&
-        (qualityRankingEnabled || candidates.length < targetCount);
+      index < pageCandidates.length;
       index += 1
     ) {
       const tokenState = tokenStates[index] || {};
@@ -1146,10 +1326,23 @@ async function collectTeacherAvailabilityCandidates({
       ) {
         continue;
       }
-      candidates.push({
+      tokenFilteredCandidates.push({
         ...pageCandidates[index].candidate,
         tokenState: candidateTokenState,
       });
+    }
+    const repeatFilteredCandidates = await filterSameDayRepeatCandidateObjects({
+      db,
+      requesterId,
+      requesterEmail,
+      candidates: tokenFilteredCandidates,
+      dayKey: repeatDayKey,
+    });
+    for (const candidate of repeatFilteredCandidates) {
+      if (!qualityRankingEnabled && candidates.length >= targetCount) {
+        break;
+      }
+      candidates.push(candidate);
     }
 
     lastDoc = userDocs[userDocs.length - 1];
@@ -1163,7 +1356,7 @@ async function collectTeacherAvailabilityCandidates({
       candidates,
       targetCount,
       qualityRankingEnabled,
-    }),
+    }).map(stripInternalCandidateFields),
     scannedCount,
   };
 }
@@ -1180,19 +1373,33 @@ async function readRequesterMatchQualityProfile(
       levelRank: explicitLevelRank,
       location: null,
       blockedIds: [],
+      excludedCandidateIds: [],
+      email: "",
     };
   }
 
-  const requesterDoc = await db
-    .collection(USER_COLLECTION)
-    .doc(normalizedRequesterId)
-    .get();
+  const [requesterDoc, requesterSearchRequestDoc] = await Promise.all([
+    db
+      .collection(USER_COLLECTION)
+      .doc(normalizedRequesterId)
+      .get(),
+    db
+      .collection(SEARCH_REQUEST_COLLECTION)
+      .doc(normalizedRequesterId)
+      .get(),
+  ]);
+  const requesterSearchRequestData = readDocData(requesterSearchRequestDoc);
+  const excludedCandidateIds = readSearchRequestExcludedCandidateIds(
+    requesterSearchRequestData || {},
+  );
   const requesterData = readDocData(requesterDoc);
   if (!requesterData) {
     return {
       levelRank: explicitLevelRank,
       location: null,
       blockedIds: [],
+      excludedCandidateIds,
+      email: "",
     };
   }
 
@@ -1201,6 +1408,8 @@ async function readRequesterMatchQualityProfile(
       readLevelRankFromLevel(readCandidateLevelValue(requesterData)),
     location: readCandidateLocation(requesterData),
     blockedIds: readBlockedUserIds(requesterData),
+    excludedCandidateIds,
+    email: readUserEmail(requesterData),
   };
 }
 
@@ -1208,6 +1417,7 @@ async function collectMatchCandidatePool({
   db,
   language = "",
   requesterId = "",
+  requesterEmail = "",
   requesterFilters = {},
   requesterLevel = "",
   now = new Date(),
@@ -1237,11 +1447,14 @@ async function collectMatchCandidatePool({
 
   const preferredLevelRank = readPreferredLevelRank(requesterFilters);
   const preferredLocation = readPreferredLocation(requesterFilters);
+  const repeatDayKey = getUtcDayKey(effectiveNowMillis);
   const requesterProfile = await readRequesterMatchQualityProfile(
     db,
     normalizedRequesterId,
     requesterLevel,
   );
+  const effectiveRequesterEmail =
+    normalizeString(requesterEmail).toLowerCase() || requesterProfile.email;
 
   const [studentResult, teacherResult] = await Promise.all([
     collectStudentQueueCandidates({
@@ -1260,6 +1473,9 @@ async function collectMatchCandidatePool({
       requesterLocation: requesterProfile.location,
       requesterId: normalizedRequesterId,
       requesterBlockedIds: requesterProfile.blockedIds,
+      requesterExcludedCandidateIds: requesterProfile.excludedCandidateIds,
+      requesterEmail: effectiveRequesterEmail,
+      repeatDayKey,
     }),
     collectTeacherAvailabilityCandidates({
       db,
@@ -1274,6 +1490,9 @@ async function collectMatchCandidatePool({
       preferredLocation,
       requesterId: normalizedRequesterId,
       requesterBlockedIds: requesterProfile.blockedIds,
+      requesterExcludedCandidateIds: requesterProfile.excludedCandidateIds,
+      requesterEmail: effectiveRequesterEmail,
+      repeatDayKey,
     }),
   ]);
 
