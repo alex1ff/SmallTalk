@@ -237,7 +237,7 @@ function seedExistingStudentSession() {
     "users/student-b": studentUser({currentSessionId: "session-ab"}),
     "users/student-c": studentUser(),
     "searchRequests/student-a": activeSearchRequest("student-a", {
-      status: SEARCH_REQUEST_STATUS.MATCHING,
+      status: SEARCH_REQUEST_STATUS.MATCHED,
       currentSessionId: "session-ab",
       matchedSessionId: "session-ab",
       matchedUserId: "student-b",
@@ -248,7 +248,7 @@ function seedExistingStudentSession() {
       lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
     }),
     "searchRequests/student-b": activeSearchRequest("student-b", {
-      status: SEARCH_REQUEST_STATUS.MATCHING,
+      status: SEARCH_REQUEST_STATUS.MATCHED,
       currentSessionId: "session-ab",
       matchedSessionId: "session-ab",
       matchedUserId: "student-a",
@@ -359,6 +359,35 @@ test("expired request lock without session can be reserved again", () => {
       participantKey: "responder",
     }),
     {ok: true, reason: "ready"},
+  );
+});
+
+test("matched search request cannot be reserved as a new candidate", () => {
+  assert.deepEqual(
+    validateSearchRequestForPairLock({
+      requestExists: true,
+      requestData: activeSearchRequest("student-b", {
+        status: SEARCH_REQUEST_STATUS.MATCHED,
+      }),
+      userId: "student-b",
+      nowMillis: fixedNowMillis,
+      participantKey: "responder",
+    }),
+    {ok: false, reason: "responder_search_status_matched"},
+  );
+  assert.deepEqual(
+    validateSearchRequestForPairLock({
+      requestExists: true,
+      requestData: activeSearchRequest("student-b", {
+        status: SEARCH_REQUEST_STATUS.MATCHED,
+        currentSessionId: "session-existing",
+        matchedSessionId: "session-existing",
+      }),
+      userId: "student-b",
+      nowMillis: fixedNowMillis,
+      participantKey: "responder",
+    }),
+    {ok: false, reason: "responder_search_in_session"},
   );
 });
 
@@ -580,13 +609,14 @@ test("reserveMatchPair atomically locks two student participants", async () => {
   assert.equal(session.language, "en");
 
   const requesterRequest = store.get("searchRequests/student-a");
-  assert.equal(requesterRequest.status, SEARCH_REQUEST_STATUS.MATCHING);
+  assert.equal(requesterRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
   assert.equal(requesterRequest.currentSessionId, "session-ab");
   assert.equal(requesterRequest.matchedUserId, "student-b");
   assert.equal(requesterRequest.matchedRole, "student");
   assert.equal(requesterRequest.lockOwner, result.pairAttemptId);
 
   const responderRequest = store.get("searchRequests/student-b");
+  assert.equal(responderRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
   assert.equal(responderRequest.currentSessionId, "session-ab");
   assert.equal(responderRequest.matchedUserId, "student-a");
   assert.equal(responderRequest.matchedResponderId, "student-b");
@@ -709,7 +739,7 @@ test("reserveMatchPair locks teacher through user document", async () => {
   );
   assert.equal(
     store.get("searchRequests/student-a").status,
-    SEARCH_REQUEST_STATUS.MATCHING,
+    SEARCH_REQUEST_STATUS.MATCHED,
   );
   assert.equal(store.get("searchRequests/student-a").updatedAt, serverTimestamp);
   assert.equal(store.get("searchRequests/student-a").lastError, null);
@@ -1044,6 +1074,64 @@ test("existing session handoff refuses an already locked responder", async () =>
   assert.equal(store.get("users/student-b").currentSessionId, "session-ab");
 });
 
+test("existing session handoff refuses requester matched to another session", async () => {
+  const {db, store, writes} = createFakeFirestore({
+    "users/student-a": studentUser({currentSessionId: "session-at"}),
+    "users/teacher-a": teacherUser({currentSessionId: "session-at"}),
+    "users/teacher-b": teacherUser(),
+    "searchRequests/student-a": activeSearchRequest("student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      currentSessionId: "session-other",
+      matchedSessionId: "session-other",
+      matchedUserId: "teacher-a",
+      matchedResponderId: "teacher-a",
+      matchedRole: "native_speaker",
+      pairAttemptId: "pair-session-other-student-a-teacher-a",
+      lockOwner: "pair-session-other-student-a-teacher-a",
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 10_000),
+    }),
+    "videoSessions/session-at": existingSearchingSession({
+      currentTutorId: "teacher-a",
+      currentResponderId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      responderId: "teacher-a",
+      responderRole: "native_speaker",
+      tutorId: "teacher-a",
+      scenario: "student_teacher",
+      participantIds: ["student-a", "teacher-a"],
+      searchRequestIds: {
+        requester: "request-student-a",
+        responder: null,
+      },
+    }),
+  });
+
+  const result = await db.runTransaction((transaction) =>
+    prepareExistingSessionNextResponderPairLockInTransaction({
+      db,
+      transaction,
+      sessionId: "session-at",
+      sessionData: store.get("videoSessions/session-at"),
+      currentResponderId: "teacher-a",
+      responderId: "teacher-b",
+      responderRole: "native_speaker",
+      triedTutors: ["teacher-a"],
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+      fieldDelete,
+      currentResponderStopReason: "declined",
+    }));
+
+  assert.deepEqual(result, {
+    locked: false,
+    reason: "requester_search_in_other_session",
+  });
+  assert.equal(writes.length, 0);
+  assert.equal(store.get("searchRequests/student-a").currentSessionId, "session-other");
+  assert.equal(store.get("users/teacher-b").currentSessionId, "");
+});
+
 test("existing session handoff releases old responder and locks next", async () => {
   const {db, store, writes} = createFakeFirestore({
     ...seedExistingStudentSession(),
@@ -1156,7 +1244,7 @@ test("existing session handoff reuses session for next teacher", async () => {
     }),
     "users/teacher-b": namedTeacherUser("Bea", "bea-photo"),
     "searchRequests/student-a": activeSearchRequest("student-a", {
-      status: SEARCH_REQUEST_STATUS.MATCHING,
+      status: SEARCH_REQUEST_STATUS.MATCHED,
       currentSessionId: "session-at",
       matchedSessionId: "session-at",
       matchedUserId: "teacher-a",
@@ -1285,6 +1373,10 @@ test("existing session handoff reuses session for next teacher", async () => {
   assert.equal(
     store.get("searchRequests/student-a").lockExpiresAt.toMillis(),
     fixedNowMillis + 45_000,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.MATCHED,
   );
   assert.equal(store.get("searchRequests/teacher-b"), undefined);
   assert.deepEqual(
@@ -1449,6 +1541,10 @@ test("existing session handoff reuses student session for next teacher", async (
   assert.equal(
     store.get("searchRequests/student-a").lockExpiresAt.toMillis(),
     fixedNowMillis + 45_000,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.MATCHED,
   );
   assert.equal(store.get("searchRequests/teacher-b"), undefined);
   assert.deepEqual(

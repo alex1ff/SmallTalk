@@ -276,7 +276,7 @@ function buildSearchRequestPairLockUpdate({
   lockExpiresAt,
 }) {
   return {
-    [SEARCH_REQUEST_FIELD.STATUS]: SEARCH_REQUEST_STATUS.MATCHING,
+    [SEARCH_REQUEST_FIELD.STATUS]: SEARCH_REQUEST_STATUS.MATCHED,
     [SEARCH_REQUEST_FIELD.UPDATED_AT]: serverTimestamp,
     [SEARCH_REQUEST_FIELD.CURRENT_SESSION_ID]: sessionId,
     [SEARCH_REQUEST_FIELD.MATCHED_SESSION_ID]: sessionId,
@@ -462,13 +462,13 @@ function validateRequesterSearchForExistingSessionPairLock({
   }
 
   const status = normalizeString(requestData[SEARCH_REQUEST_FIELD.STATUS]);
-  if (
-    ![
-      SEARCH_REQUEST_STATUS.ACTIVE,
-      SEARCH_REQUEST_STATUS.MATCHING,
-      SEARCH_REQUEST_STATUS.LEGACY_SEARCHING,
-    ].includes(status)
-  ) {
+  const canReserveRequesterStatus = [
+    SEARCH_REQUEST_STATUS.ACTIVE,
+    SEARCH_REQUEST_STATUS.MATCHING,
+    SEARCH_REQUEST_STATUS.LEGACY_SEARCHING,
+  ].includes(status) ||
+    (status === SEARCH_REQUEST_STATUS.MATCHED && sessionIds.length > 0);
+  if (!canReserveRequesterStatus) {
     return {
       ok: false,
       reason: `requester_search_status_${status || "missing"}`,
