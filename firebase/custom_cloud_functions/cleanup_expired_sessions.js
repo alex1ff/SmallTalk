@@ -27,6 +27,95 @@ const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 Завершает истекшие активные сессии (запускается по расписанию)
 */
 
+function normalizeParticipantId(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalized = value.trim();
+  if (
+    !normalized ||
+    normalized.includes("/") ||
+    normalized === "." ||
+    normalized === ".." ||
+    /^__.*__$/.test(normalized)
+  ) {
+    return "";
+  }
+  return normalized;
+}
+
+function readSessionParticipantIds(sessionData = {}) {
+  return Array.from(new Set([
+    ...(Array.isArray(sessionData.participantIds) ?
+      sessionData.participantIds :
+      []),
+    sessionData.studentId,
+    sessionData.requesterId,
+    sessionData.currentTutorId,
+    sessionData.currentResponderId,
+    sessionData.responderId,
+    sessionData.tutorId,
+    sessionData.matchContext?.requesterId,
+    sessionData.matchContext?.acceptedResponderId,
+  ].map(normalizeParticipantId).filter(Boolean))).sort();
+}
+
+function readConnectedSignalParticipantIds(sessionData = {}) {
+  const metadata = sessionData.sessionMetadata || {};
+  const signalMaps = [
+    metadata.connectedParticipantSignals,
+    metadata.dailyWebhookParticipantSignals,
+  ].filter((signals) =>
+    signals && typeof signals === "object" && !Array.isArray(signals),
+  );
+  const participantIds = new Set(readSessionParticipantIds(sessionData));
+  return Array.from(new Set(signalMaps.flatMap((signals) =>
+    Object.keys(signals),
+  )))
+    .map(normalizeParticipantId)
+    .filter((participantId) =>
+      participantId && participantIds.has(participantId),
+    )
+    .sort();
+}
+
+function buildRestoreSearchExcludedCandidateIdsByParticipantId({
+  sessionData = {},
+  restoreParticipantIds = [],
+}) {
+  const sessionParticipantIds = readSessionParticipantIds(sessionData);
+  return Object.fromEntries(
+    restoreParticipantIds
+      .map(normalizeParticipantId)
+      .filter(Boolean)
+      .map((participantId) => [
+        participantId,
+        sessionParticipantIds.filter((candidateId) =>
+          candidateId !== participantId,
+        ),
+      ]),
+  );
+}
+
+function hasConnectedCallEvidence(sessionData = {}) {
+  return Boolean(
+    sessionData.sessionMetadata?.callConnectedAt ||
+    sessionData.sessionMetadata?.callConnectedAtTimestamp,
+  );
+}
+
+function getCleanupRestoreSearchParticipantIds(sessionData = {}) {
+  if (
+    sessionData.status !== VIDEO_SESSION_STATUS.CONNECTING ||
+    hasConnectedCallEvidence(sessionData)
+  ) {
+    return [];
+  }
+
+  return readConnectedSignalParticipantIds(sessionData);
+}
+
 function buildExpiredSessionCleanupPayload({
   db,
   sessionId,
@@ -34,10 +123,7 @@ function buildExpiredSessionCleanupPayload({
   sessionData = {},
   endedAtMillis = Date.now(),
 }) {
-  const wasConnected = Boolean(
-    sessionData.sessionMetadata?.callConnectedAt ||
-    sessionData.sessionMetadata?.callConnectedAtTimestamp,
-  );
+  const wasConnected = hasConnectedCallEvidence(sessionData);
   const terminalStatus =
     sessionData.status === VIDEO_SESSION_STATUS.CONNECTING && !wasConnected ?
       VIDEO_SESSION_STATUS.EXPIRED :
@@ -184,6 +270,8 @@ exports.cleanupExpiredSessions = functions
           }
 
           console.log(`🔚 Auto-ending expired session: ${doc.id}`);
+          const restoreSearchParticipantIds =
+            getCleanupRestoreSearchParticipantIds(freshData);
           await releaseSessionPairLocksInTransaction({
             db,
             transaction,
@@ -195,6 +283,12 @@ exports.cleanupExpiredSessions = functions
             stopReason: "session_expired",
             releaseCallState: true,
             restoreLegacyAvailability: true,
+            restoreSearchParticipantIds,
+            restoreSearchExcludedCandidateIdsByParticipantId:
+              buildRestoreSearchExcludedCandidateIdsByParticipantId({
+                sessionData: freshData,
+                restoreParticipantIds: restoreSearchParticipantIds,
+              }),
           });
           const cleanupPayload = queueExpiredSessionCleanup({
             writer: transaction,
@@ -256,6 +350,10 @@ exports.cleanupExpiredSessions = functions
   });
 
 exports.__private__ = {
+  buildRestoreSearchExcludedCandidateIdsByParticipantId,
   buildExpiredSessionCleanupPayload,
+  getCleanupRestoreSearchParticipantIds,
+  hasConnectedCallEvidence,
   queueExpiredSessionCleanup,
+  readConnectedSignalParticipantIds,
 };

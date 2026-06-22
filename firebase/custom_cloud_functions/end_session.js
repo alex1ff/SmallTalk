@@ -89,6 +89,70 @@ function isExpiredEndReason(endReason) {
   return String(endReason || "").trim() === "expired";
 }
 
+function normalizeParticipantId(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalized = value.trim();
+  if (
+    !normalized ||
+    normalized.includes("/") ||
+    normalized === "." ||
+    normalized === ".." ||
+    /^__.*__$/.test(normalized)
+  ) {
+    return "";
+  }
+  return normalized;
+}
+
+function getSessionSearchRestoreParticipantIds(sessionData = {}) {
+  return Array.from(new Set([
+    ...(Array.isArray(sessionData.participantIds) ?
+      sessionData.participantIds :
+      []),
+    sessionData.studentId,
+    sessionData.requesterId,
+    sessionData.currentTutorId,
+    sessionData.currentResponderId,
+    sessionData.responderId,
+    sessionData.tutorId,
+    sessionData.matchContext?.requesterId,
+    sessionData.matchContext?.acceptedResponderId,
+  ].map(normalizeParticipantId).filter(Boolean))).sort();
+}
+
+function getPreActiveRestoreSearchParticipantIds({
+  sessionData = {},
+  failedParticipantId = "",
+}) {
+  const normalizedFailedParticipantId =
+    normalizeParticipantId(failedParticipantId);
+  return getSessionSearchRestoreParticipantIds(sessionData)
+    .filter((participantId) => participantId !== normalizedFailedParticipantId);
+}
+
+function buildRestoreSearchExcludedCandidateIdsByParticipantId({
+  restoreParticipantIds = [],
+  excludedCandidateIds = [],
+}) {
+  const normalizedExcludedCandidateIds = excludedCandidateIds
+    .map(normalizeParticipantId)
+    .filter(Boolean);
+  return Object.fromEntries(
+    restoreParticipantIds
+      .map(normalizeParticipantId)
+      .filter(Boolean)
+      .map((participantId) => [
+        participantId,
+        normalizedExcludedCandidateIds.filter((candidateId) =>
+          candidateId !== participantId,
+        ),
+      ]),
+  );
+}
+
 // Returns true if the user has a flat-rate subscription that is still active
 // at `nowMillis`. Subscribers are not debited from balanceST — billing flips
 // from per-minute to flat-rate for the duration of the subscription.
@@ -294,6 +358,11 @@ exports.endSession = functions
           sessionUpdates.cancelReason = stopReason;
         }
 
+        const restoreSearchParticipantIds =
+          getPreActiveRestoreSearchParticipantIds({
+            sessionData,
+            failedParticipantId: userId,
+          });
         await releaseSessionPairLocksInTransaction({
           db,
           transaction,
@@ -305,6 +374,12 @@ exports.endSession = functions
           stopReason,
           releaseCallState: true,
           restoreLegacyAvailability: true,
+          restoreSearchParticipantIds,
+          restoreSearchExcludedCandidateIdsByParticipantId:
+            buildRestoreSearchExcludedCandidateIdsByParticipantId({
+              restoreParticipantIds: restoreSearchParticipantIds,
+              excludedCandidateIds: [userId],
+            }),
         });
         transaction.update(sessionRef, sessionUpdates);
 
@@ -893,7 +968,9 @@ async function cancelAllSessionNotifications(sessionId) {
 }
 
 exports.__private__ = {
+  buildRestoreSearchExcludedCandidateIdsByParticipantId,
   buildStudentCallCharge,
+  getPreActiveRestoreSearchParticipantIds,
   hasConnectedCallEvidence,
   hasActiveSubscription,
   isExpiredEndReason,

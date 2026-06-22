@@ -4,7 +4,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   __private__: {
+    buildRestoreSearchExcludedCandidateIdsByParticipantId,
     buildStudentCallCharge,
+    getPreActiveRestoreSearchParticipantIds,
     hasConnectedCallEvidence,
     hasActiveSubscription,
     isExpiredEndReason,
@@ -73,6 +75,33 @@ test("pre-active session helper requires connected call evidence", () => {
   }), true);
   assert.equal(isExpiredEndReason("expired"), true);
   assert.equal(isExpiredEndReason("user_ended"), false);
+});
+
+test("pre-active restore returns every participant except failed actor", () => {
+  const sessionData = {
+    participantIds: ["student-b", "student-a"],
+    studentId: "student-a",
+    currentTutorId: "student-b",
+    matchContext: {
+      requesterId: "student-a",
+      acceptedResponderId: "student-b",
+    },
+  };
+
+  assert.deepEqual(
+    getPreActiveRestoreSearchParticipantIds({
+      sessionData,
+      failedParticipantId: "student-b",
+    }),
+    ["student-a"],
+  );
+  assert.deepEqual(
+    buildRestoreSearchExcludedCandidateIdsByParticipantId({
+      restoreParticipantIds: ["student-a"],
+      excludedCandidateIds: ["student-b"],
+    }),
+    {"student-a": ["student-b"]},
+  );
 });
 
 test("buildStudentCallCharge debits gift minutes for non-subscribers", () => {

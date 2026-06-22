@@ -29,6 +29,10 @@ const {
   prepareExistingSessionNextResponderPairLockInTransaction,
   releaseSessionPairLocksInTransaction,
 } = require("./match_pair_lock");
+const {
+  readAvailableRespondersAfterFailure,
+  resolveResponderFailureStopReason,
+} = require("./responder_failure_policy");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -36,6 +40,38 @@ const PENDING_RESPONSE_SESSION_STATUSES = new Set([
   VIDEO_SESSION_STATUS.SEARCHING,
   VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
 ]);
+
+function readRequesterIdForResponderFailure(sessionData = {}) {
+  return sessionData.requesterId ||
+    sessionData.studentId ||
+    sessionData.matchContext?.requesterId ||
+    "";
+}
+
+function buildTimeoutResponderFailureRouting({
+  sessionData = {},
+  responderId = "",
+}) {
+  const requesterId = readRequesterIdForResponderFailure(sessionData);
+  const restoreSearchParticipantIds = requesterId ? [requesterId] : [];
+  return {
+    availableTutors: readAvailableRespondersAfterFailure({
+      sessionData,
+      responderId,
+    }),
+    requesterId,
+    restoreSearchParticipantIds,
+    restoreSearchExcludedCandidateIdsByParticipantId: requesterId ?
+      {[requesterId]: [responderId]} :
+      {},
+    terminalStopReason: resolveResponderFailureStopReason({
+      sessionData,
+      responderId,
+      fallbackStopReason: "no_available_responder_after_timeout",
+      studentPairStopReason: "student_pair_response_timeout",
+    }),
+  };
+}
 
 exports.processExpiredNotifications = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
@@ -172,7 +208,12 @@ async function processExpiredNotification(notificationDoc) {
           triedTutors.push(timedOutTutorId);
         }
 
-        const availableTutors = freshSessionData.availableTutors || [];
+        const failureRouting = buildTimeoutResponderFailureRouting({
+          sessionData: freshSessionData,
+          responderId: timedOutTutorId,
+        });
+        const availableTutors = failureRouting.availableTutors;
+        const terminalStopReason = failureRouting.terminalStopReason;
         let nextTutor = null;
         let nextTriedTutors = triedTutors;
         let preparedPairLock = null;
@@ -245,7 +286,11 @@ async function processExpiredNotification(notificationDoc) {
             serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
             fieldDelete: admin.firestore.FieldValue.delete(),
             searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
-            stopReason: "no_available_responder_after_timeout",
+            stopReason: terminalStopReason,
+            restoreSearchParticipantIds:
+              failureRouting.restoreSearchParticipantIds,
+            restoreSearchExcludedCandidateIdsByParticipantId:
+              failureRouting.restoreSearchExcludedCandidateIdsByParticipantId,
           });
           transaction.update(notificationDoc.ref, expireNotificationUpdate);
           transaction.update(sessionRef, {
@@ -254,7 +299,7 @@ async function processExpiredNotification(notificationDoc) {
             status: VIDEO_SESSION_STATUS.EXPIRED,
             endedAt: admin.firestore.FieldValue.serverTimestamp(),
             expiredAt: admin.firestore.FieldValue.serverTimestamp(),
-            expireReason: "response_timeout",
+            expireReason: terminalStopReason,
           });
           return {
             shouldNotify: false,
@@ -391,6 +436,11 @@ async function processExpiredNotification(notificationDoc) {
     throw error;
   }
 }
+
+exports.__private__ = {
+  buildTimeoutResponderFailureRouting,
+  readRequesterIdForResponderFailure,
+};
 
 // 🔔 ОТПРАВКА VOIP PUSH ПРЕПОДАВАТЕЛЮ
 async function sendVoipPushToTutor(tutorId, callData) {

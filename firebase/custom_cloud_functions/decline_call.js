@@ -30,6 +30,10 @@ const {
   prepareExistingSessionNextResponderPairLockInTransaction,
   releaseSessionPairLocksInTransaction,
 } = require("./match_pair_lock");
+const {
+  readAvailableRespondersAfterFailure,
+  resolveResponderFailureStopReason,
+} = require("./responder_failure_policy");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -37,6 +41,38 @@ const DECLINABLE_SESSION_STATUSES = new Set([
   VIDEO_SESSION_STATUS.SEARCHING,
   VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
 ]);
+
+function readRequesterIdForResponderFailure(sessionData = {}) {
+  return sessionData.requesterId ||
+    sessionData.studentId ||
+    sessionData.matchContext?.requesterId ||
+    "";
+}
+
+function buildDeclineResponderFailureRouting({
+  sessionData = {},
+  responderId = "",
+}) {
+  const requesterId = readRequesterIdForResponderFailure(sessionData);
+  const restoreSearchParticipantIds = requesterId ? [requesterId] : [];
+  return {
+    availableTutors: readAvailableRespondersAfterFailure({
+      sessionData,
+      responderId,
+    }),
+    requesterId,
+    restoreSearchParticipantIds,
+    restoreSearchExcludedCandidateIdsByParticipantId: requesterId ?
+      {[requesterId]: [responderId]} :
+      {},
+    terminalStopReason: resolveResponderFailureStopReason({
+      sessionData,
+      responderId,
+      fallbackStopReason: "no_available_responder_after_decline",
+      studentPairStopReason: "student_pair_declined",
+    }),
+  };
+}
 
 /*
 ОБНОВЛЕННАЯ ФУНКЦИЯ: declineCall
@@ -134,7 +170,12 @@ exports.declineCall = functions
 
         console.log("📝 Updating tried tutors list:", triedTutors);
 
-        const availableTutors = sessionData.availableTutors || [];
+        const failureRouting = buildDeclineResponderFailureRouting({
+          sessionData,
+          responderId: tutorId,
+        });
+        const availableTutors = failureRouting.availableTutors;
+        const terminalStopReason = failureRouting.terminalStopReason;
         let nextTutor = null;
         let nextTriedTutors = triedTutors;
         let preparedPairLock = null;
@@ -208,7 +249,7 @@ exports.declineCall = functions
           sessionUpdate.cancelledAt =
             admin.firestore.FieldValue.serverTimestamp();
           sessionUpdate.cancelledBy = tutorId;
-          sessionUpdate.cancelReason = "no_available_responder_after_decline";
+          sessionUpdate.cancelReason = terminalStopReason;
         }
 
         const notification = nextTutor
@@ -238,7 +279,11 @@ exports.declineCall = functions
             serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
             fieldDelete: admin.firestore.FieldValue.delete(),
             searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
-            stopReason: "no_available_responder_after_decline",
+            stopReason: terminalStopReason,
+            restoreSearchParticipantIds:
+              failureRouting.restoreSearchParticipantIds,
+            restoreSearchExcludedCandidateIdsByParticipantId:
+              failureRouting.restoreSearchExcludedCandidateIdsByParticipantId,
           });
           transaction.update(sessionRef, sessionUpdate);
         }
@@ -488,3 +533,8 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
     console.error("❌ Error sending notification to tutor:", error);
   }
 }
+
+exports.__private__ = {
+  buildDeclineResponderFailureRouting,
+  readRequesterIdForResponderFailure,
+};

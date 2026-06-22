@@ -6,9 +6,11 @@ const {
   __private__: {
     buildResponse,
     buildStopSearchDecision,
+    buildStopSearchRestoreExcludedCandidateIdsByParticipantId,
     buildStopSessionDecision,
     canStopSessionAfterSearchDecision,
     getAssignedResponderId,
+    getStopSearchRestoreParticipantIds,
     normalizeRequestId,
     normalizeSessionId,
     requestBelongsToUser,
@@ -474,6 +476,29 @@ test("stopSearch is exported and included in readiness deploy target", () => {
 
   assert.match(indexSource, /exports\.stopSearch\b/);
   assert.match(deployScript, /functions:custom_cloud_functions:stopSearch\b/);
+});
+
+test("stopSearch restores responder search when requester cancels pair", () => {
+  const restoreParticipantIds = getStopSearchRestoreParticipantIds({
+    responderUserId: "student-b",
+    userId: "student-a",
+  });
+
+  assert.deepEqual(restoreParticipantIds, ["student-b"]);
+  assert.deepEqual(
+    buildStopSearchRestoreExcludedCandidateIdsByParticipantId({
+      restoreParticipantIds,
+      userId: "student-a",
+    }),
+    {"student-b": ["student-a"]},
+  );
+  assert.deepEqual(
+    getStopSearchRestoreParticipantIds({
+      responderUserId: "student-a",
+      userId: "student-a",
+    }),
+    [],
+  );
 });
 
 const hasFirestoreEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);

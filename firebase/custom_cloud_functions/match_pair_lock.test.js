@@ -6,6 +6,8 @@ const {
 const {
   applyPreparedPairLockWrites,
   buildPairAttemptId,
+  buildSearchRequestActiveRestoreUpdate,
+  canRestoreSearchRequestToActive,
   prepareExistingSessionNextResponderPairLockInTransaction,
   releaseSessionPairLocksInTransaction,
   reserveDirectPairInTransaction,
@@ -1601,6 +1603,127 @@ test("releaseSessionPairLocks clears users and search requests for session", asy
   assert.equal(store.get("searchRequests/student-a").lockOwner, null);
   assert.equal(store.get("searchRequests/student-b").status, SEARCH_REQUEST_STATUS.STOPPED);
   assert.equal(store.get("searchRequests/student-b").matchedUserId, null);
+});
+
+test("releaseSessionPairLocks restores selected search participant", async () => {
+  const seed = seedExistingStudentSession();
+  const {db, store} = createFakeFirestore({
+    ...seed,
+    "searchRequests/student-a": {
+      ...seed["searchRequests/student-a"],
+      excludedCandidateIds: ["teacher-old"],
+    },
+    "users/student-a": studentUser({
+      currentSessionId: "session-ab",
+    }),
+    "users/student-b": studentUser({
+      currentSessionId: "session-ab",
+    }),
+  });
+
+  const result = await db.runTransaction((transaction) =>
+    releaseSessionPairLocksInTransaction({
+      db,
+      transaction,
+      sessionId: "session-ab",
+      sessionData: store.get("videoSessions/session-ab"),
+      serverTimestamp,
+      fieldDelete,
+      searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+      stopReason: "declined",
+      restoreSearchParticipantIds: ["student-a"],
+      restoreSearchExcludedCandidateIdsByParticipantId: {
+        "student-a": ["student-b"],
+      },
+    }));
+
+  const restoredRequest = store.get("searchRequests/student-a");
+  const declinedRequest = store.get("searchRequests/student-b");
+  assert.equal(result.released, true);
+  assert.equal(restoredRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
+  assert.equal(restoredRequest.heartbeatAt, serverTimestamp);
+  assert.equal(restoredRequest.updatedAt, serverTimestamp);
+  assert.equal(restoredRequest.currentSessionId, null);
+  assert.equal(restoredRequest.matchedSessionId, fieldDelete);
+  assert.equal(restoredRequest.matchedUserId, null);
+  assert.equal(restoredRequest.matchedResponderId, fieldDelete);
+  assert.equal(restoredRequest.matchedRole, null);
+  assert.equal(restoredRequest.pairAttemptId, null);
+  assert.deepEqual(restoredRequest.excludedCandidateIds, [
+    "student-b",
+    "teacher-old",
+  ]);
+  assert.deepEqual(restoredRequest.attemptExcludedCandidateIds, []);
+  assert.equal(restoredRequest.lockOwner, null);
+  assert.equal(restoredRequest.lockExpiresAt, null);
+  assert.equal(restoredRequest.stopReason, null);
+  assert.equal(restoredRequest.stoppedAt, null);
+  assert.equal(restoredRequest.stoppedBy, fieldDelete);
+  assert.equal(declinedRequest.status, SEARCH_REQUEST_STATUS.CANCELLED);
+  assert.equal(declinedRequest.stopReason, "declined");
+});
+
+test("releaseSessionPairLocks does not reactivate terminal requests", async () => {
+  const seed = seedExistingStudentSession();
+  const {db, store} = createFakeFirestore({
+    ...seed,
+    "searchRequests/student-a": {
+      ...seed["searchRequests/student-a"],
+      status: SEARCH_REQUEST_STATUS.STOPPED,
+    },
+  });
+
+  await db.runTransaction((transaction) =>
+    releaseSessionPairLocksInTransaction({
+      db,
+      transaction,
+      sessionId: "session-ab",
+      sessionData: store.get("videoSessions/session-ab"),
+      serverTimestamp,
+      fieldDelete,
+      searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+      stopReason: "declined",
+      restoreSearchParticipantIds: ["student-a"],
+      restoreSearchExcludedCandidateIdsByParticipantId: {
+        "student-a": ["student-b"],
+      },
+    }));
+
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.CANCELLED,
+  );
+  assert.equal(store.get("searchRequests/student-a").stopReason, "declined");
+});
+
+test("active restore helper keeps lifecycle fields and clears match state", () => {
+  const update = buildSearchRequestActiveRestoreUpdate({
+    requestData: activeSearchRequest("student-a", {
+      excludedCandidateIds: ["old-peer"],
+    }),
+    excludedCandidateIds: ["student-b", "old-peer"],
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(update.status, SEARCH_REQUEST_STATUS.ACTIVE);
+  assert.equal(update.heartbeatAt, serverTimestamp);
+  assert.deepEqual(update.excludedCandidateIds, ["old-peer", "student-b"]);
+  assert.deepEqual(update.attemptExcludedCandidateIds, []);
+  assert.equal(update.currentSessionId, null);
+  assert.equal(update.matchedUserId, null);
+  assert.equal(update.pairAttemptId, null);
+  assert.equal(update.stopReason, null);
+  assert.equal(update.stoppedAt, null);
+  assert.equal(update.stoppedBy, fieldDelete);
+  assert.equal(
+    canRestoreSearchRequestToActive({status: SEARCH_REQUEST_STATUS.MATCHED}),
+    true,
+  );
+  assert.equal(
+    canRestoreSearchRequestToActive({status: SEARCH_REQUEST_STATUS.STOPPED}),
+    false,
+  );
 });
 
 test("stopSessionSearchRequests stops search without clearing active call users", async () => {

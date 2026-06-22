@@ -25,6 +25,76 @@ const CANCELLABLE_SESSION_STATUSES = new Set([
   VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
   VIDEO_SESSION_STATUS.CONNECTING,
 ]);
+
+function normalizeParticipantId(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalized = value.trim();
+  if (
+    !normalized ||
+    normalized.includes("/") ||
+    normalized === "." ||
+    normalized === ".." ||
+    /^__.*__$/.test(normalized)
+  ) {
+    return "";
+  }
+  return normalized;
+}
+
+function readSessionParticipantIds(sessionData = {}) {
+  return Array.from(new Set([
+    ...(Array.isArray(sessionData.participantIds) ?
+      sessionData.participantIds :
+      []),
+    sessionData.studentId,
+    sessionData.requesterId,
+    sessionData.currentTutorId,
+    sessionData.currentResponderId,
+    sessionData.responderId,
+    sessionData.tutorId,
+    sessionData.matchContext?.requesterId,
+    sessionData.matchContext?.acceptedResponderId,
+  ].map(normalizeParticipantId).filter(Boolean))).sort();
+}
+
+function getCancelRestoreSearchParticipantIds({
+  sessionData = {},
+  cancellingUserId = "",
+}) {
+  if (
+    sessionData.sessionMetadata?.callConnectedAt ||
+    sessionData.sessionMetadata?.callConnectedAtTimestamp
+  ) {
+    return [];
+  }
+
+  const normalizedCancellingUserId = normalizeParticipantId(cancellingUserId);
+  return readSessionParticipantIds(sessionData)
+    .filter((participantId) => participantId !== normalizedCancellingUserId);
+}
+
+function buildCancelRestoreSearchExcludedCandidateIdsByParticipantId({
+  restoreParticipantIds = [],
+  cancellingUserId = "",
+}) {
+  const normalizedCancellingUserId = normalizeParticipantId(cancellingUserId);
+  return Object.fromEntries(
+    restoreParticipantIds
+      .map(normalizeParticipantId)
+      .filter(Boolean)
+      .map((participantId) => [
+        participantId,
+        normalizedCancellingUserId &&
+          normalizedCancellingUserId !== participantId ?
+          [normalizedCancellingUserId] :
+          [],
+      ]),
+  );
+}
+
 exports.cancelCall = functions
   .runWith({ secrets: dailySecrets })
   .https.onCall(async (data, context) => {
@@ -93,6 +163,10 @@ exports.cancelCall = functions
         );
       }
 
+      const restoreSearchParticipantIds = getCancelRestoreSearchParticipantIds({
+        sessionData,
+        cancellingUserId: studentId,
+      });
       await releaseSessionPairLocksInTransaction({
         db,
         transaction,
@@ -103,6 +177,12 @@ exports.cancelCall = functions
         searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
         stopReason: "call_cancelled",
         releaseCallState: true,
+        restoreSearchParticipantIds,
+        restoreSearchExcludedCandidateIdsByParticipantId:
+          buildCancelRestoreSearchExcludedCandidateIdsByParticipantId({
+            restoreParticipantIds: restoreSearchParticipantIds,
+            cancellingUserId: studentId,
+          }),
       });
 
       transaction.update(sessionRef, {
@@ -196,3 +276,9 @@ exports.cancelCall = functions
     throw new functions.https.HttpsError("internal", error.message);
   }
   });
+
+exports.__private__ = {
+  buildCancelRestoreSearchExcludedCandidateIdsByParticipantId,
+  getCancelRestoreSearchParticipantIds,
+  readSessionParticipantIds,
+};

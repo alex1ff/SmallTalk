@@ -8,8 +8,12 @@ const {
 } = require("./match_repeat_prevention");
 const {
   __private__: {
+    buildRestoreSearchExcludedCandidateIdsByParticipantId,
     buildExpiredSessionCleanupPayload,
+    getCleanupRestoreSearchParticipantIds,
+    hasConnectedCallEvidence,
     queueExpiredSessionCleanup,
+    readConnectedSignalParticipantIds,
   },
 } = require("./cleanup_expired_sessions");
 
@@ -134,6 +138,91 @@ test("never-connected connecting sessions expire instead of ending", () => {
   assert.equal(payload.sessionUpdate.expireReason, "join_timeout");
   assert.equal(payload.sessionUpdate.sessionMetadata.endReason, "join_timeout");
   assert.equal(payload.pairHistoryWrite, null);
+});
+
+test("cleanup restore targets only participants with pre-active join signals", () => {
+  const sessionData = {
+    status: "connecting",
+    participantIds: ["student-a", "student-b"],
+    studentId: "student-a",
+    currentTutorId: "student-b",
+    sessionMetadata: {
+      connectedParticipantSignals: {
+        "student-a": {source: "markSessionConnected"},
+        "unknown-user": {source: "markSessionConnected"},
+      },
+    },
+  };
+
+  const restoreParticipantIds = readConnectedSignalParticipantIds(sessionData);
+
+  assert.deepEqual(restoreParticipantIds, ["student-a"]);
+  assert.deepEqual(
+    getCleanupRestoreSearchParticipantIds(sessionData),
+    ["student-a"],
+  );
+  assert.deepEqual(
+    buildRestoreSearchExcludedCandidateIdsByParticipantId({
+      sessionData,
+      restoreParticipantIds,
+    }),
+    {"student-a": ["student-b"]},
+  );
+});
+
+test("cleanup restore targets include Daily webhook join signals", () => {
+  const sessionData = {
+    status: "connecting",
+    participantIds: ["student-a", "student-b"],
+    studentId: "student-a",
+    currentTutorId: "student-b",
+    sessionMetadata: {
+      dailyWebhookParticipantSignals: {
+        "student-b": {source: "dailyWebhook"},
+        "unknown-user": {source: "dailyWebhook"},
+      },
+    },
+  };
+
+  const restoreParticipantIds = getCleanupRestoreSearchParticipantIds(
+    sessionData,
+  );
+
+  assert.deepEqual(restoreParticipantIds, ["student-b"]);
+  assert.deepEqual(
+    buildRestoreSearchExcludedCandidateIdsByParticipantId({
+      sessionData,
+      restoreParticipantIds,
+    }),
+    {"student-b": ["student-a"]},
+  );
+});
+
+test("cleanup restore is skipped after connected call evidence", () => {
+  const sessionData = {
+    status: "connecting",
+    participantIds: ["student-a", "student-b"],
+    studentId: "student-a",
+    currentTutorId: "student-b",
+    sessionMetadata: {
+      callConnectedAt: admin.firestore.Timestamp.fromMillis(
+        Date.parse("2026-04-14T12:05:00Z"),
+      ),
+      connectedParticipantSignals: {
+        "student-a": {source: "markSessionConnected"},
+      },
+      dailyWebhookParticipantSignals: {
+        "student-b": {source: "dailyWebhook"},
+      },
+    },
+  };
+
+  assert.equal(hasConnectedCallEvidence(sessionData), true);
+  assert.deepEqual(
+    readConnectedSignalParticipantIds(sessionData),
+    ["student-a", "student-b"],
+  );
+  assert.deepEqual(getCleanupRestoreSearchParticipantIds(sessionData), []);
 });
 
 test("client-signal-only expired sessions do not write repeat history", () => {

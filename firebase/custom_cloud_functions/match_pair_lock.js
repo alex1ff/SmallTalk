@@ -535,6 +535,72 @@ function buildSearchRequestPairLockReleaseUpdate({
   };
 }
 
+function readCandidateIdList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry) => {
+    if (typeof entry === "string") {
+      return normalizeDocumentId(entry);
+    }
+    if (entry && typeof entry.id === "string") {
+      return normalizeDocumentId(entry.id);
+    }
+    if (entry && typeof entry.path === "string") {
+      const pathParts = entry.path.split("/");
+      return normalizeDocumentId(pathParts[pathParts.length - 1]);
+    }
+    return "";
+  }).filter(Boolean);
+}
+
+function buildSearchRequestActiveRestoreUpdate({
+  requestData = {},
+  excludedCandidateIds = [],
+  serverTimestamp,
+  fieldDelete,
+}) {
+  const nextExcludedCandidateIds = Array.from(new Set([
+    ...readCandidateIdList(
+      requestData[SEARCH_REQUEST_FIELD.EXCLUDED_CANDIDATE_IDS],
+    ),
+    ...readCandidateIdList(excludedCandidateIds),
+  ])).sort();
+
+  return {
+    [SEARCH_REQUEST_FIELD.STATUS]: SEARCH_REQUEST_STATUS.ACTIVE,
+    [SEARCH_REQUEST_FIELD.UPDATED_AT]: serverTimestamp,
+    [SEARCH_REQUEST_FIELD.HEARTBEAT_AT]: serverTimestamp,
+    [SEARCH_REQUEST_FIELD.ACTIVE_SESSION_ID]: fieldDelete,
+    [SEARCH_REQUEST_FIELD.CURRENT_SESSION_ID]: null,
+    [SEARCH_REQUEST_FIELD.MATCHED_SESSION_ID]: fieldDelete,
+    [SEARCH_REQUEST_FIELD.MATCHED_USER_ID]: null,
+    [SEARCH_REQUEST_FIELD.MATCHED_RESPONDER_ID]: fieldDelete,
+    [SEARCH_REQUEST_FIELD.MATCHED_ROLE]: null,
+    [SEARCH_REQUEST_FIELD.PAIR_ATTEMPT_ID]: null,
+    [SEARCH_REQUEST_FIELD.EXCLUDED_CANDIDATE_IDS]: nextExcludedCandidateIds,
+    [SEARCH_REQUEST_FIELD.ATTEMPT_EXCLUDED_CANDIDATE_IDS]: [],
+    [SEARCH_REQUEST_FIELD.LOCK_OWNER]: null,
+    [SEARCH_REQUEST_FIELD.LOCK_EXPIRES_AT]: null,
+    [SEARCH_REQUEST_FIELD.STOP_REASON]: null,
+    [SEARCH_REQUEST_FIELD.STOPPED_AT]: null,
+    [SEARCH_REQUEST_FIELD.STOPPED_BY]: fieldDelete,
+    [SEARCH_REQUEST_FIELD.LAST_ERROR]: null,
+    [SEARCH_REQUEST_FIELD.ERROR_CODE]: fieldDelete,
+    [SEARCH_REQUEST_FIELD.ERROR_MESSAGE]: fieldDelete,
+  };
+}
+
+function canRestoreSearchRequestToActive(requestData = {}) {
+  return [
+    SEARCH_REQUEST_STATUS.ACTIVE,
+    SEARCH_REQUEST_STATUS.MATCHING,
+    SEARCH_REQUEST_STATUS.MATCHED,
+    SEARCH_REQUEST_STATUS.LEGACY_SEARCHING,
+  ].includes(normalizeString(requestData[SEARCH_REQUEST_FIELD.STATUS]));
+}
+
 function buildUserPairLockReleaseUpdate({
   serverTimestamp,
   fieldDelete,
@@ -625,7 +691,21 @@ function applyPairLockReleaseWrites({
   stopReason = "session_finished",
   releaseCallState = false,
   restoreLegacyAvailability = false,
+  restoreSearchParticipantIds = [],
+  restoreSearchExcludedCandidateIdsByParticipantId = {},
 }) {
+  const restoreParticipantIdSet = new Set(
+    restoreSearchParticipantIds.map(normalizeDocumentId).filter(Boolean),
+  );
+  const restoreExcludedIdsByParticipantId = Object.fromEntries(
+    Object.entries(restoreSearchExcludedCandidateIdsByParticipantId || {})
+      .map(([participantId, excludedIds]) => [
+        normalizeDocumentId(participantId),
+        excludedIds,
+      ])
+      .filter(([participantId]) => Boolean(participantId)),
+  );
+
   for (const target of targets) {
     if (
       target.userSnap.exists &&
@@ -643,12 +723,27 @@ function applyPairLockReleaseWrites({
       target.searchSnap.exists &&
       searchRequestMatchesSession(target.searchData, sessionId)
     ) {
-      transaction.update(target.searchRef, buildSearchRequestPairLockReleaseUpdate({
-        status: searchRequestStatus,
-        stopReason,
-        serverTimestamp,
-        fieldDelete,
-      }));
+      if (
+        restoreParticipantIdSet.has(target.participantId) &&
+        canRestoreSearchRequestToActive(target.searchData)
+      ) {
+        transaction.update(target.searchRef, buildSearchRequestActiveRestoreUpdate({
+          requestData: target.searchData,
+          excludedCandidateIds:
+            restoreExcludedIdsByParticipantId[
+              target.participantId
+            ] || [],
+          serverTimestamp,
+          fieldDelete,
+        }));
+      } else {
+        transaction.update(target.searchRef, buildSearchRequestPairLockReleaseUpdate({
+          status: searchRequestStatus,
+          stopReason,
+          serverTimestamp,
+          fieldDelete,
+        }));
+      }
     }
   }
 }
@@ -710,6 +805,8 @@ async function releaseSessionPairLocksInTransaction({
   stopReason = "session_finished",
   releaseCallState = false,
   restoreLegacyAvailability = false,
+  restoreSearchParticipantIds = [],
+  restoreSearchExcludedCandidateIdsByParticipantId = {},
 }) {
   const normalizedSessionId = normalizeDocumentId(sessionId);
   if (!normalizedSessionId) {
@@ -733,6 +830,8 @@ async function releaseSessionPairLocksInTransaction({
     stopReason,
     releaseCallState,
     restoreLegacyAvailability,
+    restoreSearchParticipantIds,
+    restoreSearchExcludedCandidateIdsByParticipantId,
   });
   return {
     released: true,
@@ -1398,8 +1497,10 @@ module.exports = {
   MATCH_PAIR_LOCK_TTL_SECONDS,
   applyPreparedPairLockWrites,
   buildPairAttemptId,
+  buildSearchRequestActiveRestoreUpdate,
   buildSearchRequestPairLockUpdate,
   buildVideoSessionPairLockData,
+  canRestoreSearchRequestToActive,
   hasLiveSearchRequestLock,
   isSearchRequestFreshForPairLock,
   prepareExistingSessionNextResponderPairLockInTransaction,

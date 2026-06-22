@@ -149,6 +149,36 @@ function getAssignedResponderId(sessionData = {}) {
     normalizeNonEmptyString(sessionData.matchContext?.acceptedResponderId);
 }
 
+function getStopSearchRestoreParticipantIds({
+  responderUserId = "",
+  userId = "",
+}) {
+  const normalizedResponderUserId = normalizeDocumentId(responderUserId);
+  const normalizedUserId = normalizeDocumentId(userId);
+  return normalizedResponderUserId &&
+    normalizedResponderUserId !== normalizedUserId ?
+    [normalizedResponderUserId] :
+    [];
+}
+
+function buildStopSearchRestoreExcludedCandidateIdsByParticipantId({
+  restoreParticipantIds = [],
+  userId = "",
+}) {
+  const normalizedUserId = normalizeDocumentId(userId);
+  return Object.fromEntries(
+    restoreParticipantIds
+      .map(normalizeDocumentId)
+      .filter(Boolean)
+      .map((participantId) => [
+        participantId,
+        normalizedUserId && normalizedUserId !== participantId ?
+          [normalizedUserId] :
+          [],
+      ]),
+  );
+}
+
 function timestampToMillis(value) {
   if (!value) {
     return null;
@@ -593,6 +623,10 @@ exports.stopSearch = functions
       }
 
       if (sessionDecision.sessionUpdate && sessionRef) {
+        const restoreSearchParticipantIds = getStopSearchRestoreParticipantIds({
+          responderUserId,
+          userId,
+        });
         await releaseSessionPairLocksInTransaction({
           db,
           transaction,
@@ -603,6 +637,12 @@ exports.stopSearch = functions
           searchRequestStatus: SEARCH_REQUEST_STATUS.STOPPED,
           stopReason: "manual_stop_search",
           releaseCallState: true,
+          restoreSearchParticipantIds,
+          restoreSearchExcludedCandidateIdsByParticipantId:
+            buildStopSearchRestoreExcludedCandidateIdsByParticipantId({
+              restoreParticipantIds: restoreSearchParticipantIds,
+              userId,
+            }),
         });
       }
       if (searchDecision.update) {
@@ -678,10 +718,12 @@ exports.__private__ = {
   TERMINAL_SESSION_STATUSES,
   buildResponse,
   buildStopSearchDecision,
+  buildStopSearchRestoreExcludedCandidateIdsByParticipantId,
   buildStopSessionDecision,
   canStopSessionAfterSearchDecision,
   cancelSentNotificationsForSession,
   getAssignedResponderId,
+  getStopSearchRestoreParticipantIds,
   normalizeRequestId,
   normalizeSessionId,
   requestBelongsToUser,
