@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const {
   SEARCH_REQUEST_APP_STATE,
   SEARCH_REQUEST_FIELD,
@@ -9,18 +11,35 @@ const {
 const {
   __private__: {
     buildCurrentMatchedStartSearchResponse,
+    buildStudentPairRequesterInfo,
+    buildStudentPairResponderCallData,
+    buildStudentPairResponderFcmMessage,
+    buildStudentPairResponderPushPayload,
     buildStartSearchAccessDecision,
     buildStartSearchFilters,
     buildMatchedStartSearchResponse,
     buildStartSearchRequestData,
     buildStartSearchResponse,
     buildStudentPairSessionData,
+    cancelBackgroundStudentResponderNotification,
     canAttemptStudentPairForSearchRequest,
     canReuseSearchRequestForUser,
     hasCurrentMatchedSession,
+    isFreshBackgroundSearchRequest,
+    isSessionResponseWindowOpen,
+    isStudentResponderSession,
     isReusableSearchRequest,
+    maybeNotifyBackgroundStudentResponder,
     normalizeStartSearchInput,
+    readErrorMessage,
+    recordBackgroundStudentResponderPushFailure,
+    recordBackgroundStudentResponderPushSuccess,
+    runBackgroundStudentResponderPushSender,
+    searchRequestBelongsToResponder,
     searchRequestBelongsToUser,
+    searchRequestMatchesSession,
+    sendVoipPushToStudentResponder,
+    shouldCreateBackgroundStudentResponderIncomingCall,
     tryReadCurrentMatchedStartSearchResponse,
   },
 } = require("./start_search");
@@ -90,6 +109,45 @@ test("start search input rejects direct-call payload", () => {
     }).language,
     "EN",
   );
+});
+
+test("start search source avoids unsafe error.message reads", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "start_search.js"),
+    "utf8",
+  );
+  const unsafeMessageReads = source
+    .split("\n")
+    .filter((line) => /\berror\??\.message\b/.test(line))
+    .filter((line) => !line.includes("normalizeString(error.message)"));
+  const unsafeStringFallbacks = source
+    .split("\n")
+    .filter((line) => /readErrorMessage\([^,]+,\s*String\(/.test(line));
+
+  assert.deepEqual(unsafeMessageReads, []);
+  assert.deepEqual(unsafeStringFallbacks, []);
+});
+
+test("start search error message helper never throws", () => {
+  const throwingMessage = {};
+  Object.defineProperty(throwingMessage, "message", {
+    get: () => {
+      throw new Error("getter failed");
+    },
+  });
+  const throwingToString = {
+    toString: () => {
+      throw new Error("stringify failed");
+    },
+  };
+
+  assert.equal(
+    readErrorMessage(new Error("plain failure"), "fallback"),
+    "plain failure",
+  );
+  assert.equal(readErrorMessage("text failure", "fallback"), "text failure");
+  assert.equal(readErrorMessage(throwingMessage, "fallback"), "fallback");
+  assert.equal(readErrorMessage(throwingToString, "fallback"), "fallback");
 });
 
 test("start search access decision blocks invalid callers server-side", () => {
@@ -437,6 +495,1975 @@ test("student pair creation is attempted only for open search requests", () => {
     }),
     false,
   );
+});
+
+test("background responder incoming call requires fresh background request", () => {
+  const pendingSessionData = {
+    status: "pending_confirmation",
+    currentResponderId: "student-b",
+    currentTutorId: "student-b",
+    currentResponderRole: "student",
+    responderRole: "student",
+    scenario: "student_student",
+    participantRoles: {
+      "student-a": "student",
+      "student-b": "student",
+    },
+    responseExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+  };
+  const freshBackgroundRequest = {
+    status: SEARCH_REQUEST_STATUS.MATCHED,
+    userId: "student-b",
+    appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+    backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60_000),
+    currentSessionId: "session-ab",
+  };
+
+  assert.equal(
+    isFreshBackgroundSearchRequest(freshBackgroundRequest, fixedNowMillis),
+    true,
+  );
+  assert.equal(
+    isFreshBackgroundSearchRequest({
+      ...freshBackgroundRequest,
+      status: SEARCH_REQUEST_STATUS.ACTIVE,
+    }, fixedNowMillis),
+    false,
+  );
+  assert.equal(
+    isSessionResponseWindowOpen(pendingSessionData, fixedNowMillis),
+    true,
+  );
+  assert.equal(
+    searchRequestMatchesSession(freshBackgroundRequest, "session-ab"),
+    true,
+  );
+  assert.equal(
+    searchRequestBelongsToResponder(freshBackgroundRequest, "student-b"),
+    true,
+  );
+  assert.equal(
+    searchRequestBelongsToResponder({
+      ...freshBackgroundRequest,
+      userId: "student-c",
+    }, "student-b"),
+    false,
+  );
+  assert.equal(
+    isStudentResponderSession(pendingSessionData, "student-b"),
+    true,
+  );
+  assert.equal(
+    isStudentResponderSession({
+      ...pendingSessionData,
+      scenario: "",
+    }, "student-b"),
+    false,
+  );
+  assert.equal(
+    isStudentResponderSession({
+      ...pendingSessionData,
+      currentResponderRole: "",
+    }, "student-b"),
+    false,
+  );
+  assert.equal(
+    isStudentResponderSession({
+      ...pendingSessionData,
+      responderRole: "",
+    }, "student-b"),
+    false,
+  );
+  assert.equal(
+    isStudentResponderSession({
+      ...pendingSessionData,
+      participantRoles: {
+        "student-a": "student",
+      },
+    }, "student-b"),
+    false,
+  );
+  assert.equal(
+    isStudentResponderSession({
+      ...pendingSessionData,
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "native_speaker",
+      },
+    }, "student-b"),
+    false,
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: {
+        ...pendingSessionData,
+        participantRoles: {
+          "student-a": "student",
+          "student-b": "native_speaker",
+        },
+      },
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: freshBackgroundRequest,
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "responder_not_student"},
+  );
+  assert.equal(
+    searchRequestMatchesSession(freshBackgroundRequest, ""),
+    false,
+  );
+  assert.equal(
+    searchRequestMatchesSession({
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60_000),
+    }, "session-ab"),
+    false,
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: pendingSessionData,
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: freshBackgroundRequest,
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: true, reason: "background_responder"},
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: pendingSessionData,
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: {
+        status: SEARCH_REQUEST_STATUS.MATCHED,
+        userId: "student-b",
+        appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+        backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60_000),
+        currentSessionId: "session-ab",
+      },
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "responder_not_background"},
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: pendingSessionData,
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: {
+        status: SEARCH_REQUEST_STATUS.MATCHED,
+        userId: "student-b",
+        appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+        backgroundExpiresAt: timestampFromMillis(fixedNowMillis),
+        currentSessionId: "session-ab",
+      },
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "responder_not_background"},
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: {
+        ...pendingSessionData,
+        status: "connecting",
+      },
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: freshBackgroundRequest,
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "session_connecting"},
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: {
+        ...pendingSessionData,
+        currentResponderRole: "native_speaker",
+        responderRole: "native_speaker",
+        scenario: "student_teacher",
+        participantRoles: {
+          "student-a": "student",
+          "student-b": "native_speaker",
+        },
+      },
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: freshBackgroundRequest,
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "responder_not_student"},
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: {
+        ...pendingSessionData,
+        acceptingTutorId: "student-b",
+        acceptingAt: timestampFromMillis(fixedNowMillis),
+      },
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: freshBackgroundRequest,
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "accept_in_progress"},
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: {
+        ...pendingSessionData,
+        responseExpiresAt: timestampFromMillis(fixedNowMillis),
+        confirmationExpiresAt: timestampFromMillis(fixedNowMillis),
+      },
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: freshBackgroundRequest,
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "response_window_closed"},
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: pendingSessionData,
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: {
+        ...freshBackgroundRequest,
+        userId: "student-c",
+      },
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "search_request_owner_mismatch"},
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: pendingSessionData,
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: {
+        ...freshBackgroundRequest,
+        currentSessionId: "session-other",
+      },
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "search_request_session_mismatch"},
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: pendingSessionData,
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: {
+        status: SEARCH_REQUEST_STATUS.ACTIVE,
+        appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+        backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60_000),
+        currentSessionId: "session-ab",
+      },
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "responder_not_background"},
+  );
+  assert.deepEqual(
+    shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData: pendingSessionData,
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestData: {
+        status: SEARCH_REQUEST_STATUS.MATCHED,
+        userId: "student-b",
+        appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+        backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60_000),
+      },
+      nowMillis: fixedNowMillis,
+    }),
+    {shouldNotify: false, reason: "search_request_session_mismatch"},
+  );
+});
+
+test("student pair responder call data omits room credentials", () => {
+  assert.deepEqual(
+    buildStudentPairRequesterInfo({
+      displayName: "Ana",
+      photoUrl: "photo-url",
+    }),
+    {
+      name: "Ana",
+      photo: "photo-url",
+    },
+  );
+
+  const callData = buildStudentPairResponderCallData({
+    sessionId: " session-ab ",
+    pushPayload: {
+      studentName: " Ana ",
+      studentId: " student-a ",
+      studentPhoto: " photo ",
+      language: " en ",
+      roomUrl: "https://daily.example/room",
+      meetingToken: "token",
+    },
+  });
+
+  assert.deepEqual(callData, {
+    sessionId: "session-ab",
+    callerName: "Ana",
+    callerId: "student-a",
+    callerPhoto: "photo",
+    language: "en",
+  });
+  assert.equal(Object.hasOwn(callData, "roomUrl"), false);
+  assert.equal(Object.hasOwn(callData, "meetingToken"), false);
+
+  const pushPayload = buildStudentPairResponderPushPayload({
+    ...callData,
+    roomUrl: "https://daily.example/room",
+    meetingToken: "token",
+  });
+  assert.deepEqual(pushPayload, {
+    type: "incoming_call",
+    sessionId: "session-ab",
+    callerName: "Ana",
+    callerId: "student-a",
+    callerPhoto: "photo",
+    language: "en",
+  });
+  assert.equal(Object.hasOwn(pushPayload, "roomUrl"), false);
+  assert.equal(Object.hasOwn(pushPayload, "meetingToken"), false);
+
+  const fcmMessage = buildStudentPairResponderFcmMessage({
+    fcmToken: "fcm-token",
+    payload: pushPayload,
+    bundleId: "com.example.app",
+  });
+  assert.equal(fcmMessage.token, "fcm-token");
+  assert.equal(fcmMessage.android.priority, "high");
+  assert.deepEqual(fcmMessage.data, pushPayload);
+  assert.equal(Object.hasOwn(fcmMessage.data, "roomUrl"), false);
+  assert.equal(Object.hasOwn(fcmMessage.data, "meetingToken"), false);
+});
+
+test("student responder APNS failure is preserved when FCM is missing", async () => {
+  let fcmSendCount = 0;
+  const result = await sendVoipPushToStudentResponder(
+    "student-b",
+    {
+      sessionId: "session-ab",
+      callerName: "Ana",
+      callerId: "student-a",
+      callerPhoto: "photo",
+      language: "en",
+    },
+    {
+      firestore: {
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({
+              exists: true,
+              data: () => ({displayName: "Waiting Student"}),
+            }),
+          }),
+        }),
+      },
+      getUserVoipTokens: async () => ({
+        voipPushToken: "apns-token",
+        voipToken: "",
+      }),
+      sendApnsVoip: async () => {
+        throw new Error("apns unavailable");
+      },
+      messaging: {
+        send: async () => {
+          fcmSendCount += 1;
+        },
+      },
+      logger: {
+        error: () => {},
+      },
+    },
+  );
+
+  assert.deepEqual(result, {
+    sent: false,
+    reason: "missing_fcm_token",
+    error: "apns unavailable",
+  });
+  assert.equal(fcmSendCount, 0);
+});
+
+test("student responder APNS success skips FCM fallback", async () => {
+  let apnsSendCount = 0;
+  let fcmSendCount = 0;
+  const controller = new AbortController();
+  const result = await sendVoipPushToStudentResponder(
+    "student-b",
+    {
+      sessionId: "session-ab",
+      callerName: "Ana",
+      callerId: "student-a",
+      callerPhoto: "photo",
+      language: "en",
+    },
+    {
+      firestore: {
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({
+              exists: true,
+              data: () => ({displayName: "Waiting Student"}),
+            }),
+          }),
+        }),
+      },
+      getUserVoipTokens: async () => ({
+        voipPushToken: "apns-token",
+        voipToken: "fcm-token",
+      }),
+      sendApnsVoip: async ({signal}) => {
+        assert.equal(signal?.aborted, false);
+        apnsSendCount += 1;
+      },
+      messaging: {
+        send: async () => {
+          fcmSendCount += 1;
+        },
+      },
+      logger: {
+        error: () => {},
+      },
+      signal: controller.signal,
+    },
+  );
+
+  assert.deepEqual(result, {
+    sent: true,
+    channel: "apns_voip",
+  });
+  assert.equal(apnsSendCount, 1);
+  assert.equal(fcmSendCount, 0);
+});
+
+test("student responder falls back to FCM after APNS timeout", async () => {
+  let fcmSendCount = 0;
+  let apnsAbortReason = "";
+  const controller = new AbortController();
+  const result = await sendVoipPushToStudentResponder(
+    "student-b",
+    {
+      sessionId: "session-ab",
+      callerName: "Ana",
+      callerId: "student-a",
+      callerPhoto: "photo",
+      language: "en",
+    },
+    {
+      firestore: {
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({
+              exists: true,
+              data: () => ({displayName: "Waiting Student"}),
+            }),
+          }),
+        }),
+      },
+      getUserVoipTokens: async () => ({
+        voipPushToken: "apns-token",
+        voipToken: "fcm-token",
+      }),
+      sendApnsVoip: async ({signal}) => new Promise((resolve, reject) => {
+        signal.addEventListener("abort", () => {
+          apnsAbortReason = signal.reason?.message || "";
+          reject(signal.reason);
+        }, {once: true});
+      }),
+      messaging: {
+        send: async (message) => {
+          fcmSendCount += 1;
+          assert.equal(message.token, "fcm-token");
+          assert.equal(message.data.sessionId, "session-ab");
+        },
+      },
+      logger: {
+        error: () => {},
+      },
+      apnsTimeoutMs: 1,
+      signal: controller.signal,
+    },
+  );
+
+  assert.deepEqual(result, {
+    sent: true,
+    channel: "fcm",
+  });
+  assert.equal(apnsAbortReason, "apns_voip_timeout");
+  assert.equal(controller.signal.aborted, false);
+  assert.equal(fcmSendCount, 1);
+});
+
+test("student responder falls back to FCM after APNS error response", async () => {
+  let fcmSendCount = 0;
+  const result = await sendVoipPushToStudentResponder(
+    "student-b",
+    {
+      sessionId: "session-ab",
+      callerName: "Ana",
+      callerId: "student-a",
+      callerPhoto: "photo",
+      language: "en",
+    },
+    {
+      firestore: {
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({
+              exists: true,
+              data: () => ({displayName: "Waiting Student"}),
+            }),
+          }),
+        }),
+      },
+      getUserVoipTokens: async () => ({
+        voipPushToken: "apns-token",
+        voipToken: "fcm-token",
+      }),
+      sendApnsVoip: async () => {
+        throw new Error("APNs error 410: {\"reason\":\"Unregistered\"}");
+      },
+      messaging: {
+        send: async (message) => {
+          fcmSendCount += 1;
+          assert.equal(message.token, "fcm-token");
+          assert.equal(message.data.sessionId, "session-ab");
+        },
+      },
+      logger: {
+        error: () => {},
+      },
+    },
+  );
+
+  assert.deepEqual(result, {
+    sent: true,
+    channel: "fcm",
+  });
+  assert.equal(fcmSendCount, 1);
+});
+
+test("student responder push result preserves APNS and FCM failures", async () => {
+  const result = await sendVoipPushToStudentResponder(
+    "student-b",
+    {
+      sessionId: "session-ab",
+      callerName: "Ana",
+      callerId: "student-a",
+      callerPhoto: "photo",
+      language: "en",
+    },
+    {
+      firestore: {
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({
+              exists: true,
+              data: () => ({displayName: "Waiting Student"}),
+            }),
+          }),
+        }),
+      },
+      getUserVoipTokens: async () => ({
+        voipPushToken: "apns-token",
+        voipToken: "fcm-token",
+      }),
+      sendApnsVoip: async () => {
+        throw new Error("apns unavailable");
+      },
+      messaging: {
+        send: async () => {
+          throw new Error("fcm unavailable");
+        },
+      },
+      logger: {
+        error: () => {},
+      },
+    },
+  );
+
+  assert.deepEqual(result, {
+    sent: false,
+    reason: "fcm_failed",
+    error: "apns: apns unavailable; fcm: fcm unavailable",
+  });
+});
+
+test("background responder push sender aborts slow sends", async () => {
+  let signalWasAborted = false;
+  await assert.rejects(
+    () => runBackgroundStudentResponderPushSender({
+      pushSender: async (responderId, callData, {signal}) =>
+        new Promise((resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            signalWasAborted = true;
+            reject(signal.reason);
+          }, {once: true});
+        }),
+      responderId: "student-b",
+      callData: {sessionId: "session-ab"},
+      timeoutMs: 1,
+    }),
+    /push_timeout/,
+  );
+  assert.equal(signalWasAborted, true);
+});
+
+test("stale background responder notification is cancelled safely", async () => {
+  const store = new Map([
+    ["notifications/notification-ab", {
+      status: "sent",
+      sessionId: "session-ab",
+      recipientId: "student-b",
+    }],
+    ["notifications/accepted-notification", {
+      status: "accepted",
+      sessionId: "session-ab",
+      recipientId: "student-b",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+
+  assert.deepEqual(
+    await cancelBackgroundStudentResponderNotification({
+      db: fakeDb,
+      notificationId: "notification-ab",
+      sessionId: "session-ab",
+      responderId: "student-b",
+      reason: "stale_before_push",
+    }),
+    {
+      cancelled: true,
+      reason: "stale_before_push",
+      staleReason: "session_or_search_missing",
+      leaveForAccept: false,
+    },
+  );
+  assert.equal(
+    store.get("notifications/notification-ab").status,
+    "cancelled",
+  );
+  assert.equal(
+    store.get("notifications/notification-ab").cancelReason,
+    "stale_before_push",
+  );
+  assert.ok(store.get("notifications/notification-ab").cancelledAt);
+  assert.deepEqual(
+    await cancelBackgroundStudentResponderNotification({
+      db: fakeDb,
+      notificationId: "accepted-notification",
+      sessionId: "session-ab",
+      responderId: "student-b",
+    }),
+    {
+      cancelled: false,
+      reason: "notification_not_current",
+      leaveForAccept: false,
+    },
+  );
+  assert.equal(
+    store.get("notifications/accepted-notification").status,
+    "accepted",
+  );
+});
+
+test("background responder stale-before-push flow cancels notification", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  let transactionCount = 0;
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => {
+      transactionCount += 1;
+      const result = await callback({
+        get: async (ref) => ({
+          exists: store.has(ref.path),
+          data: () => store.get(ref.path),
+        }),
+        set: (ref, value) => {
+          store.set(ref.path, value);
+        },
+        update: (ref, update) => {
+          store.set(ref.path, {
+            ...store.get(ref.path),
+            ...update,
+          });
+        },
+      });
+      if (transactionCount === 1) {
+        store.set("searchRequests/student-b", {
+          ...store.get("searchRequests/student-b"),
+          appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+          backgroundExpiresAt: null,
+        });
+      }
+      return result;
+    },
+  };
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {
+      displayName: "Joining Student",
+      photoUrl: "joining-photo",
+    },
+  });
+
+  assert.equal(result.shouldNotify, false);
+  assert.equal(result.reason, "stale_before_push");
+  assert.equal(store.get(notificationPath).status, "cancelled");
+  assert.equal(
+    store.get(notificationPath).cancelReason,
+    "stale_before_push",
+  );
+  assert.equal(store.get(notificationPath).sessionId, "session-ab");
+  assert.equal(store.get(notificationPath).recipientId, "student-b");
+});
+
+test("background responder stale-before-push preserves accept race", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  let transactionCount = 0;
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => {
+      transactionCount += 1;
+      const result = await callback({
+        get: async (ref) => ({
+          exists: store.has(ref.path),
+          data: () => store.get(ref.path),
+        }),
+        set: (ref, value) => {
+          store.set(ref.path, value);
+        },
+        update: (ref, update) => {
+          store.set(ref.path, {
+            ...store.get(ref.path),
+            ...update,
+          });
+        },
+      });
+      if (transactionCount === 1) {
+        store.set("videoSessions/session-ab", {
+          ...store.get("videoSessions/session-ab"),
+          acceptingTutorId: "student-b",
+          acceptingAt: timestampFromMillis(nowMillis),
+        });
+      }
+      return result;
+    },
+  };
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {displayName: "Joining Student"},
+  });
+
+  assert.equal(result.shouldNotify, false);
+  assert.equal(result.reason, "accept_finalization_in_progress");
+  assert.equal(result.staleReason, "accept_in_progress");
+  assert.equal(store.get(notificationPath).status, "sent");
+  assert.equal(
+    Object.hasOwn(store.get(notificationPath), "cancelledAt"),
+    false,
+  );
+});
+
+test("background responder stale-before-push cancel preserves accept race", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  let transactionCount = 0;
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => {
+      transactionCount += 1;
+      if (transactionCount === 2) {
+        store.set("videoSessions/session-ab", {
+          ...store.get("videoSessions/session-ab"),
+          acceptingTutorId: "student-b",
+          acceptingAt: timestampFromMillis(nowMillis),
+        });
+      }
+      const result = await callback({
+        get: async (ref) => ({
+          exists: store.has(ref.path),
+          data: () => store.get(ref.path),
+        }),
+        set: (ref, value) => {
+          store.set(ref.path, value);
+        },
+        update: (ref, update) => {
+          store.set(ref.path, {
+            ...store.get(ref.path),
+            ...update,
+          });
+        },
+      });
+      if (transactionCount === 1) {
+        store.set("searchRequests/student-b", {
+          ...store.get("searchRequests/student-b"),
+          appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+          backgroundExpiresAt: null,
+        });
+      }
+      return result;
+    },
+  };
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {displayName: "Joining Student"},
+  });
+
+  assert.equal(result.shouldNotify, false);
+  assert.equal(result.reason, "accept_finalization_in_progress");
+  assert.equal(result.staleReason, "accept_in_progress");
+  assert.equal(store.get(notificationPath).status, "sent");
+  assert.equal(
+    Object.hasOwn(store.get(notificationPath), "cancelledAt"),
+    false,
+  );
+});
+
+test("background responder notify flow creates notification and sends push", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      set: (ref, value) => {
+        store.set(ref.path, value);
+      },
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+  const pushCalls = [];
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {
+      displayName: "Joining Student",
+      photoUrl: "joining-photo",
+    },
+    pushSender: async (responderId, callData) => {
+      pushCalls.push({responderId, callData});
+      return {sent: true, channel: "test"};
+    },
+  });
+
+  assert.equal(result.shouldNotify, true);
+  assert.equal(result.reason, "background_responder");
+  assert.equal(result.pushResult.sent, true);
+  assert.equal(pushCalls.length, 1);
+  assert.equal(pushCalls[0].responderId, "student-b");
+  assert.deepEqual(pushCalls[0].callData, {
+    sessionId: "session-ab",
+    callerName: "Joining Student",
+    callerId: "student-a",
+    callerPhoto: "joining-photo",
+    language: "en",
+  });
+  assert.equal(Object.hasOwn(pushCalls[0].callData, "roomUrl"), false);
+  assert.equal(Object.hasOwn(pushCalls[0].callData, "meetingToken"), false);
+  assert.equal(store.get(notificationPath).status, "sent");
+  assert.equal(store.get(notificationPath).recipientId, "student-b");
+  assert.equal(store.get(notificationPath).sessionId, "session-ab");
+  assert.ok(store.get(notificationPath).pushSentAt);
+  assert.equal(store.get(notificationPath).pushChannel, "test");
+  assert.ok(store.get(notificationPath).updatedAt);
+  assert.deepEqual(store.get(notificationPath).studentInfo, {
+    name: "Joining Student",
+    photo: "joining-photo",
+  });
+});
+
+test("background responder notify flow cancels stale state after push", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      set: (ref, value) => {
+        store.set(ref.path, value);
+      },
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {displayName: "Joining Student"},
+    pushSender: async () => {
+      store.set("searchRequests/student-b", {
+        ...store.get("searchRequests/student-b"),
+        appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+        backgroundExpiresAt: null,
+      });
+      return {sent: true, channel: "test"};
+    },
+  });
+
+  assert.equal(result.shouldNotify, false);
+  assert.equal(result.reason, "stale_after_push");
+  assert.equal(result.pushResult.sent, true);
+  assert.equal(store.get(notificationPath).status, "cancelled");
+  assert.equal(store.get(notificationPath).cancelReason, "stale_after_push");
+  assert.ok(store.get(notificationPath).pushSentAt);
+  assert.equal(store.get(notificationPath).pushChannel, "test");
+  assert.ok(store.get(notificationPath).cancelledAt);
+});
+
+test("background responder push success preserves terminal notifications", async () => {
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+    ["notifications/accepted-notification", {
+      status: "accepted",
+      sessionId: "session-ab",
+      recipientId: "student-b",
+    }],
+    ["notifications/cancelled-notification", {
+      status: "cancelled",
+      sessionId: "session-ab",
+      recipientId: "student-b",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+
+  for (const notificationId of [
+    "accepted-notification",
+    "cancelled-notification",
+  ]) {
+    assert.deepEqual(
+      await recordBackgroundStudentResponderPushSuccess({
+        db: fakeDb,
+        notificationId,
+        sessionId: "session-ab",
+        responderId: "student-b",
+        responderSearchRequestDocId: "student-b",
+        pushResult: {sent: true, channel: "test"},
+        nowMillis,
+      }),
+      {
+        stillCurrent: false,
+        reason: "notification_not_current",
+        updated: false,
+      },
+    );
+    assert.equal(
+      Object.hasOwn(store.get(`notifications/${notificationId}`), "pushSentAt"),
+      false,
+    );
+    assert.equal(
+      Object.hasOwn(store.get(`notifications/${notificationId}`), "pushChannel"),
+      false,
+    );
+  }
+  assert.equal(
+    store.get("notifications/accepted-notification").status,
+    "accepted",
+  );
+  assert.equal(
+    store.get("notifications/cancelled-notification").status,
+    "cancelled",
+  );
+});
+
+test("background responder push failure preserves terminal notifications", async () => {
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+    ["notifications/accepted-notification", {
+      status: "accepted",
+      sessionId: "session-ab",
+      recipientId: "student-b",
+    }],
+    ["notifications/cancelled-notification", {
+      status: "cancelled",
+      sessionId: "session-ab",
+      recipientId: "student-b",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+
+  for (const notificationId of [
+    "accepted-notification",
+    "cancelled-notification",
+  ]) {
+    assert.deepEqual(
+      await recordBackgroundStudentResponderPushFailure({
+        db: fakeDb,
+        notificationId,
+        sessionId: "session-ab",
+        responderId: "student-b",
+        responderSearchRequestDocId: "student-b",
+        error: {message: "network unavailable"},
+        nowMillis,
+      }),
+      {
+        stillCurrent: false,
+        reason: "notification_not_current",
+        updated: false,
+      },
+    );
+    assert.equal(
+      Object.hasOwn(
+        store.get(`notifications/${notificationId}`),
+        "lastPushError",
+      ),
+      false,
+    );
+    assert.equal(
+      Object.hasOwn(
+        store.get(`notifications/${notificationId}`),
+        "lastPushFailedAt",
+      ),
+      false,
+    );
+  }
+  assert.equal(
+    store.get("notifications/accepted-notification").status,
+    "accepted",
+  );
+  assert.equal(
+    store.get("notifications/cancelled-notification").status,
+    "cancelled",
+  );
+});
+
+test("background responder post-push finalization preserves accept race", async () => {
+  const nowMillis = Date.now();
+  const baseSessionData = {
+    status: "pending_confirmation",
+    currentResponderId: "student-b",
+    currentTutorId: "student-b",
+    currentResponderRole: "student",
+    responderRole: "student",
+    scenario: "student_student",
+    participantRoles: {
+      "student-a": "student",
+      "student-b": "student",
+    },
+    studentId: "student-a",
+    language: "en",
+    responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+  };
+  const searchRequestData = {
+    status: SEARCH_REQUEST_STATUS.MATCHED,
+    userId: "student-b",
+    appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+    backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+    currentSessionId: "session-ab",
+  };
+
+  for (const {notificationId, sessionData, finalize} of [
+    {
+      notificationId: "accept-lock-success",
+      sessionData: {
+        ...baseSessionData,
+        acceptingTutorId: "student-b",
+        acceptingAt: timestampFromMillis(nowMillis),
+      },
+      finalize: () => recordBackgroundStudentResponderPushSuccess,
+    },
+    {
+      notificationId: "connecting-success",
+      sessionData: {
+        ...baseSessionData,
+        status: "connecting",
+      },
+      finalize: () => recordBackgroundStudentResponderPushSuccess,
+    },
+    {
+      notificationId: "active-success",
+      sessionData: {
+        ...baseSessionData,
+        status: "active",
+      },
+      finalize: () => recordBackgroundStudentResponderPushSuccess,
+    },
+    {
+      notificationId: "accept-lock-failure",
+      sessionData: {
+        ...baseSessionData,
+        acceptingTutorId: "student-b",
+        acceptingAt: timestampFromMillis(nowMillis),
+      },
+      finalize: () => recordBackgroundStudentResponderPushFailure,
+    },
+    {
+      notificationId: "connecting-failure",
+      sessionData: {
+        ...baseSessionData,
+        status: "connecting",
+      },
+      finalize: () => recordBackgroundStudentResponderPushFailure,
+    },
+    {
+      notificationId: "active-failure",
+      sessionData: {
+        ...baseSessionData,
+        status: "active",
+      },
+      finalize: () => recordBackgroundStudentResponderPushFailure,
+    },
+  ]) {
+    const store = new Map([
+      ["videoSessions/session-ab", sessionData],
+      ["searchRequests/student-b", searchRequestData],
+      [`notifications/${notificationId}`, {
+        status: "sent",
+        sessionId: "session-ab",
+        recipientId: "student-b",
+      }],
+    ]);
+    const fakeDb = {
+      collection: (collectionName) => ({
+        doc: (docId) => ({
+          path: `${collectionName}/${docId}`,
+          id: docId,
+        }),
+      }),
+      runTransaction: async (callback) => callback({
+        get: async (ref) => ({
+          exists: store.has(ref.path),
+          data: () => store.get(ref.path),
+        }),
+        update: (ref, update) => {
+          store.set(ref.path, {
+            ...store.get(ref.path),
+            ...update,
+          });
+        },
+      }),
+    };
+
+    const result = await finalize()({
+      db: fakeDb,
+      notificationId,
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestDocId: "student-b",
+      pushResult: {sent: true, channel: "test"},
+      error: {message: "network unavailable"},
+      nowMillis,
+    });
+
+    assert.equal(result.reason, "accept_finalization_in_progress");
+    assert.equal(result.updated, false);
+    assert.equal(
+      result.staleReason,
+      sessionData.status === "connecting" || sessionData.status === "active" ?
+        `session_${sessionData.status}` :
+        "accept_in_progress",
+    );
+    assert.equal(
+      store.get(`notifications/${notificationId}`).status,
+      "sent",
+    );
+    assert.equal(
+      Object.hasOwn(
+        store.get(`notifications/${notificationId}`),
+        "cancelledAt",
+      ),
+      false,
+    );
+  }
+});
+
+test("background responder notify flow records push failure metadata", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      set: (ref, value) => {
+        store.set(ref.path, value);
+      },
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {displayName: "Joining Student"},
+    pushSender: async () => {
+      throw new Error("network unavailable");
+    },
+  });
+
+  assert.equal(result.shouldNotify, true);
+  assert.equal(result.pushResult.sent, false);
+  assert.equal(result.pushResult.reason, "push_failed");
+  assert.equal(result.pushResult.error, "network unavailable");
+  assert.equal(store.get(notificationPath).status, "sent");
+  assert.equal(
+    store.get(notificationPath).lastPushError,
+    "network unavailable",
+  );
+  assert.ok(store.get(notificationPath).lastPushFailedAt);
+  assert.ok(store.get(notificationPath).updatedAt);
+});
+
+test("background responder notify flow cancels stale state after push failure", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      set: (ref, value) => {
+        store.set(ref.path, value);
+      },
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {displayName: "Joining Student"},
+    pushSender: async () => {
+      store.set("searchRequests/student-b", {
+        ...store.get("searchRequests/student-b"),
+        appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+        backgroundExpiresAt: null,
+      });
+      return {
+        sent: false,
+        reason: "fcm_failed",
+        error: "network unavailable",
+      };
+    },
+  });
+
+  assert.equal(result.shouldNotify, false);
+  assert.equal(result.reason, "stale_after_push");
+  assert.equal(result.pushResult.sent, false);
+  assert.equal(store.get(notificationPath).status, "cancelled");
+  assert.equal(store.get(notificationPath).cancelReason, "stale_after_push");
+  assert.equal(
+    store.get(notificationPath).staleReason,
+    "responder_not_background",
+  );
+  assert.equal(store.get(notificationPath).lastPushError, "network unavailable");
+  assert.ok(store.get(notificationPath).lastPushFailedAt);
+});
+
+test("background responder timeout ignores late push success", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      set: (ref, value) => {
+        store.set(ref.path, value);
+      },
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {displayName: "Joining Student"},
+    pushTimeoutMs: 1,
+    pushSender: async () => new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({sent: true, channel: "late_success"});
+      }, 15);
+    }),
+  });
+  await new Promise((resolve) => {
+    setTimeout(resolve, 25);
+  });
+
+  assert.equal(result.shouldNotify, true);
+  assert.equal(result.pushResult.sent, false);
+  assert.equal(result.pushResult.reason, "push_failed");
+  assert.equal(result.pushResult.error, "push_timeout");
+  assert.equal(store.get(notificationPath).status, "sent");
+  assert.equal(store.get(notificationPath).lastPushError, "push_timeout");
+  assert.equal(Object.hasOwn(store.get(notificationPath), "pushSentAt"), false);
+  assert.equal(Object.hasOwn(store.get(notificationPath), "pushChannel"), false);
+});
+
+test("background responder notify flow records unsent push result", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      set: (ref, value) => {
+        store.set(ref.path, value);
+      },
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {displayName: "Joining Student"},
+    pushSender: async () => ({
+      sent: false,
+      reason: "missing_tokens",
+    }),
+  });
+
+  assert.equal(result.shouldNotify, true);
+  assert.equal(result.pushResult.sent, false);
+  assert.equal(result.pushResult.reason, "missing_tokens");
+  assert.equal(store.get(notificationPath).status, "sent");
+  assert.equal(store.get(notificationPath).lastPushError, "missing_tokens");
+  assert.ok(store.get(notificationPath).lastPushFailedAt);
+  assert.ok(store.get(notificationPath).updatedAt);
+});
+
+test("background responder notify flow records unexpected push result", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      set: (ref, value) => {
+        store.set(ref.path, value);
+      },
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {displayName: "Joining Student"},
+    pushSender: async () => ({reason: "empty_result"}),
+  });
+
+  assert.equal(result.shouldNotify, true);
+  assert.equal(result.pushResult.sent, false);
+  assert.equal(result.pushResult.reason, "empty_result");
+  assert.equal(result.pushResult.error, "empty_result");
+  assert.equal(store.get(notificationPath).status, "sent");
+  assert.equal(store.get(notificationPath).lastPushError, "empty_result");
+  assert.ok(store.get(notificationPath).lastPushFailedAt);
+});
+
+test("background responder notify flow records combined push errors", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  const fakeDb = {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      set: (ref, value) => {
+        store.set(ref.path, value);
+      },
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+      },
+    }),
+  };
+
+  const result = await maybeNotifyBackgroundStudentResponder({
+    db: fakeDb,
+    sessionId: "session-ab",
+    responderId: "student-b",
+    responderSearchRequestDocId: "student-b",
+    requesterData: {displayName: "Joining Student"},
+    pushSender: async () => ({
+      sent: false,
+      reason: "fcm_failed",
+      error: "apns: apns unavailable; fcm: fcm unavailable",
+    }),
+  });
+
+  assert.equal(result.shouldNotify, true);
+  assert.equal(result.pushResult.sent, false);
+  assert.equal(result.pushResult.reason, "fcm_failed");
+  assert.equal(
+    store.get(notificationPath).lastPushError,
+    "apns: apns unavailable; fcm: fcm unavailable",
+  );
+  assert.ok(store.get(notificationPath).lastPushFailedAt);
+  assert.ok(store.get(notificationPath).updatedAt);
 });
 
 test("expired active and terminal requests are not reusable", () => {
@@ -862,6 +2889,10 @@ if (!hasFirestoreEmulator) {
     const joiningRequest = (await searchRequestRef(joiningUid).get()).data();
     const waitingUser = (await userRef(waitingUid).get()).data();
     const joiningUser = (await userRef(joiningUid).get()).data();
+    const waitingNotifications = await db
+      .collection("notifications")
+      .where("recipientId", "==", waitingUid)
+      .get();
 
     assert.equal(sessionSnapshot.exists, true);
     assert.equal(sessionData.status, "pending_confirmation");
@@ -918,6 +2949,69 @@ if (!hasFirestoreEmulator) {
     assert.equal(joiningRequest.pairAttemptId, joiningResponse.pairAttemptId);
     assert.equal(waitingUser.currentSessionId, joiningResponse.sessionId);
     assert.equal(joiningUser.currentSessionId, joiningResponse.sessionId);
+    assert.equal(waitingNotifications.empty, true);
+  });
+
+  test("startSearch callable notifies background student responder", async () => {
+    const waitingUid = uniqueId("student-background-waiting");
+    const joiningUid = uniqueId("student-background-joining");
+    const cityKey = cityKeyForUid(`${waitingUid}-${joiningUid}`);
+    await deleteDoc(userRef(waitingUid));
+    await deleteDoc(userRef(joiningUid));
+    await deleteDoc(searchRequestRef(waitingUid));
+    await deleteDoc(searchRequestRef(joiningUid));
+    await seedStudent(waitingUid, {
+      display_name: "Waiting Student",
+      photo_url: "waiting-photo",
+      profileCity: {key: cityKey},
+    });
+    await seedStudent(joiningUid, {
+      display_name: "Joining Student",
+      photo_url: "joining-photo",
+      profileCity: {key: cityKey},
+    });
+
+    const waitingResponse = await wrappedStartSearch({
+      preferredPartnerLevel: "B1",
+      appState: "background",
+      platform: "ios",
+    }, authContext(waitingUid));
+    const joiningResponse = await wrappedStartSearch({
+      preferredPartnerLevel: "B1",
+      appState: "foreground",
+      platform: "ios",
+    }, authContext(joiningUid));
+    const notificationQuery = await db
+      .collection("notifications")
+      .where("recipientId", "==", waitingUid)
+      .get();
+    const matchingNotifications = notificationQuery.docs
+      .map((doc) => ({id: doc.id, data: doc.data()}))
+      .filter((item) => item.data.sessionId === joiningResponse.sessionId);
+
+    assert.equal(waitingResponse.status, "active");
+    assert.equal(joiningResponse.status, "matched");
+    assert.equal(joiningResponse.matchedUserId, waitingUid);
+    assert.equal(matchingNotifications.length, 1);
+    assert.equal(matchingNotifications[0].data.type, "incoming_call");
+    assert.equal(matchingNotifications[0].data.status, "sent");
+    assert.equal(matchingNotifications[0].data.recipientId, waitingUid);
+    assert.equal(
+      matchingNotifications[0].data.studentInfo.name,
+      "Joining Student",
+    );
+    assert.equal(
+      matchingNotifications[0].data.studentInfo.photo,
+      "joining-photo",
+    );
+    assert.equal(
+      Object.hasOwn(matchingNotifications[0].data, "roomUrl"),
+      false,
+    );
+    assert.equal(
+      Object.hasOwn(matchingNotifications[0].data, "meetingToken"),
+      false,
+    );
   });
 
   test("startSearch callable does not match teachers", async () => {

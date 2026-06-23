@@ -26,7 +26,7 @@ const REQUIRED_FUNCTIONS = [
     trigger: "callable",
     secrets: DAILY_SECRETS,
   },
-  {id: "startSearch", trigger: "callable"},
+  {id: "startSearch", trigger: "callable", secrets: APNS_SECRETS},
   {
     id: "stopSearch",
     trigger: "callable",

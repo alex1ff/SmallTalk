@@ -150,8 +150,15 @@ test("deployment readiness exposes no event chat message mutation callables", ()
 
 test("deployment readiness exposes startSearch queue callable", () => {
   const functionIds = new Set(REQUIRED_FUNCTIONS.map((item) => item.id));
+  const readinessEntry = REQUIRED_FUNCTIONS.find(
+      (item) => item.id === "startSearch",
+  );
   const indexSource = fs.readFileSync(
       path.join(__dirname, "index.js"),
+      "utf8",
+  );
+  const startSearchSource = fs.readFileSync(
+      path.join(__dirname, "start_search.js"),
       "utf8",
   );
   const packageJson = JSON.parse(fs.readFileSync(
@@ -161,7 +168,18 @@ test("deployment readiness exposes startSearch queue callable", () => {
   const deployScript = packageJson.scripts["deploy:readiness-functions"];
 
   assert.ok(functionIds.has("startSearch"));
+  assert.deepEqual(readinessEntry.secrets, [
+    "APNS_KEY_P8",
+    "APNS_KEY_ID",
+    "APNS_TEAM_ID",
+  ]);
   assert.match(indexSource, /exports\.startSearch\b/);
+  assert.match(startSearchSource, /exports\.startSearch\s*=\s*functions/);
+  assert.match(
+      startSearchSource,
+      /\.runWith\(\{\s*secrets:\s*apnsSecrets\s*\}\)/,
+  );
+  assert.match(startSearchSource, /\.https\.onCall\(startSearchCallable\)/);
   assert.match(deployScript, /functions:custom_cloud_functions:startSearch\b/);
 });
 
