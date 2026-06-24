@@ -44,6 +44,115 @@ const PENDING_RESPONSE_SESSION_STATUSES = new Set([
   VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
 ]);
 
+function normalizeSessionId(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getPendingAssignedResponderId(sessionData = {}) {
+  return normalizeSessionId(sessionData.currentResponderId) ||
+    normalizeSessionId(sessionData.currentTutorId);
+}
+
+function isPendingSessionAssignedToResponder(sessionData = {}, responderId = "") {
+  const assignedResponderId = getPendingAssignedResponderId(sessionData);
+  const normalizedResponderId = normalizeSessionId(responderId);
+  return Boolean(
+    assignedResponderId &&
+      normalizedResponderId &&
+      assignedResponderId === normalizedResponderId,
+  );
+}
+
+function resolveTimedOutResponderForNotification({
+  sessionData = {},
+  notificationData = {},
+} = {}) {
+  const currentResponderId = getPendingAssignedResponderId(sessionData);
+  const expiredResponderId = normalizeSessionId(notificationData.recipientId);
+  if (!currentResponderId) {
+    return {
+      ok: false,
+      skipReason: "missing_current_responder",
+      currentResponderId,
+      expiredResponderId,
+      timedOutResponderId: "",
+    };
+  }
+  if (
+    currentResponderId &&
+    expiredResponderId &&
+    currentResponderId !== expiredResponderId
+  ) {
+    return {
+      ok: false,
+      skipReason: `current_responder_changed_${currentResponderId}`,
+      currentResponderId,
+      expiredResponderId,
+      timedOutResponderId: "",
+    };
+  }
+
+  return {
+    ok: true,
+    skipReason: "",
+    currentResponderId,
+    expiredResponderId,
+    timedOutResponderId: currentResponderId,
+  };
+}
+
+function buildTimeoutResponderDecision({
+  sessionData = {},
+  notificationData = {},
+  nowMillis = Date.now(),
+} = {}) {
+  const responderTimeout = resolveTimedOutResponderForNotification({
+    sessionData,
+    notificationData,
+  });
+  if (!responderTimeout.ok) {
+    return {
+      ...responderTimeout,
+      shouldProcess: false,
+      shouldExpireNotification: true,
+    };
+  }
+  if (
+    hasActiveAcceptLockForResponder({
+      sessionData,
+      responderId: responderTimeout.timedOutResponderId,
+      nowMillis,
+    })
+  ) {
+    return {
+      ...responderTimeout,
+      ok: false,
+      skipReason: "accept_lock_active",
+      shouldProcess: false,
+      shouldExpireNotification: false,
+    };
+  }
+  return {
+    ...responderTimeout,
+    shouldProcess: true,
+    shouldExpireNotification: true,
+  };
+}
+
+function buildTerminalTimeoutSessionProjection({
+  sessionData = {},
+  triedTutors = [],
+} = {}) {
+  return {
+    ...sessionData,
+    triedTutors,
+    currentTutorId: null,
+    currentResponderId: null,
+    currentResponderRole: null,
+    status: VIDEO_SESSION_STATUS.EXPIRED,
+  };
+}
+
 function readRequesterIdForResponderFailure(sessionData = {}) {
   return sessionData.requesterId ||
     sessionData.studentId ||
@@ -184,47 +293,28 @@ async function processExpiredNotification(notificationDoc) {
           };
         }
 
-        const currentTutorId = freshSessionData.currentTutorId;
-        const expiredTutorId = freshNotificationData.recipientId;
-        if (
-          currentTutorId &&
-          expiredTutorId &&
-          currentTutorId !== expiredTutorId
-        ) {
-          transaction.update(notificationDoc.ref, expireNotificationUpdate);
+        const timeoutDecision = buildTimeoutResponderDecision({
+          sessionData: freshSessionData,
+          notificationData: freshNotificationData,
+        });
+        if (!timeoutDecision.shouldProcess) {
+          if (timeoutDecision.shouldExpireNotification) {
+            transaction.update(notificationDoc.ref, expireNotificationUpdate);
+          }
           return {
             shouldNotify: false,
-            skipReason: `current_tutor_changed_${currentTutorId}`,
+            skipReason: timeoutDecision.skipReason,
           };
         }
-
-        const timedOutTutorId = currentTutorId || expiredTutorId;
-        if (!timedOutTutorId) {
-          transaction.update(notificationDoc.ref, expireNotificationUpdate);
-          return {
-            shouldNotify: false,
-            skipReason: "missing_timed_out_tutor",
-          };
-        }
-        if (
-          hasActiveAcceptLockForResponder({
-            sessionData: freshSessionData,
-            responderId: timedOutTutorId,
-          })
-        ) {
-          return {
-            shouldNotify: false,
-            skipReason: "accept_lock_active",
-          };
-        }
+        const timedOutResponderId = timeoutDecision.timedOutResponderId;
         const triedTutors = [...(freshSessionData.triedTutors || [])];
-        if (!triedTutors.includes(timedOutTutorId)) {
-          triedTutors.push(timedOutTutorId);
+        if (!triedTutors.includes(timedOutResponderId)) {
+          triedTutors.push(timedOutResponderId);
         }
 
         const failureRouting = buildTimeoutResponderFailureRouting({
           sessionData: freshSessionData,
-          responderId: timedOutTutorId,
+          responderId: timedOutResponderId,
         });
         const availableTutors = failureRouting.availableTutors;
         const terminalStopReason = failureRouting.terminalStopReason;
@@ -256,7 +346,7 @@ async function processExpiredNotification(notificationDoc) {
               transaction,
               sessionId,
               sessionData: freshSessionData,
-              currentResponderId: timedOutTutorId,
+              currentResponderId: timedOutResponderId,
               responderId: nextCandidate.candidateId,
               responderRole: nextCandidate.role,
               expectedLanguage: freshSessionData.language,
@@ -310,6 +400,8 @@ async function processExpiredNotification(notificationDoc) {
           transaction.update(sessionRef, {
             triedTutors: nextTriedTutors,
             currentTutorId: admin.firestore.FieldValue.delete(),
+            currentResponderId: admin.firestore.FieldValue.delete(),
+            currentResponderRole: admin.firestore.FieldValue.delete(),
             acceptingTutorId: admin.firestore.FieldValue.delete(),
             acceptingAt: admin.firestore.FieldValue.delete(),
             acceptAttemptId: admin.firestore.FieldValue.delete(),
@@ -322,14 +414,12 @@ async function processExpiredNotification(notificationDoc) {
             shouldNotify: false,
             shouldRecordMissed: true,
             skipReason: "no_available_tutors",
-            timedOutTutorId,
+            timedOutResponderId,
             dailyRoomName: resolveDailyRoomName(freshSessionData),
-            sessionData: {
-              ...freshSessionData,
+            sessionData: buildTerminalTimeoutSessionProjection({
+              sessionData: freshSessionData,
               triedTutors: nextTriedTutors,
-              currentTutorId: null,
-              status: VIDEO_SESSION_STATUS.EXPIRED,
-            },
+            }),
           };
         }
 
@@ -339,6 +429,7 @@ async function processExpiredNotification(notificationDoc) {
           ...(preparedPairLock?.writes?.sessionUpdate || {}),
           triedTutors: nextTriedTutors,
           currentTutorId: nextTutor,
+          currentResponderId: nextTutor,
         };
         const notification = createIncomingCallNotificationInTransaction({
           db,
@@ -354,7 +445,7 @@ async function processExpiredNotification(notificationDoc) {
         return {
           shouldNotify: true,
           shouldRecordMissed: true,
-          timedOutTutorId,
+          timedOutResponderId,
           nextTutor,
           sessionData: nextSessionData,
           notificationId: notification.notificationId,
@@ -375,7 +466,7 @@ async function processExpiredNotification(notificationDoc) {
 
     if (transition.shouldRecordMissed) {
       console.log(
-        `👨‍🏫 Current tutor ${transition.timedOutTutorId} did not respond - searching next`,
+        `👤 Current responder ${transition.timedOutResponderId} did not respond - searching next`,
       );
       try {
         await ensureConversationCallEventForSession({
@@ -384,11 +475,12 @@ async function processExpiredNotification(notificationDoc) {
           sessionRef,
           sessionData: {
             ...(transition.sessionData || {}),
-            currentTutorId: transition.timedOutTutorId,
+            currentTutorId: transition.timedOutResponderId,
+            currentResponderId: transition.timedOutResponderId,
           },
           callOutcome: CALL_EVENT_OUTCOME_MISSED,
           eventMillis: Date.now(),
-          partnerId: transition.timedOutTutorId,
+          partnerId: transition.timedOutResponderId,
         });
       } catch (error) {
         console.error("⚠️ Failed to create missed call event:", error);
@@ -430,7 +522,10 @@ async function processExpiredNotification(notificationDoc) {
       const freshValidationData = freshValidationSnap.data() || {};
       if (
         !PENDING_RESPONSE_SESSION_STATUSES.has(freshValidationData.status) ||
-        freshValidationData.currentTutorId !== transition.nextTutor
+        !isPendingSessionAssignedToResponder(
+          freshValidationData,
+          transition.nextTutor,
+        )
       ) {
         console.log(
           "⏭️ Skipping push because tutor assignment changed after transaction",
@@ -488,8 +583,13 @@ async function processExpiredNotification(notificationDoc) {
 }
 
 exports.__private__ = {
+  buildTerminalTimeoutSessionProjection,
+  buildTimeoutResponderDecision,
   buildTimeoutResponderFailureRouting,
+  getPendingAssignedResponderId,
+  isPendingSessionAssignedToResponder,
   readRequesterIdForResponderFailure,
+  resolveTimedOutResponderForNotification,
 };
 
 // 🔔 ОТПРАВКА VOIP PUSH ПРЕПОДАВАТЕЛЮ
