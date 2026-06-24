@@ -31,20 +31,64 @@ void main() {
       expect(source, contains("'callKitId': callKitId"));
       expect(source, contains('_processAcceptClaimedAtBySession'));
       expect(source, contains('Duplicate accept event (process gate)'));
+      expect(
+        source,
+        contains('_processAcceptClaimedAtBySession.remove(sessionId);'),
+      );
 
+      final handleAcceptIndex =
+          source.indexOf('Future<void> _handleCallAccept');
       final claimIndex =
           source.indexOf('_recentAcceptBySession[sessionId] = now;');
-      final processClaimIndex = source.indexOf('_tryClaimProcessAccept');
-      final handledIdIndex =
-          source.indexOf('_handledCallKitAcceptIds.add(effectiveCallKitId);');
-      final acceptInProgressIndex =
-          source.indexOf('_acceptInProgress.add(sessionId);');
+      final processClaimIndex =
+          source.indexOf('_tryClaimProcessAccept', handleAcceptIndex);
+      final handledIdIndex = source.indexOf(
+        '_handledCallKitAcceptIds.add(effectiveCallKitId);',
+        handleAcceptIndex,
+      );
+      final acceptInProgressIndex = source.indexOf(
+        '_acceptInProgress.add(sessionId);',
+        handleAcceptIndex,
+      );
       final staleCallKitGuardIndex =
           source.indexOf('Ignoring accept for stale callKitId');
+      final duplicateTimeWindowIndex =
+          source.indexOf('Duplicate accept event (time window)');
+      final duplicateTimeReleaseIndex = source.indexOf(
+        '_releaseProcessAcceptClaim(sessionId);',
+        duplicateTimeWindowIndex,
+      );
+      final duplicateCallKitIndex =
+          source.indexOf('Duplicate accept event (callKitId)');
+      final duplicateCallKitReleaseIndex = source.indexOf(
+        '_releaseProcessAcceptClaim(sessionId);',
+        duplicateCallKitIndex,
+      );
+      final alreadyAcceptedIndex = source.indexOf('Call already accepted');
+      final alreadyAcceptedReleaseIndex = source.indexOf(
+        '_releaseProcessAcceptClaim(sessionId);',
+        alreadyAcceptedIndex,
+      );
+      final acceptInProgressGuardIndex =
+          source.indexOf('Accept already in progress');
+      final acceptInProgressReleaseIndex = source.indexOf(
+        '_releaseProcessAcceptClaim(sessionId);',
+        acceptInProgressGuardIndex,
+      );
 
       expect(claimIndex, greaterThanOrEqualTo(0));
       expect(processClaimIndex, greaterThanOrEqualTo(0));
       expect(staleCallKitGuardIndex, greaterThanOrEqualTo(0));
+      expect(duplicateTimeReleaseIndex, greaterThan(duplicateTimeWindowIndex));
+      expect(
+        duplicateCallKitReleaseIndex,
+        greaterThan(duplicateCallKitIndex),
+      );
+      expect(alreadyAcceptedReleaseIndex, greaterThan(alreadyAcceptedIndex));
+      expect(
+        acceptInProgressReleaseIndex,
+        greaterThan(acceptInProgressGuardIndex),
+      );
       expect(handledIdIndex, greaterThan(claimIndex));
       expect(acceptInProgressIndex, greaterThan(handledIdIndex));
     });
@@ -409,12 +453,124 @@ void main() {
         contains('Navigated to VideoCallPage (tutor, after acceptCall)'),
       );
 
-      final acceptCallIndex = source.indexOf("httpsCallable('acceptCall')");
+      final acceptCallIndex =
+          source.indexOf('_callAcceptCallFunction(sessionId)');
       final tutorNavigateIndex = source.indexOf(
         "sessionId: sessionId,\n              isTutor: true,\n              roomUrl: _lastRoomUrl",
       );
       expect(acceptCallIndex, greaterThanOrEqualTo(0));
       expect(tutorNavigateIndex, greaterThan(acceptCallIndex));
+    });
+
+    test('CallKit accept treats room URL as the only complete payload signal',
+        () {
+      final source = _source('lib/services/voip_service.dart');
+
+      final credentialsHelperIndex = source.indexOf(
+        'VoipRoomCredentials? voipRoomCredentialsFromAcceptedPayload',
+      );
+      final roomUrlGuardIndex = source.indexOf(
+        'final roomUrl = voipRoomUrlFromAcceptPayload(data);',
+        credentialsHelperIndex,
+      );
+      final nullGuardIndex = source.indexOf(
+        'if (roomUrl == null)',
+        roomUrlGuardIndex,
+      );
+      final payloadCredentialsIndex = source.indexOf(
+        'final payloadCredentials = voipRoomCredentialsFromAcceptedPayload(data);',
+      );
+      final acceptedRoleIndex = source.indexOf(
+        '_lastAcceptedIsTutor = payloadCredentials == null;',
+        payloadCredentialsIndex,
+      );
+      final payloadBranchIndex = source.indexOf(
+        'if (payloadCredentials != null)',
+        acceptedRoleIndex,
+      );
+      final studentNavigationIndex = source.indexOf(
+        'Student navigation triggered (no acceptCall)',
+        payloadBranchIndex,
+      );
+      final acceptCallIndex = source.indexOf(
+        '_callAcceptCallFunction(sessionId)',
+        studentNavigationIndex,
+      );
+
+      expect(credentialsHelperIndex, greaterThanOrEqualTo(0));
+      expect(roomUrlGuardIndex, greaterThan(credentialsHelperIndex));
+      expect(nullGuardIndex, greaterThan(roomUrlGuardIndex));
+      expect(payloadCredentialsIndex, greaterThan(nullGuardIndex));
+      expect(acceptedRoleIndex, greaterThan(payloadCredentialsIndex));
+      expect(payloadBranchIndex, greaterThan(acceptedRoleIndex));
+      expect(studentNavigationIndex, greaterThan(payloadBranchIndex));
+      expect(acceptCallIndex, greaterThan(studentNavigationIndex));
+      expect(source, isNot(contains('hasPayloadRoomUrl')));
+      expect(source, isNot(contains('hasPayloadMeetingToken')));
+    });
+
+    test('tutor accept recovery navigates after backend commit is visible', () {
+      final source = _source('lib/services/voip_service.dart');
+
+      final catchIndex =
+          source.indexOf("debugPrint('❌ VoIPService: acceptCall failed: \$e')");
+      final recoveryIndex = source.indexOf(
+        'if (await _tryRecoverActiveSession(sessionId))',
+        catchIndex,
+      );
+      final recoveryNavigateIndex = source.indexOf(
+        '_navigateToVideoCallForAccept(',
+        recoveryIndex,
+      );
+      final recoveryLogIndex = source.indexOf(
+        'Recovered accepted call after acceptCall error',
+        recoveryNavigateIndex,
+      );
+      final clearStateIndex = source.indexOf(
+        '_clearSessionState(sessionId);',
+        recoveryIndex,
+      );
+      final resolutionGuardIndex = source.indexOf(
+        'if (!didResolveAcceptedSession)',
+        recoveryIndex,
+      );
+      final unresolvedClearStateIndex = source.indexOf(
+        '_clearSessionState(sessionId);',
+        resolutionGuardIndex,
+      );
+      final navigationTriggeredIndex = source.indexOf(
+        '_markNavigationTriggeredForAccept(',
+        resolutionGuardIndex,
+      );
+
+      expect(catchIndex, greaterThanOrEqualTo(0));
+      expect(recoveryIndex, greaterThan(catchIndex));
+      expect(recoveryNavigateIndex, greaterThan(recoveryIndex));
+      expect(recoveryLogIndex, greaterThan(recoveryNavigateIndex));
+      expect(clearStateIndex, greaterThan(recoveryNavigateIndex));
+      expect(resolutionGuardIndex, greaterThan(clearStateIndex));
+      expect(unresolvedClearStateIndex, greaterThan(resolutionGuardIndex));
+      expect(navigationTriggeredIndex, greaterThan(unresolvedClearStateIndex));
+    });
+
+    test('VoIP accept outer error path clears claimed session state', () {
+      final source = _source('lib/services/voip_service.dart');
+      final handleAcceptIndex =
+          source.indexOf('Future<void> _handleCallAccept');
+      final outerCatchIndex = source.indexOf(
+        "debugPrint('❌ VoIPService: Error in call accept flow: \$e');",
+        handleAcceptIndex,
+      );
+      final outerClearIndex = source.indexOf(
+        '_clearSessionState(sessionId);',
+        outerCatchIndex,
+      );
+      final finallyIndex = source.indexOf('} finally {', outerCatchIndex);
+
+      expect(handleAcceptIndex, greaterThanOrEqualTo(0));
+      expect(outerCatchIndex, greaterThan(handleAcceptIndex));
+      expect(outerClearIndex, greaterThan(outerCatchIndex));
+      expect(finallyIndex, greaterThan(outerClearIndex));
     });
 
     test('VoIP service listens to assigned Firestore call notifications', () {
@@ -429,9 +585,12 @@ void main() {
       expect(
           source, contains('_dateTimeFromFirestoreValue(data[\'expiresAt\'])'));
       expect(source, contains("collection('videoSessions').doc(sessionId)"));
-      expect(source, contains("status == 'pending_confirmation'"));
-      expect(source,
-          contains("!isPendingIncomingSession || currentTutorId != userId"));
+      expect(
+        source,
+        contains('voipIncomingSessionMatchesResponder('),
+      );
+      expect(
+          source, contains('voipAssignedResponderIdForSession(sessionData)'));
       expect(
         source,
         contains('Firestore incoming call notification received'),
@@ -943,15 +1102,15 @@ void main() {
       final handleAcceptIndex =
           voipServiceSource.indexOf('Future<void> _handleCallAccept');
       final acceptPermissionIndex = voipServiceSource.indexOf(
-        'await ensureCameraAndMicrophonePermissions()',
+        'await _ensureAcceptMediaPermissions()',
         handleAcceptIndex,
       );
       final studentPrefetchIndex = voipServiceSource.indexOf(
-        'unawaited(_prefetchSessionTokens(sessionId));',
+        'unawaited(_prefetchSessionTokensForAccept(sessionId));',
         acceptPermissionIndex,
       );
       final acceptCallIndex = voipServiceSource.indexOf(
-        "httpsCallable('acceptCall')",
+        '_callAcceptCallFunction(sessionId)',
         acceptPermissionIndex,
       );
       expect(handleAcceptIndex, greaterThanOrEqualTo(0));

@@ -258,6 +258,21 @@ function validateResponderLanguageOrThrow(
   }
 }
 
+function getPendingAssignedResponderId(sessionData = {}) {
+  return normalizeSessionId(
+    normalizeSessionId(sessionData.currentResponderId) ||
+      normalizeSessionId(sessionData.currentTutorId),
+  ) || null;
+}
+
+function isPendingSessionAssignedToResponder(
+  sessionData = {},
+  responderId = "",
+) {
+  return getPendingAssignedResponderId(sessionData) ===
+    normalizeSessionId(responderId);
+}
+
 exports.acceptCall = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .https.onCall(async (data, context) => {
@@ -330,7 +345,7 @@ exports.acceptCall = functions
             "Session is not available for acceptance",
           );
         }
-        if (fresh.currentTutorId !== tutorId) {
+        if (!isPendingSessionAssignedToResponder(fresh, tutorId)) {
           throw new functions.https.HttpsError(
             "permission-denied",
             "This session is not assigned to you",
@@ -366,6 +381,7 @@ exports.acceptCall = functions
       const sessionData = initialSessionState.session || {};
       console.log("📋 Session data:", {
         status: sessionData.status,
+        currentResponderId: sessionData.currentResponderId,
         currentTutorId: sessionData.currentTutorId,
         studentId: sessionData.studentId,
         language: sessionData.language,
@@ -667,7 +683,7 @@ exports.acceptCall = functions
           const fresh = freshSnap.data();
           if (
             !ACCEPTABLE_PENDING_SESSION_STATUSES.has(fresh.status) ||
-            fresh.currentTutorId !== tutorId
+            !isPendingSessionAssignedToResponder(fresh, tutorId)
           ) {
             if (
               ACCEPTED_SESSION_STATUSES.has(fresh.status) &&
@@ -738,6 +754,8 @@ exports.acceptCall = functions
 
             // Очищаем поля поиска (уже не нужны)
             currentTutorId: admin.firestore.FieldValue.delete(),
+            currentResponderId: admin.firestore.FieldValue.delete(),
+            currentResponderRole: admin.firestore.FieldValue.delete(),
             tutorNavigationTriggered: false,
             studentNavigationTriggered: false,
             "sessionMetadata.roomCreatedAt": roomCreatedAt || Date.now(),
@@ -1145,6 +1163,8 @@ exports.__private__ = {
   buildAcceptedParticipantUserUpdate,
   buildAcceptCallPolicyUpdateFields,
   buildAcceptCallResponseSessionData,
+  getPendingAssignedResponderId,
+  isPendingSessionAssignedToResponder,
   normalizeSessionId,
   readAcceptedSessionStillCurrentOrThrow,
   timestampToMillis,

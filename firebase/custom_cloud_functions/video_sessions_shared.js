@@ -676,9 +676,10 @@ function getRequesterId(sessionData = {}) {
 
 function getAssignedResponderId(sessionData = {}) {
   return normalizeString(
-    sessionData.tutorId ||
-      sessionData.currentTutorId ||
-      sessionData.matchContext?.acceptedResponderId,
+    normalizeString(sessionData.tutorId) ||
+      normalizeString(sessionData.matchContext?.acceptedResponderId) ||
+      normalizeString(sessionData.currentResponderId) ||
+      normalizeString(sessionData.currentTutorId),
   ) || null;
 }
 

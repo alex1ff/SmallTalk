@@ -5,6 +5,7 @@ const {
   buildInitialSessionPolicyState,
   buildUniversalSessionPolicy,
   getAcceptedSessionCredentialParticipantIds,
+  getAssignedResponderId,
   getCredentialTtlSeconds,
   getSessionParticipantIds,
   getSessionPolicyEffectiveLimitSeconds,
@@ -142,6 +143,50 @@ test("getSessionParticipantIds includes accepted responder fallback", () => {
       },
     }),
     ["requester-a", "responder-b"],
+  );
+});
+
+test("getAssignedResponderId supports student responder assignments", () => {
+  assert.equal(
+    getAssignedResponderId({currentResponderId: "student-b"}),
+    "student-b",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      currentResponderId: "student-b",
+      currentTutorId: "teacher-a",
+    }),
+    "student-b",
+  );
+  assert.equal(
+    getAssignedResponderId({currentTutorId: "teacher-a"}),
+    "teacher-a",
+  );
+  assert.equal(
+    getAssignedResponderId({tutorId: "teacher-b"}),
+    "teacher-b",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      tutorId: "teacher-b",
+      currentResponderId: "stale-student",
+    }),
+    "teacher-b",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      matchContext: {acceptedResponderId: "student-c"},
+      currentResponderId: "stale-student",
+    }),
+    "student-c",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      tutorId: "   ",
+      matchContext: {acceptedResponderId: "student-c"},
+      currentResponderId: "stale-student",
+    }),
+    "student-c",
   );
 });
 

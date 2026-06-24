@@ -18,6 +18,8 @@ const {
     buildAcceptedParticipantUserUpdate,
     buildAcceptCallPolicyUpdateFields,
     buildAcceptCallResponseSessionData,
+    getPendingAssignedResponderId,
+    isPendingSessionAssignedToResponder,
     normalizeSessionId,
   },
 } = require("./accept_call");
@@ -407,6 +409,14 @@ test("acceptCall marks requester and responder in-call after confirmation", () =
     "const participantUserUpdate = buildAcceptedParticipantUserUpdate({",
     sessionUpdateIndex,
   );
+  const currentResponderDeleteIndex = source.indexOf(
+    "currentResponderId: admin.firestore.FieldValue.delete()",
+    connectingStatusIndex,
+  );
+  const currentResponderRoleDeleteIndex = source.indexOf(
+    "currentResponderRole: admin.firestore.FieldValue.delete()",
+    connectingStatusIndex,
+  );
   const requesterUpdateIndex = source.indexOf(
     "transaction.update(requesterUserRef, participantUserUpdate);",
     participantUpdateIndex,
@@ -432,6 +442,16 @@ test("acceptCall marks requester and responder in-call after confirmation", () =
     "acceptCall must mark the session connecting in the final transaction",
   );
   assert.notEqual(sessionUpdateIndex, -1);
+  assert.ok(
+    currentResponderDeleteIndex > connectingStatusIndex &&
+      currentResponderDeleteIndex < sessionUpdateIndex,
+    "acceptCall must clear pending responder assignment after acceptance",
+  );
+  assert.ok(
+    currentResponderRoleDeleteIndex > connectingStatusIndex &&
+      currentResponderRoleDeleteIndex < sessionUpdateIndex,
+    "acceptCall must clear pending responder role after acceptance",
+  );
   assert.notEqual(participantUpdateIndex, -1);
   assert.ok(
     participantUpdateIndex > sessionUpdateIndex,
@@ -447,6 +467,99 @@ test("acceptCall marks requester and responder in-call after confirmation", () =
       responderUpdateIndex < transactionSuccessIndex,
     "acceptCall must mark responder in-call after confirmation",
   );
+});
+
+test("acceptCall authorizes currentResponderId student assignments", () => {
+  assert.equal(
+    getPendingAssignedResponderId({
+      currentResponderId: "student-b",
+      currentTutorId: "teacher-a",
+    }),
+    "student-b",
+  );
+  assert.equal(
+    getPendingAssignedResponderId({
+      currentResponderId: "",
+      currentTutorId: "teacher-a",
+    }),
+    "teacher-a",
+  );
+  assert.equal(
+    getPendingAssignedResponderId({
+      currentResponderId: "   ",
+      currentTutorId: "teacher-a",
+    }),
+    "teacher-a",
+  );
+  assert.equal(
+    getPendingAssignedResponderId({
+      tutorId: "teacher-b",
+      matchContext: {acceptedResponderId: "student-b"},
+    }),
+    null,
+  );
+  assert.equal(
+    isPendingSessionAssignedToResponder(
+      {currentResponderId: "student-b"},
+      "student-b",
+    ),
+    true,
+  );
+  assert.equal(
+    isPendingSessionAssignedToResponder(
+      {
+        currentResponderId: "student-b",
+        currentTutorId: "teacher-a",
+      },
+      "student-b",
+    ),
+    true,
+  );
+  assert.equal(
+    isPendingSessionAssignedToResponder(
+      {currentTutorId: "teacher-a"},
+      "teacher-a",
+    ),
+    true,
+  );
+  assert.equal(
+    isPendingSessionAssignedToResponder(
+      {currentResponderId: "student-b"},
+      "student-c",
+    ),
+    false,
+  );
+  assert.equal(
+    isPendingSessionAssignedToResponder(
+      {tutorId: "student-b"},
+      "student-b",
+    ),
+    false,
+  );
+  assert.equal(
+    isPendingSessionAssignedToResponder(
+      {matchContext: {acceptedResponderId: "student-b"}},
+      "student-b",
+    ),
+    false,
+  );
+
+  const source = readFunctionSource("accept_call.js");
+  const initialGuardIndex = source.indexOf(
+    "if (!isPendingSessionAssignedToResponder(fresh, tutorId))",
+  );
+  const finalTransactionIndex = source.indexOf(
+    "const txnResult = await admin",
+  );
+  const finalGuardIndex = source.indexOf(
+    "!isPendingSessionAssignedToResponder(fresh, tutorId)",
+    finalTransactionIndex,
+  );
+
+  assert.notEqual(initialGuardIndex, -1);
+  assert.notEqual(finalTransactionIndex, -1);
+  assert.ok(finalGuardIndex > finalTransactionIndex);
+  assert.doesNotMatch(source, /fresh\.currentTutorId !== tutorId/);
 });
 
 test("acceptCall final transaction reads user locks before participant writes", () => {
