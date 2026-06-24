@@ -1671,6 +1671,69 @@ test("releaseSessionPairLocks restores selected search participant", async () =>
   assert.equal(declinedRequest.stopReason, "declined");
 });
 
+test("releaseSessionPairLocks expires unresponsive student and restores requester", async () => {
+  const seed = seedExistingStudentSession();
+  const {db, store} = createFakeFirestore({
+    ...seed,
+    "searchRequests/student-a": {
+      ...seed["searchRequests/student-a"],
+      excludedCandidateIds: ["student-old"],
+    },
+  });
+
+  const result = await db.runTransaction((transaction) =>
+    releaseSessionPairLocksInTransaction({
+      db,
+      transaction,
+      sessionId: "session-ab",
+      sessionData: store.get("videoSessions/session-ab"),
+      serverTimestamp,
+      fieldDelete,
+      searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+      stopReason: "student_pair_response_timeout",
+      restoreSearchParticipantIds: ["student-a"],
+      restoreSearchExcludedCandidateIdsByParticipantId: {
+        "student-a": ["student-b"],
+      },
+    }));
+
+  const restoredRequest = store.get("searchRequests/student-a");
+  const expiredRequest = store.get("searchRequests/student-b");
+  assert.equal(result.released, true);
+  assert.deepEqual(result.participantIds, ["student-a", "student-b"]);
+  assert.equal(restoredRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
+  assert.deepEqual(restoredRequest.excludedCandidateIds, [
+    "student-b",
+    "student-old",
+  ]);
+  assert.equal(restoredRequest.currentSessionId, null);
+  assert.equal(restoredRequest.matchedSessionId, fieldDelete);
+  assert.equal(restoredRequest.matchedUserId, null);
+  assert.equal(restoredRequest.matchedResponderId, fieldDelete);
+  assert.equal(restoredRequest.matchedRole, null);
+  assert.equal(restoredRequest.pairAttemptId, null);
+  assert.deepEqual(restoredRequest.attemptExcludedCandidateIds, []);
+  assert.equal(restoredRequest.lockOwner, null);
+  assert.equal(restoredRequest.lockExpiresAt, null);
+  assert.equal(restoredRequest.stopReason, null);
+  assert.equal(restoredRequest.stoppedAt, null);
+  assert.equal(restoredRequest.updatedAt, serverTimestamp);
+  assert.equal(restoredRequest.heartbeatAt, serverTimestamp);
+  assert.equal(expiredRequest.status, SEARCH_REQUEST_STATUS.EXPIRED);
+  assert.equal(expiredRequest.stopReason, "student_pair_response_timeout");
+  assert.equal(expiredRequest.currentSessionId, null);
+  assert.equal(expiredRequest.matchedSessionId, fieldDelete);
+  assert.equal(expiredRequest.matchedUserId, null);
+  assert.equal(expiredRequest.matchedResponderId, fieldDelete);
+  assert.equal(expiredRequest.matchedRole, null);
+  assert.equal(expiredRequest.pairAttemptId, null);
+  assert.deepEqual(expiredRequest.attemptExcludedCandidateIds, []);
+  assert.equal(expiredRequest.lockOwner, null);
+  assert.equal(expiredRequest.lockExpiresAt, null);
+  assert.equal(expiredRequest.updatedAt, serverTimestamp);
+  assert.equal(expiredRequest.stoppedAt, serverTimestamp);
+});
+
 test("releaseSessionPairLocks does not reactivate terminal requests", async () => {
   const seed = seedExistingStudentSession();
   const {db, store} = createFakeFirestore({
