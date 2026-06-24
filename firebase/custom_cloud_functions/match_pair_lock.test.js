@@ -1615,11 +1615,16 @@ test("releaseSessionPairLocks clears users and search requests for session", asy
 
 test("releaseSessionPairLocks restores selected search participant", async () => {
   const seed = seedExistingStudentSession();
+  const requesterExpiresAt = timestampFromMillis(fixedNowMillis + 9 * 60_000);
+  const requesterBackgroundExpiresAt =
+    timestampFromMillis(fixedNowMillis + 8 * 60_000);
   const {db, store} = createFakeFirestore({
     ...seed,
     "searchRequests/student-a": {
       ...seed["searchRequests/student-a"],
       excludedCandidateIds: ["teacher-old"],
+      expiresAt: requesterExpiresAt,
+      backgroundExpiresAt: requesterBackgroundExpiresAt,
     },
     "users/student-a": studentUser({
       currentSessionId: "session-ab",
@@ -1651,6 +1656,7 @@ test("releaseSessionPairLocks restores selected search participant", async () =>
   assert.equal(restoredRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
   assert.equal(restoredRequest.heartbeatAt, serverTimestamp);
   assert.equal(restoredRequest.updatedAt, serverTimestamp);
+  assert.equal(restoredRequest.activeSessionId, fieldDelete);
   assert.equal(restoredRequest.currentSessionId, null);
   assert.equal(restoredRequest.matchedSessionId, fieldDelete);
   assert.equal(restoredRequest.matchedUserId, null);
@@ -1667,17 +1673,39 @@ test("releaseSessionPairLocks restores selected search participant", async () =>
   assert.equal(restoredRequest.stopReason, null);
   assert.equal(restoredRequest.stoppedAt, null);
   assert.equal(restoredRequest.stoppedBy, fieldDelete);
+  assert.equal(restoredRequest.expiresAt, requesterExpiresAt);
+  assert.equal(
+    restoredRequest.backgroundExpiresAt,
+    requesterBackgroundExpiresAt,
+  );
   assert.equal(declinedRequest.status, SEARCH_REQUEST_STATUS.CANCELLED);
   assert.equal(declinedRequest.stopReason, "declined");
+  assert.equal(declinedRequest.activeSessionId, fieldDelete);
+  assert.equal(declinedRequest.currentSessionId, null);
+  assert.equal(declinedRequest.matchedSessionId, fieldDelete);
+  assert.equal(declinedRequest.matchedUserId, null);
+  assert.equal(declinedRequest.matchedResponderId, fieldDelete);
+  assert.equal(declinedRequest.matchedRole, null);
+  assert.equal(declinedRequest.pairAttemptId, null);
+  assert.deepEqual(declinedRequest.attemptExcludedCandidateIds, []);
+  assert.equal(declinedRequest.lockOwner, null);
+  assert.equal(declinedRequest.lockExpiresAt, null);
+  assert.equal(declinedRequest.updatedAt, serverTimestamp);
+  assert.equal(declinedRequest.stoppedAt, serverTimestamp);
 });
 
 test("releaseSessionPairLocks expires unresponsive student and restores requester", async () => {
   const seed = seedExistingStudentSession();
+  const requesterExpiresAt = timestampFromMillis(fixedNowMillis + 9 * 60_000);
+  const requesterBackgroundExpiresAt =
+    timestampFromMillis(fixedNowMillis + 8 * 60_000);
   const {db, store} = createFakeFirestore({
     ...seed,
     "searchRequests/student-a": {
       ...seed["searchRequests/student-a"],
       excludedCandidateIds: ["student-old"],
+      expiresAt: requesterExpiresAt,
+      backgroundExpiresAt: requesterBackgroundExpiresAt,
     },
   });
 
@@ -1706,6 +1734,7 @@ test("releaseSessionPairLocks expires unresponsive student and restores requeste
     "student-b",
     "student-old",
   ]);
+  assert.equal(restoredRequest.activeSessionId, fieldDelete);
   assert.equal(restoredRequest.currentSessionId, null);
   assert.equal(restoredRequest.matchedSessionId, fieldDelete);
   assert.equal(restoredRequest.matchedUserId, null);
@@ -1719,6 +1748,11 @@ test("releaseSessionPairLocks expires unresponsive student and restores requeste
   assert.equal(restoredRequest.stoppedAt, null);
   assert.equal(restoredRequest.updatedAt, serverTimestamp);
   assert.equal(restoredRequest.heartbeatAt, serverTimestamp);
+  assert.equal(restoredRequest.expiresAt, requesterExpiresAt);
+  assert.equal(
+    restoredRequest.backgroundExpiresAt,
+    requesterBackgroundExpiresAt,
+  );
   assert.equal(expiredRequest.status, SEARCH_REQUEST_STATUS.EXPIRED);
   assert.equal(expiredRequest.stopReason, "student_pair_response_timeout");
   assert.equal(expiredRequest.currentSessionId, null);
