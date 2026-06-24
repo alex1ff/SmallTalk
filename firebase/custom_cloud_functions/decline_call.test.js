@@ -5,9 +5,49 @@ const path = require("node:path");
 const {
   __private__: {
     buildDeclineResponderFailureRouting,
+    getPendingAssignedResponderId,
+    isPendingSessionAssignedToResponder,
     readRequesterIdForResponderFailure,
   },
 } = require("./decline_call");
+
+test("declineCall authorizes currentResponderId student assignments", () => {
+  assert.equal(
+    getPendingAssignedResponderId({
+      currentResponderId: " student-b ",
+      currentTutorId: "teacher-a",
+    }),
+    "student-b",
+  );
+  assert.equal(
+    getPendingAssignedResponderId({
+      currentResponderId: " ",
+      currentTutorId: " teacher-a ",
+    }),
+    "teacher-a",
+  );
+  assert.equal(
+    isPendingSessionAssignedToResponder(
+      {currentResponderId: "student-b", currentTutorId: "teacher-a"},
+      "student-b",
+    ),
+    true,
+  );
+  assert.equal(
+    isPendingSessionAssignedToResponder(
+      {currentResponderId: "student-b", currentTutorId: "teacher-a"},
+      "teacher-a",
+    ),
+    false,
+  );
+  assert.equal(
+    isPendingSessionAssignedToResponder(
+      {currentTutorId: "teacher-a"},
+      "teacher-a",
+    ),
+    true,
+  );
+});
 
 test("declineCall routes student-student failure to requester restore", () => {
   const sessionData = {
@@ -45,7 +85,7 @@ test("declineCall blocks fresh accept-lock races before handoff", () => {
     "utf8",
   );
   const assignmentGuardIndex = source.indexOf(
-    "This session is not assigned to you",
+    "isPendingSessionAssignedToResponder(sessionData, responderId)",
   );
   const acceptLockGuardIndex = source.indexOf(
     "assertNoActiveAcceptLockForResponderOrThrow({",
@@ -63,6 +103,7 @@ test("declineCall blocks fresh accept-lock races before handoff", () => {
   assert.ok(acceptLockGuardIndex > assignmentGuardIndex);
   assert.ok(triedTutorsIndex > acceptLockGuardIndex);
   assert.ok(acceptAttemptDeleteIndex > acceptLockGuardIndex);
+  assert.doesNotMatch(source, /sessionData\.currentTutorId !== responderId/);
 });
 
 test("declineCall validates next assignment before sending push", () => {
@@ -82,7 +123,7 @@ test("declineCall validates next assignment before sending push", () => {
     sessionReadIndex,
   );
   const assignmentGuardIndex = source.indexOf(
-    "validationSessionData.currentTutorId !== nextTutor",
+    "getPendingAssignedResponderId(validationSessionData) !== nextTutor",
     statusGuardIndex,
   );
   const notificationStatusIndex = source.indexOf(
@@ -104,6 +145,31 @@ test("declineCall validates next assignment before sending push", () => {
   assert.ok(activeAcceptLockIndex > assignmentGuardIndex);
   assert.ok(notificationStatusIndex > assignmentGuardIndex);
   assert.ok(pushIndex > notificationStatusIndex);
+});
+
+test("declineCall clears pending responder fields on terminal decline", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "decline_call.js"),
+    "utf8",
+  );
+
+  const sessionUpdateIndex = source.indexOf("const sessionUpdate = {");
+  const legacyDeleteIndex = source.indexOf(
+    "currentTutorId: nextTutor || admin.firestore.FieldValue.delete()",
+    sessionUpdateIndex,
+  );
+  const responderDeleteIndex = source.indexOf(
+    "currentResponderId: nextTutor || admin.firestore.FieldValue.delete()",
+    legacyDeleteIndex,
+  );
+  const responderRoleDeleteIndex = source.indexOf(
+    "currentResponderRole: admin.firestore.FieldValue.delete()",
+    responderDeleteIndex,
+  );
+
+  assert.ok(legacyDeleteIndex > sessionUpdateIndex);
+  assert.ok(responderDeleteIndex > legacyDeleteIndex);
+  assert.ok(responderRoleDeleteIndex > responderDeleteIndex);
 });
 
 test("declineCall keeps teacher handoff candidates", () => {

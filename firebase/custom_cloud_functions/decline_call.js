@@ -46,6 +46,21 @@ const DECLINABLE_SESSION_STATUSES = new Set([
   VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
 ]);
 
+function normalizeSessionId(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getPendingAssignedResponderId(sessionData = {}) {
+  return normalizeSessionId(sessionData.currentResponderId) ||
+    normalizeSessionId(sessionData.currentTutorId);
+}
+
+function isPendingSessionAssignedToResponder(sessionData = {}, responderId = "") {
+  const assignedResponderId = getPendingAssignedResponderId(sessionData);
+  return Boolean(assignedResponderId) &&
+    assignedResponderId === normalizeSessionId(responderId);
+}
+
 function readRequesterIdForResponderFailure(sessionData = {}) {
   return sessionData.requesterId ||
     sessionData.studentId ||
@@ -86,7 +101,7 @@ function buildDeclineResponderFailureRouting({
 exports.declineCall = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .https.onCall(async (data, context) => {
-    console.log("❌ Tutor declining call (updated version)...");
+    console.log("❌ Responder declining call...");
 
     try {
       if (!context.auth) {
@@ -96,10 +111,10 @@ exports.declineCall = functions
         );
       }
 
-      const tutorId = context.auth.uid;
+      const responderId = context.auth.uid;
       const { sessionId } = data;
 
-      console.log("👨‍🏫 Tutor ID:", tutorId);
+      console.log("👤 Responder ID:", responderId);
       console.log("📺 Session ID:", sessionId);
 
       if (!sessionId) {
@@ -109,11 +124,11 @@ exports.declineCall = functions
         );
       }
 
-      // Получаем данные преподавателя (для валидации роли)
+      // Получаем данные responder (для валидации роли)
       const tutorDoc = await admin
         .firestore()
         .collection("users")
-        .doc(tutorId)
+        .doc(responderId)
         .get();
       if (!tutorDoc.exists || !isSupportedSessionRole(tutorDoc.data().role)) {
         throw new functions.https.HttpsError(
@@ -138,7 +153,10 @@ exports.declineCall = functions
 
         const sessionData = sessionDoc.data() || {};
         console.log("📋 Session data status:", sessionData.status);
-        console.log("👤 Current tutor ID:", sessionData.currentTutorId);
+        console.log(
+          "👤 Current responder ID:",
+          getPendingAssignedResponderId(sessionData),
+        );
 
         // Проверяем, что сессия в статусе поиска
         if (!DECLINABLE_SESSION_STATUSES.has(sessionData.status)) {
@@ -152,13 +170,13 @@ exports.declineCall = functions
           );
         }
 
-        // Проверяем, что звонок адресован этому преподавателю
-        if (sessionData.currentTutorId !== tutorId) {
+        // Проверяем, что звонок адресован этому responder.
+        if (!isPendingSessionAssignedToResponder(sessionData, responderId)) {
           console.log(
-            "❌ Session is not for this tutor. Expected:",
-            sessionData.currentTutorId,
+            "❌ Session is not for this responder. Expected:",
+            getPendingAssignedResponderId(sessionData),
             "Got:",
-            tutorId,
+            responderId,
           );
           throw new functions.https.HttpsError(
             "permission-denied",
@@ -167,20 +185,20 @@ exports.declineCall = functions
         }
         assertNoActiveAcceptLockForResponderOrThrow({
           sessionData,
-          responderId: tutorId,
+          responderId,
         });
 
-        // Добавляем преподавателя в список попыток
+        // Добавляем responder в список попыток
         const triedTutors = Array.from(new Set([
           ...(sessionData.triedTutors || []),
-          tutorId,
+          responderId,
         ]));
 
         console.log("📝 Updating tried tutors list:", triedTutors);
 
         const failureRouting = buildDeclineResponderFailureRouting({
           sessionData,
-          responderId: tutorId,
+          responderId,
         });
         const availableTutors = failureRouting.availableTutors;
         const terminalStopReason = failureRouting.terminalStopReason;
@@ -212,7 +230,7 @@ exports.declineCall = functions
               transaction,
               sessionId,
               sessionData,
-              currentResponderId: tutorId,
+              currentResponderId: responderId,
               responderId: nextCandidate.candidateId,
               responderRole: nextCandidate.role,
               expectedLanguage: sessionData.language,
@@ -249,6 +267,8 @@ exports.declineCall = functions
         const sessionUpdate = {
           triedTutors: nextTriedTutors,
           currentTutorId: nextTutor || admin.firestore.FieldValue.delete(),
+          currentResponderId: nextTutor || admin.firestore.FieldValue.delete(),
+          currentResponderRole: admin.firestore.FieldValue.delete(),
           acceptingTutorId: admin.firestore.FieldValue.delete(),
           acceptingAt: admin.firestore.FieldValue.delete(),
           acceptAttemptId: admin.firestore.FieldValue.delete(),
@@ -259,10 +279,12 @@ exports.declineCall = functions
             admin.firestore.FieldValue.serverTimestamp();
           sessionUpdate.cancelledAt =
             admin.firestore.FieldValue.serverTimestamp();
-          sessionUpdate.cancelledBy = tutorId;
+          sessionUpdate.cancelledBy = responderId;
           sessionUpdate.cancelReason = terminalStopReason;
         }
 
+        const preparedSessionUpdate =
+          preparedPairLock?.writes?.sessionUpdate || {};
         const notification = nextTutor
           ? createIncomingCallNotificationInTransaction({
             db,
@@ -271,9 +293,10 @@ exports.declineCall = functions
             recipientId: nextTutor,
             sessionData: {
               ...sessionData,
-              ...(preparedPairLock?.writes?.sessionUpdate || {}),
+              ...preparedSessionUpdate,
               triedTutors: nextTriedTutors,
               currentTutorId: nextTutor,
+              currentResponderId: nextTutor,
             },
             studentNameFallback: "Студент",
           })
@@ -305,6 +328,9 @@ exports.declineCall = functions
             ...sessionData,
             triedTutors: nextTriedTutors,
             currentTutorId: nextTutor || null,
+            currentResponderId: nextTutor || null,
+            currentResponderRole:
+              preparedSessionUpdate.currentResponderRole || null,
             status: nextTutor ?
               VIDEO_SESSION_STATUS.PENDING_CONFIRMATION :
               VIDEO_SESSION_STATUS.CANCELLED,
@@ -324,7 +350,7 @@ exports.declineCall = functions
         .firestore()
         .collection("notifications")
         .where("sessionId", "==", sessionId)
-        .where("recipientId", "==", tutorId)
+        .where("recipientId", "==", responderId)
         .where("status", "==", "sent")
         .get();
 
@@ -348,11 +374,12 @@ exports.declineCall = functions
           sessionData: {
             ...declineResult.sessionData,
             triedTutors: declineResult.triedTutors,
-            currentTutorId: tutorId,
+            currentTutorId: responderId,
+            currentResponderId: responderId,
           },
           callOutcome: CALL_EVENT_OUTCOME_MISSED,
           eventMillis: Date.now(),
-          partnerId: tutorId,
+          partnerId: responderId,
         });
       } catch (error) {
         console.error("⚠️ Failed to create declined call event:", error);
@@ -502,7 +529,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
 async function sendNotificationToNextTutor(sessionId, sessionData) {
   try {
     const freshSessionData = sessionData || {};
-    const nextTutor = freshSessionData.currentTutorId;
+    const nextTutor = getPendingAssignedResponderId(freshSessionData);
     if (!nextTutor) {
       console.log(
         "⏭️ Skipping next tutor notification for session",
@@ -535,7 +562,7 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
     const validationSessionData = sessionSnap.data() || {};
     if (
       !DECLINABLE_SESSION_STATUSES.has(validationSessionData.status) ||
-      validationSessionData.currentTutorId !== nextTutor
+      getPendingAssignedResponderId(validationSessionData) !== nextTutor
     ) {
       console.log(
         "⏭️ Skipping push because tutor assignment changed after transaction",
@@ -604,5 +631,7 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
 
 exports.__private__ = {
   buildDeclineResponderFailureRouting,
+  getPendingAssignedResponderId,
+  isPendingSessionAssignedToResponder,
   readRequesterIdForResponderFailure,
 };

@@ -216,6 +216,8 @@ class VoIPService {
   Future<Map<String, dynamic>> Function(String sessionId)?
       debugAcceptCallOverride;
   @visibleForTesting
+  Future<void> Function(String sessionId)? debugDeclineCallOverride;
+  @visibleForTesting
   Future<bool> Function(String sessionId)? debugRecoverActiveSessionOverride;
   @visibleForTesting
   Future<void> Function(String sessionId)? debugPrefetchSessionTokensOverride;
@@ -323,9 +325,15 @@ class VoIPService {
     return _handleCallAccept(data);
   }
 
+  @visibleForTesting
+  Future<void> debugHandleCallDeclineForTesting(Map<String, dynamic> data) {
+    return _handleCallDecline(data);
+  }
+
   void _resetTestingOverrides() {
     debugEnsureMediaPermissionsOverride = null;
     debugAcceptCallOverride = null;
+    debugDeclineCallOverride = null;
     debugRecoverActiveSessionOverride = null;
     debugPrefetchSessionTokensOverride = null;
     debugMarkNavigationTriggeredOverride = null;
@@ -349,6 +357,17 @@ class VoIPService {
         .httpsCallable('acceptCall')
         .call({'sessionId': sessionId});
     return _voipMapFrom(result.data);
+  }
+
+  Future<void> _callDeclineCallFunction(String sessionId) async {
+    final override = debugDeclineCallOverride;
+    if (override != null) {
+      await override(sessionId);
+      return;
+    }
+    await _functions
+        .httpsCallable('declineCall')
+        .call({'sessionId': sessionId});
   }
 
   Future<void> _prefetchSessionTokensForAccept(String sessionId) {
@@ -1508,9 +1527,10 @@ class VoIPService {
     final extra = data['extra'] is Map
         ? Map<String, dynamic>.from(data['extra'] as Map)
         : <String, dynamic>{};
-    final sessionId =
+    final rawSessionId =
         extra['sessionId'] as String? ?? data['sessionId'] as String?;
-    if (sessionId == null) {
+    final sessionId = rawSessionId?.trim();
+    if (sessionId == null || sessionId.isEmpty) {
       debugPrint('❌ VoIPService: No sessionId in decline event');
       return;
     }
@@ -1527,21 +1547,12 @@ class VoIPService {
           'ℹ️ VoIPService: Ignoring decline for active session: $sessionId');
       return;
     }
-    if (!_hasTrackedSessionState(sessionId) &&
-        !_hasTrustedCallKitIdentity(sessionId, callKitId)) {
-      debugPrint(
-          'ℹ️ VoIPService: Ignoring decline for unknown session: $sessionId');
-      return;
-    }
 
     _clearSessionState(sessionId);
     debugPrint('❌ VoIPService: Call declined: $sessionId');
 
     try {
-      // Вызываем Cloud Function declineCall
-      await _functions
-          .httpsCallable('declineCall')
-          .call({'sessionId': sessionId});
+      await _callDeclineCallFunction(sessionId);
 
       debugPrint('✅ VoIPService: declineCall completed');
     } catch (e) {
