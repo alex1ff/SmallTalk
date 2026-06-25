@@ -22,24 +22,34 @@ const {
     buildStartSearchResponse,
     buildStudentPairSessionData,
     cancelBackgroundStudentResponderNotification,
+    cancelTeacherResponderNotification,
     canAttemptStudentPairForSearchRequest,
     canReuseSearchRequestForUser,
     hasCurrentMatchedSession,
     isFreshBackgroundSearchRequest,
     isSessionResponseWindowOpen,
     isStudentResponderSession,
+    isTeacherResponderSession,
     isReusableSearchRequest,
     maybeNotifyBackgroundStudentResponder,
+    maybeNotifyTeacherResponder,
     normalizeStartSearchInput,
     readErrorMessage,
     recordBackgroundStudentResponderPushFailure,
     recordBackgroundStudentResponderPushSuccess,
+    recordTeacherResponderPushResult,
+    releaseTeacherResponderMatchForRetry,
     runBackgroundStudentResponderPushSender,
     searchRequestBelongsToResponder,
     searchRequestBelongsToUser,
     searchRequestMatchesSession,
     sendVoipPushToStudentResponder,
     shouldCreateBackgroundStudentResponderIncomingCall,
+    shouldCreateTeacherResponderIncomingCall,
+    shouldRetryTeacherMatchAfterNotifyResult,
+    shouldUseTeacherResponderForIncomingCall,
+    startSearchCallable,
+    teacherResponderPushStillCurrent,
     tryReadCurrentMatchedStartSearchResponse,
   },
 } = require("./start_search");
@@ -126,6 +136,18 @@ test("start search source avoids unsafe error.message reads", () => {
 
   assert.deepEqual(unsafeMessageReads, []);
   assert.deepEqual(unsafeStringFallbacks, []);
+});
+
+test("start search source keeps teachers in unified candidate loop", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "start_search.js"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(source, /includeTeachers:\s*false/);
+  assert.match(source, /const matchCandidates = candidatePool\.candidates/);
+  assert.match(source, /MATCH_CANDIDATE_SOURCE\.TEACHER_AVAILABILITY/);
+  assert.match(source, /maybeNotifyTeacherResponder/);
 });
 
 test("start search error message helper never throws", () => {
@@ -300,6 +322,36 @@ test("matched start search response exposes created pair session", () => {
       scenario: "student_student",
     },
   );
+  assert.deepEqual(
+    buildMatchedStartSearchResponse({
+      userId: "student-a",
+      requestData: {
+        status: SEARCH_REQUEST_STATUS.ACTIVE,
+        requestId: "request-a",
+        expiresAt: futureTimestamp(3),
+      },
+      matchResult: {
+        sessionId: "session-at",
+        pairAttemptId: "pair-at",
+        responderId: "teacher-a",
+        responderRole: "native_speaker",
+      },
+      reused: false,
+    }),
+    {
+      status: "matched",
+      searchRequestId: "student-a",
+      requestId: "request-a",
+      sessionId: "session-at",
+      pairAttemptId: "pair-at",
+      expiresAt: "2026-06-21T10:03:00.000Z",
+      errorCode: null,
+      reused: false,
+      matchedUserId: "teacher-a",
+      matchedRole: "native_speaker",
+      scenario: "student_teacher",
+    },
+  );
 });
 
 test("current matched search response can be rebuilt after match race", async () => {
@@ -409,11 +461,25 @@ test("current matched search response maps teacher scenario", () => {
         requestId: "request-a",
         currentSessionId: "session-at",
         matchedUserId: "teacher-a",
-        matchedRole: "teacher",
+        matchedRole: "Teacher",
       },
       reused: true,
     }).scenario,
     "student_teacher",
+  );
+  assert.equal(
+    buildCurrentMatchedStartSearchResponse({
+      userId: "student-a",
+      requestData: {
+        status: SEARCH_REQUEST_STATUS.MATCHED,
+        requestId: "request-a",
+        currentSessionId: "session-at",
+        matchedUserId: "teacher-a",
+        matchedRole: "Teacher",
+      },
+      reused: true,
+    }).matchedRole,
+    "native_speaker",
   );
 });
 
@@ -470,6 +536,46 @@ test("student pair session data carries matching context", () => {
     "request-b",
   );
   assert.equal(sessionData.matchContext.candidatePoolSize, 2);
+
+  const teacherSessionData = buildStudentPairSessionData({
+    requesterId: "student-a",
+    requestData: {
+      language: "en",
+      filters: {preferredLevel: "B1", levelRank: 3},
+    },
+    selectedCandidate: {
+      userId: "teacher-a",
+      role: "native_speaker",
+      source: "teacher_availability",
+    },
+    matchCandidates: [
+      {userId: "teacher-a", role: "native_speaker"},
+      {userId: "student-b", role: "student"},
+    ],
+    candidateStats: {
+      studentRequestsScanned: 1,
+      studentCandidates: 1,
+      teacherUsersScanned: 1,
+      teacherCandidates: 1,
+      totalCandidates: 2,
+    },
+    nowMillis: fixedNowMillis,
+    timestampFromDate,
+  });
+
+  assert.deepEqual(teacherSessionData.availableTutors, [
+    "teacher-a",
+    "student-b",
+  ]);
+  assert.deepEqual(teacherSessionData.triedTutors, ["teacher-a"]);
+  assert.equal(
+    teacherSessionData.matchContext.selectedResponderRole,
+    "native_speaker",
+  );
+  assert.equal(
+    teacherSessionData.matchContext.selectedResponderSource,
+    "teacher_availability",
+  );
 });
 
 test("student pair creation is attempted only for open search requests", () => {
@@ -779,6 +885,915 @@ test("background responder incoming call requires fresh background request", () 
     }),
     {shouldNotify: false, reason: "search_request_session_mismatch"},
   );
+});
+
+function fakeStoreDb(store, hooks = {}) {
+  return {
+    collection: (collectionName) => ({
+      doc: (docId) => ({
+        path: `${collectionName}/${docId}`,
+        id: docId,
+        get: async () => ({
+          exists: store.has(`${collectionName}/${docId}`),
+          data: () => store.get(`${collectionName}/${docId}`),
+        }),
+      }),
+    }),
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      set: (ref, data) => {
+        store.set(ref.path, data);
+        hooks.onSet?.(ref, data, store);
+      },
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
+        });
+        hooks.onUpdate?.(ref, update, store);
+      },
+    }),
+  };
+}
+
+test("teacher responder incoming call creates notification and push", async () => {
+  const teacherNowMillis = Date.now();
+  const pendingSessionData = {
+    sessionId: "session-at",
+    status: "pending_confirmation",
+    language: "en",
+    studentId: "student-a",
+    studentInfo: {name: "Ana", photo: "photo"},
+    currentResponderId: "teacher-a",
+    currentTutorId: "teacher-a",
+    currentResponderRole: "native_speaker",
+    responderRole: "native_speaker",
+    scenario: "student_teacher",
+    participantRoles: {
+      "student-a": "student",
+      "teacher-a": "native_speaker",
+    },
+    responseExpiresAt: timestampFromMillis(teacherNowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(teacherNowMillis + 45_000),
+  };
+  const teacherData = {
+    role: "native_speaker",
+    language_instruction_NS: {code: "en"},
+    verif_NS: true,
+    isAvailable: true,
+    currentSessionId: "session-at",
+  };
+  const tokenState = {
+    hasUsableToken: true,
+    hasFcmToken: false,
+    hasVoipPushToken: true,
+  };
+
+  assert.equal(
+    isTeacherResponderSession(pendingSessionData, "teacher-a"),
+    true,
+  );
+  assert.deepEqual(
+    shouldCreateTeacherResponderIncomingCall({
+      sessionData: pendingSessionData,
+      responderId: "teacher-a",
+      nowMillis: teacherNowMillis,
+    }),
+    {shouldNotify: true, reason: "teacher_responder"},
+  );
+  assert.deepEqual(
+    shouldUseTeacherResponderForIncomingCall({
+      teacherData,
+      responderId: "teacher-a",
+      sessionId: "session-at",
+      sessionData: pendingSessionData,
+      tokenState,
+      now: new Date(teacherNowMillis),
+    }),
+    {valid: true, reason: "teacher_current"},
+  );
+  assert.deepEqual(
+    shouldUseTeacherResponderForIncomingCall({
+      teacherData: {
+        ...teacherData,
+        currentSessionId: "",
+      },
+      responderId: "teacher-a",
+      sessionId: "session-at",
+      sessionData: pendingSessionData,
+      tokenState,
+      now: new Date(teacherNowMillis),
+    }),
+    {valid: false, reason: "teacher_session_mismatch"},
+  );
+  assert.deepEqual(
+    shouldCreateTeacherResponderIncomingCall({
+      sessionData: {
+        ...pendingSessionData,
+        currentTutorId: "teacher-b",
+      },
+      responderId: "teacher-a",
+      nowMillis: teacherNowMillis,
+    }),
+    {shouldNotify: false, reason: "responder_mismatch"},
+  );
+  assert.deepEqual(
+    shouldCreateTeacherResponderIncomingCall({
+      sessionData: {
+        ...pendingSessionData,
+        scenario: "student_student",
+      },
+      responderId: "teacher-a",
+      nowMillis: teacherNowMillis,
+    }),
+    {shouldNotify: false, reason: "responder_not_teacher"},
+  );
+  assert.deepEqual(
+    shouldCreateTeacherResponderIncomingCall({
+      sessionData: {
+        ...pendingSessionData,
+        acceptingTutorId: "teacher-a",
+        acceptingAt: timestampFromMillis(teacherNowMillis),
+      },
+      responderId: "teacher-a",
+      nowMillis: teacherNowMillis,
+    }),
+    {shouldNotify: false, reason: "accept_in_progress"},
+  );
+
+  const store = new Map([
+    ["videoSessions/session-at", pendingSessionData],
+    ["users/teacher-a", teacherData],
+    ["userPrivateTokens/teacher-a", {voipPushToken: "push-token"}],
+  ]);
+  const fakeDb = fakeStoreDb(store);
+  let pushSendCount = 0;
+  const result = await maybeNotifyTeacherResponder({
+    db: fakeDb,
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    requesterData: {
+      display_name: "Ana",
+      photo_url: "photo",
+    },
+    nowMillis: teacherNowMillis,
+    tokenReader: async () => tokenState,
+    pushSender: async (responderId, callData) => {
+      pushSendCount += 1;
+      assert.equal(responderId, "teacher-a");
+      assert.deepEqual(callData, {
+        sessionId: "session-at",
+        callerName: "Ana",
+        callerId: "student-a",
+        callerPhoto: "photo",
+        language: "en",
+      });
+      return {sent: true, channel: "apns_voip"};
+    },
+  });
+  const notification =
+    store.get("notifications/session-at_teacher-a");
+
+  assert.equal(result.shouldNotify, true);
+  assert.deepEqual(result.pushResult, {
+    sent: true,
+    channel: "apns_voip",
+  });
+  assert.equal(pushSendCount, 1);
+  assert.equal(notification.type, "incoming_call");
+  assert.equal(notification.status, "sent");
+  assert.equal(notification.recipientId, "teacher-a");
+  assert.equal(notification.sessionId, "session-at");
+  assert.equal(notification.studentInfo.name, "Ana");
+  assert.equal(notification.pushChannel, "apns_voip");
+});
+
+test("teacher responder incoming call cancels stale state before push", async () => {
+  const nowMillis = Date.now();
+  const pendingSessionData = {
+    sessionId: "session-at",
+    status: "pending_confirmation",
+    language: "en",
+    studentId: "student-a",
+    studentInfo: {name: "Ana", photo: "photo"},
+    currentResponderId: "teacher-a",
+    currentTutorId: "teacher-a",
+    currentResponderRole: "native_speaker",
+    responderRole: "native_speaker",
+    scenario: "student_teacher",
+    participantRoles: {
+      "student-a": "student",
+      "teacher-a": "native_speaker",
+    },
+    responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+  };
+  const teacherData = {
+    role: "native_speaker",
+    language_instruction_NS: {code: "en"},
+    verif_NS: true,
+    isAvailable: true,
+    currentSessionId: "session-at",
+  };
+  const store = new Map([
+    ["videoSessions/session-at", pendingSessionData],
+    ["users/teacher-a", teacherData],
+    ["userPrivateTokens/teacher-a", {voipPushToken: "push-token"}],
+  ]);
+  const fakeDb = fakeStoreDb(store, {
+    onSet: (ref) => {
+      if (ref.path === "notifications/session-at_teacher-a") {
+        store.set("videoSessions/session-at", {
+          ...pendingSessionData,
+          responseExpiresAt: timestampFromMillis(Date.now() - 1),
+          confirmationExpiresAt: timestampFromMillis(Date.now() - 1),
+        });
+      }
+    },
+  });
+  let pushSendCount = 0;
+  const result = await maybeNotifyTeacherResponder({
+    db: fakeDb,
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    requesterData: {display_name: "Ana"},
+    nowMillis,
+    tokenReader: async () => ({
+      hasUsableToken: true,
+      hasFcmToken: false,
+      hasVoipPushToken: true,
+    }),
+    pushSender: async () => {
+      pushSendCount += 1;
+      return {sent: true, channel: "apns_voip"};
+    },
+  });
+  const notification =
+    store.get("notifications/session-at_teacher-a");
+
+  assert.equal(result.shouldNotify, false);
+  assert.equal(result.reason, "stale_before_push");
+  assert.equal(result.staleReason, "response_window_closed");
+  assert.equal(pushSendCount, 0);
+  assert.equal(notification.status, "cancelled");
+  assert.equal(notification.cancelReason, "stale_before_push");
+  assert.equal(notification.staleReason, "response_window_closed");
+});
+
+test("teacher responder incoming call records push failure metadata", async () => {
+  const nowMillis = Date.now();
+  const pendingSessionData = {
+    sessionId: "session-at",
+    status: "pending_confirmation",
+    language: "en",
+    studentId: "student-a",
+    studentInfo: {name: "Ana", photo: "photo"},
+    currentResponderId: "teacher-a",
+    currentTutorId: "teacher-a",
+    currentResponderRole: "native_speaker",
+    responderRole: "native_speaker",
+    scenario: "student_teacher",
+    participantRoles: {
+      "student-a": "student",
+      "teacher-a": "native_speaker",
+    },
+    responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+  };
+  const teacherData = {
+    role: "native_speaker",
+    language_instruction_NS: {code: "en"},
+    verif_NS: true,
+    isAvailable: true,
+    currentSessionId: "session-at",
+  };
+  const store = new Map([
+    ["videoSessions/session-at", pendingSessionData],
+    ["users/teacher-a", teacherData],
+    ["userPrivateTokens/teacher-a", {voipPushToken: "push-token"}],
+  ]);
+  const result = await maybeNotifyTeacherResponder({
+    db: fakeStoreDb(store),
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    requesterData: {display_name: "Ana"},
+    nowMillis,
+    tokenReader: async () => ({
+      hasUsableToken: true,
+      hasFcmToken: false,
+      hasVoipPushToken: true,
+    }),
+    pushSender: async () => ({
+      sent: false,
+      reason: "missing_tokens",
+      error: "missing_tokens",
+    }),
+  });
+  const notification =
+    store.get("notifications/session-at_teacher-a");
+
+  assert.equal(result.shouldNotify, true);
+  assert.deepEqual(result.pushResult, {
+    sent: false,
+    reason: "missing_tokens",
+    error: "missing_tokens",
+  });
+  assert.equal(notification.status, "sent");
+  assert.equal(notification.lastPushError, "missing_tokens");
+  assert.ok(notification.lastPushFailedAt);
+});
+
+test("teacher responder finalization failure keeps notification id for retry", async () => {
+  const nowMillis = Date.now();
+  const pendingSessionData = {
+    sessionId: "session-at",
+    status: "pending_confirmation",
+    language: "en",
+    studentId: "student-a",
+    studentInfo: {name: "Ana", photo: "photo"},
+    currentResponderId: "teacher-a",
+    currentTutorId: "teacher-a",
+    currentResponderRole: "native_speaker",
+    responderRole: "native_speaker",
+    scenario: "student_teacher",
+    participantRoles: {
+      "student-a": "student",
+      "teacher-a": "native_speaker",
+    },
+    responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+  };
+  const store = new Map([
+    ["videoSessions/session-at", pendingSessionData],
+    ["users/teacher-a", {
+      role: "native_speaker",
+      language_instruction_NS: {code: "en"},
+      verif_NS: true,
+      isAvailable: true,
+      currentSessionId: "session-at",
+    }],
+    ["userPrivateTokens/teacher-a", {voipPushToken: "push-token"}],
+  ]);
+  const fakeDb = fakeStoreDb(store, {
+    onUpdate: (ref, update) => {
+      if (ref.path === "notifications/session-at_teacher-a" &&
+          update.pushSentAt) {
+        throw new Error("finalization_down");
+      }
+    },
+  });
+  let pushSendCount = 0;
+
+  const originalConsoleError = console.error;
+  let result;
+  try {
+    console.error = () => {};
+    result = await maybeNotifyTeacherResponder({
+      db: fakeDb,
+      sessionId: "session-at",
+      responderId: "teacher-a",
+      requesterData: {display_name: "Ana"},
+      nowMillis,
+      tokenReader: async () => ({
+        hasUsableToken: true,
+        hasFcmToken: false,
+        hasVoipPushToken: true,
+      }),
+      pushSender: async () => {
+        pushSendCount += 1;
+        return {sent: true, channel: "apns_voip"};
+      },
+    });
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(pushSendCount, 1);
+  assert.equal(result.shouldNotify, false);
+  assert.equal(result.reason, "push_finalization_failed");
+  assert.equal(result.staleReason, "finalization_down");
+  assert.equal(result.notificationId, "session-at_teacher-a");
+  assert.deepEqual(result.pushResult, {
+    sent: true,
+    channel: "apns_voip",
+  });
+  assert.equal(shouldRetryTeacherMatchAfterNotifyResult(result), true);
+});
+
+test("teacher responder incoming call cancels stale state after push", async () => {
+  const nowMillis = Date.now();
+  const pendingSessionData = {
+    sessionId: "session-at",
+    status: "pending_confirmation",
+    language: "en",
+    studentId: "student-a",
+    studentInfo: {name: "Ana", photo: "photo"},
+    currentResponderId: "teacher-a",
+    currentTutorId: "teacher-a",
+    currentResponderRole: "native_speaker",
+    responderRole: "native_speaker",
+    scenario: "student_teacher",
+    participantRoles: {
+      "student-a": "student",
+      "teacher-a": "native_speaker",
+    },
+    responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+  };
+  const teacherData = {
+    role: "native_speaker",
+    language_instruction_NS: {code: "en"},
+    verif_NS: true,
+    isAvailable: true,
+    currentSessionId: "session-at",
+  };
+  const store = new Map([
+    ["videoSessions/session-at", pendingSessionData],
+    ["users/teacher-a", teacherData],
+  ]);
+  const result = await maybeNotifyTeacherResponder({
+    db: fakeStoreDb(store),
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    requesterData: {display_name: "Ana"},
+    nowMillis,
+    tokenReader: async () => ({
+      hasUsableToken: true,
+      hasFcmToken: false,
+      hasVoipPushToken: true,
+    }),
+    pushSender: async () => {
+      store.set("videoSessions/session-at", {
+        ...pendingSessionData,
+        responseExpiresAt: timestampFromMillis(Date.now() - 1),
+        confirmationExpiresAt: timestampFromMillis(Date.now() - 1),
+      });
+      return {sent: true, channel: "apns_voip"};
+    },
+  });
+  const notification =
+    store.get("notifications/session-at_teacher-a");
+
+  assert.equal(result.shouldNotify, false);
+  assert.equal(result.reason, "stale_after_push");
+  assert.equal(result.staleReason, "response_window_closed");
+  assert.equal(shouldRetryTeacherMatchAfterNotifyResult(result), true);
+  assert.equal(notification.status, "cancelled");
+  assert.equal(notification.cancelReason, "stale_after_push");
+  assert.equal(notification.pushChannel, "apns_voip");
+});
+
+test("teacher responder push finalization cancels when token disappears", async () => {
+  const nowMillis = Date.now();
+  const pendingSessionData = {
+    sessionId: "session-at",
+    status: "pending_confirmation",
+    language: "en",
+    studentId: "student-a",
+    currentResponderId: "teacher-a",
+    currentTutorId: "teacher-a",
+    currentResponderRole: "native_speaker",
+    responderRole: "native_speaker",
+    scenario: "student_teacher",
+    participantRoles: {
+      "student-a": "student",
+      "teacher-a": "native_speaker",
+    },
+    responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+  };
+  const store = new Map([
+    ["videoSessions/session-at", pendingSessionData],
+    ["users/teacher-a", {
+      role: "native_speaker",
+      language_instruction_NS: {code: "en"},
+      verif_NS: true,
+      isAvailable: true,
+      currentSessionId: "session-at",
+    }],
+    ["notifications/session-at_teacher-a", {
+      status: "sent",
+      type: "incoming_call",
+      sessionId: "session-at",
+      recipientId: "teacher-a",
+    }],
+  ]);
+
+  const result = await recordTeacherResponderPushResult({
+    db: fakeStoreDb(store),
+    notificationId: "session-at_teacher-a",
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    pushResult: {sent: true, channel: "apns_voip"},
+    nowMillis,
+  });
+  const notification =
+    store.get("notifications/session-at_teacher-a");
+
+  assert.equal(result.stillCurrent, false);
+  assert.equal(result.reason, "stale_after_push");
+  assert.equal(result.staleReason, "teacher_missing_tokens");
+  assert.equal(notification.status, "cancelled");
+  assert.equal(notification.cancelReason, "stale_after_push");
+  assert.equal(notification.staleReason, "teacher_missing_tokens");
+  assert.equal(notification.pushChannel, "apns_voip");
+});
+
+test("teacher responder push finalization preserves accept race", async () => {
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-at", {
+      sessionId: "session-at",
+      status: "pending_confirmation",
+      language: "en",
+      studentId: "student-a",
+      currentResponderId: "teacher-a",
+      currentTutorId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      responderRole: "native_speaker",
+      scenario: "student_teacher",
+      participantRoles: {
+        "student-a": "student",
+        "teacher-a": "native_speaker",
+      },
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      acceptingTutorId: "teacher-a",
+      acceptingAt: timestampFromMillis(nowMillis),
+    }],
+    ["users/teacher-a", {
+      role: "native_speaker",
+      language_instruction_NS: {code: "en"},
+      verif_NS: true,
+      isAvailable: true,
+      currentSessionId: "session-at",
+    }],
+    ["userPrivateTokens/teacher-a", {voipPushToken: "push-token"}],
+    ["notifications/session-at_teacher-a", {
+      status: "sent",
+      type: "incoming_call",
+      sessionId: "session-at",
+      recipientId: "teacher-a",
+    }],
+  ]);
+
+  const result = await recordTeacherResponderPushResult({
+    db: fakeStoreDb(store),
+    notificationId: "session-at_teacher-a",
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    pushResult: {sent: true, channel: "apns_voip"},
+    nowMillis,
+  });
+
+  assert.equal(result.stillCurrent, false);
+  assert.equal(result.reason, "accept_finalization_in_progress");
+  assert.equal(result.staleReason, "accept_in_progress");
+  assert.equal(store.get("notifications/session-at_teacher-a").status, "sent");
+});
+
+test("teacher responder notification failure releases match for retry", async () => {
+  const nowMillis = Date.now();
+  const pendingSessionData = {
+    sessionId: "session-at",
+    status: "pending_confirmation",
+    pairStatus: "pending_confirmation",
+    language: "en",
+    requesterId: "student-a",
+    responderId: "teacher-a",
+    studentId: "student-a",
+    currentResponderId: "teacher-a",
+    currentTutorId: "teacher-a",
+    currentResponderRole: "native_speaker",
+    responderRole: "native_speaker",
+    scenario: "student_teacher",
+    pairAttemptId: "pair-at",
+    participantIds: ["student-a", "teacher-a"],
+    participantRoles: {
+      "student-a": "student",
+      "teacher-a": "native_speaker",
+    },
+    searchRequestIds: {
+      requester: "request-a",
+      responder: null,
+    },
+    responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+  };
+  const store = new Map([
+    ["videoSessions/session-at", pendingSessionData],
+    ["users/student-a", {
+      role: "student",
+      currentSessionId: "session-at",
+    }],
+    ["users/teacher-a", {
+      role: "native_speaker",
+      currentSessionId: "session-at",
+    }],
+    ["searchRequests/student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      requestId: "request-a",
+      userId: "student-a",
+      currentSessionId: "session-at",
+      matchedSessionId: "session-at",
+      matchedUserId: "teacher-a",
+      matchedResponderId: "teacher-a",
+      matchedRole: "native_speaker",
+      pairAttemptId: "pair-at",
+      excludedCandidateIds: ["teacher-old"],
+      attemptExcludedCandidateIds: ["teacher-a"],
+      lockOwner: "pair-at",
+      lockExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["notifications/session-at_teacher-a", {
+      status: "sent",
+      type: "incoming_call",
+      sessionId: "session-at",
+      recipientId: "teacher-a",
+    }],
+  ]);
+
+  assert.equal(
+    shouldRetryTeacherMatchAfterNotifyResult({
+      shouldNotify: true,
+      pushResult: {sent: false, reason: "missing_tokens"},
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRetryTeacherMatchAfterNotifyResult({
+      shouldNotify: false,
+      reason: "responder_mismatch",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRetryTeacherMatchAfterNotifyResult({
+      shouldNotify: true,
+      pushResult: {sent: true, channel: "apns_voip"},
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetryTeacherMatchAfterNotifyResult({
+      shouldNotify: false,
+      reason: "accept_finalization_in_progress",
+    }),
+    false,
+  );
+
+  const result = await releaseTeacherResponderMatchForRetry({
+    db: fakeStoreDb(store),
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    requesterId: "student-a",
+    notificationId: "session-at_teacher-a",
+    pairAttemptId: "pair-at",
+    stopReason: "teacher_push_failed",
+  });
+  const requestData = store.get("searchRequests/student-a");
+  const notification = store.get("notifications/session-at_teacher-a");
+  const sessionData = store.get("videoSessions/session-at");
+
+  assert.equal(result.released, true);
+  assert.equal(requestData.status, SEARCH_REQUEST_STATUS.ACTIVE);
+  assert.equal(requestData.currentSessionId, null);
+  assert.equal(requestData.matchedUserId, null);
+  assert.notEqual(
+    store.get("users/student-a").currentSessionId,
+    "session-at",
+  );
+  assert.notEqual(
+    store.get("users/teacher-a").currentSessionId,
+    "session-at",
+  );
+  assert.deepEqual(
+    requestData.excludedCandidateIds.slice().sort(),
+    ["teacher-a", "teacher-old"],
+  );
+  assert.deepEqual(requestData.attemptExcludedCandidateIds, []);
+  assert.equal(notification.status, "cancelled");
+  assert.equal(notification.cancelReason, "teacher_push_failed");
+  assert.equal(sessionData.status, "cancelled");
+  assert.equal(sessionData.cancelReason, "teacher_push_failed");
+});
+
+test("teacher responder retry release preserves accept race", async () => {
+  const nowMillis = Date.now();
+  const pendingSessionData = {
+    sessionId: "session-at",
+    status: "pending_confirmation",
+    language: "en",
+    requesterId: "student-a",
+    responderId: "teacher-a",
+    studentId: "student-a",
+    currentResponderId: "teacher-a",
+    currentTutorId: "teacher-a",
+    currentResponderRole: "native_speaker",
+    responderRole: "native_speaker",
+    scenario: "student_teacher",
+    pairAttemptId: "pair-at",
+    participantIds: ["student-a", "teacher-a"],
+    participantRoles: {
+      "student-a": "student",
+      "teacher-a": "native_speaker",
+    },
+    responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    acceptingTutorId: "teacher-a",
+    acceptingAt: timestampFromMillis(nowMillis),
+  };
+  const store = new Map([
+    ["videoSessions/session-at", pendingSessionData],
+    ["users/student-a", {
+      role: "student",
+      currentSessionId: "session-at",
+    }],
+    ["users/teacher-a", {
+      role: "native_speaker",
+      currentSessionId: "session-at",
+    }],
+    ["searchRequests/student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      requestId: "request-a",
+      userId: "student-a",
+      currentSessionId: "session-at",
+      matchedSessionId: "session-at",
+    }],
+    ["notifications/session-at_teacher-a", {
+      status: "sent",
+      type: "incoming_call",
+      sessionId: "session-at",
+      recipientId: "teacher-a",
+    }],
+  ]);
+
+  const result = await releaseTeacherResponderMatchForRetry({
+    db: fakeStoreDb(store),
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    requesterId: "student-a",
+    notificationId: "session-at_teacher-a",
+    pairAttemptId: "pair-at",
+    stopReason: "teacher_push_failed",
+  });
+
+  assert.equal(result.released, false);
+  assert.equal(result.reason, "accept_finalization_in_progress");
+  assert.equal(store.get("notifications/session-at_teacher-a").status, "sent");
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.MATCHED,
+  );
+});
+
+test("teacher responder retry release requires pair attempt and unified responder", async () => {
+  const nowMillis = Date.now();
+  const baseSessionData = {
+    sessionId: "session-at",
+    status: "pending_confirmation",
+    language: "en",
+    requesterId: "student-a",
+    responderId: "teacher-a",
+    studentId: "student-a",
+    currentResponderId: "teacher-a",
+    currentTutorId: "teacher-a",
+    currentResponderRole: "native_speaker",
+    responderRole: "native_speaker",
+    scenario: "student_teacher",
+    pairAttemptId: "pair-at",
+    participantIds: ["student-a", "teacher-a"],
+    participantRoles: {
+      "student-a": "student",
+      "teacher-a": "native_speaker",
+    },
+    responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+  };
+  const buildStore = (sessionData = baseSessionData) => new Map([
+    ["videoSessions/session-at", sessionData],
+    ["users/student-a", {
+      role: "student",
+      currentSessionId: "session-at",
+    }],
+    ["users/teacher-a", {
+      role: "native_speaker",
+      currentSessionId: "session-at",
+    }],
+    ["searchRequests/student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      requestId: "request-a",
+      userId: "student-a",
+      currentSessionId: "session-at",
+      matchedSessionId: "session-at",
+    }],
+  ]);
+
+  const missingPairResult = await releaseTeacherResponderMatchForRetry({
+    db: fakeStoreDb(buildStore()),
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    requesterId: "student-a",
+    stopReason: "teacher_push_failed",
+  });
+  const splitStore = buildStore({
+    ...baseSessionData,
+    currentTutorId: "teacher-b",
+  });
+  const splitResult = await releaseTeacherResponderMatchForRetry({
+    db: fakeStoreDb(splitStore),
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    requesterId: "student-a",
+    pairAttemptId: "pair-at",
+    stopReason: "teacher_push_failed",
+  });
+
+  assert.equal(missingPairResult.released, false);
+  assert.equal(missingPairResult.reason, "missing_pair_attempt");
+  assert.equal(splitResult.released, false);
+  assert.equal(splitResult.reason, "responder_mismatch");
+  assert.equal(
+    splitStore.get("videoSessions/session-at").currentTutorId,
+    "teacher-b",
+  );
+  assert.equal(
+    splitStore.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.MATCHED,
+  );
+});
+
+test("teacher responder retry release preserves mismatched session", async () => {
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-at", {
+      sessionId: "session-at",
+      status: "pending_confirmation",
+      language: "en",
+      requesterId: "student-a",
+      responderId: "teacher-a",
+      studentId: "student-a",
+      currentResponderId: "teacher-b",
+      currentTutorId: "teacher-b",
+      currentResponderRole: "native_speaker",
+      responderRole: "native_speaker",
+      scenario: "student_teacher",
+      pairAttemptId: "pair-other",
+      participantIds: ["student-a", "teacher-b"],
+      participantRoles: {
+        "student-a": "student",
+        "teacher-b": "native_speaker",
+      },
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["users/student-a", {
+      role: "student",
+      currentSessionId: "session-at",
+    }],
+    ["users/teacher-a", {
+      role: "native_speaker",
+      currentSessionId: "",
+    }],
+    ["searchRequests/student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      requestId: "request-a",
+      userId: "student-a",
+      currentSessionId: "session-at",
+      matchedSessionId: "session-at",
+    }],
+    ["notifications/session-at_teacher-a", {
+      status: "sent",
+      type: "incoming_call",
+      sessionId: "session-at",
+      recipientId: "teacher-a",
+    }],
+  ]);
+
+  const result = await releaseTeacherResponderMatchForRetry({
+    db: fakeStoreDb(store),
+    sessionId: "session-at",
+    responderId: "teacher-a",
+    requesterId: "student-a",
+    notificationId: "session-at_teacher-a",
+    pairAttemptId: "pair-at",
+    stopReason: "teacher_push_failed",
+  });
+
+  assert.equal(result.released, false);
+  assert.equal(result.reason, "pair_attempt_mismatch");
+  assert.equal(
+    store.get("videoSessions/session-at").currentResponderId,
+    "teacher-b",
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.MATCHED,
+  );
+  assert.equal(store.get("notifications/session-at_teacher-a").status, "sent");
 });
 
 test("student pair responder call data omits room credentials", () => {
@@ -3014,9 +4029,9 @@ if (!hasFirestoreEmulator) {
     );
   });
 
-  test("startSearch callable does not match teachers", async () => {
-    const studentUid = uniqueId("student-no-teacher-match");
-    const teacherUid = uniqueId("teacher-no-start-search-match");
+  test("startSearch callable matches teacher and creates incoming call", async () => {
+    const studentUid = uniqueId("student-teacher-match");
+    const teacherUid = uniqueId("teacher-start-search-match");
     const cityKey = cityKeyForUid(`${studentUid}-${teacherUid}`);
     await deleteDoc(userRef(studentUid));
     await deleteDoc(userRef(teacherUid));
@@ -3025,17 +4040,66 @@ if (!hasFirestoreEmulator) {
     await deleteDoc(db.collection("userPrivateTokens").doc(teacherUid));
     await seedStudent(studentUid, {profileCity: {key: cityKey}});
     await seedTeacher(teacherUid, {profileCity: {key: cityKey}});
+    await db.collection("userPrivateTokens").doc(teacherUid).set({
+      voipPushToken: `push-${teacherUid}`,
+    });
 
-    const response = await wrappedStartSearch({
+    let teacherPushSendCount = 0;
+    let teacherPushCallData = null;
+    const response = await startSearchCallable({
       preferredPartnerLevel: "B1",
-    }, authContext(studentUid));
+    }, authContext(studentUid), {
+      teacherResponderPushSender: async (responderId, callData) => {
+        teacherPushSendCount += 1;
+        teacherPushCallData = callData;
+        assert.equal(responderId, teacherUid);
+        assert.equal(callData.callerId, studentUid);
+        return {sent: true, channel: "test"};
+      },
+    });
     const requestData = (await searchRequestRef(studentUid).get()).data();
+    const sessionSnapshot = await db
+      .collection("videoSessions")
+      .doc(response.sessionId)
+      .get();
+    const sessionData = sessionSnapshot.data();
+    const notificationQuery = await db
+      .collection("notifications")
+      .where("recipientId", "==", teacherUid)
+      .get();
+    const matchingNotifications = notificationQuery.docs
+      .map((doc) => ({id: doc.id, data: doc.data()}))
+      .filter((item) => item.data.sessionId === response.sessionId);
 
-    assert.equal(response.status, "active");
-    assert.equal(response.sessionId, null);
-    assert.equal(response.pairAttemptId, null);
-    assert.equal(requestData.status, "active");
-    assert.equal(requestData.currentSessionId, null);
+    assert.equal(response.status, "matched");
+    assert.equal(response.matchedUserId, teacherUid);
+    assert.equal(response.matchedRole, "native_speaker");
+    assert.equal(response.scenario, "student_teacher");
+    assert.equal(typeof response.sessionId, "string");
+    assert.equal(typeof response.pairAttemptId, "string");
+    assert.equal(requestData.status, "matched");
+    assert.equal(requestData.currentSessionId, response.sessionId);
+    assert.equal(requestData.matchedUserId, teacherUid);
+    assert.equal(requestData.matchedResponderId, teacherUid);
+    assert.equal(requestData.matchedRole, "native_speaker");
+    assert.equal(sessionSnapshot.exists, true);
+    assert.equal(sessionData.status, "pending_confirmation");
+    assert.equal(sessionData.scenario, "student_teacher");
+    assert.equal(sessionData.currentResponderId, teacherUid);
+    assert.equal(sessionData.currentTutorId, teacherUid);
+    assert.equal(sessionData.currentResponderRole, "native_speaker");
+    assert.equal(sessionData.tutorId, teacherUid);
+    assert.equal(matchingNotifications.length, 1);
+    assert.equal(matchingNotifications[0].data.type, "incoming_call");
+    assert.equal(matchingNotifications[0].data.status, "sent");
+    assert.equal(matchingNotifications[0].data.recipientId, teacherUid);
+    assert.equal(teacherPushSendCount, 1);
+    assert.equal(teacherPushCallData.sessionId, response.sessionId);
+    assert.equal(matchingNotifications[0].data.pushChannel, "test");
+    assert.equal(
+      matchingNotifications[0].data.studentInfo.name,
+      "Student",
+    );
   });
 
   test("startSearch callable creates one session under concurrent starts", async () => {

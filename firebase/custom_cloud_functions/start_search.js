@@ -1,5 +1,6 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const { evaluateTutorAvailabilityWindow } = require("./availability");
 const { sendApnsVoip } = require("./apns_voip");
 const { hasActiveAcceptLockForResponder } = require("./accept_lock_policy");
 const {
@@ -9,18 +10,22 @@ const {
   usageDocRef,
 } = require("./subscription_usage_shared");
 const {
+  buildReadOnlyVoipTokenState,
+  getReadOnlyUserVoipTokenState,
   getUserVoipTokens,
 } = require("./voip_tokens");
 const {
   buildStudentCallAccessDecision,
 } = require("./call_access");
 const {
+  buildMatchProfile,
   buildInitialSessionPolicyState,
   isSupportedSessionRole,
   normalizeRole,
   readCountryCode,
   readLevelValue,
   resolveActiveConversationLanguage,
+  supportsConversationLanguage,
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
@@ -39,6 +44,7 @@ const {
   collectMatchCandidatePool,
 } = require("./match_candidate_pool");
 const {
+  releaseSessionPairLocksInTransaction,
   reserveMatchPair,
 } = require("./match_pair_lock");
 
@@ -386,6 +392,10 @@ function buildMatchedStartSearchResponse({
   matchResult = {},
   reused = false,
 }) {
+  const matchedRole = normalizeRole(matchResult.responderRole);
+  const scenario = matchedRole === "student" ?
+    "student_student" :
+    (matchedRole === "native_speaker" ? "student_teacher" : null);
   return {
     ...buildStartSearchResponse({
       userId,
@@ -399,8 +409,8 @@ function buildMatchedStartSearchResponse({
       reused,
     }),
     matchedUserId: normalizeString(matchResult.responderId) || null,
-    matchedRole: normalizeString(matchResult.responderRole) || null,
-    scenario: "student_student",
+    matchedRole: matchedRole || null,
+    scenario,
   };
 }
 
@@ -409,10 +419,10 @@ function buildCurrentMatchedStartSearchResponse({
   requestData = {},
   reused = false,
 }) {
-  const matchedRole = normalizeString(requestData.matchedRole);
+  const matchedRole = normalizeRole(requestData.matchedRole);
   const scenario = matchedRole === "student" ?
     "student_student" :
-    (matchedRole === "native_speaker" || matchedRole === "teacher" ?
+    (matchedRole === "native_speaker" ?
       "student_teacher" :
       null);
   return {
@@ -473,14 +483,17 @@ function buildStudentPairSessionData({
   requestData = {},
   selectedCandidate = {},
   studentCandidates = [],
+  matchCandidates = studentCandidates,
   candidateStats = {},
   nowMillis = Date.now(),
   timestampFromDate = admin.firestore.Timestamp.fromDate,
 }) {
-  const candidateIds = studentCandidates
+  const candidateIds = matchCandidates
     .map((candidate) => normalizeString(candidate.userId))
     .filter(Boolean);
   const selectedResponderId = normalizeString(selectedCandidate.userId);
+  const selectedResponderRole =
+    normalizeRole(selectedCandidate.role) || "student";
   const sessionPolicyState = buildInitialSessionPolicyState(nowMillis);
   return {
     language: normalizeString(requestData.language),
@@ -500,7 +513,7 @@ function buildStudentPairSessionData({
       candidateIds,
       candidateStats,
       selectedResponderId,
-      selectedResponderRole: "student",
+      selectedResponderRole,
       selectedResponderSource:
         normalizeString(selectedCandidate.source) || null,
       selectedResponderSearchRequestId:
@@ -644,6 +657,19 @@ function isStudentResponderSession(sessionData = {}, responderId = "") {
     scenario === "student_student";
 }
 
+function isTeacherResponderSession(sessionData = {}, responderId = "") {
+  const normalizedResponderId = normalizeString(responderId);
+  const participantRoles = readNestedObject(sessionData.participantRoles);
+  const responderRoles = [
+    sessionData.currentResponderRole,
+    sessionData.responderRole,
+    participantRoles[normalizedResponderId],
+  ].map(normalizeRole);
+  const scenario = normalizeString(sessionData.scenario);
+  return responderRoles.every((role) => role === "native_speaker") &&
+    scenario === "student_teacher";
+}
+
 function shouldCreateBackgroundStudentResponderIncomingCall({
   sessionData = {},
   sessionId = "",
@@ -667,10 +693,11 @@ function shouldCreateBackgroundStudentResponderIncomingCall({
   ) {
     return {shouldNotify: false, reason: "session_not_pending"};
   }
-  const assignedResponderId =
-    normalizeString(sessionData.currentResponderId) ||
-    normalizeString(sessionData.currentTutorId);
-  if (assignedResponderId !== normalizedResponderId) {
+  if (
+    normalizeString(sessionData.currentResponderId) !==
+      normalizedResponderId ||
+    normalizeString(sessionData.currentTutorId) !== normalizedResponderId
+  ) {
     return {shouldNotify: false, reason: "responder_mismatch"};
   }
   if (!isStudentResponderSession(sessionData, normalizedResponderId)) {
@@ -705,6 +732,52 @@ function shouldCreateBackgroundStudentResponderIncomingCall({
   return {shouldNotify: true, reason: "background_responder"};
 }
 
+function shouldCreateTeacherResponderIncomingCall({
+  sessionData = {},
+  responderId = "",
+  nowMillis = Date.now(),
+}) {
+  const normalizedResponderId = normalizeString(responderId);
+  if (!normalizedResponderId) {
+    return {shouldNotify: false, reason: "missing_responder"};
+  }
+  const sessionStatus = normalizeString(sessionData.status);
+  if (
+    sessionStatus === VIDEO_SESSION_STATUS.CONNECTING ||
+    sessionStatus === VIDEO_SESSION_STATUS.ACTIVE
+  ) {
+    return {shouldNotify: false, reason: `session_${sessionStatus}`};
+  }
+  if (
+    sessionStatus !== VIDEO_SESSION_STATUS.PENDING_CONFIRMATION
+  ) {
+    return {shouldNotify: false, reason: "session_not_pending"};
+  }
+  if (
+    normalizeString(sessionData.currentResponderId) !==
+      normalizedResponderId ||
+    normalizeString(sessionData.currentTutorId) !== normalizedResponderId
+  ) {
+    return {shouldNotify: false, reason: "responder_mismatch"};
+  }
+  if (!isTeacherResponderSession(sessionData, normalizedResponderId)) {
+    return {shouldNotify: false, reason: "responder_not_teacher"};
+  }
+  if (!isSessionResponseWindowOpen(sessionData, nowMillis)) {
+    return {shouldNotify: false, reason: "response_window_closed"};
+  }
+  if (
+    hasActiveAcceptLockForResponder({
+      sessionData,
+      responderId: normalizedResponderId,
+      nowMillis,
+    })
+  ) {
+    return {shouldNotify: false, reason: "accept_in_progress"};
+  }
+  return {shouldNotify: true, reason: "teacher_responder"};
+}
+
 function shouldLeaveBackgroundNotificationForAccept({
   decision = {},
   sessionData = {},
@@ -713,6 +786,70 @@ function shouldLeaveBackgroundNotificationForAccept({
   return decision.reason === "accept_in_progress" ||
     status === VIDEO_SESSION_STATUS.CONNECTING ||
     status === VIDEO_SESSION_STATUS.ACTIVE;
+}
+
+function isAvailableAfterInFuture(userData = {}, now = new Date()) {
+  const availableAfter = userData.availableAfter;
+  return Boolean(
+    availableAfter &&
+      typeof availableAfter.toDate === "function" &&
+      availableAfter.toDate() > now,
+  );
+}
+
+function shouldUseTeacherResponderForIncomingCall({
+  teacherData = {},
+  responderId = "",
+  sessionId = "",
+  sessionData = {},
+  tokenState = {},
+  now = new Date(),
+}) {
+  const normalizedResponderId = normalizeString(responderId);
+  const normalizedSessionId =
+    normalizeString(sessionId) || normalizeString(sessionData.sessionId);
+  if (!normalizedResponderId) {
+    return {valid: false, reason: "missing_responder"};
+  }
+  if (normalizeRole(teacherData.role) !== "native_speaker") {
+    return {valid: false, reason: "teacher_role_mismatch"};
+  }
+  const currentSessionId = normalizeString(teacherData.currentSessionId);
+  if (
+    !normalizedSessionId ||
+    currentSessionId !== normalizedSessionId
+  ) {
+    return {valid: false, reason: "teacher_session_mismatch"};
+  }
+  if (teacherData.isInCall === true) {
+    return {valid: false, reason: "teacher_in_call"};
+  }
+  if (
+    !buildMatchProfile(
+      normalizedResponderId,
+      teacherData,
+      sessionData.language,
+    ).approvedTeacher
+  ) {
+    return {valid: false, reason: "teacher_not_approved"};
+  }
+  if (!supportsConversationLanguage(teacherData, sessionData.language)) {
+    return {valid: false, reason: "teacher_language_mismatch"};
+  }
+  if (isAvailableAfterInFuture(teacherData, now)) {
+    return {valid: false, reason: "teacher_available_later"};
+  }
+  const availability = evaluateTutorAvailabilityWindow(teacherData, now);
+  if (!availability.isAvailable) {
+    return {
+      valid: false,
+      reason: `teacher_${availability.reason || "unavailable"}`,
+    };
+  }
+  if (tokenState.hasUsableToken !== true) {
+    return {valid: false, reason: "teacher_missing_tokens"};
+  }
+  return {valid: true, reason: "teacher_current"};
 }
 
 function buildStudentPairRequesterInfo(requesterData = {}) {
@@ -766,6 +903,65 @@ async function createBackgroundStudentResponderIncomingCall({
       sessionId: normalizedSessionId,
       responderId: normalizedResponderId,
       responderSearchRequestData,
+      nowMillis,
+    });
+    if (!decision.shouldNotify) {
+      return decision;
+    }
+
+    const notification = createIncomingCallNotificationInTransaction({
+      db,
+      transaction,
+      sessionId: normalizedSessionId,
+      recipientId: normalizedResponderId,
+      sessionData,
+      studentInfo: buildStudentPairRequesterInfo(requesterData),
+      studentNameFallback: "Student",
+      now: new Date(nowMillis),
+    });
+
+    return {
+      shouldNotify: true,
+      reason: decision.reason,
+      notificationId: notification.notificationId,
+      pushPayload: notification.pushPayload,
+    };
+  });
+}
+
+async function createTeacherResponderIncomingCall({
+  db,
+  sessionId = "",
+  responderId = "",
+  requesterData = {},
+  nowMillis = Date.now(),
+}) {
+  const normalizedSessionId = normalizeString(sessionId);
+  const normalizedResponderId = normalizeString(responderId);
+  if (!normalizedSessionId || !normalizedResponderId) {
+    return {shouldNotify: false, reason: "missing_ids"};
+  }
+
+  return db.runTransaction(async (transaction) => {
+    const sessionRef = db.collection("videoSessions").doc(normalizedSessionId);
+    const sessionSnap = await transaction.get(sessionRef);
+    if (!sessionSnap.exists) {
+      return {shouldNotify: false, reason: "session_missing"};
+    }
+
+    const sessionData = sessionSnap.data() || {};
+    const assignedResponderId =
+      normalizeString(sessionData.currentResponderId) ||
+      normalizeString(sessionData.currentTutorId);
+    if (
+      assignedResponderId &&
+      assignedResponderId !== normalizedResponderId
+    ) {
+      return {shouldNotify: false, reason: "responder_mismatch"};
+    }
+    const decision = shouldCreateTeacherResponderIncomingCall({
+      sessionData,
+      responderId: normalizedResponderId,
       nowMillis,
     });
     if (!decision.shouldNotify) {
@@ -863,6 +1059,103 @@ async function backgroundStudentResponderPushStillCurrent({
   return {
     stillCurrent: true,
     reason: decision.reason,
+    leaveForAccept: false,
+  };
+}
+
+async function teacherResponderPushStillCurrent({
+  db,
+  sessionId = "",
+  responderId = "",
+  notificationId = "",
+  nowMillis = Date.now(),
+  tokenReader = getReadOnlyUserVoipTokenState,
+}) {
+  const normalizedSessionId = normalizeString(sessionId);
+  const normalizedResponderId = normalizeString(responderId);
+  const normalizedNotificationId = normalizeString(notificationId);
+  if (
+    !normalizedSessionId ||
+    !normalizedResponderId ||
+    !normalizedNotificationId
+  ) {
+    return {stillCurrent: false, reason: "missing_ids", leaveForAccept: false};
+  }
+
+  const [sessionSnap, notificationSnap, teacherSnap] = await Promise.all([
+    db.collection("videoSessions").doc(normalizedSessionId).get(),
+    db.collection("notifications").doc(normalizedNotificationId).get(),
+    db.collection("users").doc(normalizedResponderId).get(),
+  ]);
+  if (!sessionSnap.exists) {
+    return {stillCurrent: false, reason: "session_missing", leaveForAccept: false};
+  }
+  if (!notificationSnap.exists) {
+    return {
+      stillCurrent: false,
+      reason: "notification_missing",
+      leaveForAccept: false,
+    };
+  }
+  if (!teacherSnap.exists) {
+    return {stillCurrent: false, reason: "teacher_missing", leaveForAccept: false};
+  }
+
+  const sessionData = sessionSnap.data() || {};
+  const decision = shouldCreateTeacherResponderIncomingCall({
+    sessionData,
+    responderId: normalizedResponderId,
+    nowMillis,
+  });
+  if (!decision.shouldNotify) {
+    return {
+      stillCurrent: false,
+      reason: decision.reason,
+      leaveForAccept: shouldLeaveBackgroundNotificationForAccept({
+        decision,
+        sessionData,
+      }),
+    };
+  }
+
+  const notificationData = notificationSnap.data() || {};
+  if (
+    notificationData.status !== "sent" ||
+    notificationData.sessionId !== normalizedSessionId ||
+    notificationData.recipientId !== normalizedResponderId
+  ) {
+    return {
+      stillCurrent: false,
+      reason: "notification_not_current",
+      leaveForAccept: false,
+    };
+  }
+
+  const teacherData = teacherSnap.data() || {};
+  const tokenState = await tokenReader(
+    normalizedResponderId,
+    teacherData,
+    db,
+  );
+  const teacherDecision = shouldUseTeacherResponderForIncomingCall({
+    teacherData,
+    responderId: normalizedResponderId,
+    sessionId: normalizedSessionId,
+    sessionData,
+    tokenState,
+    now: new Date(nowMillis),
+  });
+  if (!teacherDecision.valid) {
+    return {
+      stillCurrent: false,
+      reason: teacherDecision.reason,
+      leaveForAccept: false,
+    };
+  }
+
+  return {
+    stillCurrent: true,
+    reason: teacherDecision.reason,
     leaveForAccept: false,
   };
 }
@@ -966,6 +1259,233 @@ async function cancelBackgroundStudentResponderNotification({
       reason: normalizeString(reason) || "stale_before_push",
       staleReason: decision.reason,
       leaveForAccept: false,
+    };
+  });
+}
+
+async function cancelTeacherResponderNotification({
+  db,
+  notificationId = "",
+  sessionId = "",
+  responderId = "",
+  reason = "stale_before_push",
+  staleReason = "",
+  nowMillis = Date.now(),
+}) {
+  const normalizedNotificationId = normalizeString(notificationId);
+  const normalizedSessionId = normalizeString(sessionId);
+  const normalizedResponderId = normalizeString(responderId);
+  if (
+    !normalizedNotificationId ||
+    !normalizedSessionId ||
+    !normalizedResponderId
+  ) {
+    return {cancelled: false, reason: "missing_ids", leaveForAccept: false};
+  }
+
+  return db.runTransaction(async (transaction) => {
+    const notificationRef = db
+      .collection("notifications")
+      .doc(normalizedNotificationId);
+    const sessionRef = db.collection("videoSessions").doc(normalizedSessionId);
+    const [sessionSnap, notificationSnap] = await Promise.all([
+      transaction.get(sessionRef),
+      transaction.get(notificationRef),
+    ]);
+    if (!notificationSnap.exists) {
+      return {
+        cancelled: false,
+        reason: "notification_missing",
+        leaveForAccept: false,
+      };
+    }
+
+    const notificationData = notificationSnap.data() || {};
+    if (
+      notificationData.status !== "sent" ||
+      notificationData.sessionId !== normalizedSessionId ||
+      notificationData.recipientId !== normalizedResponderId
+    ) {
+      return {
+        cancelled: false,
+        reason: "notification_not_current",
+        leaveForAccept: false,
+      };
+    }
+
+    const sessionData = sessionSnap.exists ? sessionSnap.data() || {} : {};
+    const decision = sessionSnap.exists ?
+      shouldCreateTeacherResponderIncomingCall({
+        sessionData,
+        responderId: normalizedResponderId,
+        nowMillis,
+      }) :
+      {shouldNotify: false, reason: "session_missing"};
+    if (shouldLeaveBackgroundNotificationForAccept({decision, sessionData})) {
+      return {
+        cancelled: false,
+        reason: "accept_finalization_in_progress",
+        staleReason: decision.reason,
+        leaveForAccept: true,
+      };
+    }
+
+    transaction.update(notificationRef, {
+      status: "cancelled",
+      cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+      cancelReason: normalizeString(reason) || "stale_before_push",
+      staleReason:
+        normalizeString(staleReason) ||
+        normalizeString(decision.reason) ||
+        "stale_before_push",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return {
+      cancelled: true,
+      reason: normalizeString(reason) || "stale_before_push",
+      staleReason:
+        normalizeString(staleReason) ||
+        normalizeString(decision.reason) ||
+        "stale_before_push",
+      leaveForAccept: false,
+    };
+  });
+}
+
+function shouldRetryTeacherMatchAfterNotifyResult(result = {}) {
+  if (!result || typeof result !== "object") {
+    return true;
+  }
+  if (result.reason === "accept_finalization_in_progress") {
+    return false;
+  }
+  if (result.shouldNotify === false) {
+    return true;
+  }
+  return result.pushResult?.sent !== true;
+}
+
+async function releaseTeacherResponderMatchForRetry({
+  db,
+  sessionId = "",
+  responderId = "",
+  requesterId = "",
+  notificationId = "",
+  pairAttemptId = "",
+  stopReason = "teacher_notification_failed",
+}) {
+  const normalizedSessionId = normalizeString(sessionId);
+  const normalizedResponderId = normalizeString(responderId);
+  const normalizedRequesterId = normalizeString(requesterId);
+  const normalizedNotificationId = normalizeString(notificationId);
+  if (
+    !normalizedSessionId ||
+    !normalizedResponderId ||
+    !normalizedRequesterId
+  ) {
+    return {released: false, reason: "missing_ids"};
+  }
+  const normalizedPairAttemptId = normalizeString(pairAttemptId);
+  if (!normalizedPairAttemptId) {
+    return {released: false, reason: "missing_pair_attempt"};
+  }
+
+  return db.runTransaction(async (transaction) => {
+    const sessionRef = db.collection("videoSessions").doc(normalizedSessionId);
+    const notificationRef = normalizedNotificationId ?
+      db.collection("notifications").doc(normalizedNotificationId) :
+      null;
+    const [sessionSnap, notificationSnap] = await Promise.all([
+      transaction.get(sessionRef),
+      notificationRef ? transaction.get(notificationRef) : null,
+    ]);
+    if (!sessionSnap.exists) {
+      return {released: false, reason: "session_missing"};
+    }
+
+    const sessionData = sessionSnap.data() || {};
+    if (
+      normalizeString(sessionData.pairAttemptId) !== normalizedPairAttemptId
+    ) {
+      return {released: false, reason: "pair_attempt_mismatch"};
+    }
+    if (
+      normalizeString(sessionData.currentResponderRole) !== "native_speaker"
+    ) {
+      return {released: false, reason: "responder_role_mismatch"};
+    }
+    if (
+      normalizeString(sessionData.currentResponderId) !==
+        normalizedResponderId ||
+      normalizeString(sessionData.currentTutorId) !== normalizedResponderId
+    ) {
+      return {released: false, reason: "responder_mismatch"};
+    }
+    const decision = shouldCreateTeacherResponderIncomingCall({
+      sessionData,
+      responderId: normalizedResponderId,
+      nowMillis: Date.now(),
+    });
+    if (shouldLeaveBackgroundNotificationForAccept({decision, sessionData})) {
+      return {
+        released: false,
+        reason: "accept_finalization_in_progress",
+        staleReason: decision.reason,
+      };
+    }
+
+    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    const fieldDelete = admin.firestore.FieldValue.delete();
+    await releaseSessionPairLocksInTransaction({
+      db,
+      transaction,
+      sessionId: normalizedSessionId,
+      sessionData,
+      participantIds: [normalizedRequesterId, normalizedResponderId],
+      serverTimestamp,
+      fieldDelete,
+      searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+      stopReason: normalizeString(stopReason) || "teacher_notification_failed",
+      restoreSearchParticipantIds: [normalizedRequesterId],
+      restoreSearchExcludedCandidateIdsByParticipantId: {
+        [normalizedRequesterId]: [normalizedResponderId],
+      },
+    });
+    transaction.update(sessionRef, {
+      status: VIDEO_SESSION_STATUS.CANCELLED,
+      pairStatus: VIDEO_SESSION_STATUS.CANCELLED,
+      cancelReason:
+        normalizeString(stopReason) || "teacher_notification_failed",
+      cancelledAt: serverTimestamp,
+      currentResponderId: fieldDelete,
+      currentResponderRole: fieldDelete,
+      currentTutorId: fieldDelete,
+      acceptingTutorId: fieldDelete,
+      acceptingAt: fieldDelete,
+      acceptAttemptId: fieldDelete,
+      updatedAt: serverTimestamp,
+    });
+
+    if (notificationRef && notificationSnap?.exists) {
+      const notificationData = notificationSnap.data() || {};
+      if (
+        notificationData.sessionId === normalizedSessionId &&
+        notificationData.recipientId === normalizedResponderId &&
+        notificationData.status === "sent"
+      ) {
+        transaction.update(notificationRef, {
+          status: "cancelled",
+          cancelledAt: serverTimestamp,
+          cancelReason:
+            normalizeString(stopReason) || "teacher_notification_failed",
+          updatedAt: serverTimestamp,
+        });
+      }
+    }
+
+    return {
+      released: true,
+      reason: "released",
     };
   });
 }
@@ -1183,6 +1703,160 @@ async function recordBackgroundStudentResponderPushSuccess({
     return {
       stillCurrent: true,
       reason: decision.reason,
+      updated: true,
+    };
+  });
+}
+
+async function recordTeacherResponderPushResult({
+  db,
+  notificationId = "",
+  sessionId = "",
+  responderId = "",
+  pushResult = {},
+  nowMillis = Date.now(),
+}) {
+  const normalizedNotificationId = normalizeString(notificationId);
+  const normalizedSessionId = normalizeString(sessionId);
+  const normalizedResponderId = normalizeString(responderId);
+  if (
+    !normalizedNotificationId ||
+    !normalizedSessionId ||
+    !normalizedResponderId
+  ) {
+    return {stillCurrent: false, reason: "missing_ids", updated: false};
+  }
+
+  return db.runTransaction(async (transaction) => {
+    const notificationRef = db
+      .collection("notifications")
+      .doc(normalizedNotificationId);
+    const sessionRef = db.collection("videoSessions").doc(normalizedSessionId);
+    const teacherRef = db.collection("users").doc(normalizedResponderId);
+    const privateTokenRef = db
+      .collection("userPrivateTokens")
+      .doc(normalizedResponderId);
+    const [sessionSnap, notificationSnap, teacherSnap, privateTokenSnap] =
+      await Promise.all([
+      transaction.get(sessionRef),
+      transaction.get(notificationRef),
+      transaction.get(teacherRef),
+      transaction.get(privateTokenRef),
+    ]);
+    if (!notificationSnap.exists) {
+      return {
+        stillCurrent: false,
+        reason: "notification_missing",
+        updated: false,
+      };
+    }
+
+    const notificationData = notificationSnap.data() || {};
+    if (
+      notificationData.status !== "sent" ||
+      notificationData.sessionId !== normalizedSessionId ||
+      notificationData.recipientId !== normalizedResponderId
+    ) {
+      return {
+        stillCurrent: false,
+        reason: "notification_not_current",
+        updated: false,
+      };
+    }
+
+    const sessionData = sessionSnap.exists ? sessionSnap.data() || {} : {};
+    const decision = sessionSnap.exists ?
+      shouldCreateTeacherResponderIncomingCall({
+        sessionData,
+        responderId: normalizedResponderId,
+        nowMillis,
+      }) :
+      {shouldNotify: false, reason: "session_missing"};
+    const teacherData = teacherSnap.exists ? teacherSnap.data() || {} : {};
+    const tokenState = buildReadOnlyVoipTokenState({
+      privateData: privateTokenSnap.exists ?
+        privateTokenSnap.data() || {} :
+        {},
+      legacyUserData: teacherData,
+    });
+    const teacherDecision = decision.shouldNotify ?
+      shouldUseTeacherResponderForIncomingCall({
+        teacherData,
+        responderId: normalizedResponderId,
+        sessionId: normalizedSessionId,
+        sessionData,
+        tokenState,
+        now: new Date(nowMillis),
+      }) :
+      {valid: false, reason: decision.reason};
+    const finalDecision = teacherDecision.valid ?
+      decision :
+      {shouldNotify: false, reason: teacherDecision.reason};
+    const pushSent = pushResult?.sent === true;
+    const pushErrorMessage =
+      normalizeString(pushResult?.error) ||
+      normalizeString(pushResult?.reason) ||
+      "push_failed";
+
+    if (!finalDecision.shouldNotify) {
+      if (
+        shouldLeaveBackgroundNotificationForAccept({
+          decision: finalDecision,
+          sessionData,
+        })
+      ) {
+        return {
+          stillCurrent: false,
+          reason: "accept_finalization_in_progress",
+          staleReason: finalDecision.reason,
+          updated: false,
+        };
+      }
+      const staleUpdate = {
+        status: "cancelled",
+        cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+        cancelReason: "stale_after_push",
+        staleReason: finalDecision.reason,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      if (pushSent) {
+        staleUpdate.pushSentAt =
+          admin.firestore.FieldValue.serverTimestamp();
+        staleUpdate.pushChannel =
+          normalizeString(pushResult.channel) || "unknown";
+      } else {
+        staleUpdate.lastPushError = pushErrorMessage;
+        staleUpdate.lastPushFailedAt =
+          admin.firestore.FieldValue.serverTimestamp();
+      }
+      transaction.update(notificationRef, staleUpdate);
+      return {
+        stillCurrent: false,
+        reason: "stale_after_push",
+        staleReason: finalDecision.reason,
+        updated: true,
+      };
+    }
+
+    if (pushSent) {
+      transaction.update(notificationRef, {
+        pushSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        pushChannel: normalizeString(pushResult.channel) || "unknown",
+        lastPushError: admin.firestore.FieldValue.delete(),
+        lastPushFailedAt: admin.firestore.FieldValue.delete(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      transaction.update(notificationRef, {
+        lastPushError: pushErrorMessage,
+        lastPushFailedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    return {
+      stillCurrent: true,
+      reason: teacherDecision.reason,
       updated: true,
     };
   });
@@ -1482,12 +2156,181 @@ async function maybeNotifyBackgroundStudentResponder({
   };
 }
 
+async function maybeNotifyTeacherResponder({
+  db,
+  sessionId = "",
+  responderId = "",
+  requesterData = {},
+  pushSender = sendVoipPushToStudentResponder,
+  pushTimeoutMs = BACKGROUND_STUDENT_RESPONDER_PUSH_TIMEOUT_MS,
+  tokenReader = getReadOnlyUserVoipTokenState,
+  nowMillis = Date.now(),
+}) {
+  const notification = await createTeacherResponderIncomingCall({
+    db,
+    sessionId,
+    responderId,
+    requesterData,
+    nowMillis,
+  });
+  if (!notification.shouldNotify) {
+    return notification;
+  }
+
+  let prePushState;
+  try {
+    prePushState = await teacherResponderPushStillCurrent({
+      db,
+      sessionId,
+      responderId,
+      notificationId: notification.notificationId,
+      nowMillis: Date.now(),
+      tokenReader,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to validate teacher notification before push",
+      {
+        sessionId,
+        responderId,
+        notificationId: notification.notificationId,
+        error: readErrorMessage(error, "pre_push_validation_failed"),
+      },
+    );
+    return {
+      ...notification,
+      shouldNotify: false,
+      reason: "pre_push_validation_failed",
+      staleReason: readErrorMessage(error, "pre_push_validation_failed"),
+    };
+  }
+  if (!prePushState.stillCurrent) {
+    let cancelResult = null;
+    if (!prePushState.leaveForAccept) {
+      try {
+        cancelResult = await cancelTeacherResponderNotification({
+          db,
+          notificationId: notification.notificationId,
+          sessionId,
+          responderId,
+          reason: "stale_before_push",
+          staleReason: prePushState.reason,
+          nowMillis: Date.now(),
+        });
+      } catch (error) {
+        console.error(
+          "Failed to cancel stale teacher notification",
+          {
+            sessionId,
+            responderId,
+            notificationId: notification.notificationId,
+            error: readErrorMessage(error, "cancel_failed"),
+          },
+        );
+      }
+    }
+    return {
+      ...notification,
+      shouldNotify: false,
+      reason: prePushState.leaveForAccept || cancelResult?.leaveForAccept ?
+        "accept_finalization_in_progress" :
+        "stale_before_push",
+      staleReason:
+        cancelResult?.staleReason ||
+        cancelResult?.reason ||
+        prePushState.reason,
+    };
+  }
+
+  const callData = buildStudentPairResponderCallData({
+    sessionId,
+    pushPayload: notification.pushPayload,
+  });
+  let pushResult;
+  try {
+    pushResult = await runBackgroundStudentResponderPushSender({
+      pushSender,
+      responderId,
+      callData,
+      timeoutMs: pushTimeoutMs,
+    });
+  } catch (error) {
+    pushResult = {
+      sent: false,
+      reason: "push_failed",
+      error: readErrorMessage(error, "push_failed"),
+    };
+  }
+  if (!pushResult || pushResult.sent !== true) {
+    pushResult = {
+      ...(pushResult && typeof pushResult === "object" ? pushResult : {}),
+      sent: false,
+      reason:
+        normalizeString(pushResult?.reason) ||
+        "push_failed",
+      error:
+        normalizeString(pushResult?.error) ||
+        normalizeString(pushResult?.reason) ||
+        "push_failed",
+    };
+  }
+
+  let finalization;
+  try {
+    finalization = await recordTeacherResponderPushResult({
+      db,
+      notificationId: notification.notificationId,
+      sessionId,
+      responderId,
+      pushResult,
+      nowMillis: Date.now(),
+    });
+  } catch (error) {
+    console.error(
+      "Failed to record teacher responder push result",
+      {
+        sessionId,
+        responderId,
+        notificationId: notification.notificationId,
+        pushSent: pushResult?.sent === true,
+        error: readErrorMessage(error, "push_finalization_failed"),
+      },
+    );
+    return {
+      ...notification,
+      shouldNotify: false,
+      reason: "push_finalization_failed",
+      staleReason: readErrorMessage(error, "push_finalization_failed"),
+      callData,
+      pushResult,
+    };
+  }
+  if (!finalization.stillCurrent) {
+    return {
+      ...notification,
+      shouldNotify: false,
+      reason: finalization.reason,
+      staleReason: finalization.staleReason || finalization.reason,
+      callData,
+      pushResult,
+    };
+  }
+
+  return {
+    ...notification,
+    callData,
+    pushResult,
+  };
+}
+
 async function tryCreateStudentPairForSearchRequest({
   db,
   userId,
   requesterData = {},
   requestData = {},
   reused = false,
+  teacherResponderPushSender = sendVoipPushToStudentResponder,
+  teacherResponderTokenReader = getReadOnlyUserVoipTokenState,
 }) {
   if (!canAttemptStudentPairForSearchRequest(requestData)) {
     return {
@@ -1505,29 +2348,56 @@ async function tryCreateStudentPairForSearchRequest({
     requesterLevel: readLevelValue(requesterData.level),
     now: new Date(),
     nowMillis: Date.now(),
-    includeTeachers: false,
   });
-  const studentCandidates = candidatePool.candidates.filter((candidate) =>
-    candidate.source === MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE &&
-      normalizeString(candidate.role) === "student" &&
-      normalizeString(candidate.userId) !== normalizeString(userId),
-  );
+  const normalizedRequesterId = normalizeString(userId);
+  const matchCandidates = candidatePool.candidates.filter((candidate) => {
+    const candidateUserId = normalizeString(candidate.userId);
+    const candidateRole = normalizeRole(candidate.role);
+    const candidateSource = normalizeString(candidate.source);
+    if (!candidateUserId || candidateUserId === normalizedRequesterId) {
+      return false;
+    }
+    return (
+      candidateSource === MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE &&
+        candidateRole === "student"
+    ) || (
+      candidateSource === MATCH_CANDIDATE_SOURCE.TEACHER_AVAILABILITY &&
+        candidateRole === "native_speaker"
+    );
+  });
 
-  for (const candidate of studentCandidates) {
+  const retryExcludedResponderIds = new Set();
+  for (const candidate of matchCandidates) {
+    if (retryExcludedResponderIds.has(normalizeString(candidate.userId))) {
+      continue;
+    }
+    const currentMatchCandidates = matchCandidates.filter((matchCandidate) =>
+      !retryExcludedResponderIds.has(normalizeString(matchCandidate.userId)),
+    );
+    const responderRole = normalizeRole(candidate.role);
+    const isStudentQueueResponder =
+      responderRole === "student" &&
+      normalizeString(candidate.source) ===
+        MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE;
+    const isTeacherResponder =
+      responderRole === "native_speaker" &&
+      normalizeString(candidate.source) ===
+        MATCH_CANDIDATE_SOURCE.TEACHER_AVAILABILITY;
     const lockNowMillis = Date.now();
     const lockResult = await reserveMatchPair({
       db,
       requesterId: userId,
       responderId: candidate.userId,
-      responderRole: "student",
+      responderRole,
       requesterSearchRequestId: requestData.requestId,
-      responderSearchRequestId: candidate.searchRequestId,
+      responderSearchRequestId:
+        isStudentQueueResponder ? candidate.searchRequestId : "",
       expectedLanguage: requestData.language,
       sessionData: buildStudentPairSessionData({
         requesterId: userId,
         requestData,
         selectedCandidate: candidate,
-        studentCandidates,
+        matchCandidates: currentMatchCandidates,
         candidateStats: candidatePool.stats,
         nowMillis: lockNowMillis,
       }),
@@ -1535,11 +2405,7 @@ async function tryCreateStudentPairForSearchRequest({
     });
 
     if (lockResult.locked) {
-      if (
-        normalizeRole(lockResult.responderRole) === "student" &&
-        normalizeString(candidate.source) ===
-          MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE
-      ) {
+      if (isStudentQueueResponder) {
         try {
           await maybeNotifyBackgroundStudentResponder({
             db,
@@ -1557,6 +2423,70 @@ async function tryCreateStudentPairForSearchRequest({
               error: readErrorMessage(error, "notify_failed"),
             },
           );
+        }
+      } else if (isTeacherResponder) {
+        let teacherNotifyResult = null;
+        try {
+          teacherNotifyResult = await maybeNotifyTeacherResponder({
+            db,
+            sessionId: lockResult.sessionId,
+            responderId: lockResult.responderId,
+            requesterData,
+            pushSender: teacherResponderPushSender,
+            tokenReader: teacherResponderTokenReader,
+          });
+        } catch (error) {
+          console.error(
+            "Failed to notify teacher responder",
+            {
+              sessionId: lockResult.sessionId,
+              responderId: lockResult.responderId,
+              error: readErrorMessage(error, "notify_failed"),
+            },
+          );
+          teacherNotifyResult = {
+            shouldNotify: false,
+            reason: "notify_failed",
+            error: readErrorMessage(error, "notify_failed"),
+          };
+        }
+
+        if (shouldRetryTeacherMatchAfterNotifyResult(teacherNotifyResult)) {
+          const releaseResult = await releaseTeacherResponderMatchForRetry({
+            db,
+            sessionId: lockResult.sessionId,
+            responderId: lockResult.responderId,
+            requesterId: userId,
+            notificationId: teacherNotifyResult?.notificationId,
+            pairAttemptId: lockResult.pairAttemptId,
+            stopReason:
+              teacherNotifyResult?.pushResult?.sent === false ?
+                "teacher_push_failed" :
+                normalizeString(teacherNotifyResult?.staleReason) ||
+                  normalizeString(teacherNotifyResult?.reason) ||
+                  "teacher_notification_failed",
+          });
+          if (releaseResult.released) {
+            retryExcludedResponderIds.add(normalizeString(candidate.userId));
+            continue;
+          }
+          if (releaseResult.reason !== "accept_finalization_in_progress") {
+            const currentMatchedResponse =
+              await tryReadCurrentMatchedStartSearchResponse({
+                db,
+                userId,
+                reused,
+              });
+            if (currentMatchedResponse) {
+              return {
+                matched: true,
+                response: currentMatchedResponse,
+                lockResult,
+              };
+            }
+            retryExcludedResponderIds.add(normalizeString(candidate.userId));
+            continue;
+          }
         }
       }
 
@@ -1644,7 +2574,9 @@ function buildStartSearchRequestData({
   });
 }
 
-async function startSearchCallable(data, context) {
+async function startSearchCallable(data, context, options = {}) {
+  const callableOptions =
+    options && typeof options === "object" ? options : {};
   if (!context.auth) {
     throw new functions.https.HttpsError(
       "unauthenticated",
@@ -1759,6 +2691,12 @@ async function startSearchCallable(data, context) {
       requesterData: startResult.requesterData,
       requestData: startResult.requestData,
       reused: startResult.reused,
+      teacherResponderPushSender:
+        callableOptions.teacherResponderPushSender ||
+          sendVoipPushToStudentResponder,
+      teacherResponderTokenReader:
+        callableOptions.teacherResponderTokenReader ||
+          getReadOnlyUserVoipTokenState,
     });
     if (matchResult.matched) {
       return matchResult.response;
@@ -1786,23 +2724,34 @@ exports.__private__ = {
   buildStudentPairSessionData,
   canAttemptStudentPairForSearchRequest,
   cancelBackgroundStudentResponderNotification,
+  cancelTeacherResponderNotification,
+  createTeacherResponderIncomingCall,
   recordBackgroundStudentResponderPushFailure,
   recordBackgroundStudentResponderPushSuccess,
+  recordTeacherResponderPushResult,
+  releaseTeacherResponderMatchForRetry,
   readErrorMessage,
   runBackgroundStudentResponderPushSender,
   sendVoipPushToStudentResponder,
+  startSearchCallable,
   isFreshBackgroundSearchRequest,
   isSessionResponseWindowOpen,
   isStudentResponderSession,
+  isTeacherResponderSession,
   hasCurrentMatchedSession,
   maybeNotifyBackgroundStudentResponder,
+  maybeNotifyTeacherResponder,
   searchRequestMatchesSession,
   searchRequestBelongsToResponder,
+  shouldUseTeacherResponderForIncomingCall,
+  teacherResponderPushStillCurrent,
   canReuseSearchRequestForUser,
   isReusableSearchRequest,
   normalizeStartSearchInput,
   searchRequestBelongsToUser,
   shouldCreateBackgroundStudentResponderIncomingCall,
+  shouldCreateTeacherResponderIncomingCall,
+  shouldRetryTeacherMatchAfterNotifyResult,
   timestampToMillis,
   tryReadCurrentMatchedStartSearchResponse,
   tryCreateStudentPairForSearchRequest,
