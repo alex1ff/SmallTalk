@@ -614,6 +614,28 @@ test("acceptCall validates accepted session before push and response", () => {
   assert.ok(responseIndex > pushIndex);
 });
 
+test("acceptCall sends requester room name for accepted navigation", () => {
+  const source = readFunctionSource("accept_call.js");
+  const pushIndex = source.indexOf("sendVoipPushToStudent(requesterId");
+  const pushRoomNameIndex = source.indexOf(
+    "roomName: roomName ||",
+    pushIndex,
+  );
+  const responseIndex = source.indexOf(
+    'status: "connected"',
+    pushIndex,
+  );
+  const responseRoomNameIndex = source.indexOf(
+    "roomName: roomName",
+    responseIndex,
+  );
+
+  assert.ok(pushIndex >= 0);
+  assert.ok(pushRoomNameIndex > pushIndex);
+  assert.ok(responseIndex > pushIndex);
+  assert.ok(responseRoomNameIndex > responseIndex);
+});
+
 test("acceptCall final transaction rechecks accept attempt ownership", () => {
   const source = readFunctionSource("accept_call.js");
   const finalTransactionIndex = source.indexOf(

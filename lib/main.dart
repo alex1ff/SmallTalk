@@ -49,6 +49,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         extraData: {
           'roomUrl': message.data['roomUrl'],
           'meetingToken': message.data['meetingToken'],
+          'roomName': message.data['roomName'],
         },
       );
       debugPrint('✅ CallKit UI shown successfully');

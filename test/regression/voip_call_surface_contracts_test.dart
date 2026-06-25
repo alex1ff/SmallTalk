@@ -994,6 +994,26 @@ void main() {
       expect(source, contains('await notificationSub.cancel();'));
     });
 
+    test('background incoming call payload preserves room credentials', () {
+      final source = _source('lib/main.dart');
+      final showIncomingCallIndex = source.indexOf(
+        'await VoIPService().showIncomingCall(',
+      );
+      final extraDataIndex =
+          source.indexOf('extraData: {', showIncomingCallIndex);
+
+      expect(showIncomingCallIndex, greaterThanOrEqualTo(0));
+      expect(extraDataIndex, greaterThan(showIncomingCallIndex));
+      expect(
+        source.substring(extraDataIndex),
+        allOf(
+          contains("'roomUrl': message.data['roomUrl']"),
+          contains("'meetingToken': message.data['meetingToken']"),
+          contains("'roomName': message.data['roomName']"),
+        ),
+      );
+    });
+
     test('Daily token refresh keeps room URL and token paired', () {
       final videoCallSource = _source(
           'lib/shared_pages/video_call_page/video_call_page_widget.dart');
