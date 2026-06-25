@@ -46,11 +46,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         callerName: message.data['callerName'] ?? 'Unknown Caller',
         callerId: message.data['callerId'] ?? '',
         callerPhoto: message.data['callerPhoto'],
-        extraData: {
-          'roomUrl': message.data['roomUrl'],
-          'meetingToken': message.data['meetingToken'],
-          'roomName': message.data['roomName'],
-        },
+        extraData: voipIncomingCallExtraDataFromPayload(message.data),
       );
       debugPrint('✅ CallKit UI shown successfully');
     } catch (e) {

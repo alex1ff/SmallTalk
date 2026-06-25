@@ -77,6 +77,85 @@ void main() {
       );
     });
 
+    test('incoming call extra data preserves backend payload metadata', () {
+      final extra = voipIncomingCallExtraDataFromPayload({
+        'type': 'incoming_call',
+        'sessionId': 'session-a',
+        'callerName': 'Ana',
+        'callerId': 'student-a',
+        'callerPhoto': 'photo',
+        'studentName': 'Ana',
+        'studentId': 'student-a',
+        'studentPhoto': 'student-photo',
+        'language': 'en',
+        'scenario': 'student_teacher',
+        'requesterId': 'student-a',
+        'responderId': 'teacher-a',
+        'requesterRole': 'student',
+        'responderRole': 'native_speaker',
+        'navRole': 'tutor',
+        'acceptMode': 'responder_accepts',
+        'callKitId': 'callkit-a',
+        'notificationId': 'notification-a',
+        'searchRequestId': 'search-a',
+        'expiresAt': '2026-06-21T10:00:45.000Z',
+        'roomUrl': '',
+        'meetingToken': null,
+        'roomName': 'room-a',
+        'tokenStrategy': 'accept_call',
+        'ignored': 'value',
+      });
+
+      expect(extra, {
+        'type': 'incoming_call',
+        'sessionId': 'session-a',
+        'callerName': 'Ana',
+        'callerId': 'student-a',
+        'callerPhoto': 'photo',
+        'studentName': 'Ana',
+        'studentId': 'student-a',
+        'studentPhoto': 'student-photo',
+        'language': 'en',
+        'scenario': 'student_teacher',
+        'requesterId': 'student-a',
+        'responderId': 'teacher-a',
+        'requesterRole': 'student',
+        'responderRole': 'native_speaker',
+        'navRole': 'tutor',
+        'acceptMode': 'responder_accepts',
+        'callKitId': 'callkit-a',
+        'notificationId': 'notification-a',
+        'searchRequestId': 'search-a',
+        'expiresAt': '2026-06-21T10:00:45.000Z',
+        'roomUrl': '',
+        'roomName': 'room-a',
+        'tokenStrategy': 'accept_call',
+      });
+      expect(extra.containsKey('meetingToken'), isFalse);
+      expect(extra.containsKey('ignored'), isFalse);
+    });
+
+    test('callkit extra keeps effective identity over payload identity', () {
+      final extra = voipBuildCallKitExtraData(
+        sessionId: 'session-effective',
+        callerId: 'caller-effective',
+        callKitId: 'callkit-effective',
+        extraData: {
+          'sessionId': 'session-stale',
+          'callerId': 'caller-stale',
+          'callKitId': 'callkit-stale',
+          'roomName': 'room-a',
+          'scenario': 'student_teacher',
+        },
+      );
+
+      expect(extra['sessionId'], 'session-effective');
+      expect(extra['callerId'], 'caller-effective');
+      expect(extra['callKitId'], 'callkit-effective');
+      expect(extra['roomName'], 'room-a');
+      expect(extra['scenario'], 'student_teacher');
+    });
+
     test('accept payload requires roomUrl for already accepted room branch',
         () {
       final credentials = voipRoomCredentialsFromAcceptedPayload({

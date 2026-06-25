@@ -4,6 +4,43 @@ import PushKit
 import CryptoKit
 import flutter_callkit_incoming
 
+private let incomingCallExtraKeys: Set<String> = [
+  "type",
+  "sessionId",
+  "callerName",
+  "callerId",
+  "callerPhoto",
+  "studentName",
+  "studentId",
+  "studentPhoto",
+  "language",
+  "scenario",
+  "requesterId",
+  "responderId",
+  "requesterRole",
+  "responderRole",
+  "navRole",
+  "acceptMode",
+  "callKitId",
+  "notificationId",
+  "searchRequestId",
+  "expiresAt",
+  "roomUrl",
+  "meetingToken",
+  "roomName",
+  "tokenStrategy"
+]
+
+private func incomingCallExtraData(from payload: [String: Any]) -> [String: Any] {
+  var extra: [String: Any] = [:]
+  for key in incomingCallExtraKeys {
+    if let value = payload[key], !(value is NSNull) {
+      extra[key] = value
+    }
+  }
+  return extra
+}
+
 private func deterministicCallKitId(for rawValue: String?) -> String {
   let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   if trimmed.isEmpty {
@@ -98,6 +135,8 @@ private func deterministicCallKitId(for rawValue: String?) -> String {
     let handle = (payloadDict["callerId"] as? String) ??
       (payloadDict["handle"] as? String) ??
       ""
+    payloadDict["callerName"] = nameCaller
+    payloadDict["callerId"] = handle
     let isVideo = payloadDict["isVideo"] as? Bool ?? true
 
     let data = flutter_callkit_incoming.Data(
@@ -106,7 +145,8 @@ private func deterministicCallKitId(for rawValue: String?) -> String {
       handle: handle,
       type: isVideo ? 1 : 0
     )
-    data.extra = NSDictionary(dictionary: payloadDict)
+    let extraDict = incomingCallExtraData(from: payloadDict)
+    data.extra = NSDictionary(dictionary: extraDict)
 
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
       finish()

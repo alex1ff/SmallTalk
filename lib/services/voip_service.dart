@@ -30,6 +30,60 @@ Map<String, dynamic> _voipMapFrom(dynamic value) {
   return <String, dynamic>{};
 }
 
+const List<String> _voipIncomingCallExtraKeys = <String>[
+  'type',
+  'sessionId',
+  'callerName',
+  'callerId',
+  'callerPhoto',
+  'studentName',
+  'studentId',
+  'studentPhoto',
+  'language',
+  'scenario',
+  'requesterId',
+  'responderId',
+  'requesterRole',
+  'responderRole',
+  'navRole',
+  'acceptMode',
+  'callKitId',
+  'notificationId',
+  'searchRequestId',
+  'expiresAt',
+  'roomUrl',
+  'meetingToken',
+  'roomName',
+  'tokenStrategy',
+];
+
+Map<String, dynamic> voipIncomingCallExtraDataFromPayload(
+  Map<String, dynamic> payload,
+) {
+  final extra = <String, dynamic>{};
+  for (final key in _voipIncomingCallExtraKeys) {
+    if (payload.containsKey(key) && payload[key] != null) {
+      extra[key] = payload[key];
+    }
+  }
+  return extra;
+}
+
+@visibleForTesting
+Map<String, dynamic> voipBuildCallKitExtraData({
+  required String sessionId,
+  required String callerId,
+  required String callKitId,
+  Map<String, dynamic>? extraData,
+}) {
+  return <String, dynamic>{
+    ...?extraData,
+    'sessionId': sessionId,
+    'callKitId': callKitId,
+    'callerId': callerId,
+  };
+}
+
 @visibleForTesting
 class VoipRoomCredentials {
   const VoipRoomCredentials({
@@ -639,11 +693,7 @@ class VoIPService {
             callerName: message.data['callerName'] ?? 'Unknown Caller',
             callerId: message.data['callerId'] ?? '',
             callerPhoto: message.data['callerPhoto'],
-            extraData: {
-              'roomUrl': message.data['roomUrl'],
-              'meetingToken': message.data['meetingToken'],
-              'roomName': message.data['roomName'],
-            },
+            extraData: voipIncomingCallExtraDataFromPayload(message.data),
           );
         } catch (e) {
           debugPrint('❌ VoIPService: Failed to show CallKit in foreground: $e');
@@ -712,6 +762,23 @@ class VoIPService {
   DateTime? _dateTimeFromFirestoreValue(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
+    return null;
+  }
+
+  String? _payloadExpiresAtForIncomingNotification(
+    Map<String, dynamic> data,
+  ) {
+    for (final key in const ['payloadExpiresAt', 'expiresAt']) {
+      final dateTime = _dateTimeFromFirestoreValue(data[key]);
+      if (dateTime != null) {
+        return dateTime.toUtc().toIso8601String();
+      }
+
+      final value = _nonEmptyString(data[key]);
+      if (value != null) {
+        return value;
+      }
+    }
     return null;
   }
 
@@ -793,15 +860,28 @@ class VoIPService {
     final callerName = _nonEmptyString(notificationStudentInfo['name']) ??
         _nonEmptyString(sessionStudentInfo['name']) ??
         'Unknown Caller';
+    final callerId = _nonEmptyString(sessionData['studentId']) ?? '';
     final callerPhoto = _nonEmptyString(notificationStudentInfo['photo']) ??
         _nonEmptyString(sessionStudentInfo['photo']);
+    final payloadExpiresAt =
+        _payloadExpiresAtForIncomingNotification(notificationData);
 
     debugPrint('📞 VoIPService: Firestore incoming call notification received');
     await showIncomingCall(
       sessionId: sessionId,
       callerName: callerName,
-      callerId: _nonEmptyString(sessionData['studentId']) ?? '',
+      callerId: callerId,
       callerPhoto: callerPhoto,
+      extraData: voipIncomingCallExtraDataFromPayload({
+        ...notificationData,
+        'callerName': callerName,
+        'callerId': callerId,
+        if (callerPhoto != null) 'callerPhoto': callerPhoto,
+        'studentName': callerName,
+        'studentId': callerId,
+        if (callerPhoto != null) 'studentPhoto': callerPhoto,
+        if (payloadExpiresAt != null) 'expiresAt': payloadExpiresAt,
+      }),
     );
   }
 
@@ -1069,12 +1149,12 @@ class VoIPService {
         textAccept: 'Accept',
         textDecline: 'Decline',
         duration: 45000,
-        extra: <String, dynamic>{
-          'sessionId': sessionId,
-          'callKitId': callKitId,
-          'callerId': callerId,
-          ...?extraData,
-        },
+        extra: voipBuildCallKitExtraData(
+          sessionId: sessionId,
+          callerId: callerId,
+          callKitId: callKitId,
+          extraData: extraData,
+        ),
         headers: <String, dynamic>{
           'platform': 'flutter',
         },

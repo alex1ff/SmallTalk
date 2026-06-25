@@ -286,6 +286,14 @@ void main() {
       );
       expect(
         appDelegateSource,
+        contains('private let incomingCallExtraKeys: Set<String>'),
+      );
+      expect(
+        appDelegateSource,
+        contains('private func incomingCallExtraData'),
+      );
+      expect(
+        appDelegateSource,
         contains('private var voipRegistry: PKPushRegistry?'),
       );
       expect(
@@ -418,15 +426,8 @@ void main() {
       );
       expect(
         foregroundListenerSource,
-        contains("'roomUrl': message.data['roomUrl']"),
-      );
-      expect(
-        foregroundListenerSource,
-        contains("'meetingToken': message.data['meetingToken']"),
-      );
-      expect(
-        foregroundListenerSource,
-        contains("'roomName': message.data['roomName']"),
+        contains(
+            'extraData: voipIncomingCallExtraDataFromPayload(message.data)'),
       );
 
       expect(initializeSource, contains('FirebaseMessaging.onMessage.listen'));
@@ -455,8 +456,9 @@ void main() {
       expect(showIncomingCallSource, contains('AndroidParams('));
       expect(showIncomingCallSource, contains('IOSParams('));
       expect(showIncomingCallSource, contains('duration: 45000'));
-      expect(showIncomingCallSource, contains("'sessionId': sessionId"));
-      expect(showIncomingCallSource, contains("'callKitId': callKitId"));
+      expect(showIncomingCallSource, contains('voipBuildCallKitExtraData('));
+      expect(showIncomingCallSource, contains('sessionId: sessionId'));
+      expect(showIncomingCallSource, contains('callKitId: callKitId'));
       expect(acceptSource, contains('_lastAcceptedIsTutor = true;'));
       expect(acceptSource, contains('_callAcceptCallFunction(sessionId)'));
       expect(acceptSource, contains('isTutor: true'));
@@ -477,6 +479,22 @@ void main() {
       expect(
         pushKitReceiveSource,
         contains('payloadDict["callKitId"] = callKitId'),
+      );
+      expect(
+        pushKitReceiveSource,
+        contains('payloadDict["callerName"] = nameCaller'),
+      );
+      expect(
+        pushKitReceiveSource,
+        contains('payloadDict["callerId"] = handle'),
+      );
+      expect(
+        pushKitReceiveSource,
+        contains('let extraDict = incomingCallExtraData(from: payloadDict)'),
+      );
+      expect(
+        pushKitReceiveSource,
+        contains('data.extra = NSDictionary(dictionary: extraDict)'),
       );
       expect(
         pushKitReceiveSource,
@@ -1314,27 +1332,48 @@ void main() {
         contains('Firestore incoming call notification received'),
       );
       expect(source, contains('await showIncomingCall('));
+      expect(source, contains('final payloadExpiresAt ='));
+      expect(
+        source,
+        contains('_payloadExpiresAtForIncomingNotification(notificationData)'),
+      );
+      expect(source, contains("['payloadExpiresAt', 'expiresAt']"));
+      expect(source, contains('.toUtc()'));
+      expect(source, contains('.toIso8601String()'));
+      expect(source, contains("'studentName': callerName"));
+      expect(source, contains("'studentId': callerId"));
+      expect(source, contains("'studentPhoto': callerPhoto"));
+      expect(source, contains("'expiresAt': payloadExpiresAt"));
       expect(source, contains('await notificationSub.cancel();'));
     });
 
-    test('background incoming call payload preserves room credentials', () {
+    test('background incoming call payload preserves call metadata parity', () {
       final source = _source('lib/main.dart');
       final showIncomingCallIndex = source.indexOf(
         'await VoIPService().showIncomingCall(',
       );
-      final extraDataIndex =
-          source.indexOf('extraData: {', showIncomingCallIndex);
+      final extraDataIndex = source.indexOf(
+        'extraData: voipIncomingCallExtraDataFromPayload(message.data)',
+        showIncomingCallIndex,
+      );
 
       expect(showIncomingCallIndex, greaterThanOrEqualTo(0));
       expect(extraDataIndex, greaterThan(showIncomingCallIndex));
-      expect(
-        source.substring(extraDataIndex),
-        allOf(
-          contains("'roomUrl': message.data['roomUrl']"),
-          contains("'meetingToken': message.data['meetingToken']"),
-          contains("'roomName': message.data['roomName']"),
-        ),
-      );
+
+      final voipSource = _source('lib/services/voip_service.dart');
+      final appDelegateSource = _source('ios/Runner/AppDelegate.swift');
+      expect(voipSource, contains("'roomUrl'"));
+      expect(voipSource, contains("'meetingToken'"));
+      expect(voipSource, contains("'roomName'"));
+      expect(voipSource, contains("'tokenStrategy'"));
+      expect(voipSource, contains("'searchRequestId'"));
+      expect(voipSource, contains("'expiresAt'"));
+      expect(appDelegateSource, contains('"roomUrl"'));
+      expect(appDelegateSource, contains('"meetingToken"'));
+      expect(appDelegateSource, contains('"roomName"'));
+      expect(appDelegateSource, contains('"tokenStrategy"'));
+      expect(appDelegateSource, contains('"searchRequestId"'));
+      expect(appDelegateSource, contains('"expiresAt"'));
     });
 
     test('Daily token refresh keeps room URL and token paired', () {
