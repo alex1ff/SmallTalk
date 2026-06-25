@@ -102,6 +102,13 @@ function buildAccessDecision({
       reason: "unavailable",
     };
   }
+  if (hasActiveCallState(requesterData)) {
+    return {
+      allowed: false,
+      callability: "unavailable",
+      reason: "unavailable",
+    };
+  }
 
   const requesterHasSubscription = hasActiveSubscription(
     requesterData,
@@ -132,6 +139,30 @@ function buildAccessDecision({
     callability: "callable",
     reason: "ready",
   };
+}
+
+function buildPreTargetAccessResponse({
+  targetUserId,
+  requesterRole,
+  requesterData = {},
+  checkedAtMillis = Date.now(),
+}) {
+  const accessDecision = buildAccessDecision({
+    requesterRole,
+    requesterData,
+    usageData: null,
+    nowMillis: checkedAtMillis,
+  });
+  if (accessDecision.allowed) {
+    return null;
+  }
+
+  return buildDirectCallStatusResponse({
+    targetUserId,
+    callability: accessDecision.callability,
+    reason: accessDecision.reason,
+    checkedAtMillis,
+  });
 }
 
 function buildDirectCallStatusDecision({
@@ -260,14 +291,6 @@ exports.getDirectCallStatus = functions.https.onCall(async (data, context) => {
 
   const requesterId = context.auth.uid;
   const checkedAtMillis = Date.now();
-  if (targetUserId === requesterId) {
-    return buildDirectCallStatusDecision({
-      requesterId,
-      targetUserId,
-      checkedAtMillis,
-    });
-  }
-
   const db = admin.firestore();
   const requesterDoc = await db.collection("users").doc(requesterId).get();
   if (!requesterDoc.exists) {
@@ -292,6 +315,16 @@ exports.getDirectCallStatus = functions.https.onCall(async (data, context) => {
     );
   }
 
+  const preTargetAccessResponse = buildPreTargetAccessResponse({
+    targetUserId,
+    requesterRole,
+    requesterData,
+    checkedAtMillis,
+  });
+  if (preTargetAccessResponse) {
+    return preTargetAccessResponse;
+  }
+
   const usageData = await readUsage(db, requesterId);
   const accessDecision = buildAccessDecision({
     requesterRole,
@@ -304,6 +337,16 @@ exports.getDirectCallStatus = functions.https.onCall(async (data, context) => {
       targetUserId,
       callability: accessDecision.callability,
       reason: accessDecision.reason,
+      checkedAtMillis,
+    });
+  }
+
+  if (targetUserId === requesterId) {
+    return buildDirectCallStatusDecision({
+      requesterId,
+      requesterData,
+      requesterRole,
+      targetUserId,
       checkedAtMillis,
     });
   }
@@ -374,5 +417,6 @@ exports.__private__ = {
   buildAccessDecision,
   buildDirectCallStatusDecision,
   buildDirectCallStatusResponse,
+  buildPreTargetAccessResponse,
   normalizeTargetUserId,
 };

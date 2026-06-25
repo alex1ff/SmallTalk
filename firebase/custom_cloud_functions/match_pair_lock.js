@@ -7,8 +7,11 @@ const {
   SEARCH_REQUEST_TIMING,
 } = require("./search_requests");
 const {
+  buildMatchProfile,
+  extractBlockedIds,
   readLanguageCode,
   normalizeRole,
+  supportsConversationLanguage,
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
@@ -20,6 +23,12 @@ const {
 const {
   buildReadOnlyVoipTokenState,
 } = require("./voip_tokens");
+const {
+  buildStudentCallAccessDecision,
+} = require("./call_access");
+const {
+  usageDocRef,
+} = require("./subscription_usage_shared");
 
 const USER_COLLECTION = "users";
 const PRIVATE_TOKEN_COLLECTION = "userPrivateTokens";
@@ -231,6 +240,69 @@ function validateUserForPairLock({
     normalizedUserRole !== normalizedExpectedRole
   ) {
     return {ok: false, reason: `${participantKey}_role_mismatch`};
+  }
+
+  return {ok: true, reason: "ready"};
+}
+
+function isAvailableAfterInFutureForPairLock(userData = {}, nowMillis) {
+  const availableAfterMillis = timestampToMillis(userData.availableAfter);
+  return availableAfterMillis !== null && availableAfterMillis > nowMillis;
+}
+
+function validateDirectPairAccessForLock({
+  requesterId,
+  requesterData = {},
+  requesterUsageData = null,
+  responderId,
+  responderData = {},
+  language = "",
+  nowMillis = Date.now(),
+}) {
+  const requesterRole = normalizeRole(requesterData.role);
+  const accessDecision = buildStudentCallAccessDecision({
+    userRole: requesterRole,
+    userData: requesterData,
+    usageData: requesterUsageData,
+    nowMillis,
+  });
+  if (!accessDecision.allowed) {
+    return {
+      ok: false,
+      reason: `requester_${accessDecision.reason}`,
+    };
+  }
+
+  const requesterBlockedIds = extractBlockedIds(requesterData.blockedUsers);
+  if (requesterBlockedIds.includes(responderId)) {
+    return {ok: false, reason: "requester_blocked_responder"};
+  }
+
+  const responderBlockedIds = extractBlockedIds(responderData.blockedUsers);
+  if (responderBlockedIds.includes(requesterId)) {
+    return {ok: false, reason: "responder_blocked_requester"};
+  }
+
+  const normalizedLanguage = readLanguageCode(language);
+  if (!normalizedLanguage) {
+    return {ok: false, reason: "missing_language"};
+  }
+
+  if (!supportsConversationLanguage(responderData, normalizedLanguage)) {
+    return {ok: false, reason: "responder_language_mismatch"};
+  }
+
+  const responderProfile = buildMatchProfile(
+    responderId,
+    responderData,
+    normalizedLanguage,
+  );
+  if (!responderProfile.approvedTeacher) {
+    return {ok: false, reason: "responder_unapproved_teacher"};
+  }
+
+  if (isAvailableAfterInFutureForPairLock(responderData, nowMillis)) {
+    return {ok: false, reason: "responder_available_after_in_future"};
   }
 
   return {ok: true, reason: "ready"};
@@ -1390,6 +1462,7 @@ async function reserveDirectPairInTransaction({
   const responderUserRef = db
     .collection(USER_COLLECTION)
     .doc(normalizedResponderId);
+  const requesterUsageRef = usageDocRef(db, normalizedRequesterId);
   const responderPrivateTokenRef = db
     .collection(PRIVATE_TOKEN_COLLECTION)
     .doc(normalizedResponderId);
@@ -1397,11 +1470,13 @@ async function reserveDirectPairInTransaction({
     sessionSnapshot,
     requesterUserSnapshot,
     responderUserSnapshot,
+    requesterUsageSnapshot,
     responderPrivateTokenSnapshot,
   ] = await Promise.all([
     transaction.get(sessionRef),
     transaction.get(requesterUserRef),
     transaction.get(responderUserRef),
+    transaction.get(requesterUsageRef),
     transaction.get(responderPrivateTokenRef),
   ]);
 
@@ -1433,6 +1508,21 @@ async function reserveDirectPairInTransaction({
   });
   if (!responderUserValidation.ok) {
     return buildPairLockFailure(responderUserValidation.reason);
+  }
+  const requesterUsageData = requesterUsageSnapshot.exists ?
+    requesterUsageSnapshot.data() || {} :
+    null;
+  const directAccessValidation = validateDirectPairAccessForLock({
+    requesterId: normalizedRequesterId,
+    requesterData: requesterUserData,
+    requesterUsageData,
+    responderId: normalizedResponderId,
+    responderData: responderUserData,
+    language: sessionData.language,
+    nowMillis,
+  });
+  if (!directAccessValidation.ok) {
+    return buildPairLockFailure(directAccessValidation.reason);
   }
   const responderAvailability =
     evaluateTutorAvailabilityWindow(

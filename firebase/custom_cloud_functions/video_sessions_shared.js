@@ -205,7 +205,9 @@ function extractBlockedIds(blockedUsers = []) {
         return ref.id.trim();
       }
       if (typeof ref === "string") {
-        return ref.trim();
+        const value = ref.trim();
+        const parts = value.split("/").filter(Boolean);
+        return parts.length > 0 ? parts[parts.length - 1] : "";
       }
       return "";
     })

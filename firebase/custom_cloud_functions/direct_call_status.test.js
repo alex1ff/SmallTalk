@@ -7,6 +7,7 @@ const {
     DIRECT_CALL_STATUS_TTL_SECONDS,
     buildAccessDecision,
     buildDirectCallStatusDecision,
+    buildPreTargetAccessResponse,
     normalizeTargetUserId,
   },
 } = require("./direct_call_status");
@@ -94,6 +95,34 @@ test("direct call access fails closed before target live state is needed", () =>
   assert.deepEqual(
     buildAccessDecision({
       requesterRole: "student",
+      requesterData: requester({currentSessionId: "session-active"}),
+      usageData: null,
+      nowMillis: NOW_MILLIS,
+    }),
+    {
+      allowed: false,
+      callability: "unavailable",
+      reason: "unavailable",
+    },
+  );
+
+  assert.deepEqual(
+    buildAccessDecision({
+      requesterRole: "student",
+      requesterData: requester({isInCall: true}),
+      usageData: null,
+      nowMillis: NOW_MILLIS,
+    }),
+    {
+      allowed: false,
+      callability: "unavailable",
+      reason: "unavailable",
+    },
+  );
+
+  assert.deepEqual(
+    buildAccessDecision({
+      requesterRole: "student",
       requesterData: requester({subscription: null, giftMinutes: null}),
       usageData: null,
       nowMillis: NOW_MILLIS,
@@ -120,6 +149,36 @@ test("direct call access fails closed before target live state is needed", () =>
       callability: "requires_access",
       reason: "requires_access",
     },
+  );
+});
+
+test("direct call pre-target access response blocks active callers", () => {
+  assert.deepEqual(
+    buildPreTargetAccessResponse({
+      targetUserId: "teacher-a",
+      requesterRole: "student",
+      requesterData: requester({isInCall: true}),
+      checkedAtMillis: NOW_MILLIS,
+    }),
+    {
+      status: "ok",
+      targetUserId: "teacher-a",
+      canStartDirectCall: false,
+      callability: "unavailable",
+      reason: "unavailable",
+      checkedAtMillis: NOW_MILLIS,
+      ttlSeconds: DIRECT_CALL_STATUS_TTL_SECONDS,
+    },
+  );
+
+  assert.equal(
+    buildPreTargetAccessResponse({
+      targetUserId: "teacher-a",
+      requesterRole: "student",
+      requesterData: requester(),
+      checkedAtMillis: NOW_MILLIS,
+    }),
+    null,
   );
 });
 

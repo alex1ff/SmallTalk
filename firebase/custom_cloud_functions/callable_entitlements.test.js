@@ -198,6 +198,35 @@ if (!hasRequiredEmulators) {
     assert.equal(response.availabilityToday, undefined);
   });
 
+  test("getDirectCallStatus rejects active caller before target state", async () => {
+    const studentId = uniqueId("student");
+    const teacherId = uniqueId("teacher");
+    await userRef(studentId).set({
+      uid: studentId,
+      role: "student",
+      learningLanguage: {code: "en"},
+      blockedUsers: [],
+      giftMinutes: giftMinutes(),
+      currentSessionId: "session-active",
+    });
+    await userRef(teacherId).set({
+      ...availableNativeSpeaker(),
+      uid: teacherId,
+    });
+
+    const response = await wrappedDirectCallStatus(
+      {targetUserId: teacherId, language: "en"},
+      authContext(studentId),
+    );
+
+    assert.equal(response.status, "ok");
+    assert.equal(response.targetUserId, teacherId);
+    assert.equal(response.canStartDirectCall, false);
+    assert.equal(response.callability, "unavailable");
+    assert.equal(response.reason, "unavailable");
+    assert.equal(response.currentSessionId, undefined);
+  });
+
   test("getDirectCallStatus allows an entitled student and approved tutor", async () => {
     const studentId = uniqueId("student");
     const teacherId = uniqueId("teacher");
