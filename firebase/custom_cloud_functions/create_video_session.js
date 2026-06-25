@@ -356,7 +356,7 @@ exports.createVideoSession = functions
 
         const tutorData = directTutorDoc.data() || {};
         const tutorRole = normalizeRole(tutorData.role);
-        if (!isSupportedSessionRole(tutorRole) || directTutorId === requesterId) {
+        if (tutorRole !== "native_speaker" || directTutorId === requesterId) {
           if (directTutorId === requesterId) {
             tutorFilterStats.selfExcluded += 1;
           } else {
@@ -486,41 +486,7 @@ exports.createVideoSession = functions
           };
         }
         const candidateLevel = readMatchLevelValue(tutorData);
-        if (normalizedPreferredPartnerLevel && !candidateLevel) {
-          tutorFilterStats.missingLevel += 1;
-          return {
-            status: "no_tutors_available",
-            message: "Selected partner is not available right now",
-          };
-        }
-        if (
-          normalizedPreferredPartnerLevel &&
-          candidateLevel !== normalizedPreferredPartnerLevel
-        ) {
-          tutorFilterStats.levelMismatch += 1;
-          return {
-            status: "no_tutors_available",
-            message: "Selected partner is not available right now",
-          };
-        }
         const candidateCountry = readMatchCountry(tutorData);
-        if (normalizedPreferredCountry && !candidateCountry) {
-          tutorFilterStats.missingCountry += 1;
-          return {
-            status: "no_tutors_available",
-            message: "Selected partner is not available right now",
-          };
-        }
-        if (
-          normalizedPreferredCountry &&
-          candidateCountry !== normalizedPreferredCountry
-        ) {
-          tutorFilterStats.countryMismatch += 1;
-          return {
-            status: "no_tutors_available",
-            message: "Selected partner is not available right now",
-          };
-        }
         if (!(await hasCallableTeacherToken(directTutorId, tutorData, db))) {
           tutorFilterStats.missingCallToken += 1;
           addTutorSample({
@@ -543,9 +509,7 @@ exports.createVideoSession = functions
           ratingCount: tutorProfile.ratingCount,
           level: candidateLevel || null,
           legacyPriorityScore: readMatchPriorityScore(tutorData),
-          locationMatch:
-            !normalizedPreferredCountry ||
-            candidateCountry === normalizedPreferredCountry,
+          locationMatch: true,
           approvedTeacher: tutorProfile.approvedTeacher,
           name: tutorData.display_name || "Partner",
         };
@@ -840,7 +804,9 @@ exports.createVideoSession = functions
         preferredCountry: isDirectTutorCall
           ? "skipped_for_direct_call"
           : (normalizedPreferredCountry || "any"),
-        preferredPartnerLevel: normalizedPreferredPartnerLevel || "any",
+        preferredPartnerLevel: isDirectTutorCall
+          ? "skipped_for_direct_call"
+          : (normalizedPreferredPartnerLevel || "any"),
         totalTutorsQueried,
         totalCandidatesChecked: tutorFilterStats.totalCandidates,
         matchedTutors: tutorFilterStats.matched,
@@ -954,20 +920,25 @@ exports.createVideoSession = functions
         studentInfo: requesterInfo,
         matchContext: {
           version: "v2_all_to_all",
+          matcher: isDirectTutorCall ? "directCall" : "createVideoSession",
+          matchMode: isDirectTutorCall ? "direct" : "filtered",
           requesterId,
           requesterRole,
           requestedLanguage: normalizedLanguage,
           requestedLanguageSource: resolvedLanguage.source || null,
+          directTutorId: isDirectTutorCall ? directTutorId : null,
           directCandidateId: isDirectTutorCall ? directTutorId : null,
           requesterProfile,
-          filters: {
+          filters: isDirectTutorCall ? null : {
             preferredCountry: normalizedPreferredCountry || null,
             preferredPartnerLevel: normalizedPreferredPartnerLevel || null,
           },
           ranking: {
             friendPriorityApplied: false,
-            locationApplied: !!normalizedPreferredCountry,
-            levelApplied: !!normalizedPreferredPartnerLevel,
+            locationApplied:
+              !isDirectTutorCall && !!normalizedPreferredCountry,
+            levelApplied:
+              !isDirectTutorCall && !!normalizedPreferredPartnerLevel,
             rolePriorityApplied: false,
             internalRankingScore: 0,
             legacyPriorityUsedAsTiebreaker: true,
