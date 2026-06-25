@@ -14,8 +14,15 @@ const {
 const {
   evaluateTutorAvailabilityWindow,
 } = require("./availability");
+const {
+  hasUsableCallTokenState,
+} = require("./call_candidate_tokens");
+const {
+  buildReadOnlyVoipTokenState,
+} = require("./voip_tokens");
 
 const USER_COLLECTION = "users";
+const PRIVATE_TOKEN_COLLECTION = "userPrivateTokens";
 const VIDEO_SESSION_COLLECTION = "videoSessions";
 const MATCH_PAIR_LOCK_TTL_SECONDS = 45;
 
@@ -1383,14 +1390,19 @@ async function reserveDirectPairInTransaction({
   const responderUserRef = db
     .collection(USER_COLLECTION)
     .doc(normalizedResponderId);
+  const responderPrivateTokenRef = db
+    .collection(PRIVATE_TOKEN_COLLECTION)
+    .doc(normalizedResponderId);
   const [
     sessionSnapshot,
     requesterUserSnapshot,
     responderUserSnapshot,
+    responderPrivateTokenSnapshot,
   ] = await Promise.all([
     transaction.get(sessionRef),
     transaction.get(requesterUserRef),
     transaction.get(responderUserRef),
+    transaction.get(responderPrivateTokenRef),
   ]);
 
   if (sessionSnapshot.exists) {
@@ -1429,6 +1441,16 @@ async function reserveDirectPairInTransaction({
     );
   if (!responderAvailability.isAvailable) {
     return buildPairLockFailure("responder_schedule_unavailable");
+  }
+  const responderPrivateTokenData = responderPrivateTokenSnapshot.exists ?
+    responderPrivateTokenSnapshot.data() || {} :
+    {};
+  const responderTokenState = buildReadOnlyVoipTokenState({
+    privateData: responderPrivateTokenData,
+    legacyUserData: responderUserData,
+  });
+  if (!hasUsableCallTokenState(responderTokenState)) {
+    return buildPairLockFailure("responder_missing_call_token");
   }
 
   const sessionId = sessionRef.id;

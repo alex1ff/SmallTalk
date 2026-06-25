@@ -753,6 +753,7 @@ test("reserveDirectPair locks requester and teacher without search requests", as
   const {db, store, writes} = createFakeFirestore({
     "users/student-a": studentUser(),
     "users/teacher-a": teacherUser(),
+    "userPrivateTokens/teacher-a": {voipPushToken: "push-token"},
   });
   const result = await db.runTransaction((transaction) =>
     reserveDirectPairInTransaction({
@@ -888,6 +889,89 @@ test("reserveDirectPair accepts teacher inside schedule", async () => {
         intervals: [{start: "09:00", end: "11:00"}],
       },
     }),
+    "userPrivateTokens/teacher-a": {voipPushToken: "push-token"},
+  });
+  const result = await db.runTransaction((transaction) =>
+    reserveDirectPairInTransaction({
+      db,
+      transaction,
+      requesterId: "student-a",
+      responderId: "teacher-a",
+      responderRole: "native_speaker",
+      sessionRef: db.collection("videoSessions").doc("session-direct"),
+      sessionData: {language: "en"},
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+    }));
+
+  assert.equal(result.locked, true);
+  assert.equal(store.get("videoSessions/session-direct").responderId, "teacher-a");
+  assert.equal(store.get("users/student-a").currentSessionId, "session-direct");
+  assert.equal(store.get("users/teacher-a").currentSessionId, "session-direct");
+});
+
+test("reserveDirectPair refuses teacher without call token", async () => {
+  const {db, store, writes} = createFakeFirestore({
+    "users/student-a": studentUser(),
+    "users/teacher-a": teacherUser(),
+  });
+  const result = await db.runTransaction((transaction) =>
+    reserveDirectPairInTransaction({
+      db,
+      transaction,
+      requesterId: "student-a",
+      responderId: "teacher-a",
+      responderRole: "native_speaker",
+      sessionRef: db.collection("videoSessions").doc("session-direct"),
+      sessionData: {language: "en"},
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+    }));
+
+  assert.deepEqual(result, {
+    locked: false,
+    reason: "responder_missing_call_token",
+  });
+  assert.equal(writes.length, 0);
+  assert.equal(store.get("videoSessions/session-direct"), undefined);
+  assert.equal(store.get("users/student-a").currentSessionId, "");
+  assert.equal(store.get("users/teacher-a").currentSessionId, "");
+});
+
+test("reserveDirectPair does not revive cleared legacy teacher tokens", async () => {
+  const {db, store, writes} = createFakeFirestore({
+    "users/student-a": studentUser(),
+    "users/teacher-a": teacherUser({voipToken: "legacy-fcm"}),
+    "userPrivateTokens/teacher-a": {voipTokensClearedAt: true},
+  });
+  const result = await db.runTransaction((transaction) =>
+    reserveDirectPairInTransaction({
+      db,
+      transaction,
+      requesterId: "student-a",
+      responderId: "teacher-a",
+      responderRole: "native_speaker",
+      sessionRef: db.collection("videoSessions").doc("session-direct"),
+      sessionData: {language: "en"},
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+    }));
+
+  assert.deepEqual(result, {
+    locked: false,
+    reason: "responder_missing_call_token",
+  });
+  assert.equal(writes.length, 0);
+  assert.equal(store.get("videoSessions/session-direct"), undefined);
+});
+
+test("reserveDirectPair accepts legacy teacher call token fallback", async () => {
+  const {db, store} = createFakeFirestore({
+    "users/student-a": studentUser(),
+    "users/teacher-a": teacherUser({voipToken: "legacy-fcm"}),
   });
   const result = await db.runTransaction((transaction) =>
     reserveDirectPairInTransaction({
