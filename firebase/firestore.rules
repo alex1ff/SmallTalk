@@ -13,6 +13,12 @@ service cloud.firestore {
       return hasField(data, fieldName) && data[fieldName] == value;
     }
 
+    function nestedFieldEquals(data, parentFieldName, fieldName, value) {
+      return hasField(data, parentFieldName) &&
+        data[parentFieldName] is map &&
+        fieldEquals(data[parentFieldName], fieldName, value);
+    }
+
     function isAdmin() {
       return isSignedIn() &&
         request.auth.token.keys().hasAny(['admin']) &&
@@ -44,8 +50,15 @@ service cloud.firestore {
       return isSignedIn() && (
         isParticipantIdForSession(data) ||
         fieldEquals(data, 'studentId', request.auth.uid) ||
+        fieldEquals(data, 'requesterId', request.auth.uid) ||
         fieldEquals(data, 'tutorId', request.auth.uid) ||
-        fieldEquals(data, 'currentTutorId', request.auth.uid)
+        fieldEquals(data, 'currentTutorId', request.auth.uid) ||
+        fieldEquals(data, 'currentResponderId', request.auth.uid) ||
+        fieldEquals(data, 'responderId', request.auth.uid) ||
+        nestedFieldEquals(data, 'matchContext', 'requesterId', request.auth.uid) ||
+        nestedFieldEquals(data, 'matchContext', 'acceptedResponderId', request.auth.uid) ||
+        nestedFieldEquals(data, 'matchContext', 'currentResponderId', request.auth.uid) ||
+        nestedFieldEquals(data, 'matchContext', 'responderId', request.auth.uid)
       );
     }
 
@@ -58,13 +71,25 @@ service cloud.firestore {
     }
 
     function isRequesterForSession(data) {
-      return isSignedIn() && fieldEquals(data, 'studentId', request.auth.uid);
+      return isSignedIn() && (
+        fieldEquals(data, 'studentId', request.auth.uid) ||
+        fieldEquals(data, 'requesterId', request.auth.uid) ||
+        nestedFieldEquals(data, 'matchContext', 'requesterId', request.auth.uid)
+      );
     }
 
     function isResponderForSession(data) {
       return isSignedIn() && (
-        fieldEquals(data, 'tutorId', request.auth.uid) ||
-        fieldEquals(data, 'currentTutorId', request.auth.uid)
+        !isRequesterForSession(data) &&
+        (
+          fieldEquals(data, 'tutorId', request.auth.uid) ||
+          fieldEquals(data, 'currentTutorId', request.auth.uid) ||
+          fieldEquals(data, 'currentResponderId', request.auth.uid) ||
+          fieldEquals(data, 'responderId', request.auth.uid) ||
+          nestedFieldEquals(data, 'matchContext', 'acceptedResponderId', request.auth.uid) ||
+          nestedFieldEquals(data, 'matchContext', 'currentResponderId', request.auth.uid) ||
+          nestedFieldEquals(data, 'matchContext', 'responderId', request.auth.uid)
+        )
       );
     }
 
@@ -93,11 +118,6 @@ service cloud.firestore {
           !changedKeys.hasAny(['tutorNavigationTriggered']) ||
           (
             isResponderForSession(resource.data) &&
-            request.resource.data.tutorNavigationTriggered is bool
-          ) ||
-          (
-            isParticipantIdForSession(resource.data) &&
-            !isRequesterForSession(resource.data) &&
             request.resource.data.tutorNavigationTriggered is bool
           )
         ) &&

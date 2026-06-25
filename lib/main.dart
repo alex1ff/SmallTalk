@@ -20,6 +20,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/voip_service.dart';
 import 'services/user_presence_service.dart';
 import 'services/event_list_date_bounds.dart';
+import 'custom_code/actions/check_active_session_and_navigate.dart' as actions;
+import 'shared_pages/video_call_page/video_call_page_widget.dart';
 
 // 💳 Subscription (RevenueCat) imports
 import 'services/subscription_service.dart';
@@ -120,6 +122,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           .toList();
   late Stream<BaseAuthUser> userStream;
   StreamSubscription<BaseAuthUser>? _userStreamSub;
+  bool _activeSessionRecoveryInProgress = false;
 
   final authUserSub = authenticatedUserStream.listen((_) {});
   StreamSubscription? _jwtTokenSub;
@@ -157,6 +160,40 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _recoverActiveSessionOnResume() async {
+    if (!loggedIn || _activeSessionRecoveryInProgress) {
+      return;
+    }
+    if (_router
+        .getCurrentLocation()
+        .startsWith(VideoCallPageWidget.routePath)) {
+      return;
+    }
+
+    final navContext = appNavigatorKey.currentContext;
+    if (navContext == null || !navContext.mounted) {
+      return;
+    }
+
+    _activeSessionRecoveryInProgress = true;
+    try {
+      await actions.checkActiveSessionAndNavigate(navContext);
+    } catch (error) {
+      debugPrint('⚠️ main: active session recovery on resume failed: $error');
+    } finally {
+      _activeSessionRecoveryInProgress = false;
+    }
+  }
+
+  void _scheduleActiveSessionRecoveryAfterAuth() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(_recoverActiveSessionOnResume());
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -179,6 +216,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
       _appStateNotifier.update(user);
       _appStateNotifier.stopShowingSplashImage();
+      if (user.loggedIn && !wasLoggedIn) {
+        _scheduleActiveSessionRecoveryAfterAuth();
+      }
     });
     _jwtTokenSub = jwtTokenStream.listen((_) {});
   }
@@ -188,6 +228,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshAuthUserOnResume());
       unawaited(UserPresenceService.instance.markSeen(force: true));
+      unawaited(_recoverActiveSessionOnResume());
     }
   }
 

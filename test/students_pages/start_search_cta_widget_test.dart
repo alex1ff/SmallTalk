@@ -11,6 +11,7 @@ import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/components/no_balance_widget.dart';
 import 'package:small_talk/components/student_start_search_button.dart';
+import 'package:small_talk/custom_code/actions/check_active_session_and_navigate.dart';
 import 'package:small_talk/custom_code/actions/start_student_session_listener.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
@@ -188,6 +189,11 @@ void main() {
     WaitingForTeacherPageWidget.debugCancelCallRequest = null;
     WaitingForTeacherPageWidget.debugGetSessionTokensRequest = null;
     WaitingForTeacherPageWidget.debugSessionSnapshots = null;
+    debugActiveSessionUserSnapshot = null;
+    debugActiveNavigationSessionSnapshots = null;
+    debugActiveCurrentSessionSnapshot = null;
+    debugActiveSessionTokenRequest = null;
+    debugActiveSessionNavigator = null;
     debugStudentSessionSnapshots = null;
     debugStudentSessionTokenRequest = null;
     debugStudentSessionNavigator = null;
@@ -239,6 +245,11 @@ void main() {
     WaitingForTeacherPageWidget.debugCancelCallRequest = null;
     WaitingForTeacherPageWidget.debugGetSessionTokensRequest = null;
     WaitingForTeacherPageWidget.debugSessionSnapshots = null;
+    debugActiveSessionUserSnapshot = null;
+    debugActiveNavigationSessionSnapshots = null;
+    debugActiveCurrentSessionSnapshot = null;
+    debugActiveSessionTokenRequest = null;
+    debugActiveSessionNavigator = null;
     debugStudentSessionSnapshots = null;
     debugStudentSessionTokenRequest = null;
     debugStudentSessionNavigator = null;
@@ -1613,7 +1624,8 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('legacy student listener ignores stale token callback after restart',
+  testWidgets(
+      'legacy student listener ignores stale token callback after restart',
       (tester) async {
     const firstSessionId = 'session-legacy-stale-first-test';
     const secondSessionId = 'session-legacy-stale-second-test';
@@ -1745,7 +1757,8 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('legacy student listener ignores stale stream event after restart',
+  testWidgets(
+      'legacy student listener ignores stale stream event after restart',
       (tester) async {
     const firstSessionId = 'session-legacy-stale-stream-first-test';
     const secondSessionId = 'session-legacy-stale-stream-second-test';
@@ -1859,6 +1872,1157 @@ void main() {
     expect(tokenSessionIds, [secondSessionId]);
     expect(openedSessions, [secondSessionId]);
     expect(studentNavigationHandled, isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted teacher session recovers from current session id',
+      (tester) async {
+    const userId = 'student-accepted-current-session-recovery-test';
+    const sessionId = 'session-accepted-current-session-recovery-test';
+    const teacherId = 'teacher-accepted-current-session-recovery-test';
+    final tokenSessionIds = <String>[];
+    final openedSessions = <Map<String, String?>>[];
+    debugActiveSessionUserSnapshot = (requestedUserId) async {
+      expect(requestedUserId, userId);
+      return _FakeSessionSnapshot(
+        userId,
+        const <String, dynamic>{
+          'currentSessionId': sessionId,
+          'isInCall': true,
+        },
+        FirebaseFirestore.instance.collection('users').doc(userId),
+      );
+    };
+    debugActiveNavigationSessionSnapshots = (_) async => [];
+    debugActiveCurrentSessionSnapshot = (requestedSessionId) async {
+      expect(requestedSessionId, sessionId);
+      return _FakeSessionSnapshot(
+        sessionId,
+        <String, dynamic>{
+          'status': 'connecting',
+          'studentId': userId,
+          'tutorId': teacherId,
+          'dailyRoomUrl': 'https://stale-daily.test/$sessionId',
+          'dailyRoomName': 'stale-room-$sessionId',
+          'studentNavigationTriggered': false,
+          'tutorNavigationTriggered': false,
+        },
+        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+      );
+    };
+    debugActiveSessionTokenRequest = (requestedSessionId) async {
+      tokenSessionIds.add(requestedSessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add({
+        'sessionId': videoDocRef.id,
+        'roomUrl': roomUrl,
+        'roomName': roomName,
+        'meetingToken': meetingToken,
+      });
+    };
+    setActiveStudent(userId, currentSessionId: sessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-accepted-current-session'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover accepted session'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-accepted-current-session')));
+    await tester.pump();
+    await tester.idle();
+    await tester.pump();
+
+    expect(recovered, isTrue);
+    expect(tokenSessionIds, [sessionId]);
+    expect(openedSessions, hasLength(1));
+    expect(openedSessions.single['sessionId'], sessionId);
+    expect(openedSessions.single['roomUrl'], 'https://daily.test/$sessionId');
+    expect(openedSessions.single['roomName'], 'room-$sessionId');
+    expect(openedSessions.single['meetingToken'], 'token-$sessionId');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery ignores current session when not in call',
+      (tester) async {
+    const userId = 'student-accepted-not-in-call-test';
+    const sessionId = 'session-accepted-not-in-call-test';
+    var currentSessionRead = false;
+    var tokenRequested = false;
+    final openedSessions = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'currentSessionId': sessionId,
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveNavigationSessionSnapshots = (_) async {
+      throw StateError('navigation fallback should not be read');
+    };
+    debugActiveCurrentSessionSnapshot = (_) async {
+      currentSessionRead = true;
+      return _FakeSessionSnapshot(
+        sessionId,
+        <String, dynamic>{
+          'status': 'connecting',
+          'studentId': userId,
+          'tutorId': 'teacher-not-in-call-test',
+        },
+        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+      );
+    };
+    debugActiveSessionTokenRequest = (_) async {
+      tokenRequested = true;
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId, currentSessionId: sessionId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-not-in-call-current-session'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover not in call current session'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const Key('recover-not-in-call-current-session')),
+    );
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(currentSessionRead, isFalse);
+    expect(tokenRequested, isFalse);
+    expect(openedSessions, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery uses token room url before session room write',
+      (tester) async {
+    const userId = 'student-accepted-token-room-url-test';
+    const sessionId = 'session-accepted-token-room-url-test';
+    final tokenSessionIds = <String>[];
+    final openedSessions = <Map<String, String?>>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'currentSessionId': sessionId,
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveNavigationSessionSnapshots = (_) async => [];
+    debugActiveCurrentSessionSnapshot = (_) async => _FakeSessionSnapshot(
+          sessionId,
+          <String, dynamic>{
+            'status': 'connecting',
+            'studentId': userId,
+            'tutorId': 'teacher-token-room-url-test',
+          },
+          FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+        );
+    debugActiveSessionTokenRequest = (requestedSessionId) async {
+      tokenSessionIds.add(requestedSessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add({
+        'sessionId': videoDocRef.id,
+        'roomUrl': roomUrl,
+        'roomName': roomName,
+        'meetingToken': meetingToken,
+      });
+    };
+    setActiveStudent(userId, currentSessionId: sessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-token-room-url-before-session-room'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover token room before session room'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+        find.byKey(const Key('recover-token-room-url-before-session-room')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(tokenSessionIds, [sessionId]);
+    expect(openedSessions.single['sessionId'], sessionId);
+    expect(openedSessions.single['roomUrl'], 'https://daily.test/$sessionId');
+    expect(openedSessions.single['meetingToken'], 'token-$sessionId');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery prefers current session over stale trigger',
+      (tester) async {
+    const userId = 'student-accepted-prefers-current-test';
+    const currentSessionId = 'session-accepted-current-test';
+    const staleSessionId = 'session-accepted-stale-trigger-test';
+    final openedSessions = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'currentSessionId': currentSessionId,
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveNavigationSessionSnapshots = (_) async => [
+          _FakeSessionSnapshot(
+            staleSessionId,
+            <String, dynamic>{
+              'status': 'connecting',
+              'studentId': userId,
+              'tutorId': 'teacher-stale-trigger-test',
+              'dailyRoomUrl': 'https://daily.test/$staleSessionId',
+            },
+            FirebaseFirestore.instance
+                .collection('videoSessions')
+                .doc(staleSessionId),
+          ),
+        ];
+    debugActiveCurrentSessionSnapshot = (_) async => _FakeSessionSnapshot(
+          currentSessionId,
+          <String, dynamic>{
+            'status': 'connecting',
+            'studentId': userId,
+            'tutorId': 'teacher-current-trigger-test',
+            'dailyRoomUrl': 'https://daily.test/$currentSessionId',
+          },
+          FirebaseFirestore.instance
+              .collection('videoSessions')
+              .doc(currentSessionId),
+        );
+    debugActiveSessionTokenRequest = (sessionId) async {
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId,
+        currentSessionId: currentSessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-current-before-stale-trigger'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover current before stale trigger'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester
+        .tap(find.byKey(const Key('recover-current-before-stale-trigger')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(openedSessions, [currentSessionId]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery waits when current session lacks token',
+      (tester) async {
+    const userId = 'student-accepted-current-lacks-token-test';
+    const currentSessionId = 'session-accepted-current-lacks-token-test';
+    const triggerSessionId = 'session-accepted-trigger-has-token-test';
+    final tokenSessionIds = <String>[];
+    final openedSessions = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'currentSessionId': currentSessionId,
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveCurrentSessionSnapshot = (_) async => _FakeSessionSnapshot(
+          currentSessionId,
+          <String, dynamic>{
+            'status': 'connecting',
+            'studentId': userId,
+            'tutorId': 'teacher-current-lacks-token-test',
+          },
+          FirebaseFirestore.instance
+              .collection('videoSessions')
+              .doc(currentSessionId),
+        );
+    debugActiveNavigationSessionSnapshots = (_) async => [
+          _FakeSessionSnapshot(
+            triggerSessionId,
+            <String, dynamic>{
+              'status': 'connecting',
+              'studentId': userId,
+              'tutorId': 'teacher-trigger-has-token-test',
+              'dailyRoomUrl': 'https://daily.test/$triggerSessionId',
+            },
+            FirebaseFirestore.instance
+                .collection('videoSessions')
+                .doc(triggerSessionId),
+          ),
+        ];
+    debugActiveSessionTokenRequest = (sessionId) async {
+      tokenSessionIds.add(sessionId);
+      if (sessionId == currentSessionId) {
+        return <String, dynamic>{};
+      }
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId,
+        currentSessionId: currentSessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-wait-current-lacks-token'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover wait current lacks token'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-wait-current-lacks-token')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 2500));
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(tokenSessionIds, List.filled(5, currentSessionId));
+    expect(openedSessions, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery retries current session token before fallback',
+      (tester) async {
+    const userId = 'student-accepted-current-token-retry-test';
+    const currentSessionId = 'session-accepted-current-token-retry-test';
+    const triggerSessionId = 'session-accepted-stale-token-retry-test';
+    final tokenSessionIds = <String>[];
+    final openedSessions = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'currentSessionId': currentSessionId,
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveCurrentSessionSnapshot = (_) async => _FakeSessionSnapshot(
+          currentSessionId,
+          <String, dynamic>{
+            'status': 'connecting',
+            'studentId': userId,
+            'tutorId': 'teacher-current-token-retry-test',
+          },
+          FirebaseFirestore.instance
+              .collection('videoSessions')
+              .doc(currentSessionId),
+        );
+    debugActiveNavigationSessionSnapshots = (_) async => [
+          _FakeSessionSnapshot(
+            triggerSessionId,
+            <String, dynamic>{
+              'status': 'connecting',
+              'studentId': userId,
+              'studentNavigationTriggered': true,
+              'dailyRoomUrl': 'https://daily.test/$triggerSessionId',
+            },
+            FirebaseFirestore.instance
+                .collection('videoSessions')
+                .doc(triggerSessionId),
+          ),
+        ];
+    debugActiveSessionTokenRequest = (sessionId) async {
+      tokenSessionIds.add(sessionId);
+      if (sessionId == currentSessionId && tokenSessionIds.length < 3) {
+        return <String, dynamic>{};
+      }
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId,
+        currentSessionId: currentSessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-current-token-retry'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover current token retry'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-current-token-retry')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1000));
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(tokenSessionIds, List.filled(3, currentSessionId));
+    expect(openedSessions, [currentSessionId]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery sorts trigger fallback by newest navigation',
+      (tester) async {
+    const userId = 'student-accepted-sorted-trigger-test';
+    const newerSessionId = 'session-accepted-newer-trigger-test';
+    const legacySessionId = 'session-accepted-legacy-trigger-test';
+    final tokenSessionIds = <String>[];
+    final openedSessions = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveCurrentSessionSnapshot = (_) async => null;
+    debugActiveNavigationSessionSnapshots = (_) async => [
+          for (var i = 0; i < 25; i++)
+            _FakeSessionSnapshot(
+              'session-accepted-older-trigger-$i-test',
+              <String, dynamic>{
+                'status': 'connecting',
+                'studentId': userId,
+                'tutorId': 'teacher-older-trigger-$i-test',
+                'studentNavigationTriggered': true,
+                'dailyRoomUrl':
+                    'https://daily.test/session-accepted-older-trigger-$i-test',
+                'navigationTimestamp': DateTime(2026, 1, 1, 10, i),
+              },
+              FirebaseFirestore.instance
+                  .collection('videoSessions')
+                  .doc('session-accepted-older-trigger-$i-test'),
+            ),
+          _FakeSessionSnapshot(
+            legacySessionId,
+            <String, dynamic>{
+              'status': 'connecting',
+              'studentId': userId,
+              'tutorId': 'teacher-legacy-trigger-test',
+              'studentNavigationTriggered': true,
+              'dailyRoomUrl': 'https://daily.test/$legacySessionId',
+              'acceptedAt': DateTime(2026, 1, 1, 12),
+            },
+            FirebaseFirestore.instance
+                .collection('videoSessions')
+                .doc(legacySessionId),
+          ),
+          _FakeSessionSnapshot(
+            newerSessionId,
+            <String, dynamic>{
+              'status': 'connecting',
+              'studentId': userId,
+              'tutorId': 'teacher-newer-trigger-test',
+              'studentNavigationTriggered': true,
+              'dailyRoomUrl': 'https://daily.test/$newerSessionId',
+              'navigationTimestamp': DateTime(2026, 1, 1, 11),
+            },
+            FirebaseFirestore.instance
+                .collection('videoSessions')
+                .doc(newerSessionId),
+          ),
+        ];
+    debugActiveSessionTokenRequest = (sessionId) async {
+      tokenSessionIds.add(sessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-newest-trigger-first'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover newest trigger first'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-newest-trigger-first')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(tokenSessionIds, [newerSessionId]);
+    expect(openedSessions, [newerSessionId]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery waits when current session read fails',
+      (tester) async {
+    const userId = 'student-accepted-current-read-fails-test';
+    const currentSessionId = 'session-accepted-current-read-fails-test';
+    const triggerSessionId = 'session-accepted-trigger-fallback-test';
+    final openedSessions = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'currentSessionId': currentSessionId,
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveCurrentSessionSnapshot = (_) async {
+      throw StateError('current session unavailable');
+    };
+    debugActiveNavigationSessionSnapshots = (_) async => [
+          _FakeSessionSnapshot(
+            triggerSessionId,
+            <String, dynamic>{
+              'status': 'connecting',
+              'studentId': userId,
+              'tutorId': 'teacher-trigger-fallback-test',
+              'studentNavigationTriggered': true,
+              'dailyRoomUrl': 'https://daily.test/$triggerSessionId',
+            },
+            FirebaseFirestore.instance
+                .collection('videoSessions')
+                .doc(triggerSessionId),
+          ),
+        ];
+    debugActiveSessionTokenRequest = (sessionId) async {
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId,
+        currentSessionId: currentSessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-wait-after-current-read-fails'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover wait after current read fails'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester
+        .tap(find.byKey(const Key('recover-wait-after-current-read-fails')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(openedSessions, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery skips trigger query when current is valid',
+      (tester) async {
+    const userId = 'student-accepted-trigger-query-fails-test';
+    const currentSessionId = 'session-accepted-current-query-fails-test';
+    final tokenSessionIds = <String>[];
+    final openedSessions = <String>[];
+    var triggerQueryCalled = false;
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'currentSessionId': currentSessionId,
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveCurrentSessionSnapshot = (_) async => _FakeSessionSnapshot(
+          currentSessionId,
+          <String, dynamic>{
+            'status': 'connecting',
+            'studentId': userId,
+            'tutorId': 'teacher-current-query-fails-test',
+            'dailyRoomUrl': 'https://daily.test/$currentSessionId',
+          },
+          FirebaseFirestore.instance
+              .collection('videoSessions')
+              .doc(currentSessionId),
+        );
+    debugActiveNavigationSessionSnapshots = (_) async {
+      triggerQueryCalled = true;
+      throw StateError('trigger query unavailable');
+    };
+    debugActiveSessionTokenRequest = (sessionId) async {
+      tokenSessionIds.add(sessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId,
+        currentSessionId: currentSessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-current-after-trigger-query-fails'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover current after trigger query fails'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+        find.byKey(const Key('recover-current-after-trigger-query-fails')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(tokenSessionIds, [currentSessionId]);
+    expect(openedSessions, [currentSessionId]);
+    expect(triggerQueryCalled, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery skips nonparticipant current session',
+      (tester) async {
+    const userId = 'student-accepted-skip-nonparticipant-test';
+    const currentSessionId = 'session-accepted-nonparticipant-current-test';
+    const triggerSessionId = 'session-accepted-participant-trigger-test';
+    final tokenSessionIds = <String>[];
+    final openedSessions = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'currentSessionId': currentSessionId,
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveCurrentSessionSnapshot = (_) async => _FakeSessionSnapshot(
+          currentSessionId,
+          <String, dynamic>{
+            'status': 'connecting',
+            'studentId': 'other-student',
+            'tutorId': 'other-teacher',
+            'dailyRoomUrl': 'https://daily.test/$currentSessionId',
+          },
+          FirebaseFirestore.instance
+              .collection('videoSessions')
+              .doc(currentSessionId),
+        );
+    debugActiveNavigationSessionSnapshots = (_) async => [
+          _FakeSessionSnapshot(
+            triggerSessionId,
+            <String, dynamic>{
+              'status': 'connecting',
+              'responderId': userId,
+              'participantIds': [userId, 'teacher-participant-trigger-test'],
+              'tutorNavigationTriggered': true,
+              'dailyRoomUrl': 'https://daily.test/$triggerSessionId',
+            },
+            FirebaseFirestore.instance
+                .collection('videoSessions')
+                .doc(triggerSessionId),
+          ),
+        ];
+    debugActiveSessionTokenRequest = (sessionId) async {
+      tokenSessionIds.add(sessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId,
+        currentSessionId: currentSessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-skip-nonparticipant-current'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover skip nonparticipant current'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester
+        .tap(find.byKey(const Key('recover-skip-nonparticipant-current')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(tokenSessionIds, [triggerSessionId]);
+    expect(openedSessions, [triggerSessionId]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery skips requester participant tutor trigger',
+      (tester) async {
+    const userId = 'student-accepted-requester-participant-trigger-test';
+    const sessionId = 'session-accepted-requester-participant-trigger-test';
+    const ambiguousSessionId =
+        'session-accepted-ambiguous-participant-trigger-test';
+    final tokenSessionIds = <String>[];
+    final openedSessions = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveCurrentSessionSnapshot = (_) async => null;
+    debugActiveNavigationSessionSnapshots = (_) async => [
+          _FakeSessionSnapshot(
+            sessionId,
+            <String, dynamic>{
+              'status': 'connecting',
+              'requesterId': userId,
+              'responderId': 'teacher-requester-participant-trigger-test',
+              'participantIds': [
+                userId,
+                'teacher-requester-participant-trigger-test',
+              ],
+              'tutorNavigationTriggered': true,
+              'dailyRoomUrl': 'https://daily.test/$sessionId',
+            },
+            FirebaseFirestore.instance
+                .collection('videoSessions')
+                .doc(sessionId),
+          ),
+          _FakeSessionSnapshot(
+            ambiguousSessionId,
+            <String, dynamic>{
+              'status': 'connecting',
+              'participantIds': [
+                userId,
+                'teacher-ambiguous-participant-trigger-test',
+              ],
+              'tutorNavigationTriggered': true,
+              'dailyRoomUrl': 'https://daily.test/$ambiguousSessionId',
+            },
+            FirebaseFirestore.instance
+                .collection('videoSessions')
+                .doc(ambiguousSessionId),
+          ),
+        ];
+    debugActiveSessionTokenRequest = (sessionId) async {
+      tokenSessionIds.add(sessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-requester-participant-tutor-trigger'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover requester participant tutor trigger'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const Key('recover-requester-participant-tutor-trigger')),
+    );
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(tokenSessionIds, isEmpty);
+    expect(openedSessions, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery leaves foreign navigation flag unchanged',
+      (tester) async {
+    const userId = 'student-accepted-foreign-triggered-flag-test';
+    const sessionId = 'session-accepted-foreign-triggered-flag-test';
+    final sessionRef = _CapturingDocumentReference(sessionId);
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'currentSessionId': sessionId,
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveNavigationSessionSnapshots = (_) async => [];
+    debugActiveCurrentSessionSnapshot = (_) async => _FakeSessionSnapshot(
+          sessionId,
+          <String, dynamic>{
+            'status': 'connecting',
+            'studentId': userId,
+            'tutorId': 'teacher-foreign-triggered-flag-test',
+            'tutorNavigationTriggered': true,
+            'studentNavigationTriggered': false,
+          },
+          sessionRef,
+        );
+    debugActiveSessionTokenRequest = (sessionId) async => <String, dynamic>{
+          'roomUrl': 'https://daily.test/$sessionId',
+          'roomName': 'room-$sessionId',
+          'meetingToken': 'token-$sessionId',
+        };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {};
+    setActiveStudent(userId, currentSessionId: sessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-foreign-triggered-flag'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover foreign triggered flag'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-foreign-triggered-flag')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(sessionRef.updates, hasLength(1));
+    expect(sessionRef.updates.single['studentNavigationTriggered'], isFalse);
+    expect(
+      sessionRef.updates.single.containsKey('tutorNavigationTriggered'),
+      isFalse,
+    );
+    expect(sessionRef.updates.single['navigationCompletedAt'], isNotNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted recovery clears neutral responder navigation flag',
+      (tester) async {
+    const userId = 'teacher-accepted-clear-neutral-flag-test';
+    const sessionId = 'session-accepted-clear-neutral-flag-test';
+    final sessionRef = _CapturingDocumentReference(sessionId);
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'currentSessionId': sessionId,
+            'isInCall': true,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveNavigationSessionSnapshots = (_) async => [];
+    debugActiveCurrentSessionSnapshot = (_) async => _FakeSessionSnapshot(
+          sessionId,
+          <String, dynamic>{
+            'status': 'connecting',
+            'requesterId': 'student-neutral-flag-test',
+            'responderId': userId,
+            'participantIds': ['student-neutral-flag-test', userId],
+            'tutorNavigationTriggered': false,
+            'studentNavigationTriggered': false,
+          },
+          sessionRef,
+        );
+    debugActiveSessionTokenRequest = (sessionId) async => <String, dynamic>{
+          'roomUrl': 'https://daily.test/$sessionId',
+          'roomName': 'room-$sessionId',
+          'meetingToken': 'token-$sessionId',
+        };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {};
+    setActiveStudent(userId, currentSessionId: sessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-clear-neutral-flag'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover clear neutral flag'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-clear-neutral-flag')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(sessionRef.updates, hasLength(1));
+    expect(sessionRef.updates.single['tutorNavigationTriggered'], isFalse);
+    expect(
+      sessionRef.updates.single.containsKey('studentNavigationTriggered'),
+      isFalse,
+    );
+    expect(sessionRef.updates.single['navigationCompletedAt'], isNotNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -4101,12 +5265,13 @@ void main() {
 
 // ignore: subtype_of_sealed_class
 class _FakeSessionSnapshot implements DocumentSnapshot<Map<String, dynamic>> {
-  const _FakeSessionSnapshot(this.id, this._data);
+  const _FakeSessionSnapshot(this.id, this._data, [this._reference]);
 
   @override
   final String id;
 
   final Map<String, dynamic> _data;
+  final DocumentReference<Map<String, dynamic>>? _reference;
 
   @override
   bool get exists => true;
@@ -4116,7 +5281,7 @@ class _FakeSessionSnapshot implements DocumentSnapshot<Map<String, dynamic>> {
 
   @override
   DocumentReference<Map<String, dynamic>> get reference =>
-      throw UnimplementedError();
+      _reference ?? (throw UnimplementedError());
 
   @override
   Map<String, dynamic> data() => _data;
@@ -4126,4 +5291,59 @@ class _FakeSessionSnapshot implements DocumentSnapshot<Map<String, dynamic>> {
 
   @override
   Object? operator [](Object field) => get(field);
+}
+
+// ignore: subtype_of_sealed_class
+class _CapturingDocumentReference
+    implements DocumentReference<Map<String, dynamic>> {
+  _CapturingDocumentReference(this.id);
+
+  @override
+  final String id;
+
+  final updates = <Map<Object, Object?>>[];
+
+  @override
+  String get path => 'videoSessions/$id';
+
+  @override
+  Future<void> update(Map<Object, Object?> data) async {
+    updates.add(Map<Object, Object?>.from(data));
+  }
+
+  @override
+  CollectionReference<Map<String, dynamic>> collection(String collectionPath) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> delete() => throw UnimplementedError();
+
+  @override
+  FirebaseFirestore get firestore => throw UnimplementedError();
+
+  @override
+  Future<DocumentSnapshot<Map<String, dynamic>>> get([GetOptions? options]) =>
+      throw UnimplementedError();
+
+  @override
+  CollectionReference<Map<String, dynamic>> get parent =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> set(Map<String, dynamic> data, [SetOptions? options]) =>
+      throw UnimplementedError();
+
+  @override
+  Stream<DocumentSnapshot<Map<String, dynamic>>> snapshots({
+    bool includeMetadataChanges = false,
+    ListenSource source = ListenSource.defaultSource,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  DocumentReference<R> withConverter<R>({
+    required FromFirestore<R> fromFirestore,
+    required ToFirestore<R> toFirestore,
+  }) =>
+      throw UnimplementedError();
 }

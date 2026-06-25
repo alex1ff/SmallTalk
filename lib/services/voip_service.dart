@@ -207,6 +207,7 @@ class VoIPService {
   String? _prefetchedRoomName;
   DateTime? _prefetchedTokenFetchedAt;
   bool _prefetchInProgress = false;
+  int _prefetchRequestGeneration = 0;
   final Map<String, String> _sessionCallKitIds = {};
   String? _lastCallKitId;
   String? _notificationListenerUserId;
@@ -221,6 +222,9 @@ class VoIPService {
   Future<bool> Function(String sessionId)? debugRecoverActiveSessionOverride;
   @visibleForTesting
   Future<void> Function(String sessionId)? debugPrefetchSessionTokensOverride;
+  @visibleForTesting
+  Future<Map<String, dynamic>> Function(String sessionId)?
+      debugGetSessionTokensOverride;
   @visibleForTesting
   Future<void> Function({
     required String sessionId,
@@ -330,12 +334,33 @@ class VoIPService {
     return _handleCallDecline(data);
   }
 
+  @visibleForTesting
+  Future<void> debugPrefetchSessionTokensForTesting(String sessionId) {
+    return _prefetchSessionTokens(sessionId);
+  }
+
+  @visibleForTesting
+  String? debugFreshPrefetchedTokenForTesting(String sessionId) {
+    return _getFreshPrefetchedToken(sessionId);
+  }
+
+  @visibleForTesting
+  String? debugPrefetchedRoomUrlForTesting(String sessionId) {
+    return _getPrefetchedRoomUrl(sessionId);
+  }
+
+  @visibleForTesting
+  String? debugPrefetchedRoomNameForTesting(String sessionId) {
+    return _getPrefetchedRoomName(sessionId);
+  }
+
   void _resetTestingOverrides() {
     debugEnsureMediaPermissionsOverride = null;
     debugAcceptCallOverride = null;
     debugDeclineCallOverride = null;
     debugRecoverActiveSessionOverride = null;
     debugPrefetchSessionTokensOverride = null;
+    debugGetSessionTokensOverride = null;
     debugMarkNavigationTriggeredOverride = null;
     debugNavigateToVideoCallOverride = null;
   }
@@ -359,6 +384,19 @@ class VoIPService {
     return _voipMapFrom(result.data);
   }
 
+  Future<Map<String, dynamic>> _callGetSessionTokensFunction(
+    String sessionId,
+  ) async {
+    final override = debugGetSessionTokensOverride;
+    if (override != null) {
+      return override(sessionId);
+    }
+    final result = await _functions
+        .httpsCallable('getSessionTokens')
+        .call({'sessionId': sessionId});
+    return _voipMapFrom(result.data);
+  }
+
   Future<void> _callDeclineCallFunction(String sessionId) async {
     final override = debugDeclineCallOverride;
     if (override != null) {
@@ -376,6 +414,13 @@ class VoIPService {
       return override(sessionId);
     }
     return _prefetchSessionTokens(sessionId);
+  }
+
+  void _clearPrefetchedSessionCredentials() {
+    _prefetchedMeetingToken = null;
+    _prefetchedRoomUrl = null;
+    _prefetchedRoomName = null;
+    _prefetchedTokenFetchedAt = null;
   }
 
   Future<void> _markNavigationTriggeredForAccept({
@@ -787,11 +832,9 @@ class VoIPService {
     _lastMeetingToken = null;
     _lastRoomName = null;
     _prefetchedSessionId = null;
-    _prefetchedMeetingToken = null;
-    _prefetchedRoomUrl = null;
-    _prefetchedRoomName = null;
-    _prefetchedTokenFetchedAt = null;
+    _clearPrefetchedSessionCredentials();
     _prefetchInProgress = false;
+    _prefetchRequestGeneration = 0;
     _lastCallKitId = null;
     _notificationListenerUserId = null;
   }
@@ -1227,7 +1270,7 @@ class VoIPService {
       if (payloadCredentials != null) {
         _lastAcceptedIsTutor = false;
         _lastRoomUrl = payloadCredentials.roomUrl;
-        _lastMeetingToken = payloadCredentials.meetingToken;
+        _lastMeetingToken = null;
         _lastRoomName = payloadCredentials.roomName;
         unawaited(_prefetchSessionTokensForAccept(sessionId));
         _acceptedSessions.add(sessionId);
@@ -1237,7 +1280,7 @@ class VoIPService {
           sessionId: sessionId,
           isTutor: false,
           roomUrl: _lastRoomUrl,
-          meetingToken: _lastMeetingToken,
+          meetingToken: null,
           roomName: _lastRoomName,
         );
         debugPrint(
@@ -1689,10 +1732,7 @@ class VoIPService {
     }
     if (_prefetchedSessionId == sessionId) {
       _prefetchedSessionId = null;
-      _prefetchedMeetingToken = null;
-      _prefetchedRoomUrl = null;
-      _prefetchedRoomName = null;
-      _prefetchedTokenFetchedAt = null;
+      _clearPrefetchedSessionCredentials();
       _prefetchInProgress = false;
     }
     _sessionCallKitIds.remove(sessionId);
@@ -1701,13 +1741,18 @@ class VoIPService {
   Future<void> _prefetchSessionTokens(String sessionId) async {
     _touchSessionState(sessionId);
     if (_prefetchInProgress && _prefetchedSessionId == sessionId) return;
+    final requestGeneration = ++_prefetchRequestGeneration;
     _prefetchInProgress = true;
+    if (_prefetchedSessionId != sessionId) {
+      _clearPrefetchedSessionCredentials();
+    }
     _prefetchedSessionId = sessionId;
     try {
-      final result = await _functions
-          .httpsCallable('getSessionTokens')
-          .call({'sessionId': sessionId});
-      final data = result.data as Map<String, dynamic>? ?? {};
+      final data = await _callGetSessionTokensFunction(sessionId);
+      if (_prefetchedSessionId != sessionId ||
+          _prefetchRequestGeneration != requestGeneration) {
+        return;
+      }
       final token = data['meetingToken'] as String?;
       final roomUrl = data['roomUrl'] as String?;
       final roomName = data['roomName'] as String?;
@@ -1725,7 +1770,10 @@ class VoIPService {
     } catch (e) {
       debugPrint('⚠️ VoIPService: Prefetch token failed: $e');
     } finally {
-      _prefetchInProgress = false;
+      if (_prefetchedSessionId == sessionId &&
+          _prefetchRequestGeneration == requestGeneration) {
+        _prefetchInProgress = false;
+      }
     }
   }
 

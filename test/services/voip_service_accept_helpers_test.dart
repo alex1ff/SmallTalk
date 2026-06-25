@@ -376,6 +376,140 @@ void main() {
       expect(service.debugAcceptInProgressForTesting('session-a'), isFalse);
     });
 
+    test('runtime accepted student payload opens video and fetches fresh token',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      final navigationMarked = Completer<bool>();
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {
+        expect(sessionId, 'session-student-accepted');
+        if (!navigationMarked.isCompleted) {
+          navigationMarked.complete(isTutor);
+        }
+      };
+
+      await service.debugHandleCallAcceptForTesting({
+        'sessionId': 'session-student-accepted',
+        'extra': {
+          'roomUrl': 'https://daily.test/student-room',
+          'meetingToken': 'stale-payload-token',
+          'roomName': 'student-room',
+        },
+      });
+
+      expect(
+        await prefetched.future.timeout(const Duration(seconds: 1)),
+        'session-student-accepted',
+      );
+      expect(
+        await navigationMarked.future.timeout(const Duration(seconds: 1)),
+        isFalse,
+      );
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': 'session-student-accepted',
+        'isTutor': false,
+        'roomUrl': 'https://daily.test/student-room',
+        'meetingToken': null,
+        'roomName': 'student-room',
+      });
+      expect(
+        service.debugAcceptedSessionForTesting('session-student-accepted'),
+        isTrue,
+      );
+      expect(
+        service.debugAcceptInProgressForTesting('session-student-accepted'),
+        isFalse,
+      );
+    });
+
+    test('token prefetch ignores stale result after session swap', () async {
+      final firstResponse = Completer<Map<String, dynamic>>();
+      final secondResponse = Completer<Map<String, dynamic>>();
+
+      service.debugGetSessionTokensOverride = (sessionId) {
+        if (sessionId == 'session-a') {
+          return firstResponse.future;
+        }
+        if (sessionId == 'session-b') {
+          return secondResponse.future;
+        }
+        throw StateError('unexpected session: $sessionId');
+      };
+
+      final firstPrefetch =
+          service.debugPrefetchSessionTokensForTesting('session-a');
+      final secondPrefetch =
+          service.debugPrefetchSessionTokensForTesting('session-b');
+
+      secondResponse.complete({
+        'meetingToken': 'token-b',
+        'roomUrl': 'https://daily.test/room-b',
+        'roomName': 'room-b',
+      });
+      await secondPrefetch;
+
+      expect(
+        service.debugFreshPrefetchedTokenForTesting('session-b'),
+        'token-b',
+      );
+      expect(
+        service.debugPrefetchedRoomUrlForTesting('session-b'),
+        'https://daily.test/room-b',
+      );
+      expect(service.debugPrefetchedRoomNameForTesting('session-b'), 'room-b');
+
+      firstResponse.complete({
+        'meetingToken': 'token-a',
+        'roomUrl': 'https://daily.test/room-a',
+        'roomName': 'room-a',
+      });
+      await firstPrefetch;
+
+      expect(service.debugFreshPrefetchedTokenForTesting('session-a'), isNull);
+      expect(service.debugPrefetchedRoomUrlForTesting('session-a'), isNull);
+      expect(
+        service.debugFreshPrefetchedTokenForTesting('session-b'),
+        'token-b',
+      );
+      expect(
+        service.debugPrefetchedRoomUrlForTesting('session-b'),
+        'https://daily.test/room-b',
+      );
+      expect(service.debugPrefetchedRoomNameForTesting('session-b'), 'room-b');
+    });
+
     test('runtime acceptCall success without room credentials clears state',
         () async {
       final navigationCalls = <Map<String, dynamic>>[];

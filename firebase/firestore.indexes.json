@@ -463,6 +463,114 @@
       ]
     },
     {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "studentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "studentNavigationTriggered",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "navigationTimestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tutorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tutorNavigationTriggered",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "navigationTimestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "currentTutorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tutorNavigationTriggered",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "navigationTimestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "currentResponderId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tutorNavigationTriggered",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "navigationTimestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "responderId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tutorNavigationTriggered",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "navigationTimestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "participantIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "tutorNavigationTriggered",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "navigationTimestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "words",
       "queryScope": "COLLECTION",
       "fields": [

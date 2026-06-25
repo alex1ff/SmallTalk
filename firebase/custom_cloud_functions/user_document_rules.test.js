@@ -506,6 +506,90 @@ test("registration gift claim docs are admin-only", async () => {
   );
 });
 
+test("video session navigation cleanup follows participant roles", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("videoSessions/navigation-cleanup-main").set({
+      studentId: "student-a",
+      tutorId: "teacher-a",
+      participantIds: ["student-a", "teacher-a"],
+      status: "connecting",
+      studentNavigationTriggered: true,
+      tutorNavigationTriggered: true,
+    });
+    await db.doc("videoSessions/navigation-cleanup-foreign").set({
+      studentId: "student-a",
+      tutorId: "teacher-a",
+      participantIds: ["student-a", "teacher-a"],
+      status: "connecting",
+      studentNavigationTriggered: false,
+      tutorNavigationTriggered: true,
+    });
+    await db.doc("videoSessions/navigation-cleanup-explicit-responder").set({
+      studentId: "student-a",
+      responderId: "teacher-a",
+      participantIds: ["student-a", "teacher-a"],
+      status: "connecting",
+      studentNavigationTriggered: false,
+      tutorNavigationTriggered: true,
+    });
+    await db.doc("videoSessions/navigation-cleanup-ambiguous-participant").set({
+      studentId: "student-a",
+      participantIds: ["student-a", "teacher-a"],
+      status: "connecting",
+      studentNavigationTriggered: false,
+      tutorNavigationTriggered: true,
+    });
+  });
+
+  const student = testEnv.authenticatedContext("student-a");
+  const teacher = testEnv.authenticatedContext("teacher-a");
+  const outsider = testEnv.authenticatedContext("student-b");
+  const studentMainRef = student
+    .firestore()
+    .doc("videoSessions/navigation-cleanup-main");
+  const teacherMainRef = teacher
+    .firestore()
+    .doc("videoSessions/navigation-cleanup-main");
+  const studentForeignRef = student
+    .firestore()
+    .doc("videoSessions/navigation-cleanup-foreign");
+  const teacherExplicitResponderRef = teacher
+    .firestore()
+    .doc("videoSessions/navigation-cleanup-explicit-responder");
+  const teacherAmbiguousParticipantRef = teacher
+    .firestore()
+    .doc("videoSessions/navigation-cleanup-ambiguous-participant");
+  const outsiderMainRef = outsider
+    .firestore()
+    .doc("videoSessions/navigation-cleanup-main");
+
+  await assertSucceeds(studentMainRef.update({
+    studentNavigationTriggered: false,
+    navigationCompletedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+  await assertSucceeds(teacherMainRef.update({
+    tutorNavigationTriggered: false,
+    navigationCompletedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+  await assertSucceeds(teacherExplicitResponderRef.update({
+    tutorNavigationTriggered: false,
+    navigationCompletedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+
+  await assertFails(studentForeignRef.update({
+    tutorNavigationTriggered: false,
+    navigationCompletedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+  await assertFails(teacherAmbiguousParticipantRef.update({
+    tutorNavigationTriggered: false,
+    navigationCompletedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+  await assertFails(outsiderMainRef.update({
+    navigationCompletedAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+  }));
+});
+
 test("session participants can write only safe caption diagnostics", async () => {
   const sessionId = "caption-diagnostic-session";
   await testEnv.withSecurityRulesDisabled(async (context) => {

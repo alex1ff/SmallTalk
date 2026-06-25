@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -569,24 +570,347 @@ void main() {
         listenerSource,
         isNot(contains('!hasRoomUrl || !(isJoinable || studentTriggered)')),
       );
+      expect(
+        recoverySource,
+        contains(".orderBy('navigationTimestamp', descending: true)"),
+      );
+      expect(
+        recoverySource,
+        contains(".where('currentTutorId', isEqualTo: userId)"),
+      );
+      expect(
+        recoverySource,
+        contains(".where('currentResponderId', isEqualTo: userId)"),
+      );
+      expect(
+        recoverySource,
+        contains(".where('responderId', isEqualTo: userId)"),
+      );
+      expect(
+        recoverySource,
+        contains(".where('participantIds', arrayContains: userId)"),
+      );
+      expect(
+        recoverySource,
+        contains('_activeSessionCanUseTutorNavigationFlag(data, userId)'),
+      );
+      final tutorFlagHelperIndex = recoverySource.indexOf(
+        'bool _activeSessionCanUseTutorNavigationFlag',
+      );
+      final triggerMatchHelperIndex = recoverySource.indexOf(
+        'bool _activeSessionNavigationTriggerMatchesUser',
+        tutorFlagHelperIndex,
+      );
+      expect(tutorFlagHelperIndex, greaterThanOrEqualTo(0));
+      expect(triggerMatchHelperIndex, greaterThan(tutorFlagHelperIndex));
+      expect(
+        recoverySource.substring(tutorFlagHelperIndex, triggerMatchHelperIndex),
+        isNot(contains("data['participantIds']")),
+      );
+      expect(
+        recoverySource,
+        contains('const int _activeSessionLegacyFallbackLimit = 100;'),
+      );
+      expect(
+        recoverySource,
+        contains('const int _activeSessionCurrentTokenMaxAttempts = 5;'),
+      );
+      expect(
+        recoverySource,
+        contains('retryMissingMeetingToken: true'),
+      );
+      final legacyStudentQueryIndex = recoverySource.indexOf(
+        "final legacyStudentSessions = await FirebaseFirestore.instance",
+      );
+      final legacyStudentGetIndex =
+          recoverySource.indexOf('.get();', legacyStudentQueryIndex);
+      final legacyTutorQueryIndex = recoverySource.indexOf(
+        "final legacyTutorSessions = await FirebaseFirestore.instance",
+      );
+      final legacyTutorGetIndex =
+          recoverySource.indexOf('.get();', legacyTutorQueryIndex);
+      final legacyCurrentResponderQueryIndex = recoverySource.indexOf(
+        "final legacyCurrentResponderSessions = await FirebaseFirestore.instance",
+      );
+      final legacyCurrentResponderGetIndex = recoverySource.indexOf(
+        '.get();',
+        legacyCurrentResponderQueryIndex,
+      );
+      final legacyResponderQueryIndex = recoverySource.indexOf(
+        "final legacyResponderSessions = await FirebaseFirestore.instance",
+      );
+      final legacyResponderGetIndex =
+          recoverySource.indexOf('.get();', legacyResponderQueryIndex);
 
-      final recoveryLoopIndex = recoverySource.indexOf('for (final doc in');
-      final roomUrlIndex =
-          recoverySource.indexOf("data['dailyRoomUrl']", recoveryLoopIndex);
-      final joinableIndex =
-          recoverySource.indexOf('final isJoinable =', recoveryLoopIndex);
-      final candidateIndex = recoverySource.indexOf(
-        'if (isJoinable && roomUrl != null && roomUrl.isNotEmpty)',
-        joinableIndex,
+      expect(legacyStudentQueryIndex, greaterThanOrEqualTo(0));
+      expect(
+        recoverySource.substring(
+          legacyStudentQueryIndex,
+          legacyStudentGetIndex,
+        ),
+        contains('.limit(_activeSessionLegacyFallbackLimit)'),
+      );
+      expect(legacyTutorQueryIndex, greaterThanOrEqualTo(0));
+      expect(
+        recoverySource.substring(legacyTutorQueryIndex, legacyTutorGetIndex),
+        contains('.limit(_activeSessionLegacyFallbackLimit)'),
+      );
+      expect(legacyCurrentResponderQueryIndex, greaterThanOrEqualTo(0));
+      expect(
+        recoverySource.substring(
+          legacyCurrentResponderQueryIndex,
+          legacyCurrentResponderGetIndex,
+        ),
+        contains('.limit(_activeSessionLegacyFallbackLimit)'),
+      );
+      expect(legacyResponderQueryIndex, greaterThanOrEqualTo(0));
+      expect(
+        recoverySource.substring(
+          legacyResponderQueryIndex,
+          legacyResponderGetIndex,
+        ),
+        contains('.limit(_activeSessionLegacyFallbackLimit)'),
       );
 
-      expect(roomUrlIndex, greaterThan(recoveryLoopIndex));
-      expect(joinableIndex, greaterThan(roomUrlIndex));
-      expect(candidateIndex, greaterThan(joinableIndex));
+      final recoveryLoopIndex = recoverySource.indexOf('for (final doc in');
+      final joinableIndex = recoverySource.indexOf(
+        '_activeSessionIsJoinableParticipant',
+        recoveryLoopIndex,
+      );
+      final tokenRequestIndex = recoverySource.indexOf(
+        'final tokenData = await _requestActiveSessionTokensWithRetry',
+        joinableIndex,
+      );
+      final roomUrlIndex =
+          recoverySource.indexOf("tokenData?['roomUrl']", tokenRequestIndex);
+      final docRoomUrlFallbackIndex =
+          recoverySource.indexOf("data['dailyRoomUrl']", roomUrlIndex);
+      final candidateIndex = recoverySource.indexOf(
+        'sessionDoc: doc,',
+        docRoomUrlFallbackIndex,
+      );
+
+      expect(joinableIndex, greaterThan(recoveryLoopIndex));
+      expect(tokenRequestIndex, greaterThan(joinableIndex));
+      expect(roomUrlIndex, greaterThan(tokenRequestIndex));
+      expect(docRoomUrlFallbackIndex, greaterThan(roomUrlIndex));
+      expect(candidateIndex, greaterThan(docRoomUrlFallbackIndex));
       expect(recoverySource, isNot(contains("status == null || status")));
       expect(recoverySource, contains("httpsCallable('getSessionTokens')"));
       expect(recoverySource, contains('_requestActiveSessionTokensWithRetry'));
       expect(recoverySource, contains("'meetingToken': serializeParam"));
+
+      final userDataIndex = recoverySource.indexOf('final userData =');
+      final inCallGateIndex = recoverySource.indexOf(
+        "if (userData?['isInCall'] != true) {",
+        userDataIndex,
+      );
+      final readCurrentSessionIndex = recoverySource.indexOf(
+        'await _readCurrentSessionSnapshot',
+        inCallGateIndex,
+      );
+      expect(userDataIndex, greaterThanOrEqualTo(0));
+      expect(inCallGateIndex, greaterThan(userDataIndex));
+      expect(
+        recoverySource.substring(inCallGateIndex, readCurrentSessionIndex),
+        contains('return false;'),
+      );
+      expect(readCurrentSessionIndex, greaterThan(inCallGateIndex));
+
+      final currentJoinableIndex =
+          recoverySource.indexOf('final currentSessionIsJoinable =');
+      final currentReturnFalseIndex = recoverySource.indexOf(
+        'if (selectedCandidate == null && currentSessionIsJoinable) {',
+        currentJoinableIndex,
+      );
+      final fallbackQueryIndex = recoverySource.indexOf(
+        'await _readActiveNavigationSessionSnapshots(userId)',
+        currentReturnFalseIndex,
+      );
+      final currentReadFailedReturnIndex = recoverySource.indexOf(
+        'if (selectedCandidate == null && currentSessionReadFailed) {',
+        currentReturnFalseIndex,
+      );
+      final fallbackTriggerFilterIndex = recoverySource.indexOf(
+        '_activeSessionNavigationTriggerMatchesUser(data, userId)',
+        fallbackQueryIndex,
+      );
+      expect(currentJoinableIndex, greaterThanOrEqualTo(0));
+      expect(currentReturnFalseIndex, greaterThan(currentJoinableIndex));
+      expect(
+        recoverySource.substring(currentReturnFalseIndex, fallbackQueryIndex),
+        contains('return false;'),
+      );
+      expect(
+          currentReadFailedReturnIndex, greaterThan(currentReturnFalseIndex));
+      expect(currentReadFailedReturnIndex, lessThan(fallbackQueryIndex));
+      expect(
+        recoverySource.substring(
+          currentReadFailedReturnIndex,
+          fallbackQueryIndex,
+        ),
+        contains('return false;'),
+      );
+      expect(fallbackQueryIndex, greaterThan(currentReturnFalseIndex));
+      expect(fallbackTriggerFilterIndex, greaterThan(fallbackQueryIndex));
+    });
+
+    test('active session legacy fallback indexes navigation timestamp', () {
+      final indexes = jsonDecode(
+        _source('firebase/firestore.indexes.json'),
+      ) as Map<String, dynamic>;
+      final indexEntries =
+          (indexes['indexes'] as List<dynamic>).cast<Map<String, dynamic>>();
+
+      bool hasVideoSessionIndex(List<String> fields, List<String> modes) {
+        return indexEntries.any((index) {
+          if (index['collectionGroup'] != 'videoSessions') {
+            return false;
+          }
+          final indexFields =
+              (index['fields'] as List<dynamic>).cast<Map<String, dynamic>>();
+          return indexFields.map((field) => field['fieldPath']).toList().join(
+                        '|',
+                      ) ==
+                  fields.join('|') &&
+              indexFields
+                      .map((field) => field['order'] ?? field['arrayConfig'])
+                      .toList()
+                      .join('|') ==
+                  modes.join('|');
+        });
+      }
+
+      expect(
+        hasVideoSessionIndex(
+          [
+            'studentId',
+            'studentNavigationTriggered',
+            'navigationTimestamp',
+          ],
+          ['ASCENDING', 'ASCENDING', 'DESCENDING'],
+        ),
+        isTrue,
+      );
+      expect(
+        hasVideoSessionIndex(
+          [
+            'tutorId',
+            'tutorNavigationTriggered',
+            'navigationTimestamp',
+          ],
+          ['ASCENDING', 'ASCENDING', 'DESCENDING'],
+        ),
+        isTrue,
+      );
+      expect(
+        hasVideoSessionIndex(
+          [
+            'currentTutorId',
+            'tutorNavigationTriggered',
+            'navigationTimestamp',
+          ],
+          ['ASCENDING', 'ASCENDING', 'DESCENDING'],
+        ),
+        isTrue,
+      );
+      expect(
+        hasVideoSessionIndex(
+          [
+            'currentResponderId',
+            'tutorNavigationTriggered',
+            'navigationTimestamp',
+          ],
+          ['ASCENDING', 'ASCENDING', 'DESCENDING'],
+        ),
+        isTrue,
+      );
+      expect(
+        hasVideoSessionIndex(
+          [
+            'responderId',
+            'tutorNavigationTriggered',
+            'navigationTimestamp',
+          ],
+          ['ASCENDING', 'ASCENDING', 'DESCENDING'],
+        ),
+        isTrue,
+      );
+      expect(
+        hasVideoSessionIndex(
+          [
+            'participantIds',
+            'tutorNavigationTriggered',
+            'navigationTimestamp',
+          ],
+          ['CONTAINS', 'ASCENDING', 'DESCENDING'],
+        ),
+        isTrue,
+      );
+    });
+
+    test('root app recovers accepted sessions on foreground resume', () {
+      final mainSource = _source('lib/main.dart');
+      final helperIndex =
+          mainSource.indexOf('Future<void> _recoverActiveSessionOnResume()');
+      final videoRouteGuardIndex = mainSource.indexOf(
+        'startsWith(VideoCallPageWidget.routePath)',
+        helperIndex,
+      );
+      final actionCallIndex = mainSource.indexOf(
+        'await actions.checkActiveSessionAndNavigate(navContext);',
+        videoRouteGuardIndex,
+      );
+      final authScheduleHelperIndex = mainSource.indexOf(
+        'void _scheduleActiveSessionRecoveryAfterAuth()',
+        actionCallIndex,
+      );
+      final loggedInBranchIndex = mainSource.indexOf(
+        'if (user.loggedIn && !wasLoggedIn)',
+        authScheduleHelperIndex,
+      );
+      final authScheduleCallIndex = mainSource.indexOf(
+        '_scheduleActiveSessionRecoveryAfterAuth();',
+        loggedInBranchIndex,
+      );
+      final lifecycleIndex = mainSource.indexOf(
+        'void didChangeAppLifecycleState(AppLifecycleState state)',
+      );
+      final resumeCallIndex = mainSource.indexOf(
+        'unawaited(_recoverActiveSessionOnResume());',
+        lifecycleIndex,
+      );
+
+      expect(helperIndex, greaterThanOrEqualTo(0));
+      expect(videoRouteGuardIndex, greaterThan(helperIndex));
+      expect(actionCallIndex, greaterThan(videoRouteGuardIndex));
+      expect(authScheduleHelperIndex, greaterThan(actionCallIndex));
+      expect(loggedInBranchIndex, greaterThan(authScheduleHelperIndex));
+      expect(authScheduleCallIndex, greaterThan(loggedInBranchIndex));
+      expect(lifecycleIndex, greaterThan(authScheduleCallIndex));
+      expect(resumeCallIndex, greaterThan(lifecycleIndex));
+    });
+
+    test(
+        'firestore rules require explicit responder for tutor navigation cleanup',
+        () {
+      final rulesSource = _source('firebase/firestore.rules');
+      final helperStart = rulesSource.indexOf(
+        'function canUpdateVideoSessionNavigationState()',
+      );
+      final helperEnd = rulesSource.indexOf(
+        'function videoSessionData',
+        helperStart,
+      );
+      expect(helperStart, greaterThanOrEqualTo(0));
+      expect(helperEnd, greaterThan(helperStart));
+      final helperBody = rulesSource.substring(helperStart, helperEnd);
+
+      expect(helperBody, contains('isResponderForSession(resource.data)'));
+      expect(
+        helperBody,
+        isNot(contains('isParticipantIdForSession(resource.data)')),
+      );
     });
 
     test('VoIP accept outer error path clears claimed session state', () {
@@ -607,6 +931,41 @@ void main() {
       expect(outerCatchIndex, greaterThan(handleAcceptIndex));
       expect(outerClearIndex, greaterThan(outerCatchIndex));
       expect(finallyIndex, greaterThan(outerClearIndex));
+    });
+
+    test('VoIP token prefetch clears stale credentials before session swap',
+        () {
+      final source = _source('lib/services/voip_service.dart');
+      final clearHelperIndex =
+          source.indexOf('void _clearPrefetchedSessionCredentials()');
+      final prefetchIndex = source
+          .indexOf('Future<void> _prefetchSessionTokens(String sessionId)');
+      final newSessionGuardIndex = source.indexOf(
+        'if (_prefetchedSessionId != sessionId) {',
+        prefetchIndex,
+      );
+      final clearCallIndex = source.indexOf(
+        '_clearPrefetchedSessionCredentials();',
+        newSessionGuardIndex,
+      );
+      final sessionIdAssignIndex = source.indexOf(
+        '_prefetchedSessionId = sessionId;',
+        clearCallIndex,
+      );
+
+      expect(clearHelperIndex, greaterThanOrEqualTo(0));
+      expect(
+        source.substring(clearHelperIndex, prefetchIndex),
+        allOf(
+          contains('_prefetchedMeetingToken = null;'),
+          contains('_prefetchedRoomUrl = null;'),
+          contains('_prefetchedRoomName = null;'),
+          contains('_prefetchedTokenFetchedAt = null;'),
+        ),
+      );
+      expect(newSessionGuardIndex, greaterThan(prefetchIndex));
+      expect(clearCallIndex, greaterThan(newSessionGuardIndex));
+      expect(sessionIdAssignIndex, greaterThan(clearCallIndex));
     });
 
     test('VoIP service listens to assigned Firestore call notifications', () {
