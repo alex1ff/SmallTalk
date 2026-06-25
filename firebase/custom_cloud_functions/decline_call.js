@@ -21,6 +21,8 @@ const {
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
+  buildTeacherIncomingCallApnsPayload,
+  buildTeacherIncomingCallFcmMessage,
   createIncomingCallNotificationInTransaction,
 } = require("./call_notifications");
 const {
@@ -573,15 +575,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
     }
 
     if (voipPushToken) {
-      const apnsPayload = {
-        aps: { "content-available": 1 },
-        type: "incoming_call",
-        sessionId: callData.sessionId,
-        callerName: callData.studentName,
-        callerId: callData.studentId,
-        callerPhoto: callData.studentPhoto || "",
-        language: callData.language || "",
-      };
+      const apnsPayload = buildTeacherIncomingCallApnsPayload(callData);
 
       try {
         await sendApnsVoip({
@@ -604,37 +598,11 @@ async function sendVoipPushToTutor(tutorId, callData) {
     console.log("📱 FCM token found");
     console.log("📦 Using apns-topic for FCM fallback:", bundleId);
 
-    const message = {
+    const message = buildTeacherIncomingCallFcmMessage({
       token: fcmToken,
-      data: {
-        type: "incoming_call",
-        sessionId: callData.sessionId,
-        callerName: callData.studentName,
-        callerId: callData.studentId,
-        callerPhoto: callData.studentPhoto || "",
-        language: callData.language || "",
-      },
-      apns: {
-        headers: {
-          "apns-priority": "10",
-          "apns-push-type": "alert",
-          "apns-topic": bundleId,
-        },
-        payload: {
-          aps: {
-            "content-available": 1,
-            alert: {
-              title: "Входящий звонок",
-              body: `${callData.studentName} хочет попрактиковать ${callData.language}`,
-            },
-            sound: "default",
-          },
-        },
-      },
-      android: {
-        priority: "high",
-      },
-    };
+      callData,
+      bundleId,
+    });
 
     const response = await admin.messaging().send(message);
     console.log("✅ FCM push sent successfully. Message ID:", response);

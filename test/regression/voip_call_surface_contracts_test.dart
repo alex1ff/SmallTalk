@@ -5,6 +5,128 @@ import 'package:flutter_test/flutter_test.dart';
 
 String _source(String path) => File(path).readAsStringSync();
 
+bool _previousCharEscapes(String source, int index) {
+  var slashCount = 0;
+  for (var cursor = index - 1;
+      cursor >= 0 && source[cursor] == '\\';
+      cursor--) {
+    slashCount++;
+  }
+  return slashCount.isOdd;
+}
+
+int _nextCurlyToken(
+  String source,
+  int start, {
+  required bool openingOnly,
+  int initialParenDepth = 0,
+}) {
+  var parenDepth = initialParenDepth;
+  String? stringQuote;
+  var inLineComment = false;
+  var inBlockComment = false;
+
+  for (var index = start; index < source.length; index++) {
+    final char = source[index];
+    final next = index + 1 < source.length ? source[index + 1] : '';
+
+    if (inLineComment) {
+      if (char == '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+    if (inBlockComment) {
+      if (char == '*' && next == '/') {
+        inBlockComment = false;
+        index++;
+      }
+      continue;
+    }
+    if (stringQuote != null) {
+      if (char == stringQuote && !_previousCharEscapes(source, index)) {
+        stringQuote = null;
+      }
+      continue;
+    }
+
+    if (char == '/' && next == '/') {
+      inLineComment = true;
+      index++;
+      continue;
+    }
+    if (char == '/' && next == '*') {
+      inBlockComment = true;
+      index++;
+      continue;
+    }
+    if (char == "'" || char == '"' || char == '`') {
+      stringQuote = char;
+      continue;
+    }
+
+    if (openingOnly) {
+      if (char == '(') {
+        parenDepth++;
+      } else if (char == ')') {
+        parenDepth--;
+      } else if (char == '{' && parenDepth == 0) {
+        return index;
+      }
+      continue;
+    }
+
+    if (char == '{' || char == '}') {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+String _curlyBlockSource(String source, String signature) {
+  final start = source.indexOf(signature);
+  expect(start, greaterThanOrEqualTo(0));
+  final bodyStart = _nextCurlyToken(source, start, openingOnly: true);
+  expect(bodyStart, greaterThan(start));
+
+  var depth = 0;
+  var index = bodyStart;
+  while (index >= 0 && index < source.length) {
+    final char = source[index];
+    if (char == '{') {
+      depth++;
+    } else if (char == '}') {
+      depth--;
+      if (depth == 0) {
+        return source.substring(start, index + 1);
+      }
+    }
+    index = _nextCurlyToken(source, index + 1, openingOnly: false);
+  }
+
+  fail('Could not extract curly block: $signature');
+}
+
+String _jsFunctionSource(String source, String signature) =>
+    _curlyBlockSource(source, signature);
+
+String _xmlSectionAfter(String source, String marker, String closingTag) {
+  final start = source.indexOf(marker);
+  expect(start, greaterThanOrEqualTo(0));
+  final end = source.indexOf(closingTag, start);
+  expect(end, greaterThan(start));
+  return source.substring(start, end + closingTag.length);
+}
+
+String _sourceBetween(String source, String startMarker, String endMarker) {
+  final start = source.indexOf(startMarker);
+  expect(start, greaterThanOrEqualTo(0));
+  final end = source.indexOf(endMarker, start);
+  expect(end, greaterThan(start));
+  return source.substring(start, end);
+}
+
 void main() {
   group('VoIP call surface contracts', () {
     test(
@@ -178,6 +300,207 @@ void main() {
         appDelegateSource,
         contains('return existingUuid.uuidString.lowercased()'),
       );
+    });
+
+    test('teacher incoming calls are wired to VoIP and CallKit surfaces', () {
+      final teacherPushSources = {
+        'createVideoSession': _jsFunctionSource(
+          _source('firebase/custom_cloud_functions/create_video_session.js'),
+          'async function sendVoipPushToTutor',
+        ),
+        'declineCall': _jsFunctionSource(
+          _source('firebase/custom_cloud_functions/decline_call.js'),
+          'async function sendVoipPushToTutor',
+        ),
+        'processExpiredNotifications': _jsFunctionSource(
+          _source(
+              'firebase/custom_cloud_functions/process_expired_notifications.js'),
+          'async function sendVoipPushToTutor',
+        ),
+      };
+      final voipSource = _source('lib/services/voip_service.dart');
+      final appDelegateSource = _source('ios/Runner/AppDelegate.swift');
+      final infoPlistSource = _source('ios/Runner/Info.plist');
+      final androidManifestSource =
+          _source('android/app/src/main/AndroidManifest.xml');
+      final initializeSource =
+          _curlyBlockSource(voipSource, 'Future<void> initialize() async');
+      final notificationListenerSource = _curlyBlockSource(
+        voipSource,
+        'void _startIncomingNotificationListener()',
+      );
+      final showIncomingCallSource =
+          _curlyBlockSource(voipSource, 'Future<void> showIncomingCall({');
+      final acceptSource =
+          _curlyBlockSource(voipSource, 'Future<void> _handleCallAccept');
+      final declineSource =
+          _curlyBlockSource(voipSource, 'Future<void> _handleCallDecline');
+      final timeoutSource =
+          _curlyBlockSource(voipSource, 'Future<void> _handleCallTimeout');
+      final pushKitReceiveSource = _curlyBlockSource(
+        appDelegateSource,
+        'func pushRegistry(\n'
+        '    _ registry: PKPushRegistry,\n'
+        '    didReceiveIncomingPushWith payload: PKPushPayload',
+      );
+      final backgroundModesSource = _xmlSectionAfter(
+        infoPlistSource,
+        '<key>UIBackgroundModes</key>',
+        '</array>',
+      );
+      final mainActivitySource = _xmlSectionAfter(
+        androidManifestSource,
+        '<activity\n'
+            '            android:name=".MainActivity"',
+        '</activity>',
+      );
+
+      for (final entry in teacherPushSources.entries) {
+        final sendPushSource = entry.value;
+        final apnsPayloadSource = _curlyBlockSource(
+          sendPushSource,
+          'const apnsPayload = buildTeacherIncomingCallApnsPayload',
+        );
+        final fcmMessageSource = _curlyBlockSource(
+          sendPushSource,
+          'const message = buildTeacherIncomingCallFcmMessage',
+        );
+        expect(
+          sendPushSource,
+          contains('await getUserVoipTokens(tutorId'),
+          reason: entry.key,
+        );
+        expect(
+          sendPushSource,
+          contains('await sendApnsVoip({'),
+          reason: entry.key,
+        );
+        expect(
+          sendPushSource,
+          contains('payload: apnsPayload'),
+          reason: entry.key,
+        );
+        expect(apnsPayloadSource, contains('(callData)'), reason: entry.key);
+        expect(
+          fcmMessageSource,
+          contains('token: fcmToken'),
+          reason: entry.key,
+        );
+        expect(fcmMessageSource, contains('callData,'), reason: entry.key);
+        expect(fcmMessageSource, contains('bundleId,'), reason: entry.key);
+      }
+
+      final foregroundListenerSource = _sourceBetween(
+        initializeSource,
+        'FirebaseMessaging.onMessage.listen',
+        '// 4. Слушаем события CallKit/ConnectionService',
+      );
+      expect(
+        foregroundListenerSource,
+        contains("message.data['type'] != 'incoming_call'"),
+      );
+      expect(foregroundListenerSource, contains('await showIncomingCall('));
+      expect(
+        foregroundListenerSource,
+        contains("sessionId: message.data['sessionId'] ?? ''"),
+      );
+      expect(
+        foregroundListenerSource,
+        contains("callerName: message.data['callerName'] ?? 'Unknown Caller'"),
+      );
+      expect(
+        foregroundListenerSource,
+        contains("callerId: message.data['callerId'] ?? ''"),
+      );
+      expect(
+        foregroundListenerSource,
+        contains("callerPhoto: message.data['callerPhoto']"),
+      );
+      expect(
+        foregroundListenerSource,
+        contains("'roomUrl': message.data['roomUrl']"),
+      );
+      expect(
+        foregroundListenerSource,
+        contains("'meetingToken': message.data['meetingToken']"),
+      );
+      expect(
+        foregroundListenerSource,
+        contains("'roomName': message.data['roomName']"),
+      );
+
+      expect(initializeSource, contains('FirebaseMessaging.onMessage.listen'));
+      expect(
+        initializeSource,
+        contains("message.data['type'] != 'incoming_call'"),
+      );
+      expect(
+          initializeSource, contains('_startIncomingNotificationListener();'));
+      expect(
+        initializeSource,
+        contains('FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent)'),
+      );
+      expect(
+          notificationListenerSource, contains(".collection('notifications')"));
+      expect(
+        notificationListenerSource,
+        contains(".where('recipientId', isEqualTo: userId)"),
+      );
+      expect(
+        notificationListenerSource,
+        contains('_handleIncomingNotification(change.doc, userId)'),
+      );
+      expect(showIncomingCallSource,
+          contains('await FlutterCallkitIncoming.showCallkitIncoming'));
+      expect(showIncomingCallSource, contains('AndroidParams('));
+      expect(showIncomingCallSource, contains('IOSParams('));
+      expect(showIncomingCallSource, contains('duration: 45000'));
+      expect(showIncomingCallSource, contains("'sessionId': sessionId"));
+      expect(showIncomingCallSource, contains("'callKitId': callKitId"));
+      expect(acceptSource, contains('_lastAcceptedIsTutor = true;'));
+      expect(acceptSource, contains('_callAcceptCallFunction(sessionId)'));
+      expect(acceptSource, contains('isTutor: true'));
+      expect(declineSource, contains('_callDeclineCallFunction(sessionId)'));
+      expect(timeoutSource,
+          contains('Cloud Function processExpiredNotifications'));
+
+      expect(appDelegateSource, contains('PKPushRegistryDelegate'));
+      expect(appDelegateSource, contains('PKPushType.voIP'));
+      expect(
+        pushKitReceiveSource,
+        contains('SwiftFlutterCallkitIncomingPlugin.sharedInstance'),
+      );
+      expect(
+        pushKitReceiveSource,
+        contains('payloadDict["sessionId"] = sessionId'),
+      );
+      expect(
+        pushKitReceiveSource,
+        contains('payloadDict["callKitId"] = callKitId'),
+      );
+      expect(
+        pushKitReceiveSource,
+        contains('plugin.showCallkitIncoming(data, fromPushKit: true)'),
+      );
+
+      expect(backgroundModesSource, contains('<string>voip</string>'));
+      expect(
+        backgroundModesSource,
+        contains('<string>remote-notification</string>'),
+      );
+      expect(
+        androidManifestSource,
+        contains('android.permission.USE_FULL_SCREEN_INTENT'),
+      );
+      expect(
+        androidManifestSource,
+        contains('android.permission.POST_NOTIFICATIONS'),
+      );
+      expect(
+        mainActivitySource,
+        contains('android:showWhenLocked="true"'),
+      );
+      expect(mainActivitySource, contains('android:turnScreenOn="true"'));
     });
 
     test('MinimalDailyWidget blocks duplicate call clients process-wide', () {

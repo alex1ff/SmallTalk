@@ -72,6 +72,58 @@ function buildIncomingCallPushPayload({
   };
 }
 
+function buildTeacherIncomingCallPushData(callData = {}) {
+  const studentName = callData.studentName || "Student";
+  const language = callData.language || "";
+  return {
+    type: "incoming_call",
+    sessionId: callData.sessionId || "",
+    callerName: studentName,
+    callerId: callData.studentId || "",
+    callerPhoto: callData.studentPhoto || "",
+    language,
+  };
+}
+
+function buildTeacherIncomingCallApnsPayload(callData = {}) {
+  return {
+    aps: { "content-available": 1 },
+    ...buildTeacherIncomingCallPushData(callData),
+  };
+}
+
+function buildTeacherIncomingCallFcmMessage({
+  token,
+  callData = {},
+  bundleId = "com.appwave.smalltalk",
+} = {}) {
+  const data = buildTeacherIncomingCallPushData(callData);
+  return {
+    token,
+    data,
+    apns: {
+      headers: {
+        "apns-priority": "10",
+        "apns-push-type": "alert",
+        "apns-topic": bundleId,
+      },
+      payload: {
+        aps: {
+          "content-available": 1,
+          alert: {
+            title: "Входящий звонок",
+            body: `${data.callerName} хочет попрактиковать ${data.language}`,
+          },
+          sound: "default",
+        },
+      },
+    },
+    android: {
+      priority: "high",
+    },
+  };
+}
+
 function createIncomingCallNotificationInTransaction({
   db,
   transaction,
@@ -113,6 +165,9 @@ module.exports = {
   INCOMING_CALL_NOTIFICATION_TTL_SECONDS,
   buildIncomingCallNotificationData,
   buildIncomingCallPushPayload,
+  buildTeacherIncomingCallApnsPayload,
+  buildTeacherIncomingCallFcmMessage,
+  buildTeacherIncomingCallPushData,
   createIncomingCallNotificationInTransaction,
   incomingCallNotificationId,
   incomingCallNotificationRef,
