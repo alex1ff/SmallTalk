@@ -185,6 +185,38 @@ function buildTimeoutResponderFailureRouting({
   };
 }
 
+function buildTimeoutNextResponderPairLockInput({
+  db,
+  transaction,
+  sessionId = "",
+  sessionData = {},
+  timedOutResponderId = "",
+  nextCandidate = {},
+  serverTimestamp,
+  lockExpiresAt,
+  fieldDelete,
+}) {
+  return {
+    db,
+    transaction,
+    sessionId,
+    sessionData,
+    currentResponderId: timedOutResponderId,
+    responderId: nextCandidate.candidateId,
+    responderRole: nextCandidate.role,
+    expectedLanguage: sessionData.language,
+    triedTutors: nextCandidate.triedCandidateIds,
+    serverTimestamp,
+    lockExpiresAt,
+    fieldDelete,
+    currentResponderSearchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+    currentResponderStopReason: "response_timeout",
+    requesterExcludedCandidateIds: timedOutResponderId ?
+      [timedOutResponderId] :
+      [],
+  };
+}
+
 exports.processExpiredNotifications = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .pubsub.schedule("every 1 minutes")
@@ -342,21 +374,17 @@ async function processExpiredNotification(notificationDoc) {
           );
           const candidatePairLock =
             await prepareExistingSessionNextResponderPairLockInTransaction({
-              db,
-              transaction,
-              sessionId,
-              sessionData: freshSessionData,
-              currentResponderId: timedOutResponderId,
-              responderId: nextCandidate.candidateId,
-              responderRole: nextCandidate.role,
-              expectedLanguage: freshSessionData.language,
-              triedTutors: nextCandidate.triedCandidateIds,
-              serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-              lockExpiresAt,
-              fieldDelete: admin.firestore.FieldValue.delete(),
-              currentResponderSearchRequestStatus:
-                SEARCH_REQUEST_STATUS.EXPIRED,
-              currentResponderStopReason: "response_timeout",
+              ...buildTimeoutNextResponderPairLockInput({
+                db,
+                transaction,
+                sessionId,
+                sessionData: freshSessionData,
+                timedOutResponderId,
+                nextCandidate,
+                serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+                lockExpiresAt,
+                fieldDelete: admin.firestore.FieldValue.delete(),
+              }),
             });
           if (candidatePairLock.locked) {
             nextTutor = nextCandidate.candidateId;
@@ -584,6 +612,7 @@ async function processExpiredNotification(notificationDoc) {
 
 exports.__private__ = {
   buildTerminalTimeoutSessionProjection,
+  buildTimeoutNextResponderPairLockInput,
   buildTimeoutResponderDecision,
   buildTimeoutResponderFailureRouting,
   getPendingAssignedResponderId,

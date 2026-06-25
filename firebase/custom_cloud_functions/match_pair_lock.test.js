@@ -1408,6 +1408,84 @@ test("existing session handoff reuses session for next teacher", async () => {
   );
 });
 
+test("existing session timeout handoff excludes timed-out teacher", async () => {
+  const {db, store} = createFakeFirestore({
+    "users/student-a": namedStudentUser("Ana", "ana-photo", {
+      currentSessionId: "session-at",
+    }),
+    "users/teacher-a": namedTeacherUser("Tia", "tia-photo", {
+      currentSessionId: "session-at",
+    }),
+    "users/teacher-b": namedTeacherUser("Bea", "bea-photo"),
+    "searchRequests/student-a": activeSearchRequest("student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      currentSessionId: "session-at",
+      matchedSessionId: "session-at",
+      matchedUserId: "teacher-a",
+      matchedResponderId: "teacher-a",
+      matchedRole: "native_speaker",
+      pairAttemptId: "pair-session-at-student-a-teacher-a",
+      lockOwner: "pair-session-at-student-a-teacher-a",
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 10_000),
+      excludedCandidateIds: ["teacher-old"],
+    }),
+    "videoSessions/session-at": existingSearchingSession({
+      currentTutorId: "teacher-a",
+      currentResponderId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      responderId: "teacher-a",
+      responderRole: "native_speaker",
+      tutorId: "teacher-a",
+      scenario: "student_teacher",
+      participantIds: ["student-a", "teacher-a"],
+      participantRoles: {
+        "student-a": "student",
+        "teacher-a": "native_speaker",
+      },
+      searchRequestIds: {
+        requester: "request-student-a",
+        responder: null,
+      },
+      triedTutors: ["teacher-a"],
+      availableTutors: ["teacher-a", "teacher-b"],
+    }),
+  });
+
+  const result = await db.runTransaction(async (transaction) => {
+    const prepared =
+      await prepareExistingSessionNextResponderPairLockInTransaction({
+        db,
+        transaction,
+        sessionId: "session-at",
+        sessionData: store.get("videoSessions/session-at"),
+        currentResponderId: "teacher-a",
+        responderId: "teacher-b",
+        responderRole: "native_speaker",
+        triedTutors: ["teacher-a"],
+        nowMillis: fixedNowMillis,
+        serverTimestamp,
+        lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+        fieldDelete,
+        currentResponderSearchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+        currentResponderStopReason: "response_timeout",
+        requesterExcludedCandidateIds: ["teacher-a"],
+      });
+    applyPreparedPairLockWrites(transaction, prepared);
+    return prepared;
+  });
+
+  const requesterSearch = store.get("searchRequests/student-a");
+  assert.equal(result.locked, true);
+  assert.equal(store.get("users/teacher-a").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/teacher-b").currentSessionId, "session-at");
+  assert.equal(requesterSearch.status, SEARCH_REQUEST_STATUS.MATCHED);
+  assert.equal(requesterSearch.matchedResponderId, "teacher-b");
+  assert.deepEqual(requesterSearch.excludedCandidateIds, [
+    "teacher-a",
+    "teacher-old",
+  ]);
+});
+
 test("existing session handoff reuses student session for next teacher", async () => {
   const existingStudentSessionSeed = seedExistingStudentSession();
   const {db, store, writes} = createFakeFirestore({

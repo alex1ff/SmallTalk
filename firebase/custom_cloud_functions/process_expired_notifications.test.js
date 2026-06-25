@@ -3,8 +3,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
+  SEARCH_REQUEST_STATUS,
+} = require("./search_requests");
+const {
   __private__: {
     buildTerminalTimeoutSessionProjection,
+    buildTimeoutNextResponderPairLockInput,
     buildTimeoutResponderDecision,
     buildTimeoutResponderFailureRouting,
     getPendingAssignedResponderId,
@@ -299,6 +303,39 @@ test("notification timeout clears pending responder fields on terminal expiry", 
   assert.ok(responderDeleteIndex > legacyDeleteIndex);
   assert.ok(responderRoleDeleteIndex > responderDeleteIndex);
   assert.ok(expiredStatusIndex > responderRoleDeleteIndex);
+});
+
+test("notification timeout excludes timed-out responder during teacher handoff", () => {
+  const lockInput = buildTimeoutNextResponderPairLockInput({
+    db: "db",
+    transaction: "transaction",
+    sessionId: "session-a",
+    sessionData: {language: "en"},
+    timedOutResponderId: "teacher-a",
+    nextCandidate: {
+      candidateId: "teacher-b",
+      role: "native_speaker",
+      triedCandidateIds: ["teacher-a", "teacher-b"],
+    },
+    serverTimestamp: "serverTimestamp",
+    lockExpiresAt: "lockExpiresAt",
+    fieldDelete: "fieldDelete",
+  });
+
+  assert.equal(lockInput.db, "db");
+  assert.equal(lockInput.transaction, "transaction");
+  assert.equal(lockInput.sessionId, "session-a");
+  assert.equal(lockInput.currentResponderId, "teacher-a");
+  assert.equal(lockInput.responderId, "teacher-b");
+  assert.equal(lockInput.responderRole, "native_speaker");
+  assert.equal(lockInput.expectedLanguage, "en");
+  assert.deepEqual(lockInput.triedTutors, ["teacher-a", "teacher-b"]);
+  assert.equal(
+    lockInput.currentResponderSearchRequestStatus,
+    SEARCH_REQUEST_STATUS.EXPIRED,
+  );
+  assert.equal(lockInput.currentResponderStopReason, "response_timeout");
+  assert.deepEqual(lockInput.requesterExcludedCandidateIds, ["teacher-a"]);
 });
 
 test("notification timeout keeps teacher handoff candidates", () => {
