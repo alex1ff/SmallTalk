@@ -303,7 +303,7 @@
 
 - [x] Проверить отправку VoIP/CallKit/ConnectionService для учителей.
 - [x] Добавить отправку VoIP/CallKit/ConnectionService для фонового студента.
-- [ ] Передавать в payload `sessionId`, имя собеседника, `scenario`, `requesterId`, `responderId`, `requesterRole`, `responderRole`, `navRole`, `acceptMode`, `callKitId`, `notificationId` или `searchRequestId`, `expiresAt`, `roomUrl`, `roomName` и `tokenStrategy`.
+- [x] Передавать в payload `sessionId`, имя собеседника, `scenario`, `requesterId`, `responderId`, `requesterRole`, `responderRole`, `navRole`, `acceptMode`, `callKitId`, `notificationId` или `searchRequestId`, `expiresAt`, `roomUrl`, `roomName` и `tokenStrategy`.
 - [ ] Синхронизировать payload parity между foreground FCM, background FCM, iOS PushKit и Android: backend `roomName` не должен теряться в background handler.
 - [ ] Обработать accept из foreground.
 - [ ] Обработать accept из background.

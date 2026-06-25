@@ -55,6 +55,9 @@ const {
     tryReadCurrentMatchedStartSearchResponse,
   },
 } = require("./start_search");
+const {
+  buildCallKitIdForSession,
+} = require("./call_notifications");
 
 const fixedNowMillis = Date.parse("2026-06-21T10:00:00.000Z");
 const serverTimestamp = Symbol("serverTimestamp");
@@ -1044,13 +1047,29 @@ test("teacher responder incoming call creates notification and push", async () =
     pushSender: async (responderId, callData) => {
       pushSendCount += 1;
       assert.equal(responderId, "teacher-a");
-      assert.deepEqual(callData, {
-        sessionId: "session-at",
-        callerName: "Ana",
-        callerId: "student-a",
-        callerPhoto: "photo",
-        language: "en",
-      });
+      assert.equal(callData.sessionId, "session-at");
+      assert.equal(callData.callerName, "Ana");
+      assert.equal(callData.callerId, "student-a");
+      assert.equal(callData.callerPhoto, "photo");
+      assert.equal(callData.language, "en");
+      assert.equal(callData.scenario, "student_teacher");
+      assert.equal(callData.requesterId, "student-a");
+      assert.equal(callData.responderId, "teacher-a");
+      assert.equal(callData.requesterRole, "student");
+      assert.equal(callData.responderRole, "native_speaker");
+      assert.equal(callData.navRole, "tutor");
+      assert.equal(callData.acceptMode, "responder_accepts");
+      assert.equal(
+        callData.callKitId,
+        buildCallKitIdForSession("session-at"),
+      );
+      assert.equal(callData.notificationId, "session-at_teacher-a");
+      assert.equal(callData.searchRequestId, "");
+      assert.ok(callData.expiresAt);
+      assert.equal(callData.roomUrl, "");
+      assert.equal(callData.roomName, "");
+      assert.equal(callData.tokenStrategy, "accept_call");
+      assert.equal(Object.hasOwn(callData, "meetingToken"), false);
       return {sent: true, channel: "apns_voip"};
     },
   });
@@ -2087,7 +2106,20 @@ test("student pair responder call data omits room credentials", () => {
       studentId: " student-a ",
       studentPhoto: " photo ",
       language: " en ",
+      scenario: " student_student ",
+      requesterId: " student-a ",
+      responderId: " student-b ",
+      requesterRole: " student ",
+      responderRole: " student ",
+      navRole: " student ",
+      acceptMode: " responder_accepts ",
+      callKitId: " callkit-id ",
+      notificationId: " notification-id ",
+      searchRequestId: " search-request-id ",
+      expiresAt: " 2026-06-21T10:00:45.000Z ",
       roomUrl: "https://daily.example/room",
+      roomName: " room-a ",
+      tokenStrategy: " accept_call ",
       meetingToken: "token",
     },
   });
@@ -2098,8 +2130,21 @@ test("student pair responder call data omits room credentials", () => {
     callerId: "student-a",
     callerPhoto: "photo",
     language: "en",
+    scenario: "student_student",
+    requesterId: "student-a",
+    responderId: "student-b",
+    requesterRole: "student",
+    responderRole: "student",
+    navRole: "student",
+    acceptMode: "responder_accepts",
+    callKitId: "callkit-id",
+    notificationId: "notification-id",
+    searchRequestId: "search-request-id",
+    expiresAt: "2026-06-21T10:00:45.000Z",
+    roomUrl: "",
+    roomName: "room-a",
+    tokenStrategy: "accept_call",
   });
-  assert.equal(Object.hasOwn(callData, "roomUrl"), false);
   assert.equal(Object.hasOwn(callData, "meetingToken"), false);
 
   const pushPayload = buildStudentPairResponderPushPayload({
@@ -2114,8 +2159,21 @@ test("student pair responder call data omits room credentials", () => {
     callerId: "student-a",
     callerPhoto: "photo",
     language: "en",
+    scenario: "student_student",
+    requesterId: "student-a",
+    responderId: "student-b",
+    requesterRole: "student",
+    responderRole: "student",
+    navRole: "student",
+    acceptMode: "responder_accepts",
+    callKitId: "callkit-id",
+    notificationId: "notification-id",
+    searchRequestId: "search-request-id",
+    expiresAt: "2026-06-21T10:00:45.000Z",
+    roomUrl: "",
+    roomName: "room-a",
+    tokenStrategy: "accept_call",
   });
-  assert.equal(Object.hasOwn(pushPayload, "roomUrl"), false);
   assert.equal(Object.hasOwn(pushPayload, "meetingToken"), false);
 
   const fcmMessage = buildStudentPairResponderFcmMessage({
@@ -2126,7 +2184,7 @@ test("student pair responder call data omits room credentials", () => {
   assert.equal(fcmMessage.token, "fcm-token");
   assert.equal(fcmMessage.android.priority, "high");
   assert.deepEqual(fcmMessage.data, pushPayload);
-  assert.equal(Object.hasOwn(fcmMessage.data, "roomUrl"), false);
+  assert.equal(fcmMessage.data.roomUrl, "");
   assert.equal(Object.hasOwn(fcmMessage.data, "meetingToken"), false);
 });
 
@@ -2826,14 +2884,28 @@ test("background responder notify flow creates notification and sends push", asy
   assert.equal(result.pushResult.sent, true);
   assert.equal(pushCalls.length, 1);
   assert.equal(pushCalls[0].responderId, "student-b");
-  assert.deepEqual(pushCalls[0].callData, {
-    sessionId: "session-ab",
-    callerName: "Joining Student",
-    callerId: "student-a",
-    callerPhoto: "joining-photo",
-    language: "en",
-  });
-  assert.equal(Object.hasOwn(pushCalls[0].callData, "roomUrl"), false);
+  assert.equal(pushCalls[0].callData.sessionId, "session-ab");
+  assert.equal(pushCalls[0].callData.callerName, "Joining Student");
+  assert.equal(pushCalls[0].callData.callerId, "student-a");
+  assert.equal(pushCalls[0].callData.callerPhoto, "joining-photo");
+  assert.equal(pushCalls[0].callData.language, "en");
+  assert.equal(pushCalls[0].callData.scenario, "student_student");
+  assert.equal(pushCalls[0].callData.requesterId, "student-a");
+  assert.equal(pushCalls[0].callData.responderId, "student-b");
+  assert.equal(pushCalls[0].callData.requesterRole, "student");
+  assert.equal(pushCalls[0].callData.responderRole, "student");
+  assert.equal(pushCalls[0].callData.navRole, "student");
+  assert.equal(pushCalls[0].callData.acceptMode, "responder_accepts");
+  assert.equal(
+    pushCalls[0].callData.callKitId,
+    buildCallKitIdForSession("session-ab"),
+  );
+  assert.equal(pushCalls[0].callData.notificationId, "session-ab_student-b");
+  assert.equal(pushCalls[0].callData.searchRequestId, "");
+  assert.ok(pushCalls[0].callData.expiresAt);
+  assert.equal(pushCalls[0].callData.roomUrl, "");
+  assert.equal(pushCalls[0].callData.roomName, "");
+  assert.equal(pushCalls[0].callData.tokenStrategy, "accept_call");
   assert.equal(Object.hasOwn(pushCalls[0].callData, "meetingToken"), false);
   assert.equal(store.get(notificationPath).status, "sent");
   assert.equal(store.get(notificationPath).recipientId, "student-b");
@@ -4381,10 +4453,7 @@ if (!hasFirestoreEmulator) {
       matchingNotifications[0].data.studentInfo.photo,
       "joining-photo",
     );
-    assert.equal(
-      Object.hasOwn(matchingNotifications[0].data, "roomUrl"),
-      false,
-    );
+    assert.equal(matchingNotifications[0].data.roomUrl, "");
     assert.equal(
       Object.hasOwn(matchingNotifications[0].data, "meetingToken"),
       false,

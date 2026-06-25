@@ -535,6 +535,21 @@ function buildStudentPairResponderCallData({
     callerId: normalizeString(pushPayload.studentId),
     callerPhoto: normalizeString(pushPayload.studentPhoto),
     language: normalizeString(pushPayload.language),
+    scenario: normalizeString(pushPayload.scenario),
+    requesterId: normalizeString(pushPayload.requesterId),
+    responderId: normalizeString(pushPayload.responderId),
+    requesterRole: normalizeString(pushPayload.requesterRole),
+    responderRole: normalizeString(pushPayload.responderRole),
+    navRole: normalizeString(pushPayload.navRole) || "student",
+    acceptMode:
+      normalizeString(pushPayload.acceptMode) || "responder_accepts",
+    callKitId: normalizeString(pushPayload.callKitId),
+    notificationId: normalizeString(pushPayload.notificationId),
+    searchRequestId: normalizeString(pushPayload.searchRequestId),
+    expiresAt: normalizeString(pushPayload.expiresAt),
+    roomUrl: "",
+    roomName: normalizeString(pushPayload.roomName),
+    tokenStrategy: normalizeString(pushPayload.tokenStrategy) || "accept_call",
   };
 }
 
@@ -546,6 +561,21 @@ function buildStudentPairResponderPushPayload(callData = {}) {
     callerId: normalizeString(callData.callerId),
     callerPhoto: normalizeString(callData.callerPhoto),
     language: normalizeString(callData.language),
+    scenario: normalizeString(callData.scenario),
+    requesterId: normalizeString(callData.requesterId),
+    responderId: normalizeString(callData.responderId),
+    requesterRole: normalizeString(callData.requesterRole),
+    responderRole: normalizeString(callData.responderRole),
+    navRole: normalizeString(callData.navRole) || "student",
+    acceptMode:
+      normalizeString(callData.acceptMode) || "responder_accepts",
+    callKitId: normalizeString(callData.callKitId),
+    notificationId: normalizeString(callData.notificationId),
+    searchRequestId: normalizeString(callData.searchRequestId),
+    expiresAt: normalizeString(callData.expiresAt),
+    roomUrl: "",
+    roomName: normalizeString(callData.roomName),
+    tokenStrategy: normalizeString(callData.tokenStrategy) || "accept_call",
   };
 }
 

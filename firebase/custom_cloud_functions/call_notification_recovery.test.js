@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
+  buildCallKitIdForSession,
   buildIncomingCallNotificationData,
   buildIncomingCallPushPayload,
   createIncomingCallNotificationInTransaction,
@@ -40,6 +41,19 @@ test("incoming call notification helper builds stable outbox documents", () => {
     photo: "photo-url",
   });
   assert.equal(data.expiresAt.toDate().getTime(), now.getTime() + 45_000);
+  assert.equal(data.payloadExpiresAt, "2026-05-26T10:00:45.000Z");
+  assert.equal(data.scenario, "student_teacher");
+  assert.equal(data.requesterId, "student-a");
+  assert.equal(data.responderId, "teacher/one");
+  assert.equal(data.requesterRole, "student");
+  assert.equal(data.responderRole, "native_speaker");
+  assert.equal(data.navRole, "tutor");
+  assert.equal(data.acceptMode, "responder_accepts");
+  assert.equal(data.callKitId, buildCallKitIdForSession("session/one"));
+  assert.equal(data.searchRequestId, "");
+  assert.equal(data.roomUrl, "");
+  assert.equal(data.roomName, "");
+  assert.equal(data.tokenStrategy, "accept_call");
   assert.ok(data.createdAt);
 });
 
@@ -68,13 +82,26 @@ test("incoming call notification helper keeps only public student identity field
 test("incoming call push payload reuses notification identity data", () => {
   assert.deepEqual(
     buildIncomingCallPushPayload({
+      recipientId: "teacher-a",
       sessionId: "session-a",
+      notificationId: "session-a_teacher-a",
       sessionData: {
         language: "Spanish",
         studentId: "student-a",
+        requesterId: "student-a",
+        responderId: "teacher-a",
+        currentResponderId: "teacher-a",
+        currentResponderRole: "native_speaker",
+        responderRole: "native_speaker",
+        requesterRole: "student",
+        scenario: "student_teacher",
         studentInfo: {
           name: "Ana",
           photo: "photo-url",
+        },
+        searchRequestIds: {
+          requester: "student-search",
+          responder: "teacher-search",
         },
       },
     }),
@@ -84,6 +111,20 @@ test("incoming call push payload reuses notification identity data", () => {
       studentId: "student-a",
       studentPhoto: "photo-url",
       language: "Spanish",
+      scenario: "student_teacher",
+      requesterId: "student-a",
+      responderId: "teacher-a",
+      requesterRole: "student",
+      responderRole: "native_speaker",
+      navRole: "tutor",
+      acceptMode: "responder_accepts",
+      callKitId: buildCallKitIdForSession("session-a"),
+      notificationId: "session-a_teacher-a",
+      searchRequestId: "teacher-search",
+      expiresAt: "",
+      roomUrl: "",
+      roomName: "",
+      tokenStrategy: "accept_call",
     },
   );
 });
@@ -126,7 +167,9 @@ test("incoming call notification is written through the provided transaction", (
   assert.equal(writes.length, 1);
   assert.equal(writes[0].ref.path, "notifications/session-a_teacher-a");
   assert.equal(writes[0].data.recipientId, "teacher-a");
+  assert.equal(writes[0].data.notificationId, "session-a_teacher-a");
   assert.equal(result.pushPayload.studentName, "Ana");
+  assert.equal(result.pushPayload.notificationId, "session-a_teacher-a");
 });
 
 test("tutor assignment paths create notification docs in the assignment transaction", () => {
@@ -226,7 +269,7 @@ test("expired notification handoff validates assignment before push", () => {
   const source = readFunctionSource("process_expired_notifications.js");
   const shouldNotifyIndex = source.indexOf("if (transition.shouldNotify) {");
   const validationIndex = source.indexOf(
-    "const freshValidationSnap = await sessionRef.get();",
+    "const validationReads = [sessionRef.get()];",
     shouldNotifyIndex,
   );
   const pushIndex = source.indexOf("await sendVoipPushToTutor", shouldNotifyIndex);

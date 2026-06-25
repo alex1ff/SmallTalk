@@ -1459,7 +1459,8 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
     console.log("📲 Sending VoIP push to tutor...");
     try {
       await sendVoipPushToTutor(nextTutor, {
-        sessionId,
+        ...pushPayload,
+        sessionId: pushPayload.sessionId || sessionId,
         studentName: pushPayload.studentName || "Student",
         studentId: pushPayload.studentId || "",
         studentPhoto: pushPayload.studentPhoto,

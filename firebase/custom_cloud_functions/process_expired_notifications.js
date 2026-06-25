@@ -690,7 +690,8 @@ async function processExpiredNotification(notificationDoc) {
 
       try {
         await sendVoipPushToTutor(transition.nextTutor, {
-          sessionId,
+          ...pushPayload,
+          sessionId: pushPayload.sessionId || sessionId,
           studentName: pushPayload.studentName || "Student",
           studentId: pushPayload.studentId || "",
           studentPhoto: pushPayload.studentPhoto,

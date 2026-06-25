@@ -31,6 +31,9 @@ const {
   supportsConversationLanguage,
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
+const {
+  buildCallKitIdForSession,
+} = require("./call_notifications");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -855,9 +858,34 @@ exports.acceptCall = functions
           callerName: tutorData.display_name || "Собеседник",
           callerId: tutorId,
           callerPhoto: tutorData.photo_url || null,
+          scenario:
+            acceptedLiveSession.scenario ||
+            sessionData.scenario ||
+            "student_teacher",
+          requesterId,
+          responderId: tutorId,
+          requesterRole:
+            acceptedLiveSession.requesterRole ||
+            sessionData.requesterRole ||
+            "student",
+          responderRole:
+            acceptedLiveSession.responderRole ||
+            sessionData.responderRole ||
+            "native_speaker",
+          navRole: "student",
+          acceptMode: "open_session",
+          callKitId: buildCallKitIdForSession(sessionId),
+          notificationId: "",
+          searchRequestId:
+            normalizeSessionId(
+              acceptedLiveSession.searchRequestIds?.requester,
+            ) ||
+            normalizeSessionId(sessionData.searchRequestIds?.requester),
+          expiresAt: "",
           roomUrl: roomUrl,
           meetingToken: "",
           roomName: roomName || "",
+          tokenStrategy: "payload_room",
         }).catch((pushError) => {
           console.error(
             "⚠️ Failed to send VoIP push (non-critical):",
@@ -990,9 +1018,22 @@ async function sendVoipPushToStudent(studentId, callData) {
         callerName: callData.callerName,
         callerId: callData.callerId,
         callerPhoto: callData.callerPhoto || "",
+        scenario: callData.scenario || "",
+        requesterId: callData.requesterId || "",
+        responderId: callData.responderId || "",
+        requesterRole: callData.requesterRole || "",
+        responderRole: callData.responderRole || "",
+        navRole: callData.navRole || "student",
+        acceptMode: callData.acceptMode || "open_session",
+        callKitId:
+          callData.callKitId || buildCallKitIdForSession(callData.sessionId),
+        notificationId: callData.notificationId || "",
+        searchRequestId: callData.searchRequestId || "",
+        expiresAt: callData.expiresAt || "",
         roomUrl: callData.roomUrl || "",
         meetingToken: callData.meetingToken || "",
         roomName: callData.roomName || "",
+        tokenStrategy: callData.tokenStrategy || "payload_room",
       };
 
       try {
@@ -1024,9 +1065,22 @@ async function sendVoipPushToStudent(studentId, callData) {
         callerName: callData.callerName,
         callerId: callData.callerId,
         callerPhoto: callData.callerPhoto || "",
+        scenario: callData.scenario || "",
+        requesterId: callData.requesterId || "",
+        responderId: callData.responderId || "",
+        requesterRole: callData.requesterRole || "",
+        responderRole: callData.responderRole || "",
+        navRole: callData.navRole || "student",
+        acceptMode: callData.acceptMode || "open_session",
+        callKitId:
+          callData.callKitId || buildCallKitIdForSession(callData.sessionId),
+        notificationId: callData.notificationId || "",
+        searchRequestId: callData.searchRequestId || "",
+        expiresAt: callData.expiresAt || "",
         roomUrl: callData.roomUrl || "",
         meetingToken: callData.meetingToken || "",
         roomName: callData.roomName || "",
+        tokenStrategy: callData.tokenStrategy || "payload_room",
       },
       apns: {
         headers: {
