@@ -274,8 +274,9 @@ function buildSearchRequestPairLockUpdate({
   matchedResponderId,
   serverTimestamp,
   lockExpiresAt,
+  excludedCandidateIds,
 }) {
-  return {
+  const update = {
     [SEARCH_REQUEST_FIELD.STATUS]: SEARCH_REQUEST_STATUS.MATCHED,
     [SEARCH_REQUEST_FIELD.UPDATED_AT]: serverTimestamp,
     [SEARCH_REQUEST_FIELD.CURRENT_SESSION_ID]: sessionId,
@@ -288,6 +289,11 @@ function buildSearchRequestPairLockUpdate({
     [SEARCH_REQUEST_FIELD.LOCK_EXPIRES_AT]: lockExpiresAt,
     [SEARCH_REQUEST_FIELD.LAST_ERROR]: null,
   };
+  if (Array.isArray(excludedCandidateIds)) {
+    update[SEARCH_REQUEST_FIELD.EXCLUDED_CANDIDATE_IDS] =
+      readCandidateIdList(excludedCandidateIds);
+  }
+  return update;
 }
 
 function buildVideoSessionPairLockData({
@@ -858,6 +864,7 @@ async function prepareExistingSessionNextResponderPairLockInTransaction({
   fieldDelete = admin.firestore.FieldValue.delete(),
   currentResponderSearchRequestStatus = SEARCH_REQUEST_STATUS.STOPPED,
   currentResponderStopReason = "responder_skipped",
+  requesterExcludedCandidateIds = [],
   pairAttemptId = "",
 }) {
   const normalizedSessionId = normalizeDocumentId(sessionId);
@@ -1056,6 +1063,14 @@ async function prepareExistingSessionNextResponderPairLockInTransaction({
     matchedResponderId: normalizedResponderId,
     serverTimestamp,
     lockExpiresAt,
+    excludedCandidateIds: Array.from(new Set([
+      ...readCandidateIdList(
+        requesterSearchSnapshot.data()?.[
+          SEARCH_REQUEST_FIELD.EXCLUDED_CANDIDATE_IDS
+        ],
+      ),
+      ...readCandidateIdList(requesterExcludedCandidateIds),
+    ])).sort(),
   });
   const responderLockUpdate = responderSearchRef ?
     buildSearchRequestPairLockUpdate({

@@ -3,7 +3,11 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
+  SEARCH_REQUEST_STATUS,
+} = require("./search_requests");
+const {
   __private__: {
+    buildDeclineNextResponderPairLockInput,
     buildDeclineResponderFailureRouting,
     getPendingAssignedResponderId,
     isPendingSessionAssignedToResponder,
@@ -170,6 +174,39 @@ test("declineCall clears pending responder fields on terminal decline", () => {
   assert.ok(legacyDeleteIndex > sessionUpdateIndex);
   assert.ok(responderDeleteIndex > legacyDeleteIndex);
   assert.ok(responderRoleDeleteIndex > responderDeleteIndex);
+});
+
+test("declineCall excludes declined responder during teacher handoff", () => {
+  const lockInput = buildDeclineNextResponderPairLockInput({
+    db: "db",
+    transaction: "transaction",
+    sessionId: "session-a",
+    sessionData: {language: "en"},
+    responderId: "teacher-a",
+    nextCandidate: {
+      candidateId: "teacher-b",
+      role: "native_speaker",
+      triedCandidateIds: ["teacher-a", "teacher-b"],
+    },
+    serverTimestamp: "serverTimestamp",
+    lockExpiresAt: "lockExpiresAt",
+    fieldDelete: "fieldDelete",
+  });
+
+  assert.equal(lockInput.db, "db");
+  assert.equal(lockInput.transaction, "transaction");
+  assert.equal(lockInput.sessionId, "session-a");
+  assert.equal(lockInput.currentResponderId, "teacher-a");
+  assert.equal(lockInput.responderId, "teacher-b");
+  assert.equal(lockInput.responderRole, "native_speaker");
+  assert.equal(lockInput.expectedLanguage, "en");
+  assert.deepEqual(lockInput.triedTutors, ["teacher-a", "teacher-b"]);
+  assert.equal(
+    lockInput.currentResponderSearchRequestStatus,
+    SEARCH_REQUEST_STATUS.CANCELLED,
+  );
+  assert.equal(lockInput.currentResponderStopReason, "declined");
+  assert.deepEqual(lockInput.requesterExcludedCandidateIds, ["teacher-a"]);
 });
 
 test("declineCall keeps teacher handoff candidates", () => {

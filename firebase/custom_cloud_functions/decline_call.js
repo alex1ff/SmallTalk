@@ -93,6 +93,36 @@ function buildDeclineResponderFailureRouting({
   };
 }
 
+function buildDeclineNextResponderPairLockInput({
+  db,
+  transaction,
+  sessionId = "",
+  sessionData = {},
+  responderId = "",
+  nextCandidate = {},
+  serverTimestamp,
+  lockExpiresAt,
+  fieldDelete,
+}) {
+  return {
+    db,
+    transaction,
+    sessionId,
+    sessionData,
+    currentResponderId: responderId,
+    responderId: nextCandidate.candidateId,
+    responderRole: nextCandidate.role,
+    expectedLanguage: sessionData.language,
+    triedTutors: nextCandidate.triedCandidateIds,
+    serverTimestamp,
+    lockExpiresAt,
+    fieldDelete,
+    currentResponderSearchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+    currentResponderStopReason: "declined",
+    requesterExcludedCandidateIds: responderId ? [responderId] : [],
+  };
+}
+
 /*
 ОБНОВЛЕННАЯ ФУНКЦИЯ: declineCall
 Теперь работает с sessionId и обновляет videoSessions
@@ -226,21 +256,17 @@ exports.declineCall = functions
           );
           const candidatePairLock =
             await prepareExistingSessionNextResponderPairLockInTransaction({
-              db,
-              transaction,
-              sessionId,
-              sessionData,
-              currentResponderId: responderId,
-              responderId: nextCandidate.candidateId,
-              responderRole: nextCandidate.role,
-              expectedLanguage: sessionData.language,
-              triedTutors: nextCandidate.triedCandidateIds,
-              serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-              lockExpiresAt,
-              fieldDelete: admin.firestore.FieldValue.delete(),
-              currentResponderSearchRequestStatus:
-                SEARCH_REQUEST_STATUS.CANCELLED,
-              currentResponderStopReason: "declined",
+              ...buildDeclineNextResponderPairLockInput({
+                db,
+                transaction,
+                sessionId,
+                sessionData,
+                responderId,
+                nextCandidate,
+                serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+                lockExpiresAt,
+                fieldDelete: admin.firestore.FieldValue.delete(),
+              }),
             });
           if (candidatePairLock.locked) {
             nextTutor = nextCandidate.candidateId;
@@ -630,6 +656,7 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
 }
 
 exports.__private__ = {
+  buildDeclineNextResponderPairLockInput,
   buildDeclineResponderFailureRouting,
   getPendingAssignedResponderId,
   isPendingSessionAssignedToResponder,

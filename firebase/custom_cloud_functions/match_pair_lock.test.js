@@ -1264,6 +1264,7 @@ test("existing session handoff reuses session for next teacher", async () => {
       pairAttemptId: "pair-session-at-student-a-teacher-a",
       lockOwner: "pair-session-at-student-a-teacher-a",
       lockExpiresAt: timestampFromMillis(fixedNowMillis + 10_000),
+      excludedCandidateIds: ["teacher-old"],
     }),
     "videoSessions/session-at": existingSearchingSession({
       currentTutorId: "teacher-a",
@@ -1303,6 +1304,7 @@ test("existing session handoff reuses session for next teacher", async () => {
         lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
         fieldDelete,
         currentResponderStopReason: "declined",
+        requesterExcludedCandidateIds: ["teacher-a"],
       });
     applyPreparedPairLockWrites(transaction, prepared);
     return prepared;
@@ -1388,6 +1390,10 @@ test("existing session handoff reuses session for next teacher", async () => {
   assert.equal(
     store.get("searchRequests/student-a").status,
     SEARCH_REQUEST_STATUS.MATCHED,
+  );
+  assert.deepEqual(
+    store.get("searchRequests/student-a").excludedCandidateIds,
+    ["teacher-a", "teacher-old"],
   );
   assert.equal(store.get("searchRequests/teacher-b"), undefined);
   assert.deepEqual(
