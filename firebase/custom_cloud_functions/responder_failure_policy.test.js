@@ -8,7 +8,7 @@ const {
   isDirectMatchSession,
   isStudentPairResponderFailure,
   readAvailableRespondersAfterFailure,
-  readFreshTeacherResponderIds,
+  readFreshResponderIds,
   readResponderRole,
   responderFailurePoolFingerprintMatches,
   resolveResponderFailureStopReason,
@@ -90,7 +90,7 @@ test("student-teacher responder failure can handoff to remaining candidates", ()
   );
 });
 
-test("teacher responder failure collects fresh common teacher pool", async () => {
+test("teacher responder failure collects fresh common pool without role priority", async () => {
   const calls = [];
   const result = await collectAvailableRespondersAfterFailure({
     db: "db",
@@ -113,30 +113,30 @@ test("teacher responder failure collects fresh common teacher pool", async () =>
       return {
         candidates: [
           {
-            userId: "teacher-fresh",
-            role: "native_speaker",
-            source: "teacher_availability",
-          },
-          {
             userId: "student-fresh",
             role: "student",
             source: "active_student_queue",
           },
+          {
+            userId: "teacher-fresh",
+            role: "native_speaker",
+            source: "teacher_availability",
+          },
         ],
-        stats: {teacherCandidates: 1},
+        stats: {studentCandidates: 1, teacherCandidates: 1},
       };
     },
   });
 
-  assert.deepEqual(result.availableTutors, ["teacher-fresh"]);
-  assert.equal(result.source, "common_teacher_pool");
-  assert.deepEqual(result.stats, {teacherCandidates: 1});
+  assert.deepEqual(result.availableTutors, ["student-fresh", "teacher-fresh"]);
+  assert.equal(result.source, "common_pool");
+  assert.deepEqual(result.stats, {studentCandidates: 1, teacherCandidates: 1});
   assert.equal(calls.length, 1);
   assert.equal(calls[0].db, "db");
   assert.equal(calls[0].requesterId, "student-a");
   assert.equal(calls[0].language, "en");
   assert.deepEqual(calls[0].requesterFilters, {preferredLevel: "B1"});
-  assert.equal(calls[0].includeStudents, false);
+  assert.equal(calls[0].includeStudents, true);
   assert.equal(calls[0].includeTeachers, true);
 });
 
@@ -195,18 +195,27 @@ test("direct teacher failure does not collect common pool", async () => {
   assert.equal(result.source, "direct_session_snapshot");
 });
 
-test("fresh responder ids keep only native speaker teacher candidates", () => {
+test("fresh responder ids preserve common pool order without role priority", () => {
   assert.deepEqual(
-    readFreshTeacherResponderIds([
+    readFreshResponderIds([
+      {
+        userId: "student-a",
+        role: "student",
+        source: "active_student_queue",
+      },
       {
         userId: "teacher-a",
         role: "native_speaker",
         source: "teacher_availability",
       },
       {
-        userId: "student-a",
+        userId: "student-b",
         role: "student",
-        source: "active_student_queue",
+        source: "teacher_availability",
+      },
+      {
+        userId: "student-c",
+        role: "student",
       },
       {
         userId: "teacher-b",
@@ -214,12 +223,16 @@ test("fresh responder ids keep only native speaker teacher candidates", () => {
         source: "active_student_queue",
       },
       {
-        userId: "teacher-a",
+        userId: "teacher-c",
         role: "native_speaker",
-        source: "teacher_availability",
+      },
+      {
+        userId: "student-a",
+        role: "student",
+        source: "active_student_queue",
       },
     ]),
-    ["teacher-a"],
+    ["student-a", "teacher-a"],
   );
 });
 

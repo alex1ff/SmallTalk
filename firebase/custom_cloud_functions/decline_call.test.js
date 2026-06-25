@@ -161,7 +161,7 @@ test("declineCall validates assignment before fresh pool scan", () => {
   assert.ok(collectIndex > acceptLockGuardIndex);
 });
 
-test("declineCall fresh pool preflight returns candidates for current teacher", async () => {
+test("declineCall fresh pool preflight returns common candidates for current teacher", async () => {
   const calls = [];
   const result = await collectFreshDeclineFailureResponderIds({
     db: "db",
@@ -176,11 +176,11 @@ test("declineCall fresh pool preflight returns candidates for current teacher", 
     nowMillis: Date.parse("2026-06-25T10:00:00.000Z"),
     failureResponderCollector: async (input) => {
       calls.push(input);
-      return {availableTutors: ["teacher-fresh"]};
+      return {availableTutors: ["student-fresh", "teacher-fresh"]};
     },
   });
 
-  assert.deepEqual(result.availableTutors, ["teacher-fresh"]);
+  assert.deepEqual(result.availableTutors, ["student-fresh", "teacher-fresh"]);
   assert.equal(result.fingerprint.requesterId, "student-a");
   assert.equal(result.fingerprint.responderId, "teacher-a");
   assert.equal(result.fingerprint.language, "en");
@@ -336,6 +336,41 @@ test("declineCall excludes declined responder during teacher handoff", () => {
   assert.deepEqual(lockInput.requesterExcludedCandidateIds, ["teacher-a"]);
 });
 
+test("declineCall can handoff declined teacher to next student candidate", () => {
+  const routing = buildDeclineResponderFailureRouting({
+    sessionData: {
+      scenario: "student_teacher",
+      studentId: "student-a",
+      currentTutorId: "teacher-a",
+      currentResponderRole: "native_speaker",
+    },
+    responderId: "teacher-a",
+    availableTutors: ["student-fresh", "teacher-fresh"],
+  });
+  const lockInput = buildDeclineNextResponderPairLockInput({
+    db: "db",
+    transaction: "transaction",
+    sessionId: "session-a",
+    sessionData: {language: "en"},
+    responderId: "teacher-a",
+    nextCandidate: {
+      candidateId: routing.availableTutors[0],
+      role: "student",
+      triedCandidateIds: ["teacher-a", "student-fresh"],
+    },
+    serverTimestamp: "serverTimestamp",
+    lockExpiresAt: "lockExpiresAt",
+    fieldDelete: "fieldDelete",
+  });
+
+  assert.deepEqual(routing.availableTutors, ["student-fresh", "teacher-fresh"]);
+  assert.equal(lockInput.currentResponderId, "teacher-a");
+  assert.equal(lockInput.responderId, "student-fresh");
+  assert.equal(lockInput.responderRole, "student");
+  assert.deepEqual(lockInput.triedTutors, ["teacher-a", "student-fresh"]);
+  assert.deepEqual(lockInput.requesterExcludedCandidateIds, ["teacher-a"]);
+});
+
 test("declineCall keeps teacher handoff candidates", () => {
   const routing = buildDeclineResponderFailureRouting({
     sessionData: {
@@ -370,10 +405,10 @@ test("declineCall uses fresh common pool candidates after teacher decline", () =
       availableTutors: ["teacher-a", "teacher-stale"],
     },
     responderId: "teacher-a",
-    availableTutors: ["teacher-fresh"],
+    availableTutors: ["student-fresh", "teacher-fresh"],
   });
 
-  assert.deepEqual(routing.availableTutors, ["teacher-fresh"]);
+  assert.deepEqual(routing.availableTutors, ["student-fresh", "teacher-fresh"]);
   assert.deepEqual(
     routing.restoreSearchExcludedCandidateIdsByParticipantId,
     {"student-a": ["teacher-a"]},

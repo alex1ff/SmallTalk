@@ -118,16 +118,18 @@ function isDirectMatchSession(sessionData = {}) {
     Boolean(normalizeString(sessionData.matchContext?.directTutorId));
 }
 
-function readFreshTeacherResponderIds(candidates = []) {
+function readFreshResponderIds(candidates = []) {
   return Array.from(new Set(candidates
     .filter((candidate) => {
       const role = normalizeRole(candidate?.role);
       const source = normalizeString(candidate?.source);
-      return role === "native_speaker" &&
-        (
-          !source ||
+      return (
+        role === "student" &&
+          source === MATCH_CANDIDATE_SOURCE.ACTIVE_STUDENT_QUEUE
+      ) || (
+        role === "native_speaker" &&
           source === MATCH_CANDIDATE_SOURCE.TEACHER_AVAILABILITY
-        );
+      );
     })
     .map((candidate) => normalizeString(candidate?.userId))
     .filter(Boolean)));
@@ -193,16 +195,16 @@ async function collectAvailableRespondersAfterFailure({
     requesterFilters: readMatchContextFilters(sessionData),
     now,
     nowMillis,
-    includeStudents: false,
+    includeStudents: true,
     includeTeachers: true,
   });
 
   return {
-    availableTutors: readFreshTeacherResponderIds(
+    availableTutors: readFreshResponderIds(
       candidatePool?.candidates || [],
     ),
     fingerprint,
-    source: "common_teacher_pool",
+    source: "common_pool",
     stats: candidatePool?.stats || null,
   };
 }
@@ -223,7 +225,7 @@ module.exports = {
   collectAvailableRespondersAfterFailure,
   isStudentPairResponderFailure,
   isDirectMatchSession,
-  readFreshTeacherResponderIds,
+  readFreshResponderIds,
   readAvailableRespondersAfterFailure,
   readResponderRole,
   responderFailurePoolFingerprintMatches,

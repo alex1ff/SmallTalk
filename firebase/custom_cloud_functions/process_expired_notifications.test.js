@@ -319,7 +319,7 @@ test("notification timeout validates assignment before fresh pool scan", () => {
   assert.ok(collectIndex > statusGuardIndex);
 });
 
-test("notification timeout fresh pool preflight returns current teacher candidates", async () => {
+test("notification timeout fresh pool preflight returns common candidates", async () => {
   const calls = [];
   const result = await collectFreshTimeoutFailureResponderIds({
     db: "db",
@@ -336,11 +336,11 @@ test("notification timeout fresh pool preflight returns current teacher candidat
     nowMillis: Date.parse("2026-06-25T10:00:00.000Z"),
     failureResponderCollector: async (input) => {
       calls.push(input);
-      return {availableTutors: ["teacher-fresh"]};
+      return {availableTutors: ["student-fresh", "teacher-fresh"]};
     },
   });
 
-  assert.deepEqual(result.availableTutors, ["teacher-fresh"]);
+  assert.deepEqual(result.availableTutors, ["student-fresh", "teacher-fresh"]);
   assert.equal(result.fingerprint.requesterId, "student-a");
   assert.equal(result.fingerprint.responderId, "teacher-a");
   assert.equal(result.fingerprint.language, "en");
@@ -464,6 +464,41 @@ test("notification timeout excludes timed-out responder during teacher handoff",
   assert.deepEqual(lockInput.requesterExcludedCandidateIds, ["teacher-a"]);
 });
 
+test("notification timeout can handoff timed-out teacher to next student", () => {
+  const routing = buildTimeoutResponderFailureRouting({
+    sessionData: {
+      scenario: "student_teacher",
+      studentId: "student-a",
+      currentTutorId: "teacher-a",
+      currentResponderRole: "native_speaker",
+    },
+    responderId: "teacher-a",
+    availableTutors: ["student-fresh", "teacher-fresh"],
+  });
+  const lockInput = buildTimeoutNextResponderPairLockInput({
+    db: "db",
+    transaction: "transaction",
+    sessionId: "session-a",
+    sessionData: {language: "en"},
+    timedOutResponderId: "teacher-a",
+    nextCandidate: {
+      candidateId: routing.availableTutors[0],
+      role: "student",
+      triedCandidateIds: ["teacher-a", "student-fresh"],
+    },
+    serverTimestamp: "serverTimestamp",
+    lockExpiresAt: "lockExpiresAt",
+    fieldDelete: "fieldDelete",
+  });
+
+  assert.deepEqual(routing.availableTutors, ["student-fresh", "teacher-fresh"]);
+  assert.equal(lockInput.currentResponderId, "teacher-a");
+  assert.equal(lockInput.responderId, "student-fresh");
+  assert.equal(lockInput.responderRole, "student");
+  assert.deepEqual(lockInput.triedTutors, ["teacher-a", "student-fresh"]);
+  assert.deepEqual(lockInput.requesterExcludedCandidateIds, ["teacher-a"]);
+});
+
 test("notification timeout keeps teacher handoff candidates", () => {
   const routing = buildTimeoutResponderFailureRouting({
     sessionData: {
@@ -498,10 +533,10 @@ test("notification timeout uses fresh common pool candidates after teacher timeo
       availableTutors: ["teacher-a", "teacher-stale"],
     },
     responderId: "teacher-a",
-    availableTutors: ["teacher-fresh"],
+    availableTutors: ["student-fresh", "teacher-fresh"],
   });
 
-  assert.deepEqual(routing.availableTutors, ["teacher-fresh"]);
+  assert.deepEqual(routing.availableTutors, ["student-fresh", "teacher-fresh"]);
   assert.deepEqual(
     routing.restoreSearchExcludedCandidateIdsByParticipantId,
     {"student-a": ["teacher-a"]},

@@ -1408,6 +1408,154 @@ test("existing session handoff reuses session for next teacher", async () => {
   );
 });
 
+test("existing session handoff reuses teacher session for next student", async () => {
+  const {db, store, writes} = createFakeFirestore({
+    "users/student-a": namedStudentUser("Ana", "ana-photo", {
+      currentSessionId: "session-at",
+    }),
+    "users/teacher-a": namedTeacherUser("Tia", "tia-photo", {
+      currentSessionId: "session-at",
+    }),
+    "users/student-b": namedStudentUser("Ben", "ben-photo"),
+    "searchRequests/student-a": activeSearchRequest("student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      currentSessionId: "session-at",
+      matchedSessionId: "session-at",
+      matchedUserId: "teacher-a",
+      matchedResponderId: "teacher-a",
+      matchedRole: "native_speaker",
+      pairAttemptId: "pair-session-at-student-a-teacher-a",
+      lockOwner: "pair-session-at-student-a-teacher-a",
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 10_000),
+      excludedCandidateIds: ["teacher-old"],
+    }),
+    "searchRequests/student-b": activeSearchRequest("student-b"),
+    "videoSessions/session-at": existingSearchingSession({
+      currentTutorId: "teacher-a",
+      currentResponderId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      responderId: "teacher-a",
+      responderRole: "native_speaker",
+      tutorId: "teacher-a",
+      scenario: "student_teacher",
+      participantIds: ["student-a", "teacher-a"],
+      participantRoles: {
+        "student-a": "student",
+        "teacher-a": "native_speaker",
+      },
+      searchRequestIds: {
+        requester: "request-student-a",
+        responder: null,
+      },
+      triedTutors: ["teacher-a"],
+      availableTutors: ["teacher-a", "student-b"],
+    }),
+  });
+
+  const result = await db.runTransaction(async (transaction) => {
+    const prepared =
+      await prepareExistingSessionNextResponderPairLockInTransaction({
+        db,
+        transaction,
+        sessionId: "session-at",
+        sessionData: store.get("videoSessions/session-at"),
+        currentResponderId: "teacher-a",
+        responderId: "student-b",
+        responderRole: "student",
+        triedTutors: ["teacher-a"],
+        nowMillis: fixedNowMillis,
+        serverTimestamp,
+        lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+        fieldDelete,
+        currentResponderStopReason: "declined",
+        requesterExcludedCandidateIds: ["teacher-a"],
+      });
+    applyPreparedPairLockWrites(transaction, prepared);
+    return prepared;
+  });
+
+  const session = store.get("videoSessions/session-at");
+  const requesterSearch = store.get("searchRequests/student-a");
+  const responderSearch = store.get("searchRequests/student-b");
+
+  assert.equal(result.locked, true);
+  assert.equal(result.responderId, "student-b");
+  assert.equal(result.responderRole, "student");
+  assert.equal(session.scenario, "student_student");
+  assert.equal(session.currentTutorId, "student-b");
+  assert.equal(session.currentResponderId, "student-b");
+  assert.equal(session.currentResponderRole, "student");
+  assert.equal(session.responderId, "student-b");
+  assert.equal(session.responderRole, "student");
+  assert.equal(session.tutorId, null);
+  assert.deepEqual(session.participantIds, ["student-a", "student-b"]);
+  assert.deepEqual(session.participantRoles, {
+    "student-a": "student",
+    "student-b": "student",
+  });
+  assert.deepEqual(session.participantInfos, {
+    "student-a": {
+      displayName: "Ana",
+      photoUrl: "ana-photo",
+    },
+    "student-b": {
+      displayName: "Ben",
+      photoUrl: "ben-photo",
+    },
+  });
+  assert.deepEqual(session.requesterInfo, {
+    displayName: "Ana",
+    photoUrl: "ana-photo",
+  });
+  assert.deepEqual(session.responderInfo, {
+    displayName: "Ben",
+    photoUrl: "ben-photo",
+  });
+  assert.deepEqual(session.studentInfo, {
+    name: "Ana",
+    photo: "ana-photo",
+  });
+  assert.deepEqual(session.tutorInfo, {
+    name: "Ben",
+    photo: "ben-photo",
+  });
+  assert.deepEqual(session.searchRequestIds, {
+    requester: "request-student-a",
+    responder: "request-student-b",
+  });
+  assert.equal(store.get("users/teacher-a").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/student-b").currentSessionId, "session-at");
+  assert.equal(requesterSearch.matchedUserId, "student-b");
+  assert.equal(requesterSearch.matchedResponderId, "student-b");
+  assert.equal(requesterSearch.matchedRole, "student");
+  assert.deepEqual(requesterSearch.excludedCandidateIds, [
+    "teacher-a",
+    "teacher-old",
+  ]);
+  assert.equal(responderSearch.currentSessionId, "session-at");
+  assert.equal(responderSearch.matchedSessionId, "session-at");
+  assert.equal(responderSearch.matchedUserId, "student-a");
+  assert.equal(responderSearch.matchedResponderId, "student-b");
+  assert.equal(responderSearch.matchedRole, "student");
+  assert.equal(responderSearch.pairAttemptId, result.pairAttemptId);
+  assert.equal(responderSearch.lockOwner, result.pairAttemptId);
+  assert.equal(
+    responderSearch.lockExpiresAt.toMillis(),
+    fixedNowMillis + 45_000,
+  );
+  assert.deepEqual(
+    writes.map((write) => write.path),
+    [
+      "users/teacher-a",
+      "videoSessions/session-at",
+      "searchRequests/student-a",
+      "users/student-a",
+      "users/student-b",
+      "searchRequests/student-b",
+    ],
+  );
+});
+
 test("existing session timeout handoff excludes timed-out teacher", async () => {
   const {db, store} = createFakeFirestore({
     "users/student-a": namedStudentUser("Ana", "ana-photo", {
