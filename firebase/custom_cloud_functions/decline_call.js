@@ -35,7 +35,10 @@ const {
   releaseSessionPairLocksInTransaction,
 } = require("./match_pair_lock");
 const {
+  buildResponderFailurePoolFingerprint,
+  collectAvailableRespondersAfterFailure,
   readAvailableRespondersAfterFailure,
+  responderFailurePoolFingerprintMatches,
   resolveResponderFailureStopReason,
 } = require("./responder_failure_policy");
 
@@ -71,14 +74,17 @@ function readRequesterIdForResponderFailure(sessionData = {}) {
 function buildDeclineResponderFailureRouting({
   sessionData = {},
   responderId = "",
+  availableTutors = null,
 }) {
   const requesterId = readRequesterIdForResponderFailure(sessionData);
   const restoreSearchParticipantIds = requesterId ? [requesterId] : [];
   return {
-    availableTutors: readAvailableRespondersAfterFailure({
-      sessionData,
-      responderId,
-    }),
+    availableTutors: Array.isArray(availableTutors) ?
+      availableTutors :
+      readAvailableRespondersAfterFailure({
+        sessionData,
+        responderId,
+      }),
     requesterId,
     restoreSearchParticipantIds,
     restoreSearchExcludedCandidateIdsByParticipantId: requesterId ?
@@ -120,6 +126,63 @@ function buildDeclineNextResponderPairLockInput({
     currentResponderSearchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
     currentResponderStopReason: "declined",
     requesterExcludedCandidateIds: responderId ? [responderId] : [],
+  };
+}
+
+async function collectFreshDeclineFailureResponderIds({
+  db,
+  sessionRef,
+  responderId = "",
+  nowMillis = Date.now(),
+  failureResponderCollector = collectAvailableRespondersAfterFailure,
+}) {
+  if (!sessionRef || typeof sessionRef.get !== "function") {
+    return null;
+  }
+
+  const preflightSessionDoc = await sessionRef.get();
+  if (!preflightSessionDoc.exists) {
+    return null;
+  }
+
+  const preflightSessionData = preflightSessionDoc.data() || {};
+  if (
+    !DECLINABLE_SESSION_STATUSES.has(preflightSessionData.status) ||
+    !isPendingSessionAssignedToResponder(
+      preflightSessionData,
+      responderId,
+    ) ||
+    hasActiveAcceptLockForResponder({
+      sessionData: preflightSessionData,
+      responderId,
+      nowMillis,
+    })
+  ) {
+    return null;
+  }
+
+  const preflightRequesterId =
+    readRequesterIdForResponderFailure(preflightSessionData);
+  const freshFailureRouting =
+    await failureResponderCollector({
+      db,
+      sessionData: preflightSessionData,
+      responderId,
+      requesterId: preflightRequesterId,
+      now: new Date(nowMillis),
+      nowMillis,
+    });
+  if (!Array.isArray(freshFailureRouting?.availableTutors)) {
+    return null;
+  }
+  return {
+    availableTutors: freshFailureRouting.availableTutors,
+    fingerprint: freshFailureRouting.fingerprint ||
+      buildResponderFailurePoolFingerprint({
+        sessionData: preflightSessionData,
+        responderId,
+        requesterId: preflightRequesterId,
+      }),
   };
 }
 
@@ -171,6 +234,21 @@ exports.declineCall = functions
 
       const db = admin.firestore();
       const sessionRef = db.collection("videoSessions").doc(sessionId);
+      let freshFailureResponderRouting = null;
+      try {
+        freshFailureResponderRouting =
+          await collectFreshDeclineFailureResponderIds({
+            db,
+            sessionRef,
+            responderId,
+            nowMillis: Date.now(),
+          });
+      } catch (error) {
+        console.error(
+          "⚠️ Failed to collect fresh responder pool after decline:",
+          error.message,
+        );
+      }
       const declineResult = await db.runTransaction(async (transaction) => {
         const sessionDoc = await transaction.get(sessionRef);
         if (!sessionDoc.exists) {
@@ -229,6 +307,12 @@ exports.declineCall = functions
         const failureRouting = buildDeclineResponderFailureRouting({
           sessionData,
           responderId,
+          availableTutors: responderFailurePoolFingerprintMatches(
+            freshFailureResponderRouting?.fingerprint,
+            buildResponderFailurePoolFingerprint({sessionData, responderId}),
+          ) ?
+            freshFailureResponderRouting.availableTutors :
+            null,
         });
         const availableTutors = failureRouting.availableTutors;
         const terminalStopReason = failureRouting.terminalStopReason;
@@ -658,6 +742,7 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
 exports.__private__ = {
   buildDeclineNextResponderPairLockInput,
   buildDeclineResponderFailureRouting,
+  collectFreshDeclineFailureResponderIds,
   getPendingAssignedResponderId,
   isPendingSessionAssignedToResponder,
   readRequesterIdForResponderFailure,

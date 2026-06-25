@@ -33,7 +33,10 @@ const {
   releaseSessionPairLocksInTransaction,
 } = require("./match_pair_lock");
 const {
+  buildResponderFailurePoolFingerprint,
+  collectAvailableRespondersAfterFailure,
   readAvailableRespondersAfterFailure,
+  responderFailurePoolFingerprintMatches,
   resolveResponderFailureStopReason,
 } = require("./responder_failure_policy");
 
@@ -163,14 +166,17 @@ function readRequesterIdForResponderFailure(sessionData = {}) {
 function buildTimeoutResponderFailureRouting({
   sessionData = {},
   responderId = "",
+  availableTutors = null,
 }) {
   const requesterId = readRequesterIdForResponderFailure(sessionData);
   const restoreSearchParticipantIds = requesterId ? [requesterId] : [];
   return {
-    availableTutors: readAvailableRespondersAfterFailure({
-      sessionData,
-      responderId,
-    }),
+    availableTutors: Array.isArray(availableTutors) ?
+      availableTutors :
+      readAvailableRespondersAfterFailure({
+        sessionData,
+        responderId,
+      }),
     requesterId,
     restoreSearchParticipantIds,
     restoreSearchExcludedCandidateIdsByParticipantId: requesterId ?
@@ -214,6 +220,65 @@ function buildTimeoutNextResponderPairLockInput({
     requesterExcludedCandidateIds: timedOutResponderId ?
       [timedOutResponderId] :
       [],
+  };
+}
+
+async function collectFreshTimeoutFailureResponderIds({
+  db,
+  sessionRef,
+  notificationData = {},
+  nowMillis = Date.now(),
+  failureResponderCollector = collectAvailableRespondersAfterFailure,
+}) {
+  if (!sessionRef || typeof sessionRef.get !== "function") {
+    return null;
+  }
+
+  const preflightSessionSnap = await sessionRef.get();
+  if (!preflightSessionSnap.exists) {
+    return null;
+  }
+
+  const preflightSessionData = preflightSessionSnap.data() || {};
+  const preflightTimeout = resolveTimedOutResponderForNotification({
+    sessionData: preflightSessionData,
+    notificationData,
+  });
+  const preflightTimeoutDecision = buildTimeoutResponderDecision({
+    sessionData: preflightSessionData,
+    notificationData,
+    nowMillis,
+  });
+  if (
+    !preflightTimeout.ok ||
+    !preflightTimeoutDecision.shouldProcess ||
+    !PENDING_RESPONSE_SESSION_STATUSES.has(preflightSessionData.status)
+  ) {
+    return null;
+  }
+
+  const preflightRequesterId =
+    readRequesterIdForResponderFailure(preflightSessionData);
+  const freshFailureRouting =
+    await failureResponderCollector({
+      db,
+      sessionData: preflightSessionData,
+      responderId: preflightTimeout.timedOutResponderId,
+      requesterId: preflightRequesterId,
+      now: new Date(nowMillis),
+      nowMillis,
+    });
+  if (!Array.isArray(freshFailureRouting?.availableTutors)) {
+    return null;
+  }
+  return {
+    availableTutors: freshFailureRouting.availableTutors,
+    fingerprint: freshFailureRouting.fingerprint ||
+      buildResponderFailurePoolFingerprint({
+        sessionData: preflightSessionData,
+        responderId: preflightTimeout.timedOutResponderId,
+        requesterId: preflightRequesterId,
+      }),
   };
 }
 
@@ -271,6 +336,21 @@ async function processExpiredNotification(notificationDoc) {
     const sessionRef = sessionId
       ? db.collection("videoSessions").doc(sessionId)
       : null;
+    let freshFailureResponderRouting = null;
+    try {
+      freshFailureResponderRouting =
+        await collectFreshTimeoutFailureResponderIds({
+          db,
+          sessionRef,
+          notificationData: initialNotificationData,
+          nowMillis: Date.now(),
+        });
+    } catch (error) {
+      console.error(
+        "⚠️ Failed to collect fresh responder pool after timeout:",
+        error.message,
+      );
+    }
 
     const transition = await db.runTransaction(
       async (transaction) => {
@@ -347,6 +427,15 @@ async function processExpiredNotification(notificationDoc) {
         const failureRouting = buildTimeoutResponderFailureRouting({
           sessionData: freshSessionData,
           responderId: timedOutResponderId,
+          availableTutors: responderFailurePoolFingerprintMatches(
+            freshFailureResponderRouting?.fingerprint,
+            buildResponderFailurePoolFingerprint({
+              sessionData: freshSessionData,
+              responderId: timedOutResponderId,
+            }),
+          ) ?
+            freshFailureResponderRouting.availableTutors :
+            null,
         });
         const availableTutors = failureRouting.availableTutors;
         const terminalStopReason = failureRouting.terminalStopReason;
@@ -615,6 +704,7 @@ exports.__private__ = {
   buildTimeoutNextResponderPairLockInput,
   buildTimeoutResponderDecision,
   buildTimeoutResponderFailureRouting,
+  collectFreshTimeoutFailureResponderIds,
   getPendingAssignedResponderId,
   isPendingSessionAssignedToResponder,
   readRequesterIdForResponderFailure,

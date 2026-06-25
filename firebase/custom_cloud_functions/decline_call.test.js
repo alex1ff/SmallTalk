@@ -9,11 +9,30 @@ const {
   __private__: {
     buildDeclineNextResponderPairLockInput,
     buildDeclineResponderFailureRouting,
+    collectFreshDeclineFailureResponderIds,
     getPendingAssignedResponderId,
     isPendingSessionAssignedToResponder,
     readRequesterIdForResponderFailure,
   },
 } = require("./decline_call");
+
+function timestampFromMillis(millis) {
+  return {
+    toMillis: () => millis,
+    toDate: () => new Date(millis),
+  };
+}
+
+function fakeSessionRef(data = null) {
+  return {
+    async get() {
+      return {
+        exists: data !== null,
+        data: () => data,
+      };
+    },
+  };
+}
 
 test("declineCall authorizes currentResponderId student assignments", () => {
   assert.equal(
@@ -108,6 +127,114 @@ test("declineCall blocks fresh accept-lock races before handoff", () => {
   assert.ok(triedTutorsIndex > acceptLockGuardIndex);
   assert.ok(acceptAttemptDeleteIndex > acceptLockGuardIndex);
   assert.doesNotMatch(source, /sessionData\.currentTutorId !== responderId/);
+});
+
+test("declineCall validates assignment before fresh pool scan", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "decline_call.js"),
+    "utf8",
+  );
+  const preflightIndex = source.indexOf(
+    "const preflightSessionDoc = await sessionRef.get()",
+  );
+  const statusGuardIndex = source.indexOf(
+    "DECLINABLE_SESSION_STATUSES.has(preflightSessionData.status)",
+    preflightIndex,
+  );
+  const assignmentGuardIndex = source.indexOf(
+    "isPendingSessionAssignedToResponder(",
+    statusGuardIndex,
+  );
+  const acceptLockGuardIndex = source.indexOf(
+    "hasActiveAcceptLockForResponder({",
+    assignmentGuardIndex,
+  );
+  const collectIndex = source.indexOf(
+    "await failureResponderCollector({",
+    acceptLockGuardIndex,
+  );
+
+  assert.ok(preflightIndex > 0);
+  assert.ok(statusGuardIndex > preflightIndex);
+  assert.ok(assignmentGuardIndex > statusGuardIndex);
+  assert.ok(acceptLockGuardIndex > assignmentGuardIndex);
+  assert.ok(collectIndex > acceptLockGuardIndex);
+});
+
+test("declineCall fresh pool preflight returns candidates for current teacher", async () => {
+  const calls = [];
+  const result = await collectFreshDeclineFailureResponderIds({
+    db: "db",
+    sessionRef: fakeSessionRef({
+      status: "pending_confirmation",
+      requesterId: "student-a",
+      language: "en",
+      currentResponderId: "teacher-a",
+      currentResponderRole: "native_speaker",
+    }),
+    responderId: "teacher-a",
+    nowMillis: Date.parse("2026-06-25T10:00:00.000Z"),
+    failureResponderCollector: async (input) => {
+      calls.push(input);
+      return {availableTutors: ["teacher-fresh"]};
+    },
+  });
+
+  assert.deepEqual(result.availableTutors, ["teacher-fresh"]);
+  assert.equal(result.fingerprint.requesterId, "student-a");
+  assert.equal(result.fingerprint.responderId, "teacher-a");
+  assert.equal(result.fingerprint.language, "en");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].db, "db");
+  assert.equal(calls[0].requesterId, "student-a");
+  assert.equal(calls[0].responderId, "teacher-a");
+  assert.equal(calls[0].now.toISOString(), "2026-06-25T10:00:00.000Z");
+});
+
+test("declineCall fresh pool preflight skips stale assignment", async () => {
+  let called = false;
+  const result = await collectFreshDeclineFailureResponderIds({
+    sessionRef: fakeSessionRef({
+      status: "pending_confirmation",
+      requesterId: "student-a",
+      language: "en",
+      currentResponderId: "teacher-b",
+      currentResponderRole: "native_speaker",
+    }),
+    responderId: "teacher-a",
+    failureResponderCollector: async () => {
+      called = true;
+      return {availableTutors: ["teacher-fresh"]};
+    },
+  });
+
+  assert.equal(result, null);
+  assert.equal(called, false);
+});
+
+test("declineCall fresh pool preflight skips active accept-lock", async () => {
+  const nowMillis = Date.parse("2026-06-25T10:00:00.000Z");
+  let called = false;
+  const result = await collectFreshDeclineFailureResponderIds({
+    sessionRef: fakeSessionRef({
+      status: "pending_confirmation",
+      requesterId: "student-a",
+      language: "en",
+      currentResponderId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      acceptingTutorId: "teacher-a",
+      acceptingAt: timestampFromMillis(nowMillis - 1_000),
+    }),
+    responderId: "teacher-a",
+    nowMillis,
+    failureResponderCollector: async () => {
+      called = true;
+      return {availableTutors: ["teacher-fresh"]};
+    },
+  });
+
+  assert.equal(result, null);
+  assert.equal(called, false);
 });
 
 test("declineCall validates next assignment before sending push", () => {
@@ -227,6 +354,26 @@ test("declineCall keeps teacher handoff candidates", () => {
     "no_available_responder_after_decline",
   );
   assert.deepEqual(routing.restoreSearchParticipantIds, ["student-a"]);
+  assert.deepEqual(
+    routing.restoreSearchExcludedCandidateIdsByParticipantId,
+    {"student-a": ["teacher-a"]},
+  );
+});
+
+test("declineCall uses fresh common pool candidates after teacher decline", () => {
+  const routing = buildDeclineResponderFailureRouting({
+    sessionData: {
+      scenario: "student_teacher",
+      studentId: "student-a",
+      currentTutorId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      availableTutors: ["teacher-a", "teacher-stale"],
+    },
+    responderId: "teacher-a",
+    availableTutors: ["teacher-fresh"],
+  });
+
+  assert.deepEqual(routing.availableTutors, ["teacher-fresh"]);
   assert.deepEqual(
     routing.restoreSearchExcludedCandidateIdsByParticipantId,
     {"student-a": ["teacher-a"]},

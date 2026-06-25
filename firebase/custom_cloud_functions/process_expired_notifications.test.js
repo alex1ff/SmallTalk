@@ -11,6 +11,7 @@ const {
     buildTimeoutNextResponderPairLockInput,
     buildTimeoutResponderDecision,
     buildTimeoutResponderFailureRouting,
+    collectFreshTimeoutFailureResponderIds,
     getPendingAssignedResponderId,
     isPendingSessionAssignedToResponder,
     readRequesterIdForResponderFailure,
@@ -22,6 +23,17 @@ function timestampFromMillis(millis) {
   return {
     toMillis: () => millis,
     toDate: () => new Date(millis),
+  };
+}
+
+function fakeSessionRef(data = null) {
+  return {
+    async get() {
+      return {
+        exists: data !== null,
+        data: () => data,
+      };
+    },
   };
 }
 
@@ -275,6 +287,120 @@ test("notification timeout validates next assignment before sending push", () =>
   assert.ok(pushIndex > notificationStatusIndex);
 });
 
+test("notification timeout validates assignment before fresh pool scan", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "process_expired_notifications.js"),
+    "utf8",
+  );
+  const preflightIndex = source.indexOf(
+    "const preflightSessionSnap = await sessionRef.get()",
+  );
+  const timeoutDecisionIndex = source.indexOf(
+    "const preflightTimeoutDecision = buildTimeoutResponderDecision({",
+    preflightIndex,
+  );
+  const shouldProcessIndex = source.indexOf(
+    "preflightTimeoutDecision.shouldProcess",
+    timeoutDecisionIndex,
+  );
+  const statusGuardIndex = source.indexOf(
+    "PENDING_RESPONSE_SESSION_STATUSES.has(preflightSessionData.status)",
+    shouldProcessIndex,
+  );
+  const collectIndex = source.indexOf(
+    "await failureResponderCollector({",
+    statusGuardIndex,
+  );
+
+  assert.ok(preflightIndex > 0);
+  assert.ok(timeoutDecisionIndex > preflightIndex);
+  assert.ok(shouldProcessIndex > timeoutDecisionIndex);
+  assert.ok(statusGuardIndex > shouldProcessIndex);
+  assert.ok(collectIndex > statusGuardIndex);
+});
+
+test("notification timeout fresh pool preflight returns current teacher candidates", async () => {
+  const calls = [];
+  const result = await collectFreshTimeoutFailureResponderIds({
+    db: "db",
+    sessionRef: fakeSessionRef({
+      status: "pending_confirmation",
+      requesterId: "student-a",
+      language: "en",
+      currentResponderId: "teacher-a",
+      currentResponderRole: "native_speaker",
+    }),
+    notificationData: {
+      recipientId: "teacher-a",
+    },
+    nowMillis: Date.parse("2026-06-25T10:00:00.000Z"),
+    failureResponderCollector: async (input) => {
+      calls.push(input);
+      return {availableTutors: ["teacher-fresh"]};
+    },
+  });
+
+  assert.deepEqual(result.availableTutors, ["teacher-fresh"]);
+  assert.equal(result.fingerprint.requesterId, "student-a");
+  assert.equal(result.fingerprint.responderId, "teacher-a");
+  assert.equal(result.fingerprint.language, "en");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].db, "db");
+  assert.equal(calls[0].requesterId, "student-a");
+  assert.equal(calls[0].responderId, "teacher-a");
+  assert.equal(calls[0].now.toISOString(), "2026-06-25T10:00:00.000Z");
+});
+
+test("notification timeout fresh pool preflight skips stale notification", async () => {
+  let called = false;
+  const result = await collectFreshTimeoutFailureResponderIds({
+    sessionRef: fakeSessionRef({
+      status: "pending_confirmation",
+      requesterId: "student-a",
+      language: "en",
+      currentResponderId: "teacher-b",
+      currentResponderRole: "native_speaker",
+    }),
+    notificationData: {
+      recipientId: "teacher-a",
+    },
+    failureResponderCollector: async () => {
+      called = true;
+      return {availableTutors: ["teacher-fresh"]};
+    },
+  });
+
+  assert.equal(result, null);
+  assert.equal(called, false);
+});
+
+test("notification timeout fresh pool preflight skips active accept-lock", async () => {
+  const nowMillis = Date.parse("2026-06-25T10:00:00.000Z");
+  let called = false;
+  const result = await collectFreshTimeoutFailureResponderIds({
+    sessionRef: fakeSessionRef({
+      status: "pending_confirmation",
+      requesterId: "student-a",
+      language: "en",
+      currentResponderId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      acceptingTutorId: "teacher-a",
+      acceptingAt: timestampFromMillis(nowMillis - 1_000),
+    }),
+    notificationData: {
+      recipientId: "teacher-a",
+    },
+    nowMillis,
+    failureResponderCollector: async () => {
+      called = true;
+      return {availableTutors: ["teacher-fresh"]};
+    },
+  });
+
+  assert.equal(result, null);
+  assert.equal(called, false);
+});
+
 test("notification timeout clears pending responder fields on terminal expiry", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "process_expired_notifications.js"),
@@ -356,6 +482,26 @@ test("notification timeout keeps teacher handoff candidates", () => {
     "no_available_responder_after_timeout",
   );
   assert.deepEqual(routing.restoreSearchParticipantIds, ["student-a"]);
+  assert.deepEqual(
+    routing.restoreSearchExcludedCandidateIdsByParticipantId,
+    {"student-a": ["teacher-a"]},
+  );
+});
+
+test("notification timeout uses fresh common pool candidates after teacher timeout", () => {
+  const routing = buildTimeoutResponderFailureRouting({
+    sessionData: {
+      scenario: "student_teacher",
+      studentId: "student-a",
+      currentTutorId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      availableTutors: ["teacher-a", "teacher-stale"],
+    },
+    responderId: "teacher-a",
+    availableTutors: ["teacher-fresh"],
+  });
+
+  assert.deepEqual(routing.availableTutors, ["teacher-fresh"]);
   assert.deepEqual(
     routing.restoreSearchExcludedCandidateIdsByParticipantId,
     {"student-a": ["teacher-a"]},
