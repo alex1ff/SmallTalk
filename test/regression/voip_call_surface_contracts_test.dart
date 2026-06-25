@@ -553,6 +553,42 @@ void main() {
       expect(navigationTriggeredIndex, greaterThan(unresolvedClearStateIndex));
     });
 
+    test('legacy student navigation actions wait for joinable room state', () {
+      final listenerSource = _source(
+          'lib/custom_code/actions/start_student_session_listener.dart');
+      final recoverySource = _source(
+          'lib/custom_code/actions/check_active_session_and_navigate.dart');
+
+      expect(listenerSource, contains("status == 'connecting'"));
+      expect(listenerSource, contains("status == 'connected'"));
+      expect(listenerSource, contains('!hasRoomUrl || !isJoinable'));
+      expect(listenerSource, contains("httpsCallable('getSessionTokens')"));
+      expect(listenerSource, contains('_requestStudentSessionTokensWithRetry'));
+      expect(listenerSource, isNot(contains("data?['studentMeetingToken']")));
+      expect(
+        listenerSource,
+        isNot(contains('!hasRoomUrl || !(isJoinable || studentTriggered)')),
+      );
+
+      final recoveryLoopIndex = recoverySource.indexOf('for (final doc in');
+      final roomUrlIndex =
+          recoverySource.indexOf("data['dailyRoomUrl']", recoveryLoopIndex);
+      final joinableIndex =
+          recoverySource.indexOf('final isJoinable =', recoveryLoopIndex);
+      final candidateIndex = recoverySource.indexOf(
+        'if (isJoinable && roomUrl != null && roomUrl.isNotEmpty)',
+        joinableIndex,
+      );
+
+      expect(roomUrlIndex, greaterThan(recoveryLoopIndex));
+      expect(joinableIndex, greaterThan(roomUrlIndex));
+      expect(candidateIndex, greaterThan(joinableIndex));
+      expect(recoverySource, isNot(contains("status == null || status")));
+      expect(recoverySource, contains("httpsCallable('getSessionTokens')"));
+      expect(recoverySource, contains('_requestActiveSessionTokensWithRetry'));
+      expect(recoverySource, contains("'meetingToken': serializeParam"));
+    });
+
     test('VoIP accept outer error path clears claimed session state', () {
       final source = _source('lib/services/voip_service.dart');
       final handleAcceptIndex =

@@ -22,12 +22,23 @@ class WaitingForTeacherPageWidget extends StatefulWidget {
   const WaitingForTeacherPageWidget({
     super.key,
     this.targetTutorId,
+    this.sessionId,
   });
 
   static String routeName = 'WaitingForTeacherPage';
   static String routePath = '/waitingForTeacherPage';
 
   final String? targetTutorId;
+  final String? sessionId;
+
+  static Future<dynamic> Function(Map<String, dynamic> payload)?
+      debugCreateVideoSessionRequest;
+  static Future<dynamic> Function(String sessionId)? debugCancelCallRequest;
+  static Future<dynamic> Function(String sessionId)?
+      debugGetSessionTokensRequest;
+  static Stream<DocumentSnapshot<Map<String, dynamic>>> Function(
+    String sessionId,
+  )? debugSessionSnapshots;
 
   @override
   State<WaitingForTeacherPageWidget> createState() =>
@@ -37,11 +48,14 @@ class WaitingForTeacherPageWidget extends StatefulWidget {
 class _WaitingForTeacherPageWidgetState
     extends State<WaitingForTeacherPageWidget> {
   static const bool _isFlutterTest = bool.fromEnvironment('FLUTTER_TEST');
+  static const int _tokenFetchMaxAttempts = 2;
+  static const Duration _tokenFetchRetryDelay = Duration(milliseconds: 400);
 
   late WaitingForTeacherPageModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
+  bool _usesExistingQueueSession = false;
   bool _navigationHandled = false;
   bool _tokenFetchInProgress = false;
   bool _isCreating = false;
@@ -55,6 +69,8 @@ class _WaitingForTeacherPageWidgetState
       _sessionSubscription;
   String? _listeningSessionId;
   String? _lastSnapshotFingerprint;
+  Map<String, dynamic>? _sessionData;
+  bool _sessionStreamHasError = false;
 
   bool get _isDirectTutorCall => _nonEmpty(widget.targetTutorId) != null;
 
@@ -62,6 +78,14 @@ class _WaitingForTeacherPageWidgetState
   void initState() {
     super.initState();
     _model = createModel(context, () => WaitingForTeacherPageModel());
+    final existingSessionId = _nonEmpty(widget.sessionId);
+    if (existingSessionId != null) {
+      _usesExistingQueueSession = true;
+      _model.sessionId = existingSessionId;
+      _createSessionRequested = true;
+      _ensureSessionListener(existingSessionId);
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _tryStartCreateSession();
@@ -104,10 +128,15 @@ class _WaitingForTeacherPageWidgetState
     final status = _nonEmpty(data['status']?.toString()) ?? '';
     final roomUrl = _nonEmpty(data['dailyRoomUrl']?.toString()) ?? '';
     final roomName = _nonEmpty(data['dailyRoomName']?.toString()) ?? '';
+    final tutorInfo = data['tutorInfo'];
+    final tutorName =
+        tutorInfo is Map ? _nonEmpty(tutorInfo['name']?.toString()) ?? '' : '';
+    final tutorPhoto =
+        tutorInfo is Map ? _nonEmpty(tutorInfo['photo']?.toString()) ?? '' : '';
     final studentTriggered =
         data['studentNavigationTriggered'] == true ? '1' : '0';
 
-    return '$status|$roomUrl|$roomName|$studentTriggered';
+    return '$status|$roomUrl|$roomName|$tutorName|$tutorPhoto|$studentTriggered';
   }
 
   void _detachSessionListener() {
@@ -115,6 +144,8 @@ class _WaitingForTeacherPageWidgetState
     _lastSnapshotFingerprint = null;
     final subscription = _sessionSubscription;
     _sessionSubscription = null;
+    _sessionData = null;
+    _sessionStreamHasError = false;
     if (subscription != null) {
       unawaited(subscription.cancel());
     }
@@ -128,11 +159,7 @@ class _WaitingForTeacherPageWidgetState
     _detachSessionListener();
     _listeningSessionId = sessionId;
 
-    _sessionSubscription = FirebaseFirestore.instance
-        .collection('videoSessions')
-        .doc(sessionId)
-        .snapshots()
-        .listen(
+    _sessionSubscription = _sessionSnapshots(sessionId).listen(
       (snapshot) {
         final data = snapshot.data();
         final fingerprint = _snapshotFingerprint(data);
@@ -140,12 +167,48 @@ class _WaitingForTeacherPageWidgetState
           return;
         }
         _lastSnapshotFingerprint = fingerprint;
+        if (mounted) {
+          safeSetState(() {
+            _sessionData = data;
+            _sessionStreamHasError = false;
+          });
+        }
         _handleSnapshot(data);
       },
       onError: (error) {
         debugPrint('WaitingForTeacher: session stream error: $error');
+        if (mounted) {
+          safeSetState(() {
+            _sessionData = null;
+            _sessionStreamHasError = true;
+          });
+        }
       },
     );
+  }
+
+  Stream<DocumentSnapshot<Map<String, dynamic>>> _sessionSnapshots(
+    String sessionId,
+  ) {
+    final debugSessionSnapshots =
+        WaitingForTeacherPageWidget.debugSessionSnapshots;
+    if (debugSessionSnapshots != null) {
+      return debugSessionSnapshots(sessionId);
+    }
+
+    return FirebaseFirestore.instance
+        .collection('videoSessions')
+        .doc(sessionId)
+        .snapshots();
+  }
+
+  void _leaveWaitingPage() {
+    if (!mounted) return;
+    if (!_usesExistingQueueSession) {
+      context.safePop();
+      return;
+    }
+    context.goNamed(app.StudentsDashboardWidget.routeName);
   }
 
   Map<String, dynamic> _asMap(dynamic value) {
@@ -306,16 +369,21 @@ class _WaitingForTeacherPageWidgetState
         return;
       }
 
-      final result = await FirebaseFunctions.instance
-          .httpsCallable('createVideoSession')
-          .call(payload);
+      final debugCreateVideoSessionRequest =
+          WaitingForTeacherPageWidget.debugCreateVideoSessionRequest;
+      final resultData = debugCreateVideoSessionRequest != null
+          ? await debugCreateVideoSessionRequest(payload)
+          : (await FirebaseFunctions.instance
+                  .httpsCallable('createVideoSession')
+                  .call(payload))
+              .data;
 
-      final resultMap = _asMap(result.data);
+      final resultMap = _asMap(resultData);
       _model.newSession = CreateVideoSessionCloudFunctionCallResponse(
         data: CallRequestResponseStruct.fromMap(resultMap),
         succeeded: true,
-        resultAsString: result.data.toString(),
-        jsonBody: result.data,
+        resultAsString: resultData.toString(),
+        jsonBody: resultData,
       );
 
       final sessionId = _nonEmpty(_model.newSession?.data?.sessionId);
@@ -388,15 +456,19 @@ class _WaitingForTeacherPageWidgetState
 
   Future<void> _cancelSession(String sessionId) async {
     try {
-      final result =
-          await FirebaseFunctions.instance.httpsCallable('cancelCall').call({
-        'sessionId': sessionId,
-      });
+      final debugCancelCallRequest =
+          WaitingForTeacherPageWidget.debugCancelCallRequest;
+      final resultData = debugCancelCallRequest != null
+          ? await debugCancelCallRequest(sessionId)
+          : (await FirebaseFunctions.instance.httpsCallable('cancelCall').call({
+              'sessionId': sessionId,
+            }))
+              .data;
       _model.cloudFunction5c0 = CancelCallCloudFunctionCallResponse(
-        data: CancelCallResponseStruct.fromMap(_asMap(result.data)),
+        data: CancelCallResponseStruct.fromMap(_asMap(resultData)),
         succeeded: true,
-        resultAsString: result.data.toString(),
-        jsonBody: result.data,
+        resultAsString: resultData.toString(),
+        jsonBody: resultData,
       );
     } on FirebaseFunctionsException catch (error) {
       _model.cloudFunction5c0 = CancelCallCloudFunctionCallResponse(
@@ -444,7 +516,7 @@ class _WaitingForTeacherPageWidgetState
       _detachSessionListener();
       if (mounted && !_navigationHandled) {
         _navigationHandled = true;
-        context.safePop();
+        _leaveWaitingPage();
       }
       if (mounted) {
         safeSetState(() {
@@ -462,15 +534,12 @@ class _WaitingForTeacherPageWidgetState
     final status = data['status'] as String?;
     final roomUrl = _nonEmpty(data['dailyRoomUrl'] as String?);
     final roomName = _nonEmpty(data['dailyRoomName'] as String?);
-    final studentTriggered = data['studentNavigationTriggered'] == true;
 
     final isJoinable =
         status == 'active' || status == 'connected' || status == 'connecting';
 
     // Navigate when session is joinable and we have room data.
-    if ((isJoinable || studentTriggered) &&
-        roomUrl != null &&
-        !_tokenFetchInProgress) {
+    if (isJoinable && roomUrl != null && !_tokenFetchInProgress) {
       _fetchTokenAndNavigate(roomUrl: roomUrl, roomName: roomName);
     }
 
@@ -478,7 +547,7 @@ class _WaitingForTeacherPageWidgetState
     if (status == 'cancelled' || status == 'expired' || status == 'ended') {
       _navigationHandled = true;
       _detachSessionListener();
-      context.safePop();
+      _leaveWaitingPage();
     }
   }
 
@@ -516,6 +585,44 @@ class _WaitingForTeacherPageWidgetState
     );
   }
 
+  Future<dynamic> _requestSessionTokens(String sessionId) {
+    final debugGetSessionTokensRequest =
+        WaitingForTeacherPageWidget.debugGetSessionTokensRequest;
+    if (debugGetSessionTokensRequest != null) {
+      return debugGetSessionTokensRequest(sessionId);
+    }
+    return FirebaseFunctions.instance
+        .httpsCallable('getSessionTokens')
+        .call({'sessionId': sessionId}).then((result) => result.data);
+  }
+
+  Future<Map<String, dynamic>?> _requestSessionTokensWithRetry(
+    String sessionId,
+  ) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= _tokenFetchMaxAttempts; attempt += 1) {
+      if (!mounted || _navigationHandled || _cancelRequested) {
+        return null;
+      }
+
+      try {
+        return _asMap(await _requestSessionTokens(sessionId));
+      } catch (error) {
+        lastError = error;
+        if (attempt >= _tokenFetchMaxAttempts ||
+            !mounted ||
+            _navigationHandled ||
+            _cancelRequested) {
+          break;
+        }
+        await Future.delayed(_tokenFetchRetryDelay);
+      }
+    }
+
+    debugPrint('WaitingForTeacher: getSessionTokens failed: $lastError');
+    return null;
+  }
+
   Future<void> _fetchTokenAndNavigate({
     required String roomUrl,
     String? roomName,
@@ -526,10 +633,10 @@ class _WaitingForTeacherPageWidgetState
     _tokenFetchInProgress = true;
 
     try {
-      final result = await FirebaseFunctions.instance
-          .httpsCallable('getSessionTokens')
-          .call({'sessionId': sessionId});
-      final data = _asMap(result.data);
+      final data = await _requestSessionTokensWithRetry(sessionId);
+      if (data == null) {
+        return;
+      }
       final token = _nonEmpty(data['meetingToken']?.toString());
       final refreshedRoomUrl = _nonEmpty(data['roomUrl']?.toString());
       final refreshedRoomName = _nonEmpty(data['roomName']?.toString());
@@ -543,8 +650,6 @@ class _WaitingForTeacherPageWidgetState
           roomName: refreshedRoomName ?? roomName,
         );
       }
-    } catch (e) {
-      debugPrint('WaitingForTeacher: getSessionTokens failed: $e');
     } finally {
       _tokenFetchInProgress = false;
     }
@@ -555,6 +660,8 @@ class _WaitingForTeacherPageWidgetState
     _tryStartCreateSession();
     final sessionId = _nonEmpty(_model.sessionId);
     final isLoading = sessionId == null && !_createFailed;
+    final sessionData = _sessionStreamHasError ? null : _sessionData;
+    final sessionStatus = sessionData?['status'] as String?;
     if (sessionId != null) {
       _ensureSessionListener(sessionId);
     } else {
@@ -572,20 +679,10 @@ class _WaitingForTeacherPageWidgetState
         body: sessionId == null
             ? _buildStatusBody(context,
                 status: null, isLoading: isLoading, data: null)
-            : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection('videoSessions')
-                    .doc(sessionId)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return _buildStatusBody(context, status: null, data: null);
-                  }
-                  final data = snapshot.data?.data();
-                  final status = data?['status'] as String?;
-
-                  return _buildStatusBody(context, status: status, data: data);
-                },
+            : _buildStatusBody(
+                context,
+                status: sessionStatus,
+                data: sessionData,
               ),
       ),
     );

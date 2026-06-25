@@ -1471,6 +1471,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     switch (session.status.trim()) {
       case 'connecting':
       case 'active':
+      case 'connected':
         return true;
       default:
         return false;
@@ -1516,6 +1517,25 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     return _sessionRequesterId(session) != userId;
   }
 
+  bool _isCurrentUserTeacherRequester(VideoSessionsRecord session) {
+    final userId = _normalizedNonEmptyString(currentUserUid);
+    if (userId == null || _sessionRequesterId(session) != userId) {
+      return false;
+    }
+
+    final scenario =
+        _normalizedNonEmptyString(session.snapshotData['scenario']);
+    if (scenario == 'student_teacher') {
+      return true;
+    }
+
+    final responderRole = _normalizedNonEmptyString(
+            session.snapshotData['currentResponderRole']) ??
+        _normalizedNonEmptyString(session.snapshotData['responderRole']) ??
+        _sessionMatchContextString(session, 'selectedResponderRole');
+    return responderRole == 'native_speaker' || responderRole == 'teacher';
+  }
+
   void _handleForegroundActiveSession(VideoSessionsRecord? session) {
     if (session == null ||
         StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation) {
@@ -1530,6 +1550,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
 
     if (session.status.trim() == 'pending_confirmation') {
+      if (_isCurrentUserTeacherRequester(session)) {
+        _scheduleStudentTeacherWaitingPage(
+          sessionId,
+          requireMatchedSearchSession: false,
+        );
+        return;
+      }
       _maybeAcceptForegroundStudentSession(session);
       return;
     }
@@ -1883,6 +1910,58 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
   }
 
+  bool _isStudentTeacherMatchedSearchResponse(
+    Map<String, dynamic> data, {
+    required String? status,
+    required String? sessionId,
+  }) {
+    if (sessionId == null || status != 'matched') {
+      return false;
+    }
+
+    final scenario = _normalizedResponseString(data, 'scenario');
+    if (scenario == 'student_teacher') {
+      return true;
+    }
+
+    final matchedRole = _normalizedResponseString(data, 'matchedRole');
+    return matchedRole == 'native_speaker' || matchedRole == 'teacher';
+  }
+
+  void _scheduleStudentTeacherWaitingPage(
+    String sessionId, {
+    bool requireMatchedSearchSession = true,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          (requireMatchedSearchSession &&
+              _normalizedSessionId(_matchedSearchSessionId) != sessionId)) {
+        return;
+      }
+
+      try {
+        final router = GoRouter.of(context);
+        if (router
+            .getCurrentLocation()
+            .startsWith(WaitingForTeacherPageWidget.routePath)) {
+          return;
+        }
+
+        context.goNamed(
+          WaitingForTeacherPageWidget.routeName,
+          queryParameters: {
+            'sessionId': serializeParam(sessionId, ParamType.String),
+          }.withoutNulls,
+        );
+      } catch (error) {
+        debugPrint(
+          'StudentsDashboard: failed to open waiting page for teacher match: '
+          '$error',
+        );
+      }
+    });
+  }
+
   Future<void> _handleStartConversation(
     StudentDashboardSearchState visibleSearchState,
     String? visibleSessionId,
@@ -1965,6 +2044,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       final sessionId = _normalizedResponseString(startSearchData, 'sessionId');
       final status = _normalizedResponseString(startSearchData, 'status');
       final reusedSearchRequest = _responseBool(startSearchData, 'reused');
+      final shouldOpenTeacherWaitingPage =
+          _isStudentTeacherMatchedSearchResponse(
+        startSearchData,
+        status: status,
+        sessionId: sessionId,
+      );
       final nextSearchState = sessionId != null || status == 'matched'
           ? StudentDashboardSearchState.connecting
           : StudentDashboardSearchState.searching;
@@ -1989,6 +2074,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       } else {
         _clearSearchTimeoutTimer();
         _clearSearchHeartbeatTimer();
+      }
+      if (shouldOpenTeacherWaitingPage && sessionId != null) {
+        _scheduleStudentTeacherWaitingPage(sessionId);
       }
     } on Exception {
       if (mounted) {

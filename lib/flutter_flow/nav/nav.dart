@@ -193,7 +193,12 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             name: WaitingForTeacherPageWidget.routeName,
             path: WaitingForTeacherPageWidget.routePath,
             requireAuth: true,
-            builder: (context, params) => WaitingForTeacherPageWidget(),
+            builder: (context, params) => WaitingForTeacherPageWidget(
+              sessionId: params.getParam(
+                'sessionId',
+                ParamType.String,
+              ),
+            ),
           ),
           FFRoute(
             name: NativeSpeakerPageWidget.routeName,

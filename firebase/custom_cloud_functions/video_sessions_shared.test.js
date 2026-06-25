@@ -216,12 +216,14 @@ test("credential session status is limited to joinable live sessions", () => {
   assert.deepEqual(VIDEO_SESSION_CREDENTIAL_STATUSES, [
     VIDEO_SESSION_STATUS.CONNECTING,
     VIDEO_SESSION_STATUS.ACTIVE,
+    "connected",
   ]);
   assert.equal(isCredentialSessionStatus(VIDEO_SESSION_STATUS.ACTIVE), true);
   assert.equal(
     isCredentialSessionStatus(VIDEO_SESSION_STATUS.CONNECTING),
     true,
   );
+  assert.equal(isCredentialSessionStatus("connected"), true);
   assert.equal(
     isCredentialSessionStatus(VIDEO_SESSION_STATUS.SEARCHING),
     false,
