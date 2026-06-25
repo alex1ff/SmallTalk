@@ -395,6 +395,55 @@ test("declineCall keeps teacher handoff candidates", () => {
   );
 });
 
+test("declineCall ends direct teacher calls without queue restore", () => {
+  const routing = buildDeclineResponderFailureRouting({
+    sessionData: {
+      scenario: "student_teacher",
+      studentId: "student-a",
+      requesterId: "student-a",
+      currentTutorId: "teacher-a",
+      currentResponderId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      availableTutors: ["teacher-a", "teacher-b"],
+      matchContext: {
+        matchMode: "direct",
+        directCandidateId: "teacher-a",
+      },
+    },
+    responderId: "teacher-a",
+    availableTutors: ["student-fresh", "teacher-fresh"],
+  });
+
+  assert.deepEqual(routing.availableTutors, []);
+  assert.equal(routing.requesterId, "student-a");
+  assert.equal(routing.terminalStopReason, "direct_call_declined");
+  assert.deepEqual(routing.restoreSearchParticipantIds, []);
+  assert.deepEqual(
+    routing.restoreSearchExcludedCandidateIdsByParticipantId,
+    {},
+  );
+});
+
+test("declineCall treats legacy direct tutor id as terminal direct call", () => {
+  const routing = buildDeclineResponderFailureRouting({
+    sessionData: {
+      scenario: "student_teacher",
+      studentId: "student-a",
+      currentTutorId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      availableTutors: ["teacher-a", "teacher-b"],
+      matchContext: {
+        directTutorId: "teacher-a",
+      },
+    },
+    responderId: "teacher-a",
+  });
+
+  assert.deepEqual(routing.availableTutors, []);
+  assert.equal(routing.terminalStopReason, "direct_call_declined");
+  assert.deepEqual(routing.restoreSearchParticipantIds, []);
+});
+
 test("declineCall uses fresh common pool candidates after teacher decline", () => {
   const routing = buildDeclineResponderFailureRouting({
     sessionData: {

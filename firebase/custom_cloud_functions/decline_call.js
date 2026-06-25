@@ -37,6 +37,7 @@ const {
 const {
   buildResponderFailurePoolFingerprint,
   collectAvailableRespondersAfterFailure,
+  isDirectMatchSession,
   readAvailableRespondersAfterFailure,
   responderFailurePoolFingerprintMatches,
   resolveResponderFailureStopReason,
@@ -76,6 +77,16 @@ function buildDeclineResponderFailureRouting({
   responderId = "",
   availableTutors = null,
 }) {
+  if (isDirectMatchSession(sessionData)) {
+    return {
+      availableTutors: [],
+      requesterId: readRequesterIdForResponderFailure(sessionData),
+      restoreSearchParticipantIds: [],
+      restoreSearchExcludedCandidateIdsByParticipantId: {},
+      terminalStopReason: "direct_call_declined",
+    };
+  }
+
   const requesterId = readRequesterIdForResponderFailure(sessionData);
   const restoreSearchParticipantIds = requesterId ? [requesterId] : [];
   return {

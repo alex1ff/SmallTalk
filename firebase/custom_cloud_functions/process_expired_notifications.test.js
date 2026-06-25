@@ -523,6 +523,55 @@ test("notification timeout keeps teacher handoff candidates", () => {
   );
 });
 
+test("notification timeout ends direct teacher calls without queue restore", () => {
+  const routing = buildTimeoutResponderFailureRouting({
+    sessionData: {
+      scenario: "student_teacher",
+      studentId: "student-a",
+      requesterId: "student-a",
+      currentTutorId: "teacher-a",
+      currentResponderId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      availableTutors: ["teacher-a", "teacher-b"],
+      matchContext: {
+        matchMode: "direct",
+        directCandidateId: "teacher-a",
+      },
+    },
+    responderId: "teacher-a",
+    availableTutors: ["student-fresh", "teacher-fresh"],
+  });
+
+  assert.deepEqual(routing.availableTutors, []);
+  assert.equal(routing.requesterId, "student-a");
+  assert.equal(routing.terminalStopReason, "direct_call_timeout");
+  assert.deepEqual(routing.restoreSearchParticipantIds, []);
+  assert.deepEqual(
+    routing.restoreSearchExcludedCandidateIdsByParticipantId,
+    {},
+  );
+});
+
+test("notification timeout treats legacy direct tutor id as terminal direct call", () => {
+  const routing = buildTimeoutResponderFailureRouting({
+    sessionData: {
+      scenario: "student_teacher",
+      studentId: "student-a",
+      currentTutorId: "teacher-a",
+      currentResponderRole: "native_speaker",
+      availableTutors: ["teacher-a", "teacher-b"],
+      matchContext: {
+        directTutorId: "teacher-a",
+      },
+    },
+    responderId: "teacher-a",
+  });
+
+  assert.deepEqual(routing.availableTutors, []);
+  assert.equal(routing.terminalStopReason, "direct_call_timeout");
+  assert.deepEqual(routing.restoreSearchParticipantIds, []);
+});
+
 test("notification timeout uses fresh common pool candidates after teacher timeout", () => {
   const routing = buildTimeoutResponderFailureRouting({
     sessionData: {
