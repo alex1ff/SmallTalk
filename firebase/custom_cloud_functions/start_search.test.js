@@ -37,6 +37,7 @@ const {
     readErrorMessage,
     recordBackgroundStudentResponderPushFailure,
     recordBackgroundStudentResponderPushSuccess,
+    releaseBackgroundStudentResponderMatchForRetry,
     recordTeacherResponderPushResult,
     releaseTeacherResponderMatchForRetry,
     runBackgroundStudentResponderPushSender,
@@ -46,6 +47,7 @@ const {
     sendVoipPushToStudentResponder,
     shouldCreateBackgroundStudentResponderIncomingCall,
     shouldCreateTeacherResponderIncomingCall,
+    shouldRetryBackgroundStudentMatchAfterNotifyResult,
     shouldRetryTeacherMatchAfterNotifyResult,
     shouldUseTeacherResponderForIncomingCall,
     startSearchCallable,
@@ -1794,6 +1796,278 @@ test("teacher responder retry release preserves mismatched session", async () =>
   assert.equal(store.get("notifications/session-at_teacher-a").status, "sent");
 });
 
+test("background student retry decision follows notification outcome", () => {
+  assert.equal(shouldRetryBackgroundStudentMatchAfterNotifyResult(null), true);
+  assert.equal(
+    shouldRetryBackgroundStudentMatchAfterNotifyResult({
+      reason: "accept_finalization_in_progress",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetryBackgroundStudentMatchAfterNotifyResult({
+      shouldNotify: false,
+      reason: "accept_in_progress",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetryBackgroundStudentMatchAfterNotifyResult({
+      shouldNotify: false,
+      reason: "responder_not_background",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetryBackgroundStudentMatchAfterNotifyResult({
+      shouldNotify: false,
+      reason: "stale_before_push",
+      staleReason: "responder_not_background",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetryBackgroundStudentMatchAfterNotifyResult({
+      shouldNotify: false,
+      reason: "stale_after_push",
+      staleReason: "responder_not_background",
+      pushResult: {sent: false, reason: "fcm_failed"},
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetryBackgroundStudentMatchAfterNotifyResult({
+      shouldNotify: false,
+      reason: "stale_before_push",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRetryBackgroundStudentMatchAfterNotifyResult({
+      shouldNotify: true,
+      pushResult: {sent: false, reason: "missing_tokens"},
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRetryBackgroundStudentMatchAfterNotifyResult({
+      shouldNotify: true,
+      pushResult: {sent: true, channel: "apns_voip"},
+    }),
+    false,
+  );
+});
+
+test("background student notification failure releases match for retry", async () => {
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      sessionId: "session-ab",
+      status: "pending_confirmation",
+      language: "en",
+      requesterId: "student-a",
+      responderId: "student-b",
+      studentId: "student-a",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      pairAttemptId: "pair-ab",
+      participantIds: ["student-a", "student-b"],
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["users/student-a", {
+      role: "student",
+      currentSessionId: "session-ab",
+    }],
+    ["users/student-b", {
+      role: "student",
+      currentSessionId: "session-ab",
+    }],
+    ["searchRequests/student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      requestId: "request-a",
+      userId: "student-a",
+      currentSessionId: "session-ab",
+      matchedSessionId: "session-ab",
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      requestId: "request-b",
+      userId: "student-b",
+      currentSessionId: "session-ab",
+      matchedSessionId: "session-ab",
+    }],
+    ["notifications/session-ab_student-b", {
+      status: "sent",
+      type: "incoming_call",
+      sessionId: "session-ab",
+      recipientId: "student-b",
+      lastPushError: "missing_tokens",
+    }],
+  ]);
+
+  const result = await releaseBackgroundStudentResponderMatchForRetry({
+    db: fakeStoreDb(store),
+    sessionId: "session-ab",
+    responderId: "student-b",
+    requesterId: "student-a",
+    notificationId: "session-ab_student-b",
+    pairAttemptId: "pair-ab",
+    stopReason: "background_student_push_failed",
+  });
+
+  assert.deepEqual(result, {released: true, reason: "released"});
+  assert.equal(store.get("videoSessions/session-ab").status, "cancelled");
+  assert.equal(
+    store.get("videoSessions/session-ab").cancelReason,
+    "background_student_push_failed",
+  );
+  assert.equal(store.get("searchRequests/student-a").status, "active");
+  assert.deepEqual(
+    store.get("searchRequests/student-a").excludedCandidateIds,
+    ["student-b"],
+  );
+  assert.equal(store.get("searchRequests/student-b").status, "cancelled");
+  assert.equal(store.get("notifications/session-ab_student-b").status, "cancelled");
+  assert.equal(
+    store.get("notifications/session-ab_student-b").cancelReason,
+    "background_student_push_failed",
+  );
+});
+
+test("background student retry release preserves accept race", async () => {
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      sessionId: "session-ab",
+      status: "pending_confirmation",
+      language: "en",
+      requesterId: "student-a",
+      responderId: "student-b",
+      studentId: "student-a",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      pairAttemptId: "pair-ab",
+      participantIds: ["student-a", "student-b"],
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      acceptingTutorId: "student-b",
+      acceptingAt: timestampFromMillis(nowMillis),
+    }],
+    ["users/student-a", {
+      role: "student",
+      currentSessionId: "session-ab",
+    }],
+    ["users/student-b", {
+      role: "student",
+      currentSessionId: "session-ab",
+    }],
+    ["searchRequests/student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      requestId: "request-a",
+      userId: "student-a",
+      currentSessionId: "session-ab",
+      matchedSessionId: "session-ab",
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      requestId: "request-b",
+      userId: "student-b",
+      currentSessionId: "session-ab",
+      matchedSessionId: "session-ab",
+    }],
+    ["notifications/session-ab_student-b", {
+      status: "sent",
+      type: "incoming_call",
+      sessionId: "session-ab",
+      recipientId: "student-b",
+    }],
+  ]);
+
+  const result = await releaseBackgroundStudentResponderMatchForRetry({
+    db: fakeStoreDb(store),
+    sessionId: "session-ab",
+    responderId: "student-b",
+    requesterId: "student-a",
+    notificationId: "session-ab_student-b",
+    pairAttemptId: "pair-ab",
+    stopReason: "background_student_push_failed",
+  });
+
+  assert.equal(result.released, false);
+  assert.equal(result.reason, "accept_finalization_in_progress");
+  assert.equal(store.get("notifications/session-ab_student-b").status, "sent");
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.MATCHED,
+  );
+  assert.equal(
+    store.get("videoSessions/session-ab").acceptingTutorId,
+    "student-b",
+  );
+});
+
+test("background student retry release preserves mismatched session", async () => {
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      sessionId: "session-ab",
+      status: "pending_confirmation",
+      requesterId: "student-a",
+      responderId: "student-c",
+      studentId: "student-a",
+      currentResponderId: "student-c",
+      currentTutorId: "student-c",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      pairAttemptId: "pair-other",
+      participantIds: ["student-a", "student-c"],
+      participantRoles: {
+        "student-a": "student",
+        "student-c": "student",
+      },
+    }],
+    ["notifications/session-ab_student-b", {
+      status: "sent",
+      type: "incoming_call",
+      sessionId: "session-ab",
+      recipientId: "student-b",
+    }],
+  ]);
+
+  const result = await releaseBackgroundStudentResponderMatchForRetry({
+    db: fakeStoreDb(store),
+    sessionId: "session-ab",
+    responderId: "student-b",
+    requesterId: "student-a",
+    notificationId: "session-ab_student-b",
+    pairAttemptId: "pair-ab",
+    stopReason: "background_student_push_failed",
+  });
+
+  assert.equal(result.released, false);
+  assert.equal(result.reason, "pair_attempt_mismatch");
+  assert.equal(
+    store.get("videoSessions/session-ab").currentResponderId,
+    "student-c",
+  );
+  assert.equal(store.get("notifications/session-ab_student-b").status, "sent");
+});
+
 test("student pair responder call data omits room credentials", () => {
   assert.deepEqual(
     buildStudentPairRequesterInfo({
@@ -2571,6 +2845,81 @@ test("background responder notify flow creates notification and sends push", asy
     name: "Joining Student",
     photo: "joining-photo",
   });
+});
+
+test("background responder finalization failure keeps notification id for retry", async () => {
+  const notificationPath = "notifications/session-ab_student-b";
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      status: "pending_confirmation",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      responderRole: "student",
+      scenario: "student_student",
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      studentId: "student-a",
+      language: "en",
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      userId: "student-b",
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      backgroundExpiresAt: timestampFromMillis(nowMillis + 60_000),
+      currentSessionId: "session-ab",
+    }],
+  ]);
+  const fakeDb = fakeStoreDb(store, {
+    onUpdate: (ref, update) => {
+      if (ref.path === notificationPath && update.pushSentAt) {
+        throw new Error("finalization_down");
+      }
+    },
+  });
+  let pushSendCount = 0;
+
+  const originalConsoleError = console.error;
+  let result;
+  try {
+    console.error = () => {};
+    result = await maybeNotifyBackgroundStudentResponder({
+      db: fakeDb,
+      sessionId: "session-ab",
+      responderId: "student-b",
+      responderSearchRequestDocId: "student-b",
+      requesterData: {
+        displayName: "Joining Student",
+        photoUrl: "joining-photo",
+      },
+      pushSender: async () => {
+        pushSendCount += 1;
+        return {sent: true, channel: "test"};
+      },
+    });
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(pushSendCount, 1);
+  assert.equal(result.shouldNotify, false);
+  assert.equal(result.reason, "push_finalization_failed");
+  assert.equal(result.staleReason, "finalization_down");
+  assert.equal(result.notificationId, "session-ab_student-b");
+  assert.deepEqual(result.pushResult, {
+    sent: true,
+    channel: "test",
+  });
+  assert.equal(
+    shouldRetryBackgroundStudentMatchAfterNotifyResult(result),
+    true,
+  );
+  assert.equal(store.get(notificationPath).status, "sent");
 });
 
 test("background responder notify flow cancels stale state after push", async () => {
@@ -3989,11 +4338,22 @@ if (!hasFirestoreEmulator) {
       appState: "background",
       platform: "ios",
     }, authContext(waitingUid));
-    const joiningResponse = await wrappedStartSearch({
+    let pushSendCount = 0;
+    let pushedCallData = null;
+    const joiningResponse = await startSearchCallable({
       preferredPartnerLevel: "B1",
       appState: "foreground",
       platform: "ios",
-    }, authContext(joiningUid));
+    }, authContext(joiningUid), {
+      backgroundStudentResponderPushSender: async (responderId, callData) => {
+        pushSendCount += 1;
+        pushedCallData = callData;
+        assert.equal(responderId, waitingUid);
+        assert.equal(callData.callerId, joiningUid);
+        assert.equal(callData.callerName, "Joining Student");
+        return {sent: true, channel: "test_voip"};
+      },
+    });
     const notificationQuery = await db
       .collection("notifications")
       .where("recipientId", "==", waitingUid)
@@ -4009,6 +4369,10 @@ if (!hasFirestoreEmulator) {
     assert.equal(matchingNotifications[0].data.type, "incoming_call");
     assert.equal(matchingNotifications[0].data.status, "sent");
     assert.equal(matchingNotifications[0].data.recipientId, waitingUid);
+    assert.equal(pushSendCount, 1);
+    assert.equal(pushedCallData.sessionId, joiningResponse.sessionId);
+    assert.equal(matchingNotifications[0].data.pushChannel, "test_voip");
+    assert.ok(matchingNotifications[0].data.pushSentAt);
     assert.equal(
       matchingNotifications[0].data.studentInfo.name,
       "Joining Student",
@@ -4025,6 +4389,78 @@ if (!hasFirestoreEmulator) {
       Object.hasOwn(matchingNotifications[0].data, "meetingToken"),
       false,
     );
+  });
+
+  test("startSearch callable retries when background student push fails", async () => {
+    const waitingUid = uniqueId("student-background-push-fail-waiting");
+    const joiningUid = uniqueId("student-background-push-fail-joining");
+    const cityKey = cityKeyForUid(`${waitingUid}-${joiningUid}`);
+    await deleteDoc(userRef(waitingUid));
+    await deleteDoc(userRef(joiningUid));
+    await deleteDoc(searchRequestRef(waitingUid));
+    await deleteDoc(searchRequestRef(joiningUid));
+    await seedStudent(waitingUid, {
+      display_name: "Waiting Student",
+      profileCity: {key: cityKey},
+    });
+    await seedStudent(joiningUid, {
+      display_name: "Joining Student",
+      profileCity: {key: cityKey},
+    });
+
+    const waitingResponse = await wrappedStartSearch({
+      preferredPartnerLevel: "B1",
+      appState: "background",
+      platform: "ios",
+    }, authContext(waitingUid));
+    let pushSendCount = 0;
+    const joiningResponse = await startSearchCallable({
+      preferredPartnerLevel: "B1",
+      appState: "foreground",
+      platform: "ios",
+    }, authContext(joiningUid), {
+      backgroundStudentResponderPushSender: async (responderId, callData) => {
+        pushSendCount += 1;
+        assert.equal(responderId, waitingUid);
+        assert.equal(callData.callerId, joiningUid);
+        return {
+          sent: false,
+          reason: "missing_tokens",
+          error: "missing_tokens",
+        };
+      },
+    });
+    const joiningRequest = (await searchRequestRef(joiningUid).get()).data();
+    const waitingRequest = (await searchRequestRef(waitingUid).get()).data();
+    const notificationQuery = await db
+      .collection("notifications")
+      .where("recipientId", "==", waitingUid)
+      .get();
+    const matchingNotifications = notificationQuery.docs
+      .map((doc) => ({id: doc.id, data: doc.data()}))
+      .filter((item) => item.data.studentInfo?.name === "Joining Student");
+    assert.equal(matchingNotifications.length, 1);
+    const notification = matchingNotifications[0].data;
+    const sessionSnapshot = await db
+      .collection("videoSessions")
+      .doc(notification.sessionId)
+      .get();
+    const sessionData = sessionSnapshot.data();
+
+    assert.equal(waitingResponse.status, "active");
+    assert.equal(joiningResponse.status, "active");
+    assert.equal(joiningResponse.matchedUserId, undefined);
+    assert.equal(pushSendCount, 1);
+    assert.equal(joiningRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
+    assert.deepEqual(joiningRequest.excludedCandidateIds, [waitingUid]);
+    assert.equal(joiningRequest.currentSessionId, null);
+    assert.equal(waitingRequest.status, SEARCH_REQUEST_STATUS.CANCELLED);
+    assert.equal(notification.status, "cancelled");
+    assert.equal(notification.cancelReason, "background_student_push_failed");
+    assert.equal(notification.lastPushError, "missing_tokens");
+    assert.equal(sessionSnapshot.exists, true);
+    assert.equal(sessionData.status, "cancelled");
+    assert.equal(sessionData.cancelReason, "background_student_push_failed");
   });
 
   test("startSearch callable matches teacher and creates incoming call", async () => {

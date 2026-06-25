@@ -1368,6 +1368,28 @@ function shouldRetryTeacherMatchAfterNotifyResult(result = {}) {
   return result.pushResult?.sent !== true;
 }
 
+function shouldRetryBackgroundStudentMatchAfterNotifyResult(result = {}) {
+  if (!result || typeof result !== "object") {
+    return true;
+  }
+  const reason = normalizeString(result.reason);
+  const staleReason = normalizeString(result.staleReason);
+  const noRetryReasons = new Set([
+    "accept_finalization_in_progress",
+    "accept_in_progress",
+    "responder_not_background",
+    "session_active",
+    "session_connecting",
+  ]);
+  if (noRetryReasons.has(reason) || noRetryReasons.has(staleReason)) {
+    return false;
+  }
+  if (result.shouldNotify === false) {
+    return true;
+  }
+  return result.pushResult?.sent !== true;
+}
+
 async function releaseTeacherResponderMatchForRetry({
   db,
   sessionId = "",
@@ -1481,6 +1503,134 @@ async function releaseTeacherResponderMatchForRetry({
           cancelledAt: serverTimestamp,
           cancelReason:
             normalizeString(stopReason) || "teacher_notification_failed",
+          updatedAt: serverTimestamp,
+        });
+      }
+    }
+
+    return {
+      released: true,
+      reason: "released",
+    };
+  });
+}
+
+async function releaseBackgroundStudentResponderMatchForRetry({
+  db,
+  sessionId = "",
+  responderId = "",
+  requesterId = "",
+  notificationId = "",
+  pairAttemptId = "",
+  stopReason = "background_student_notification_failed",
+}) {
+  const normalizedSessionId = normalizeString(sessionId);
+  const normalizedResponderId = normalizeString(responderId);
+  const normalizedRequesterId = normalizeString(requesterId);
+  const normalizedNotificationId = normalizeString(notificationId);
+  if (
+    !normalizedSessionId ||
+    !normalizedResponderId ||
+    !normalizedRequesterId
+  ) {
+    return {released: false, reason: "missing_ids"};
+  }
+  const normalizedPairAttemptId = normalizeString(pairAttemptId);
+  if (!normalizedPairAttemptId) {
+    return {released: false, reason: "missing_pair_attempt"};
+  }
+
+  return db.runTransaction(async (transaction) => {
+    const sessionRef = db.collection("videoSessions").doc(normalizedSessionId);
+    const notificationRef = normalizedNotificationId ?
+      db.collection("notifications").doc(normalizedNotificationId) :
+      null;
+    const [sessionSnap, notificationSnap] = await Promise.all([
+      transaction.get(sessionRef),
+      notificationRef ? transaction.get(notificationRef) : null,
+    ]);
+    if (!sessionSnap.exists) {
+      return {released: false, reason: "session_missing"};
+    }
+
+    const sessionData = sessionSnap.data() || {};
+    if (
+      normalizeString(sessionData.pairAttemptId) !== normalizedPairAttemptId
+    ) {
+      return {released: false, reason: "pair_attempt_mismatch"};
+    }
+    if (normalizeString(sessionData.currentResponderRole) !== "student") {
+      return {released: false, reason: "responder_role_mismatch"};
+    }
+    if (
+      normalizeString(sessionData.currentResponderId) !==
+        normalizedResponderId ||
+      normalizeString(sessionData.currentTutorId) !== normalizedResponderId
+    ) {
+      return {released: false, reason: "responder_mismatch"};
+    }
+    const decision = shouldCreateBackgroundStudentResponderIncomingCall({
+      sessionData,
+      sessionId: normalizedSessionId,
+      responderId: normalizedResponderId,
+      nowMillis: Date.now(),
+    });
+    if (shouldLeaveBackgroundNotificationForAccept({decision, sessionData})) {
+      return {
+        released: false,
+        reason: "accept_finalization_in_progress",
+        staleReason: decision.reason,
+      };
+    }
+
+    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    const fieldDelete = admin.firestore.FieldValue.delete();
+    await releaseSessionPairLocksInTransaction({
+      db,
+      transaction,
+      sessionId: normalizedSessionId,
+      sessionData,
+      participantIds: [normalizedRequesterId, normalizedResponderId],
+      serverTimestamp,
+      fieldDelete,
+      searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+      stopReason:
+        normalizeString(stopReason) ||
+        "background_student_notification_failed",
+      restoreSearchParticipantIds: [normalizedRequesterId],
+      restoreSearchExcludedCandidateIdsByParticipantId: {
+        [normalizedRequesterId]: [normalizedResponderId],
+      },
+    });
+    transaction.update(sessionRef, {
+      status: VIDEO_SESSION_STATUS.CANCELLED,
+      pairStatus: VIDEO_SESSION_STATUS.CANCELLED,
+      cancelReason:
+        normalizeString(stopReason) ||
+        "background_student_notification_failed",
+      cancelledAt: serverTimestamp,
+      currentResponderId: fieldDelete,
+      currentResponderRole: fieldDelete,
+      currentTutorId: fieldDelete,
+      acceptingTutorId: fieldDelete,
+      acceptingAt: fieldDelete,
+      acceptAttemptId: fieldDelete,
+      updatedAt: serverTimestamp,
+    });
+
+    if (notificationRef && notificationSnap?.exists) {
+      const notificationData = notificationSnap.data() || {};
+      if (
+        notificationData.sessionId === normalizedSessionId &&
+        notificationData.recipientId === normalizedResponderId &&
+        notificationData.status === "sent"
+      ) {
+        transaction.update(notificationRef, {
+          status: "cancelled",
+          cancelledAt: serverTimestamp,
+          cancelReason:
+            normalizeString(stopReason) ||
+            "background_student_notification_failed",
           updatedAt: serverTimestamp,
         });
       }
@@ -2103,8 +2253,9 @@ async function maybeNotifyBackgroundStudentResponder({
     };
   }
   if (pushResult && pushResult.sent === false) {
-    const failureFinalization =
-      await recordBackgroundStudentResponderPushFailure({
+    let failureFinalization;
+    try {
+      failureFinalization = await recordBackgroundStudentResponderPushFailure({
         db,
         notificationId: notification.notificationId,
         sessionId,
@@ -2118,6 +2269,25 @@ async function maybeNotifyBackgroundStudentResponder({
         },
         nowMillis: Date.now(),
       });
+    } catch (error) {
+      console.error(
+        "Failed to record background student responder push failure",
+        {
+          sessionId,
+          responderId,
+          notificationId: notification.notificationId,
+          error: readErrorMessage(error, "push_finalization_failed"),
+        },
+      );
+      return {
+        ...notification,
+        shouldNotify: false,
+        reason: "push_finalization_failed",
+        staleReason: readErrorMessage(error, "push_finalization_failed"),
+        callData,
+        pushResult,
+      };
+    }
     if (!failureFinalization.stillCurrent) {
       return {
         ...notification,
@@ -2130,8 +2300,9 @@ async function maybeNotifyBackgroundStudentResponder({
       };
     }
   } else if (pushResult && pushResult.sent === true) {
-    const successFinalization =
-      await recordBackgroundStudentResponderPushSuccess({
+    let successFinalization;
+    try {
+      successFinalization = await recordBackgroundStudentResponderPushSuccess({
         db,
         notificationId: notification.notificationId,
         sessionId,
@@ -2140,6 +2311,26 @@ async function maybeNotifyBackgroundStudentResponder({
         pushResult,
         nowMillis: Date.now(),
       });
+    } catch (error) {
+      console.error(
+        "Failed to record background student responder push success",
+        {
+          sessionId,
+          responderId,
+          notificationId: notification.notificationId,
+          pushSent: true,
+          error: readErrorMessage(error, "push_finalization_failed"),
+        },
+      );
+      return {
+        ...notification,
+        shouldNotify: false,
+        reason: "push_finalization_failed",
+        staleReason: readErrorMessage(error, "push_finalization_failed"),
+        callData,
+        pushResult,
+      };
+    }
     if (!successFinalization.stillCurrent) {
       return {
         ...notification,
@@ -2332,6 +2523,7 @@ async function tryCreateStudentPairForSearchRequest({
   requesterData = {},
   requestData = {},
   reused = false,
+  backgroundStudentResponderPushSender = sendVoipPushToStudentResponder,
   teacherResponderPushSender = sendVoipPushToStudentResponder,
   teacherResponderTokenReader = getReadOnlyUserVoipTokenState,
 }) {
@@ -2409,14 +2601,17 @@ async function tryCreateStudentPairForSearchRequest({
 
     if (lockResult.locked) {
       if (isStudentQueueResponder) {
+        let backgroundStudentNotifyResult = null;
         try {
-          await maybeNotifyBackgroundStudentResponder({
-            db,
-            sessionId: lockResult.sessionId,
-            responderId: lockResult.responderId,
-            responderSearchRequestDocId: candidate.searchRequestDocId,
-            requesterData,
-          });
+          backgroundStudentNotifyResult =
+            await maybeNotifyBackgroundStudentResponder({
+              db,
+              sessionId: lockResult.sessionId,
+              responderId: lockResult.responderId,
+              responderSearchRequestDocId: candidate.searchRequestDocId,
+              requesterData,
+              pushSender: backgroundStudentResponderPushSender,
+            });
         } catch (error) {
           console.error(
             "Failed to notify background student responder",
@@ -2426,6 +2621,56 @@ async function tryCreateStudentPairForSearchRequest({
               error: readErrorMessage(error, "notify_failed"),
             },
           );
+          backgroundStudentNotifyResult = {
+            shouldNotify: false,
+            reason: "notify_failed",
+            error: readErrorMessage(error, "notify_failed"),
+          };
+        }
+
+        if (
+          shouldRetryBackgroundStudentMatchAfterNotifyResult(
+            backgroundStudentNotifyResult,
+          )
+        ) {
+          const releaseResult =
+            await releaseBackgroundStudentResponderMatchForRetry({
+              db,
+              sessionId: lockResult.sessionId,
+              responderId: lockResult.responderId,
+              requesterId: userId,
+              notificationId: backgroundStudentNotifyResult?.notificationId,
+              pairAttemptId: lockResult.pairAttemptId,
+              stopReason:
+                backgroundStudentNotifyResult?.pushResult?.sent === false ?
+                  "background_student_push_failed" :
+                  normalizeString(
+                    backgroundStudentNotifyResult?.staleReason,
+                  ) ||
+                    normalizeString(backgroundStudentNotifyResult?.reason) ||
+                    "background_student_notification_failed",
+            });
+          if (releaseResult.released) {
+            retryExcludedResponderIds.add(normalizeString(candidate.userId));
+            continue;
+          }
+          if (releaseResult.reason !== "accept_finalization_in_progress") {
+            const currentMatchedResponse =
+              await tryReadCurrentMatchedStartSearchResponse({
+                db,
+                userId,
+                reused,
+              });
+            if (currentMatchedResponse) {
+              return {
+                matched: true,
+                response: currentMatchedResponse,
+                lockResult,
+              };
+            }
+            retryExcludedResponderIds.add(normalizeString(candidate.userId));
+            continue;
+          }
         }
       } else if (isTeacherResponder) {
         let teacherNotifyResult = null;
@@ -2697,6 +2942,9 @@ async function startSearchCallable(data, context, options = {}) {
       teacherResponderPushSender:
         callableOptions.teacherResponderPushSender ||
           sendVoipPushToStudentResponder,
+      backgroundStudentResponderPushSender:
+        callableOptions.backgroundStudentResponderPushSender ||
+          sendVoipPushToStudentResponder,
       teacherResponderTokenReader:
         callableOptions.teacherResponderTokenReader ||
           getReadOnlyUserVoipTokenState,
@@ -2731,6 +2979,7 @@ exports.__private__ = {
   createTeacherResponderIncomingCall,
   recordBackgroundStudentResponderPushFailure,
   recordBackgroundStudentResponderPushSuccess,
+  releaseBackgroundStudentResponderMatchForRetry,
   recordTeacherResponderPushResult,
   releaseTeacherResponderMatchForRetry,
   readErrorMessage,
@@ -2754,6 +3003,7 @@ exports.__private__ = {
   searchRequestBelongsToUser,
   shouldCreateBackgroundStudentResponderIncomingCall,
   shouldCreateTeacherResponderIncomingCall,
+  shouldRetryBackgroundStudentMatchAfterNotifyResult,
   shouldRetryTeacherMatchAfterNotifyResult,
   timestampToMillis,
   tryReadCurrentMatchedStartSearchResponse,
